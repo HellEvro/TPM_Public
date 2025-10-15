@@ -40,7 +40,7 @@ except ImportError as e:
 try:
     from bots_modules.maturity import (
         check_coin_maturity, check_coin_maturity_with_storage,
-        add_mature_coin_to_storage
+        add_mature_coin_to_storage, is_coin_mature_stored
     )
 except ImportError as e:
     print(f"Warning: Could not import maturity functions in filters: {e}")
@@ -50,6 +50,8 @@ except ImportError as e:
         return {'is_mature': True, 'reason': 'Not checked'}
     def add_mature_coin_to_storage(symbol, data, auto_save=True):
         pass
+    def is_coin_mature_stored(symbol):
+        return False
 
 # Импорт функции optimal_ema из модуля
 try:
@@ -67,12 +69,12 @@ except ImportError as e:
     def save_rsi_cache():
         pass
 
-# Импортируем глобальные переменные из imports_and_globals
+# Импортируем глобальные переменные и функции из imports_and_globals
 try:
     from bots_modules.imports_and_globals import (
         bots_data_lock, bots_data, rsi_data_lock, coins_rsi_data, exchange,
         RSI_OVERSOLD, RSI_OVERBOUGHT, RSI_EXIT_LONG, RSI_EXIT_SHORT, BOT_STATUS,
-        system_initialized
+        system_initialized, get_exchange
     )
 except ImportError:
     bots_data_lock = threading.Lock()
@@ -86,6 +88,8 @@ except ImportError:
     RSI_EXIT_SHORT = 35
     BOT_STATUS = {}
     system_initialized = False
+    def get_exchange():
+        return None
 
 def check_rsi_time_filter(candles, rsi, signal):
     """
