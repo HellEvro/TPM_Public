@@ -78,7 +78,7 @@ class ExchangeManager {
 
     async fetchTicker(symbol) {
         try {
-            const response = await fetch(`/api/ticker/${symbol}`);
+            const response = await fetch(`/api/ticker/${encodeURIComponent(symbol)}`);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -177,7 +177,7 @@ class ExchangeManager {
     async getChartData(symbol, timeframe = '1h', period = '1w') {
         try {
             console.log(`[EXCHANGE] Getting chart data for ${symbol} with timeframe ${timeframe}`);
-            const response = await fetch(`/api/chart/${symbol}?timeframe=${timeframe}&period=${period}`);
+            const response = await fetch(`/api/chart/${encodeURIComponent(symbol)}?timeframe=${timeframe}&period=${period}`);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -291,7 +291,7 @@ class ExchangeManager {
             console.log(`[EXCHANGE] Getting indicators for ${symbol} with timeframe ${timeframe}`);
             
             // Формируем URL с параметрами
-            const url = new URL(`/api/indicators/${symbol}`, window.location.origin);
+            const url = new URL(`/api/indicators/${encodeURIComponent(symbol)}`, window.location.origin);
             url.searchParams.append('timeframe', timeframe);
             
             console.log(`[EXCHANGE] Request URL: ${url.toString()}`);

@@ -263,7 +263,7 @@ async function analyzeAllTickers(tickers) {
                         tickersData.set(ticker, cachedData);
                     } else {
                         console.log(`Fetching data for ${ticker}`);
-                        const response = await fetch(`/api/candles/${ticker}`);
+                        const response = await fetch(`/api/candles/${encodeURIComponent(ticker)}`);
                         const data = await response.json();
                         
                         if (data.success && data.data && data.data.candles) {

@@ -42,11 +42,11 @@ class ApiService {
 
     // Trading API methods
     static async getChartData(symbol, timeframe = '1d') {
-        return this.get(`/api/chart/${symbol}`, { timeframe });
+        return this.get(`/api/chart/${encodeURIComponent(symbol)}`, { timeframe });
     }
 
     static async getIndicators(symbol, timeframe = '1d') {
-        return this.get(`/api/indicators/${symbol}`, { timeframe });
+        return this.get(`/api/indicators/${encodeURIComponent(symbol)}`, { timeframe });
     }
 
     static async getPositions(params = {}) {
