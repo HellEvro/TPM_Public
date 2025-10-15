@@ -1,0 +1,290 @@
+/* === МОБИЛЬНЫЙ БЛОК СТАТИСТИКИ НАД БЛОКОМ ОДНОЙ МОНЕТЫ === */
+
+/* Мобильный блок статистики - показывается только на мобильных */
+.mobile-stats-block {
+    display: none; /* Скрыт по умолчанию */
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.mobile-account-info {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.mobile-balance-section h4 {
+    font-size: 14px;
+    margin: 0 0 8px 0;
+    color: var(--text-color);
+    font-weight: 600;
+}
+
+.mobile-balance-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.mobile-balance-item {
+    text-align: center;
+    padding: 6px;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.mobile-balance-item .label {
+    display: block;
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+}
+
+.mobile-balance-item .value {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.mobile-balance-item .value.positive {
+    color: var(--green-color);
+}
+
+.mobile-balance-item .value.negative {
+    color: var(--red-color);
+}
+
+.mobile-autobot-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.mobile-autobot-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mobile-autobot-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.mobile-autobot-status {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: var(--red-color);
+    color: white;
+}
+
+.mobile-autobot-status.enabled {
+    background: var(--green-color);
+}
+
+.mobile-bots-list {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.mobile-bots-count {
+    text-align: right;
+}
+
+/* Показываем мобильный блок только на маленьких экранах */
+@media (max-width: 1200px) {
+    .mobile-stats-block {
+        display: block !important;
+    }
+}
+
+/* На больших экранах скрываем */
+@media (min-width: 1201px) {
+    .mobile-stats-block {
+        display: none !important;
+    }
+}
+
+/* Дополнительные стили для очень маленьких экранов */
+@media (max-width: 768px) {
+    .mobile-stats-block {
+        padding: 8px;
+        margin-bottom: 8px;
+    }
+    
+    .mobile-balance-stats {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px;
+    }
+    
+    .mobile-balance-item {
+        padding: 4px;
+    }
+    
+    .mobile-balance-item .label {
+        font-size: 9px;
+    }
+    
+    .mobile-balance-item .value {
+        font-size: 11px;
+    }
+    
+    .mobile-autobot-section {
+        padding: 6px;
+        flex-direction: column;
+        gap: 6px;
+        align-items: stretch;
+    }
+    
+    .mobile-autobot-toggle {
+        justify-content: center;
+    }
+    
+    .mobile-bots-count {
+        text-align: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .mobile-balance-stats {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+    
+    .mobile-balance-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 8px;
+    }
+    
+    .mobile-balance-item .label {
+        margin-bottom: 0;
+    }
+}
+
+/* На очень маленьких экранах делаем еще более компактный вид */
+@media (max-width: 768px) {
+    .management-layout {
+        grid-template-columns: 1fr !important;
+        gap: 8px;
+    }
+    
+    /* Правая панель еще более компактная */
+    .active-bots-sidebar {
+        order: -1 !important;
+        position: static !important;
+        height: auto !important;
+        max-height: 150px !important;
+        overflow-y: auto !important;
+        width: 100% !important;
+        display: block !important;
+        margin-bottom: 8px !important;
+    }
+    
+    /* Сверхкомпактная статистика */
+    .account-stats {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 4px !important;
+    }
+    
+    .account-stat {
+        font-size: 10px !important;
+        padding: 2px !important;
+    }
+    
+    .autobot-control-panel {
+        padding: 4px !important;
+    }
+    
+    .autobot-toggle-container {
+        flex-direction: row !important;
+        justify-content: space-between !important;
+        gap: 8px !important;
+    }
+    
+    .autobot-label {
+        font-size: 12px !important;
+    }
+    
+    .autobot-status-text {
+        font-size: 10px !important;
+    }
+}
+
+/* Дополнительные улучшения для мобильных */
+@media (max-width: 480px) {
+    .management-layout {
+        padding: 4px;
+        gap: 4px;
+    }
+    
+    .coins-panel {
+        border-radius: 4px;
+    }
+    
+    .active-bots-sidebar {
+        border-radius: 4px;
+        max-height: 300px;
+    }
+    
+    .account-title {
+        font-size: 12px;
+    }
+    
+    .autobot-header h3 {
+        font-size: 14px;
+    }
+    
+    .autobot-message {
+        font-size: 12px;
+    }
+    
+    .autobot-submessage {
+        font-size: 10px;
+    }
+}
+
+/* Принудительное отображение правой панели на всех экранах */
+@media (max-width: 1400px) {
+    .active-bots-sidebar {
+        display: block !important;
+    }
+}
+
+@media (max-width: 1000px) {
+    .active-bots-sidebar {
+        display: block !important;
+    }
+}
+
+/* Дополнительные стили для компактности */
+@media (max-width: 1200px) {
+    .sidebar-header h3 {
+        font-size: 14px !important;
+        margin-bottom: 8px !important;
+    }
+    
+    .account-title {
+        font-size: 12px !important;
+        margin-bottom: 4px !important;
+    }
+    
+    .autobot-header h3 {
+        font-size: 14px !important;
+        margin-bottom: 8px !important;
+    }
+}
+
