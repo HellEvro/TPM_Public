@@ -1,0 +1,189 @@
+/* === Import Core Styles === */
+@import 'theme.css';
+@import 'layout.css';
+@import 'positions.css';
+@import 'stats.css';
+@import 'notifications.css';
+@import 'trading.css';
+
+/* === Import Component Styles === */
+@import 'components/header.css';
+@import 'components/tables.css';
+@import 'components/scrollbars.css';
+@import 'components/buttons.css';
+@import 'components/positions.css';
+@import 'components/trading.css';
+@import 'components/analysis.css';
+@import 'components/loader.css';
+@import 'components/rapid-growth.css';
+@import 'components/filters.css';
+@import 'components/dividers.css';
+@import 'components/controls.css';
+@import 'components/exchange.css';
+@import 'components/utils.css';
+@import 'components/indicators.css';
+@import 'components/progress.css';
+@import 'components/grid.css';
+@import 'components/cards.css';
+@import 'components/forms.css';
+@import 'components/lists.css';
+@import 'components/modals.css';
+@import 'components/tabs.css';
+@import 'components/dropdowns.css';
+@import 'components/chips.css';
+@import 'components/alerts.css';
+@import 'components/sidebar.css';
+@import 'components/spinners.css';
+@import 'components/tooltips.css';
+@import 'components/badges.css';
+@import 'components/avatars.css';
+@import 'components/skeleton.css';
+@import 'components/timeline.css';
+@import 'components/breadcrumbs.css';
+@import 'components/stepper.css';
+@import 'components/accordion.css';
+@import 'components/tree.css';
+@import 'components/switch.css';
+@import 'components/pagination.css';
+@import 'components/menu.css';
+@import 'components/tags.css';
+@import 'components/popovers.css';
+@import 'components/toasts.css';
+@import 'components/toolbar.css';
+@import 'components/panels.css';
+@import 'components/navbar.css';
+@import 'components/columns.css';
+@import 'components/messages.css';
+@import 'components/icons.css';
+@import 'components/hints.css';
+@import 'components/labels.css';
+@import 'components/groups.css';
+@import 'components/collapsible.css';
+
+.pair-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.pair-item:hover {
+    background-color: var(--hover-color);
+}
+
+.pair-name {
+    flex-grow: 1;
+    cursor: pointer;
+}
+
+.external-link {
+    opacity: 0.5;
+    transition: opacity 0.2s;
+    margin-left: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.external-link:hover {
+    opacity: 1;
+}
+
+.external-link svg {
+    width: 14px;
+    height: 14px;
+    stroke: var(--text-color);
+}
+
+.ticker-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ticker {
+    text-decoration: none;
+    cursor: default;
+}
+
+.external-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    transition: color 0.2s;
+}
+
+.external-link:hover {
+    color: #0066cc;
+}
+
+.external-link svg {
+    width: 14px;
+    height: 14px;
+}
+
+.chart-controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    gap: 5px;
+    background: var(--background-color);
+    padding: 5px;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+}
+
+.chart-controls button {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-color);
+    font-size: 16px;
+    transition: all 0.2s;
+}
+
+.chart-controls button:hover {
+    background: var(--hover-color);
+}
+
+.trading-chart-block {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+}
+
+#tradingChart {
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+}
+
+/* Bot Status Styles */
+.bot-status.status-idle {
+    background-color: #ff9800;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.bot-status.status-stopped {
+    background-color: #ff5722;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+}
