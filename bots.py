@@ -6,6 +6,34 @@
 # Базовые импорты
 import os
 import sys
+
+# Проверка наличия конфигурации ПЕРЕД всеми импортами
+if not os.path.exists('app/config.py'):
+    print("\n" + "="*80)
+    print("❌ ОШИБКА: Файл конфигурации не найден!")
+    print("="*80)
+    print()
+    print("📝 Для первого запуска выполните:")
+    print()
+    print("   1. Скопируйте файл конфигурации:")
+    if os.name == 'nt':  # Windows
+        print("      copy app\\config.example.py app\\config.py")
+    else:  # Linux/Mac
+        print("      cp app/config.example.py app/config.py")
+    print()
+    print("   2. Отредактируйте app/config.py:")
+    print("      - Добавьте свои API ключи бирж")
+    print("      - Настройте Telegram (опционально)")
+    print()
+    print("   3. Запустите снова:")
+    print("      python bots.py")
+    print()
+    print("   📖 Подробная инструкция: docs/INSTALL.md")
+    print()
+    print("="*80)
+    print()
+    sys.exit(1)
+
 import signal
 import threading
 import time
