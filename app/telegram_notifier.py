@@ -9,6 +9,7 @@ import atexit
 import sys
 from threading import Lock
 from app.language import get_current_language, get_telegram_message
+from utils.log_rotation import setup_logger_with_rotation
 
 class TelegramNotifier:
     def __init__(self):
@@ -16,27 +17,14 @@ class TelegramNotifier:
         log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
         os.makedirs(log_dir, exist_ok=True)
         
-        # Создаем отдельный логгер для Telegram (избегаем конфликтов с basicConfig)
-        self.logger = logging.getLogger('TelegramNotifier')
-        self.logger.setLevel(logging.INFO)
-        
-        # Убираем существующие обработчики, если есть
-        for handler in self.logger.handlers[:]:
-            self.logger.removeHandler(handler)
-        
-        # Создаем файловый обработчик
-        file_handler = logging.FileHandler(os.path.join(log_dir, 'telegram.log'), encoding='utf-8')
-        file_handler.setLevel(logging.INFO)
-        
-        # Создаем форматтер
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(formatter)
-        
-        # Добавляем обработчик к логгеру
-        self.logger.addHandler(file_handler)
-        
-        # Отключаем распространение на родительские логгеры, чтобы избежать дублирования
-        self.logger.propagate = False
+        # Создаем логгер с автоматической ротацией при превышении 10MB
+        self.logger = setup_logger_with_rotation(
+            name='TelegramNotifier',
+            log_file=os.path.join(log_dir, 'telegram.log'),
+            level=logging.INFO,
+            max_bytes=10 * 1024 * 1024,  # 10MB
+            format_string='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
 
         # Затем инициализируем остальные атрибуты
         self.bot_token = TELEGRAM_BOT_TOKEN

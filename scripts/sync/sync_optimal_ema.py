@@ -13,9 +13,16 @@ import logging
 # Добавляем путь к корню проекта для импорта модулей
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-# Настройка логирования
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# Настройка логирования с ротацией
+from utils.log_rotation import setup_logger_with_rotation
+
+logger = setup_logger_with_rotation(
+    name='SyncOptimalEMA',
+    log_file='logs/sync_optimal_ema.log',
+    level=logging.INFO,
+    max_bytes=10 * 1024 * 1024,  # 10MB
+    format_string='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 def sync_optimal_ema_data():
     """Синхронизирует данные об оптимальных EMA между скриптами"""

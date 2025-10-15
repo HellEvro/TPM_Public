@@ -63,28 +63,24 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from exchanges.exchange_factory import ExchangeFactory
 from app.config import EXCHANGES
+from utils.log_rotation import setup_logger_with_rotation
+import logging.handlers
 
-# Настройка логирования
+# Настройка логирования с ротацией
 def setup_logging():
-    """Настройка логирования с правильной кодировкой"""
-    # Создаем директорию для логов если её нет
-    os.makedirs('logs', exist_ok=True)
+    """Настройка логирования с автоматической ротацией при превышении 10MB"""
+    # Создаем логгер с ротацией файлов
+    logger = setup_logger_with_rotation(
+        name='OptimalEMA',
+        log_file='logs/optimal_ema.log',
+        level=logging.INFO,
+        max_bytes=10 * 1024 * 1024,  # 10MB
+        format_string='%(asctime)s - %(levelname)s - %(message)s'
+    )
     
-    # Настраиваем форматтер
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    
-    # Файловый хендлер с UTF-8
-    file_handler = logging.FileHandler('logs/optimal_ema.log', encoding='utf-8')
-    file_handler.setFormatter(formatter)
-    
-    # Консольный хендлер
+    # Добавляем консольный обработчик
     console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-    
-    # Настраиваем логгер
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
-    logger.addHandler(file_handler)
+    console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
     logger.addHandler(console_handler)
     
     return logger

@@ -331,8 +331,15 @@ process_state = {
 # Настройка цветного логирования
 setup_color_logging()
 
-# Добавляем файловый логгер для сохранения в файл
-file_handler = logging.FileHandler('logs/bots.log', encoding='utf-8')
+# Добавляем файловый логгер с ротацией для сохранения в файл
+from utils.log_rotation import RotatingFileHandlerWithSizeLimit
+
+file_handler = RotatingFileHandlerWithSizeLimit(
+    filename='logs/bots.log',
+    max_bytes=10 * 1024 * 1024,  # 10MB
+    backup_count=0,  # Перезаписываем файл
+    encoding='utf-8'
+)
 file_handler.setLevel(logging.INFO)
 file_formatter = logging.Formatter('[BOTS] %(asctime)s - %(name)s - %(levelname)s - %(message)s')
 file_handler.setFormatter(file_formatter)

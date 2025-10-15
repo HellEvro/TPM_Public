@@ -23,8 +23,10 @@ import json
 import sys
 import os
 import io
+import logging
 from datetime import datetime
 from colorama import Fore, Style, init
+from utils.log_rotation import setup_logger_with_rotation
 
 # Исправление кодировки для Windows
 if sys.platform == "win32":
@@ -49,11 +51,20 @@ API_BASE_URL = f"http://127.0.0.1:{BOTS_PORT}/api/bots"
 os.makedirs("logs", exist_ok=True)
 
 # ============================================================================
-# ЛОГИРОВАНИЕ
+# ЛОГИРОВАНИЕ С РОТАЦИЕЙ
 # ============================================================================
 
+# Создаем логгер с автоматической ротацией при превышении 10MB
+file_logger = setup_logger_with_rotation(
+    name='Protector',
+    log_file=LOG_FILE,
+    level=logging.INFO,
+    max_bytes=10 * 1024 * 1024,  # 10MB
+    format_string='%(asctime)s - %(levelname)s - %(message)s'
+)
+
 def log(message, level="INFO"):
-    """Логирование с цветным выводом"""
+    """Логирование с цветным выводом и автоматической ротацией файлов"""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     # Цвета для разных уровней
@@ -71,10 +82,10 @@ def log(message, level="INFO"):
     # Вывод в консоль
     print(formatted_message)
     
-    # Запись в лог файл
+    # Запись в лог файл через logger с ротацией
     try:
-        with open(LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(f"[{timestamp}] [{level}] {message}\n")
+        log_level = getattr(logging, level, logging.INFO)
+        file_logger.log(log_level, message)
     except Exception as e:
         print(f"Ошибка записи в лог: {e}")
 

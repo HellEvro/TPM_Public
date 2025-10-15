@@ -152,13 +152,37 @@ telegram = TelegramNotifier()
 if not os.path.exists('logs'):
     os.makedirs('logs')
 
+# Импортируем систему ротации логов
+from utils.log_rotation import RotatingFileHandlerWithSizeLimit
+import logging
+
+# Словарь для кэширования логгеров
+_log_file_handlers = {}
+
 def log_to_file(filename, data):
-    """Записывает данные в файл с временной меткой"""
+    """
+    Записывает данные в файл с временной меткой и автоматической ротацией при превышении 10MB
+    """
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    with open(f'logs/{filename}', 'a', encoding='utf-8') as f:
-        f.write(f"\n=== {timestamp} ===\n")
-        f.write(data)
-        f.write("\n")
+    log_path = f'logs/{filename}'
+    
+    # Создаем или получаем существующий handler для файла
+    if log_path not in _log_file_handlers:
+        handler = RotatingFileHandlerWithSizeLimit(
+            filename=log_path,
+            max_bytes=10 * 1024 * 1024,  # 10MB
+            backup_count=0,  # Перезаписываем файл
+            encoding='utf-8'
+        )
+        logger = logging.getLogger(f'AppLog_{filename}')
+        logger.setLevel(logging.INFO)
+        logger.addHandler(handler)
+        logger.propagate = False
+        _log_file_handlers[log_path] = logger
+    
+    # Записываем в лог
+    logger = _log_file_handlers[log_path]
+    logger.info(f"\n=== {timestamp} ===\n{data}\n")
 
 def format_positions(positions):
     """Форматирует позиции для записи в лог"""
