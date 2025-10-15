@@ -31,6 +31,7 @@ from bots_modules.imports_and_globals import (
     mature_coins_lock, optimal_ema_data, coin_processing_locks,
     BOT_STATUS, ASYNC_AVAILABLE, RSI_CACHE_FILE
 )
+import bots_modules.imports_and_globals as globals_module
 
 # Импорт RSI констант из bot_config
 try:
