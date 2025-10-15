@@ -52,8 +52,11 @@ function updateInterface() {
     
     const currentLang = document.documentElement.lang || 'ru';
     console.log('Current language:', currentLang);
+    console.log('TRANSLATIONS.ru keys:', Object.keys(TRANSLATIONS.ru).length);
+    console.log('TRANSLATIONS.en keys:', Object.keys(TRANSLATIONS.en).length);
     
     // Обновляем все элементы с data-translate
+    let translated = 0, missing = 0;
     document.querySelectorAll('[data-translate]').forEach(element => {
         // Пропускаем элемент с id="currentPage"
         if (element.id === 'currentPage') return;
@@ -61,8 +64,13 @@ function updateInterface() {
         const key = element.getAttribute('data-translate');
         if (key && TRANSLATIONS[currentLang] && TRANSLATIONS[currentLang][key]) {
             element.textContent = TRANSLATIONS[currentLang][key];
+            translated++;
+        } else if (key) {
+            console.warn(`Missing translation for key: ${key} (lang: ${currentLang})`);
+            missing++;
         }
     });
+    console.log(`Translated: ${translated}, Missing: ${missing}`);
     
     // Обновляем все элементы с data-translate-placeholder
     document.querySelectorAll('[data-translate-placeholder]').forEach(element => {
@@ -86,5 +94,6 @@ function updateInterface() {
     console.log('Interface updated successfully');
 }
 
-// Делаем функцию глобально доступной
-window.toggleLanguage = toggleLanguage; 
+// Делаем функции глобально доступными
+window.toggleLanguage = toggleLanguage;
+window.updateInterface = updateInterface; 

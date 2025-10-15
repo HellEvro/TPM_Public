@@ -1232,7 +1232,7 @@
                                 <span class="label-text" data-translate="max_position_minutes_label">Макс. время позиции (мин):</span>
                             </label>
                             <input type="number" id="maxPositionHours" min="0" max="10080" step="1" class="config-input" value="0" placeholder="0" />
-                            <small class="config-help" data-translate="max_position_minutes_description">0 = отключено (бесконечно), принудительное закрытие через указанное время</small>
+                            <small class="config-help" data-translate="max_position_time_help">0 = отключено (бесконечно), принудительное закрытие через указанное время</small>
                         </div>
                         
                         <div class="config-item">
@@ -1243,7 +1243,7 @@
                                 <input type="checkbox" id="breakEvenProtection" checked />
                                 <span class="toggle-slider"></span>
                             </label>
-                            <small class="config-help">Перенос стопа на уровень входа при прибыли</small>
+                            <small class="config-help" data-translate="break_even_protection_help">Перенос стопа на уровень входа при прибыли</small>
                         </div>
                         
                         <div class="config-item">
@@ -1355,14 +1355,14 @@
                                     <span data-translate="remove_coins_btn">🗑️ Удалить</span>
                                 </button>
                             </div>
-                            <small class="config-help" data-translate="coins_to_remove_help">
+                            <small class="config-help" data-translate="coins_deletion_instruction_help">
                                 Введите символы монет через запятую (например: ARIA, AVNT). Будьте осторожны!
                             </small>
                         </div>
                         
                         <div class="mature-coins-info">
                             <div class="info-item">
-                                <span class="info-label" data-translate="total_mature_coins">Всего зрелых монет:</span>
+                                <span class="info-label" data-translate="total_mature_coins_count">Всего зрелых монет:</span>
                                 <span class="info-value" id="totalMatureCoinsCount">0</span>
                             </div>
                             <div class="info-item">
