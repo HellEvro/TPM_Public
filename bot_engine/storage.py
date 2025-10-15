@@ -5,9 +5,22 @@
 import os
 import json
 import logging
+import time
+import threading
 from datetime import datetime
 
 logger = logging.getLogger('Storage')
+
+# Блокировки файлов для предотвращения одновременной записи
+_file_locks = {}
+_lock_lock = threading.Lock()
+
+def _get_file_lock(filepath):
+    """Получить блокировку для файла"""
+    with _lock_lock:
+        if filepath not in _file_locks:
+            _file_locks[filepath] = threading.Lock()
+        return _file_locks[filepath]
 
 # Пути к файлам
 RSI_CACHE_FILE = 'data/rsi_cache.json'
@@ -19,55 +32,77 @@ PROCESS_STATE_FILE = 'data/process_state.json'
 SYSTEM_CONFIG_FILE = 'data/system_config.json'
 
 
-def save_json_file(filepath, data, description="данные"):
-    """Универсальная функция сохранения JSON"""
-    try:
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        
-        # Атомарная запись через временный файл
-        temp_file = filepath + '.tmp'
-        
-        with open(temp_file, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        
-        # Заменяем оригинальный файл
-        if os.name == 'nt':  # Windows
-            if os.path.exists(filepath):
-                os.remove(filepath)
-            os.rename(temp_file, filepath)
-        else:  # Unix/Linux
-            os.rename(temp_file, filepath)
-        
-        logger.debug(f"[STORAGE] {description} сохранены в {filepath}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"[STORAGE] Ошибка сохранения {description}: {e}")
-        # Удаляем временный файл
-        if os.path.exists(temp_file):
+def save_json_file(filepath, data, description="данные", max_retries=3):
+    """Универсальная функция сохранения JSON с retry логикой"""
+    file_lock = _get_file_lock(filepath)
+    
+    with file_lock:  # Блокируем файл для этого процесса
+        for attempt in range(max_retries):
             try:
-                os.remove(temp_file)
-            except:
-                pass
-        return False
+                os.makedirs(os.path.dirname(filepath), exist_ok=True)
+                
+                # Атомарная запись через временный файл
+                temp_file = filepath + '.tmp'
+                
+                with open(temp_file, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                
+                # Заменяем оригинальный файл
+                if os.name == 'nt':  # Windows
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+                    os.rename(temp_file, filepath)
+                else:  # Unix/Linux
+                    os.rename(temp_file, filepath)
+                
+                logger.debug(f"[STORAGE] {description} сохранены в {filepath}")
+                return True
+                
+            except (OSError, PermissionError) as e:
+                if attempt < max_retries - 1:
+                    wait_time = 0.1 * (2 ** attempt)  # Экспоненциальная задержка
+                    logger.warning(f"[MATURITY_STORAGE] Попытка {attempt + 1} неудачна, повторяем через {wait_time}с: {e}")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.error(f"[STORAGE] Ошибка сохранения {description} после {max_retries} попыток: {e}")
+                    # Удаляем временный файл
+                    if 'temp_file' in locals() and os.path.exists(temp_file):
+                        try:
+                            os.remove(temp_file)
+                        except:
+                            pass
+                    return False
+            except Exception as e:
+                logger.error(f"[STORAGE] Неожиданная ошибка сохранения {description}: {e}")
+                # Удаляем временный файл
+                if 'temp_file' in locals() and os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except:
+                        pass
+                return False
 
 
 def load_json_file(filepath, default=None, description="данные"):
-    """Универсальная функция загрузки JSON"""
-    try:
-        if not os.path.exists(filepath):
-            logger.info(f"[STORAGE] Файл {filepath} не найден")
+    """Универсальная функция загрузки JSON с блокировкой"""
+    file_lock = _get_file_lock(filepath)
+    
+    with file_lock:  # Блокируем файл для чтения
+        try:
+            if not os.path.exists(filepath):
+                logger.info(f"[STORAGE] Файл {filepath} не найден")
+                return default
+            
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            logger.debug(f"[STORAGE] {description} загружены из {filepath}")
+            return data
+            
+        except Exception as e:
+            logger.error(f"[STORAGE] Ошибка загрузки {description}: {e}")
             return default
-        
-        with open(filepath, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        
-        logger.debug(f"[STORAGE] {description} загружены из {filepath}")
-        return data
-        
-    except Exception as e:
-        logger.error(f"[STORAGE] Ошибка загрузки {description}: {e}")
-        return default
 
 
 # RSI Cache
