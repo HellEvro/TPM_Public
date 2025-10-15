@@ -65,6 +65,7 @@ class BotsManager {
             // КРИТИЧЕСКИ ВАЖНО: Инициализируем обработчик Auto Bot переключателя
             console.log('[BotsManager] 🤖 Инициализация обработчика Auto Bot переключателя...');
             this.initializeGlobalAutoBotToggle();
+            this.initializeMobileAutoBotToggle();
             
             // Проверяем статус сервиса ботов
             await this.checkBotsService();
@@ -3195,6 +3196,26 @@ class BotsManager {
                 } else if (hasUserChanged) {
                     console.log(`[BotsManager] 🔒 Пропускаем синхронизацию - пользователь изменил переключатель`);
                 }
+                
+                // Обновляем мобильный переключатель автобота ТОЛЬКО если он не был изменен пользователем
+                const mobileAutoBotToggleEl = document.getElementById('mobileAutobotToggle');
+                const hasMobileUserChanged = mobileAutoBotToggleEl?.hasAttribute('data-user-changed');
+                
+                if (mobileAutoBotToggleEl && !hasMobileUserChanged) {
+                    if (mobileAutoBotToggleEl.checked !== autoBotEnabled) {
+                        console.log(`[BotsManager] 🔄 Обновляем мобильный переключатель: ${mobileAutoBotToggleEl.checked} → ${autoBotEnabled}`);
+                        mobileAutoBotToggleEl.checked = autoBotEnabled;
+                    }
+                    
+                    // Обновляем визуальное состояние
+                    const statusText = document.getElementById('mobileAutobotStatusText');
+                    if (statusText) {
+                        statusText.textContent = autoBotEnabled ? 'ВКЛ' : 'ВЫКЛ';
+                        statusText.className = autoBotEnabled ? 'mobile-autobot-status enabled' : 'mobile-autobot-status';
+                    }
+                } else if (hasMobileUserChanged) {
+                    console.log(`[BotsManager] 🔒 Пропускаем синхронизацию мобильного - пользователь изменил переключатель`);
+                }
             }
             
         } catch (error) {
@@ -3641,6 +3662,7 @@ class BotsManager {
                 // КРИТИЧЕСКИ ВАЖНО: Инициализируем глобальный переключатель Auto Bot
                 console.log('[BotsManager] 🤖 Инициализация глобального переключателя Auto Bot...');
                 this.initializeGlobalAutoBotToggle();
+            this.initializeMobileAutoBotToggle();
                 
                 console.log('[BotsManager] ✅ Конфигурация загружена и применена');
                 return config;
@@ -4311,6 +4333,21 @@ class BotsManager {
             }
         }
         
+        // Синхронизируем мобильный переключатель Auto Bot
+        const mobileAutoBotToggleEl = document.getElementById('mobileAutobotToggle');
+        if (mobileAutoBotToggleEl) {
+            const enabled = config.enabled || false;
+            mobileAutoBotToggleEl.checked = enabled;
+            console.log(`[BotsManager] 🤖 Мобильный Auto Bot переключатель синхронизирован: ${enabled}`);
+            
+            // Обновляем визуальное состояние
+            const statusText = document.getElementById('mobileAutobotStatusText');
+            if (statusText) {
+                statusText.textContent = enabled ? 'ВКЛ' : 'ВЫКЛ';
+                statusText.className = enabled ? 'mobile-autobot-status enabled' : 'mobile-autobot-status';
+            }
+        }
+        
         // Синхронизируем дублированные элементы на вкладке "Управление"
         const rsiLongDupEl = document.getElementById('rsiLongThresholdDup');
         if (rsiLongDupEl) rsiLongDupEl.value = config.rsi_long_threshold || 29;
@@ -4372,6 +4409,7 @@ class BotsManager {
             if (data.success && data.config) {
                 this.syncDuplicateSettings(data.config);
                 this.initializeGlobalAutoBotToggle();
+            this.initializeMobileAutoBotToggle();
                 
                 // Обновляем RSI пороги из конфигурации
                 this.updateRsiThresholds(data.config);
@@ -4435,6 +4473,18 @@ class BotsManager {
                             'success'
                         );
                         
+                        // Синхронизируем с мобильным переключателем
+                        const mobileToggle = document.getElementById('mobileAutobotToggle');
+                        if (mobileToggle) {
+                            mobileToggle.checked = isEnabled;
+                            const mobileStatusText = document.getElementById('mobileAutobotStatusText');
+                            if (mobileStatusText) {
+                                mobileStatusText.textContent = isEnabled ? 'ВКЛ' : 'ВЫКЛ';
+                                mobileStatusText.className = isEnabled ? 'mobile-autobot-status enabled' : 'mobile-autobot-status';
+                            }
+                            console.log(`[BotsManager] 🔄 Мобильный переключатель синхронизирован: ${isEnabled}`);
+                        }
+                        
                         // ✅ ИСПРАВЛЕНИЕ: Сбрасываем флаг с задержкой
                         // Даем время автообновлению получить новое состояние с сервера
                         setTimeout(() => {
@@ -4459,6 +4509,85 @@ class BotsManager {
             });
             
             console.log('[BotsManager] ✅ Обработчик главного переключателя Auto Bot инициализирован');
+        }
+    }
+
+    initializeMobileAutoBotToggle() {
+        const mobileAutoBotToggleEl = document.getElementById('mobileAutobotToggle');
+        console.log('[BotsManager] 🔍 initializeMobileAutoBotToggle вызван');
+        console.log('[BotsManager] 🔍 Мобильный элемент найден:', !!mobileAutoBotToggleEl);
+        console.log('[BotsManager] 🔍 data-initialized:', mobileAutoBotToggleEl?.getAttribute('data-initialized'));
+        
+        if (mobileAutoBotToggleEl && !mobileAutoBotToggleEl.hasAttribute('data-initialized')) {
+            console.log('[BotsManager] 🔧 Устанавливаем обработчик события для мобильного переключателя...');
+            mobileAutoBotToggleEl.setAttribute('data-initialized', 'true');
+            
+            mobileAutoBotToggleEl.addEventListener('change', async (e) => {
+                const isEnabled = e.target.checked;
+                console.log(`[BotsManager] 🤖 ИЗМЕНЕНИЕ МОБИЛЬНОГО ПЕРЕКЛЮЧАТЕЛЯ: ${isEnabled}`);
+                
+                // Помечаем, что пользователь изменил переключатель
+                mobileAutoBotToggleEl.setAttribute('data-user-changed', 'true');
+                console.log('[BotsManager] 🔒 Флаг data-user-changed установлен для мобильного');
+                
+                // Обновляем визуальное состояние сразу
+                const statusText = document.getElementById('mobileAutobotStatusText');
+                if (statusText) {
+                    statusText.textContent = isEnabled ? 'ВКЛ' : 'ВЫКЛ';
+                    statusText.className = isEnabled ? 'mobile-autobot-status enabled' : 'mobile-autobot-status';
+                }
+                
+                try {
+                    const url = `${this.BOTS_SERVICE_URL}/api/bots/auto-bot`;
+                    console.log(`[BotsManager] 📡 Отправка запроса на ${isEnabled ? 'включение' : 'выключение'} автобота...`);
+                    console.log(`[BotsManager] 🌐 URL: ${url}`);
+                    console.log(`[BotsManager] 📦 Данные: ${JSON.stringify({ enabled: isEnabled })}`);
+                    
+                    // Сохраняем изменение через API
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ enabled: isEnabled })
+                    });
+                    
+                    const result = await response.json();
+                    console.log('[BotsManager] 📨 Ответ сервера:', result);
+                    
+                    if (result.success) {
+                        console.log(`[BotsManager] ✅ Auto Bot ${isEnabled ? 'включен' : 'выключен'} успешно`);
+                        this.showNotification(`✅ Auto Bot ${isEnabled ? 'включен' : 'выключен'}`, 'success');
+                        
+                        // Синхронизируем с основным переключателем
+                        const globalToggle = document.getElementById('globalAutoBotToggle');
+                        if (globalToggle) {
+                            globalToggle.checked = isEnabled;
+                            const globalLabel = globalToggle.closest('.auto-bot-toggle')?.querySelector('.toggle-label');
+                            if (globalLabel) {
+                                globalLabel.textContent = isEnabled ? '🤖 Auto Bot (ВКЛ)' : '🤖 Auto Bot (ВЫКЛ)';
+                            }
+                            console.log(`[BotsManager] 🔄 Основной переключатель синхронизирован: ${isEnabled}`);
+                        }
+                        
+                        // Убираем флаг изменения после успешного сохранения с задержкой
+                        setTimeout(() => {
+                            mobileAutoBotToggleEl.removeAttribute('data-user-changed');
+                            console.log('[BotsManager] 🔓 Флаг data-user-changed снят для мобильного после задержки');
+                        }, 15000);  // 15 секунд - достаточно для автообновления
+                        
+                    } else {
+                        console.error('[BotsManager] ❌ Ошибка сервера:', result.message);
+                        this.showNotification('❌ Ошибка сохранения: ' + result.message, 'error');
+                    }
+                    
+                } catch (error) {
+                    console.error('[BotsManager] ❌ Ошибка изменения Auto Bot:', error);
+                    this.showNotification('❌ Ошибка соединения с сервисом. Попробуйте еще раз.', 'error');
+                }
+            });
+            
+            console.log('[BotsManager] ✅ Обработчик мобильного переключателя Auto Bot инициализирован');
         }
     }
     
