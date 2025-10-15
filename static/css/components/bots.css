@@ -2053,6 +2053,28 @@ input:checked + .toggle-slider:before {
     }
 }
 
+/* Альбомный режим - ширина больше высоты, показываем правый блок */
+@media (max-width: 1200px) and (min-aspect-ratio: 1/1) {
+    .management-layout {
+        grid-template-columns: 280px 1fr 240px;
+    }
+    
+    .active-bots-sidebar {
+        display: block;
+    }
+}
+
+/* Портретный режим - высота больше ширины, скрываем правый блок */
+@media (max-width: 1200px) and (max-aspect-ratio: 1/1) {
+    .management-layout {
+        grid-template-columns: 280px 1fr;
+    }
+    
+    .active-bots-sidebar {
+        display: none;
+    }
+}
+
 @media (max-width: 1200px) {
     .management-layout {
         grid-template-columns: 280px 1fr;
