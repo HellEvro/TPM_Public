@@ -5,8 +5,23 @@ import threading
 import time
 from datetime import datetime
 import os
+import sys
 import webbrowser
 from threading import Timer
+
+# Настройка кодировки для Windows консоли
+if os.name == 'nt':
+    try:
+        # Пытаемся установить UTF-8 для консоли Windows
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except:
+        # Если не получилось, пробуем через os
+        try:
+            import subprocess
+            subprocess.run(['chcp', '65001'], shell=True, capture_output=True)
+        except:
+            pass
 
 # Проверка наличия конфигурации
 if not os.path.exists('app/config.py'):
@@ -29,9 +44,10 @@ if not os.path.exists('app/config.py'):
     print("   3. Запустите снова:")
     print("      python app.py")
     print()
+    print("   📖 Подробная инструкция: docs/INSTALL.md")
+    print()
     print("="*80)
     print()
-    import sys
     sys.exit(1)
 
 from app.config import *

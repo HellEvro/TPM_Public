@@ -7,6 +7,20 @@
 import os
 import sys
 
+# Настройка кодировки для Windows консоли
+if os.name == 'nt':
+    try:
+        # Пытаемся установить UTF-8 для консоли Windows
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except:
+        # Если не получилось, пробуем через os
+        try:
+            import subprocess
+            subprocess.run(['chcp', '65001'], shell=True, capture_output=True)
+        except:
+            pass
+
 # Проверка наличия конфигурации ПЕРЕД всеми импортами
 if not os.path.exists('app/config.py'):
     print("\n" + "="*80)
