@@ -1485,7 +1485,14 @@ class BotsManager {
         
         try {
             console.log(`[BotsManager] 📥 Загрузка индивидуальных настроек для ${symbol}`);
-            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/individual-settings/${symbol}`);
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/individual-settings/${encodeURIComponent(symbol)}`);
+            
+            // 404 - это нормально, значит настроек нет
+            if (response.status === 404) {
+                console.log(`[BotsManager] ℹ️ Индивидуальных настроек для ${symbol} не найдено (404)`);
+                return null;
+            }
+            
             const data = await response.json();
             
             if (data.success) {
@@ -1506,7 +1513,7 @@ class BotsManager {
         
         try {
             console.log(`[BotsManager] 💾 Сохранение индивидуальных настроек для ${symbol}:`, settings);
-            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/individual-settings/${symbol}`, {
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/individual-settings/${encodeURIComponent(symbol)}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(settings)
@@ -1534,7 +1541,7 @@ class BotsManager {
         
         try {
             console.log(`[BotsManager] 🗑️ Удаление индивидуальных настроек для ${symbol}`);
-            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/individual-settings/${symbol}`, {
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/individual-settings/${encodeURIComponent(symbol)}`, {
                 method: 'DELETE'
             });
             
@@ -1560,7 +1567,7 @@ class BotsManager {
         
         try {
             console.log(`[BotsManager] 📋 Копирование настроек ${symbol} ко всем монетам`);
-            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/individual-settings/${symbol}/copy-to-all`, {
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/individual-settings/${encodeURIComponent(symbol)}/copy-to-all`, {
                 method: 'POST'
             });
             
