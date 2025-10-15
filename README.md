@@ -58,18 +58,20 @@ python bots.py  # Терминал 2
 ## 📚 Документация
 
 ### 📖 Основная документация:
-- **[docs/SYSTEM_OVERVIEW.md](docs/SYSTEM_OVERVIEW.md)** - 🌟 Полный обзор системы (app.py + bots.py)
-- **[docs/QUICKSTART.md](docs/QUICKSTART.md)** - Подробная инструкция запуска
-- **[docs/BOT_HISTORY.md](docs/BOT_HISTORY.md)** - История ботов и статистика
-- **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** - Настройка параметров
-- **[docs/Bots_TZ.md](docs/Bots_TZ.md)** - Техническое задание (v2.0 FINAL)
+- **[docs/INSTALL.md](docs/INSTALL.md)** - 🌟 Установка и первый запуск
+- **[docs/QUICKSTART.md](docs/QUICKSTART.md)** - Быстрый старт
+- **[docs/SYSTEM_OVERVIEW.md](docs/SYSTEM_OVERVIEW.md)** - Полный обзор системы
+- **[docs/BOT_HISTORY.md](docs/BOT_HISTORY.md)** - История ботов
+- **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** - Настройка
+- **[docs/Bots_TZ.md](docs/Bots_TZ.md)** - ТЗ v2.0 FINAL
 
 ### 🏗️ Архитектура и код:
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Архитектура системы и структура
 - **[docs/MODULES.md](docs/MODULES.md)** - Описание 10 модулей bots.py
 
-### 📊 Отчеты:
-- **[docs/reports/](docs/reports/)** - Отчеты о модернизации и соответствии ТЗ
+### 📊 Дополнительно:
+- **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Развертывание на новом сервере
+- **[docs/reports/](docs/reports/)** - Отчеты о модернизации
 
 ---
 

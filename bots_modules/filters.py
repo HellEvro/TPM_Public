@@ -846,6 +846,37 @@ def process_trading_signals_for_all_bots(exchange_obj=None):
 def check_new_autobot_filters(symbol, signal, coin_data):
     """Проверяет фильтры для нового автобота"""
     try:
+        # 0. Проверка whitelist/blacklist/scope
+        with bots_data_lock:
+            auto_config = bots_data['auto_bot_config']
+            scope = auto_config.get('scope', 'all')
+            whitelist = auto_config.get('whitelist', [])
+            blacklist = auto_config.get('blacklist', [])
+        
+        # Проверяем scope
+        if scope == 'whitelist':
+            # Режим ТОЛЬКО whitelist - работаем ТОЛЬКО с монетами из белого списка
+            if symbol not in whitelist:
+                logger.debug(f"[NEW_AUTO_FILTER] {symbol}: ❌ Режим WHITELIST - монета не в белом списке")
+                return False
+            logger.debug(f"[NEW_AUTO_FILTER] {symbol}: ✅ В белом списке (режим whitelist)")
+        
+        elif scope == 'blacklist':
+            # Режим ТОЛЬКО blacklist - работаем со ВСЕМИ монетами КРОМЕ черного списка
+            if symbol in blacklist:
+                logger.debug(f"[NEW_AUTO_FILTER] {symbol}: ❌ Режим BLACKLIST - монета в черном списке")
+                return False
+            logger.debug(f"[NEW_AUTO_FILTER] {symbol}: ✅ Не в черном списке (режим blacklist)")
+        
+        elif scope == 'all':
+            # Режим ALL - работаем со ВСЕМИ монетами, но проверяем оба списка
+            if symbol in blacklist:
+                logger.debug(f"[NEW_AUTO_FILTER] {symbol}: ❌ Монета в черном списке")
+                return False
+            # Если в whitelist - приоритет (но не обязательно)
+            if whitelist and symbol in whitelist:
+                logger.debug(f"[NEW_AUTO_FILTER] {symbol}: ⭐ В белом списке (приоритет)")
+        
         # 1. Проверка зрелости монеты
         if not check_coin_maturity_stored_or_verify(symbol):
             logger.debug(f"[NEW_AUTO_FILTER] {symbol}: Монета незрелая")

@@ -50,7 +50,8 @@ except ImportError:
 try:
     from bots_modules.sync_and_cache import (
         STOP_LOSS_SETUP_INTERVAL, POSITION_SYNC_INTERVAL,
-        INACTIVE_BOT_CLEANUP_INTERVAL, BOT_STATUS_UPDATE_INTERVAL
+        INACTIVE_BOT_CLEANUP_INTERVAL, BOT_STATUS_UPDATE_INTERVAL,
+        SYSTEM_CONFIG_FILE
     )
     from bots_modules.imports_and_globals import INACTIVE_BOT_TIMEOUT
 except ImportError:
@@ -59,6 +60,7 @@ except ImportError:
     INACTIVE_BOT_CLEANUP_INTERVAL = 600
     BOT_STATUS_UPDATE_INTERVAL = 30
     INACTIVE_BOT_TIMEOUT = 600
+    SYSTEM_CONFIG_FILE = 'data/system_config.json'
 
 # Импорт функций из других модулей
 try:
