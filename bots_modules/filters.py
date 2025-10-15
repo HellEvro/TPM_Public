@@ -17,6 +17,13 @@ from datetime import datetime
 
 logger = logging.getLogger('BotsService')
 
+# Импорт класса бота
+try:
+    from bots_modules.bot_class import NewTradingBot
+except ImportError as e:
+    print(f"Warning: Could not import NewTradingBot in filters: {e}")
+    NewTradingBot = None
+
 # Импорт функций расчета из calculations
 try:
     from bots_modules.calculations import (
