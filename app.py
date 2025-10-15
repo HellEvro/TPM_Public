@@ -56,6 +56,54 @@ import sys
 from app.telegram_notifier import TelegramNotifier
 from exchanges.exchange_factory import ExchangeFactory
 import json
+
+# Проверка валидности API ключей
+def check_api_keys():
+    """Проверяет наличие настроенных API ключей"""
+    try:
+        # Проверяем наличие файла с ключами
+        if not os.path.exists('app/keys.py'):
+            return False
+            
+        active_exchange = EXCHANGES.get(ACTIVE_EXCHANGE, {})
+        api_key = active_exchange.get('api_key', '')
+        api_secret = active_exchange.get('api_secret', '')
+        
+        # Проверяем что ключи не пустые и не содержат "YOUR_" (из примера)
+        if not api_key or not api_secret:
+            return False
+        if 'YOUR_' in api_key or 'YOUR_' in api_secret:
+            return False
+        if api_key == 'YOUR_API_KEY_HERE' or api_secret == 'YOUR_SECRET_KEY_HERE':
+            return False
+            
+        return True
+    except:
+        return False
+
+# Предупреждение если ключи не настроены
+if not check_api_keys():
+    print("\n" + "="*80)
+    print("⚠️  ВНИМАНИЕ: API ключи не настроены!")
+    print("="*80)
+    print()
+    print("📌 Текущий статус:")
+    print(f"   Биржа: {ACTIVE_EXCHANGE}")
+    if not os.path.exists('app/keys.py'):
+        print("   Файл с ключами: app/keys.py НЕ НАЙДЕН")
+    else:
+        print("   API ключи: НЕ НАСТРОЕНЫ или СОДЕРЖАТ ПРИМЕРЫ")
+    print()
+    print("💡 Что нужно сделать:")
+    print("   1. Скопируйте app/config.example.py -> app/config.py (если еще не сделали)")
+    print("   2. Создайте app/keys.py с реальными ключами")
+    print("   3. Или добавьте ключи прямо в app/config.py")
+    print("   4. Перезапустите приложение")
+    print()
+    print("⚠️  Приложение запущено в DEMO режиме (только UI, без торговли)")
+    print()
+    print("="*80)
+    print()
 import requests
 from threading import Lock
 from app.language import get_current_language, save_language

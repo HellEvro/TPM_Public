@@ -1,37 +1,30 @@
 """
 Пример конфигурации InfoBot
-Скопируйте этот файл в config.py и заполните своими данными
+Скопируйте этот файл в config.py
+
+⚠️  API КЛЮЧИ ХРАНЯТСЯ В ОТДЕЛЬНОМ ФАЙЛЕ!
+   1. Скопируйте app/keys.example.py -> app/keys.py
+   2. Добавьте реальные API ключи в app/keys.py
+   3. Скопируйте этот файл -> app/config.py
+   
+   config.py импортирует ключи из keys.py автоматически
 """
 
-# ========== НАСТРОЙКИ БИРЖИ ==========
-EXCHANGES = {
-    'BYBIT': {
-        'api_key': 'YOUR_API_KEY_HERE',
-        'api_secret': 'YOUR_SECRET_KEY_HERE'
-    },
-    'BINANCE': {
-        'api_key': 'YOUR_API_KEY_HERE',
-        'api_secret': 'YOUR_SECRET_KEY_HERE'
-    },
-    'OKX': {
-        'api_key': 'YOUR_API_KEY_HERE',
-        'api_secret': 'YOUR_SECRET_KEY_HERE',
-        'passphrase': 'YOUR_PASSPHRASE_HERE'
-    }
-}
+# ========== ИМПОРТ API КЛЮЧЕЙ ==========
+# После копирования этого файла в config.py, раскомментируйте строку ниже:
+# from .keys import EXCHANGES, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
-# Выбор биржи по умолчанию
-DEFAULT_EXCHANGE = 'BYBIT'
+# ========== НАСТРОЙКИ БИРЖИ ==========
+# Выбор активной биржи (должна быть настроена в keys.py)
+ACTIVE_EXCHANGE = 'BYBIT'
 
 # ========== НАСТРОЙКИ СЕРВЕРА ==========
-APP_HOST = '0.0.0.0'
+APP_HOST = '0.0.0.0'  # '0.0.0.0' для доступа из сети, 'localhost' только локально
 APP_PORT = 5000
 APP_DEBUG = False
 
 # ========== TELEGRAM УВЕДОМЛЕНИЯ ==========
-TELEGRAM_BOT_TOKEN = 'YOUR_BOT_TOKEN_HERE'
-TELEGRAM_CHAT_ID = 'YOUR_CHAT_ID_HERE'
-
+# Токены настраиваются в keys.py
 TELEGRAM_NOTIFY = {
     'ENABLED': True,
     'HIGH_PNL_THRESHOLD': 100,        # Уведомление при PnL > 100 USDT

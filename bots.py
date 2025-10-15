@@ -63,6 +63,31 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # Функция проверки порта (должна быть до всех импортов)
 from bots_modules.imports_and_globals import check_and_stop_existing_bots_processes
 
+# Проверка API ключей
+def check_api_keys():
+    """Проверяет наличие настроенных API ключей"""
+    try:
+        # Проверяем наличие файла с ключами
+        if not os.path.exists('app/keys.py'):
+            return False
+            
+        from app.config import EXCHANGES, ACTIVE_EXCHANGE
+        active_exchange = EXCHANGES.get(ACTIVE_EXCHANGE, {})
+        api_key = active_exchange.get('api_key', '')
+        api_secret = active_exchange.get('api_secret', '')
+        
+        # Проверяем что ключи не пустые и не содержат "YOUR_" (из примера)
+        if not api_key or not api_secret:
+            return False
+        if 'YOUR_' in api_key or 'YOUR_' in api_secret:
+            return False
+        if api_key == 'YOUR_API_KEY_HERE' or api_secret == 'YOUR_SECRET_KEY_HERE':
+            return False
+            
+        return True
+    except:
+        return False
+
 # КРИТИЧЕСКИ ВАЖНО: Проверяем порт 5001 ПЕРЕД загрузкой остальных модулей
 if __name__ == '__main__':
     # Эта проверка должна быть ПЕРВОЙ при запуске
@@ -70,6 +95,35 @@ if __name__ == '__main__':
     if not can_continue:
         print("Не удалось освободить порт 5001, завершаем работу")
         sys.exit(1)
+    
+    # Проверяем API ключи
+    if not check_api_keys():
+        print("\n" + "="*80)
+        print("⚠️  ВНИМАНИЕ: API ключи не настроены!")
+        print("="*80)
+        print()
+        print("📌 Текущий статус:")
+        try:
+            from app.config import ACTIVE_EXCHANGE
+            print(f"   Биржа: {ACTIVE_EXCHANGE}")
+        except:
+            print("   Биржа: НЕ ОПРЕДЕЛЕНА")
+        
+        if not os.path.exists('app/keys.py'):
+            print("   Файл с ключами: app/keys.py НЕ НАЙДЕН")
+        else:
+            print("   API ключи: НЕ НАСТРОЕНЫ или СОДЕРЖАТ ПРИМЕРЫ")
+        print()
+        print("💡 Что нужно сделать:")
+        print("   1. Создайте app/keys.py с реальными ключами от биржи")
+        print("   2. Или добавьте ключи в app/config.py (EXCHANGES)")
+        print("   3. Перезапустите bots.py")
+        print()
+        print("⚠️  Сервис запущен, но торговля НЕВОЗМОЖНА без ключей!")
+        print("   Будут ошибки: 'Http status code is not 200. (ErrCode: 401)'")
+        print()
+        print("="*80)
+        print()
 
 # Импорт цветного логирования
 from utils.color_logger import setup_color_logging
