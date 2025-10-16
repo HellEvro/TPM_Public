@@ -80,23 +80,25 @@ except ImportError as e:
 try:
     from bots_modules.imports_and_globals import (
         bots_data_lock, bots_data, rsi_data_lock, coins_rsi_data, exchange,
-        RSI_OVERSOLD, RSI_OVERBOUGHT, RSI_EXIT_LONG, RSI_EXIT_SHORT, BOT_STATUS,
-        system_initialized, get_exchange
+        BOT_STATUS, system_initialized, get_exchange
     )
+    from bot_engine.bot_config import SystemConfig
 except ImportError:
     bots_data_lock = threading.Lock()
     bots_data = {}
     rsi_data_lock = threading.Lock()
     coins_rsi_data = {}
     exchange = None
-    RSI_OVERSOLD = 29
-    RSI_OVERBOUGHT = 71
-    RSI_EXIT_LONG = 65
-    RSI_EXIT_SHORT = 35
     BOT_STATUS = {}
     system_initialized = False
     def get_exchange():
         return None
+    # Fallback для SystemConfig
+    class SystemConfig:
+        RSI_OVERSOLD = 29
+        RSI_OVERBOUGHT = 71
+        RSI_EXIT_LONG = 65
+        RSI_EXIT_SHORT = 35
 
 def check_rsi_time_filter(candles, rsi, signal):
     """
@@ -388,14 +390,14 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
             avoid_down_trend = bots_data.get('auto_bot_config', {}).get('avoid_down_trend', True)
             avoid_up_trend = bots_data.get('auto_bot_config', {}).get('avoid_up_trend', True)
         
-        if rsi <= RSI_OVERSOLD:  # RSI ≤ 29 
+        if rsi <= SystemConfig.RSI_OVERSOLD:  # RSI ≤ 29 
             rsi_zone = 'BUY_ZONE'
             # Проверяем нужно ли избегать DOWN тренда для LONG
             if avoid_down_trend and trend == 'DOWN':
                 signal = 'WAIT'  # Ждем улучшения тренда
             else:
                 signal = 'ENTER_LONG'  # Входим независимо от тренда или при хорошем тренде
-        elif rsi >= RSI_OVERBOUGHT:  # RSI ≥ 71
+        elif rsi >= SystemConfig.RSI_OVERBOUGHT:  # RSI ≥ 71
             rsi_zone = 'SELL_ZONE'
             # Проверяем нужно ли избегать UP тренда для SHORT
             if avoid_up_trend and trend == 'UP':
@@ -558,7 +560,9 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
             'exit_scam_info': exit_scam_info,
             # ✅ ДОБАВЛЯЕМ флаги блокировки (для UI)
             'blocked_by_scope': is_blocked_by_scope,
-            'has_existing_position': has_existing_position
+            'has_existing_position': has_existing_position,
+            # ✅ ДОБАВЛЯЕМ флаг зрелости монеты
+            'is_mature': is_mature if enable_maturity_check else True
         }
         
         # Логируем торговые сигналы и блокировки тренда
@@ -566,9 +570,9 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
         
         if signal in ['ENTER_LONG', 'ENTER_SHORT']:
             logger.info(f"[SIGNAL] 🎯 {symbol}: RSI={rsi:.1f} {trend_emoji}{trend} (${current_price:.4f}) → {signal}")
-        elif signal == 'WAIT' and rsi <= RSI_OVERSOLD and trend == 'DOWN' and avoid_down_trend:
+        elif signal == 'WAIT' and rsi <= SystemConfig.RSI_OVERSOLD and trend == 'DOWN' and avoid_down_trend:
             logger.debug(f"[FILTER] 🚫 {symbol}: RSI={rsi:.1f} {trend_emoji}{trend} LONG заблокирован (фильтр DOWN тренда)")
-        elif signal == 'WAIT' and rsi >= RSI_OVERBOUGHT and trend == 'UP' and avoid_up_trend:
+        elif signal == 'WAIT' and rsi >= SystemConfig.RSI_OVERBOUGHT and trend == 'UP' and avoid_up_trend:
             logger.debug(f"[FILTER] 🚫 {symbol}: RSI={rsi:.1f} {trend_emoji}{trend} SHORT заблокирован (фильтр UP тренда)")
         
         return result
