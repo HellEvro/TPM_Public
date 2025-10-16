@@ -19,17 +19,9 @@ import copy
 logger = logging.getLogger('BotsService')
 
 # Импорт SystemConfig
-try:
-    from bot_engine.bot_config import SystemConfig
-except ImportError:
-    class SystemConfig:
-        AUTO_SAVE_INTERVAL = 30
+from bot_engine.bot_config import SystemConfig
 
-# Константы для интервалов (нужны для load_system_config)
-BOT_STATUS_UPDATE_INTERVAL = 30
-STOP_LOSS_SETUP_INTERVAL = 300
-POSITION_SYNC_INTERVAL = 30
-INACTIVE_BOT_CLEANUP_INTERVAL = 600
+# Константы теперь в SystemConfig
 
 # Импортируем глобальные переменные из imports_and_globals
 try:
@@ -39,14 +31,16 @@ try:
         mature_coins_storage, mature_coins_lock, BOT_STATUS,
         DEFAULT_AUTO_BOT_CONFIG, RSI_CACHE_FILE, PROCESS_STATE_FILE,
         SYSTEM_CONFIG_FILE, BOTS_STATE_FILE, AUTO_BOT_CONFIG_FILE,
-        DEFAULT_CONFIG_FILE, INACTIVE_BOT_TIMEOUT, should_log_message,
+        DEFAULT_CONFIG_FILE, should_log_message,
         get_coin_processing_lock
     )
     # MATURE_COINS_FILE определен в maturity.py
     try:
-        from bots_modules.maturity import MATURE_COINS_FILE
+        from bots_modules.maturity import MATURE_COINS_FILE, save_mature_coins_storage
     except:
         MATURE_COINS_FILE = 'data/mature_coins.json'
+        def save_mature_coins_storage():
+            pass  # Fallback function
     
     # Заглушка для ensure_exchange_initialized (избегаем циклического импорта)
     def ensure_exchange_initialized():
@@ -80,9 +74,12 @@ except ImportError as e:
     AUTO_BOT_CONFIG_FILE = 'data/auto_bot_config.json'
     MATURE_COINS_FILE = 'data/mature_coins.json'
     DEFAULT_CONFIG_FILE = 'data/default_auto_bot_config.json'
-    INACTIVE_BOT_TIMEOUT = 600
     def should_log_message(cat, msg, interval=60):
         return (True, msg)
+    def get_coin_processing_lock(symbol):
+        return threading.Lock()
+    def ensure_exchange_initialized():
+        return exchange is not None
 
 def get_rsi_cache():
     """Получить кэшированные RSI данные"""
@@ -301,8 +298,12 @@ def load_system_config():
                 # Применяем загруженные настройки к SystemConfig
                 if 'rsi_update_interval' in config_data:
                     old_value = SystemConfig.RSI_UPDATE_INTERVAL
-                    SystemConfig.RSI_UPDATE_INTERVAL = int(config_data['rsi_update_interval'])
-                    logger.info(f"[SYSTEM_CONFIG] 🔄 RSI интервал изменен: {old_value} → {SystemConfig.RSI_UPDATE_INTERVAL}")
+                    new_value = int(config_data['rsi_update_interval'])
+                    if old_value != new_value:
+                        SystemConfig.RSI_UPDATE_INTERVAL = new_value
+                        logger.info(f"[SYSTEM_CONFIG] 🔄 RSI интервал изменен: {old_value} → {new_value}")
+                    else:
+                        SystemConfig.RSI_UPDATE_INTERVAL = new_value
                 else:
                     logger.info(f"[SYSTEM_CONFIG] 📝 rsi_update_interval не найден в конфигурации, используется значение по умолчанию: {SystemConfig.RSI_UPDATE_INTERVAL}")
                 
@@ -319,27 +320,43 @@ def load_system_config():
                     SystemConfig.UI_REFRESH_INTERVAL = int(config_data['refresh_interval'])
                 
                 # Загружаем интервалы синхронизации и очистки
-                global STOP_LOSS_SETUP_INTERVAL, POSITION_SYNC_INTERVAL, INACTIVE_BOT_CLEANUP_INTERVAL, INACTIVE_BOT_TIMEOUT
+                # ✅ INACTIVE_BOT_TIMEOUT теперь в SystemConfig
                 
                 if 'stop_loss_setup_interval' in config_data:
-                    old_value = STOP_LOSS_SETUP_INTERVAL
-                    STOP_LOSS_SETUP_INTERVAL = int(config_data['stop_loss_setup_interval'])
-                    logger.info(f"[SYSTEM_CONFIG] 🔄 Stop Loss интервал изменен: {old_value} → {STOP_LOSS_SETUP_INTERVAL}")
+                    old_value = SystemConfig.STOP_LOSS_SETUP_INTERVAL
+                    new_value = int(config_data['stop_loss_setup_interval'])
+                    if old_value != new_value:
+                        SystemConfig.STOP_LOSS_SETUP_INTERVAL = new_value
+                        logger.info(f"[SYSTEM_CONFIG] 🔄 Stop Loss интервал изменен: {old_value} → {new_value}")
+                    else:
+                        SystemConfig.STOP_LOSS_SETUP_INTERVAL = new_value
                 
                 if 'position_sync_interval' in config_data:
-                    old_value = POSITION_SYNC_INTERVAL
-                    POSITION_SYNC_INTERVAL = int(config_data['position_sync_interval'])
-                    logger.info(f"[SYSTEM_CONFIG] 🔄 Position Sync интервал изменен: {old_value} → {POSITION_SYNC_INTERVAL}")
+                    old_value = SystemConfig.POSITION_SYNC_INTERVAL
+                    new_value = int(config_data['position_sync_interval'])
+                    if old_value != new_value:
+                        SystemConfig.POSITION_SYNC_INTERVAL = new_value
+                        logger.info(f"[SYSTEM_CONFIG] 🔄 Position Sync интервал изменен: {old_value} → {new_value}")
+                    else:
+                        SystemConfig.POSITION_SYNC_INTERVAL = new_value
                 
                 if 'inactive_bot_cleanup_interval' in config_data:
-                    old_value = INACTIVE_BOT_CLEANUP_INTERVAL
-                    INACTIVE_BOT_CLEANUP_INTERVAL = int(config_data['inactive_bot_cleanup_interval'])
-                    logger.info(f"[SYSTEM_CONFIG] 🔄 Inactive Bot Cleanup интервал изменен: {old_value} → {INACTIVE_BOT_CLEANUP_INTERVAL}")
+                    old_value = SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL
+                    new_value = int(config_data['inactive_bot_cleanup_interval'])
+                    if old_value != new_value:
+                        SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL = new_value
+                        logger.info(f"[SYSTEM_CONFIG] 🔄 Inactive Bot Cleanup интервал изменен: {old_value} → {new_value}")
+                    else:
+                        SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL = new_value
                 
                 if 'inactive_bot_timeout' in config_data:
-                    old_value = INACTIVE_BOT_TIMEOUT
-                    INACTIVE_BOT_TIMEOUT = int(config_data['inactive_bot_timeout'])
-                    logger.info(f"[SYSTEM_CONFIG] 🔄 Inactive Bot Timeout изменен: {old_value} → {INACTIVE_BOT_TIMEOUT}")
+                    old_value = SystemConfig.INACTIVE_BOT_TIMEOUT
+                    new_value = int(config_data['inactive_bot_timeout'])
+                    if old_value != new_value:
+                        SystemConfig.INACTIVE_BOT_TIMEOUT = new_value
+                        logger.info(f"[SYSTEM_CONFIG] 🔄 Inactive Bot Timeout изменен: {old_value} → {new_value}")
+                    else:
+                        SystemConfig.INACTIVE_BOT_TIMEOUT = new_value
                 
                 # Настройки улучшенного RSI
                 if 'enhanced_rsi_enabled' in config_data:
@@ -353,6 +370,21 @@ def load_system_config():
                 
                 if 'enhanced_rsi_use_stoch_rsi' in config_data:
                     SystemConfig.ENHANCED_RSI_USE_STOCH_RSI = bool(config_data['enhanced_rsi_use_stoch_rsi'])
+                
+                if 'rsi_extreme_zone_timeout' in config_data:
+                    SystemConfig.RSI_EXTREME_ZONE_TIMEOUT = int(config_data['rsi_extreme_zone_timeout'])
+                
+                if 'rsi_extreme_oversold' in config_data:
+                    SystemConfig.RSI_EXTREME_OVERSOLD = int(config_data['rsi_extreme_oversold'])
+                
+                if 'rsi_extreme_overbought' in config_data:
+                    SystemConfig.RSI_EXTREME_OVERBOUGHT = int(config_data['rsi_extreme_overbought'])
+                
+                if 'rsi_volume_confirmation_multiplier' in config_data:
+                    SystemConfig.RSI_VOLUME_CONFIRMATION_MULTIPLIER = float(config_data['rsi_volume_confirmation_multiplier'])
+                
+                if 'rsi_divergence_lookback' in config_data:
+                    SystemConfig.RSI_DIVERGENCE_LOOKBACK = int(config_data['rsi_divergence_lookback'])
                 
                 logger.info(f"[SYSTEM_CONFIG] ✅ Системные настройки загружены из {SYSTEM_CONFIG_FILE}")
                 logger.info(f"[SYSTEM_CONFIG] RSI интервал: {SystemConfig.RSI_UPDATE_INTERVAL} сек")
@@ -411,16 +443,47 @@ def save_bots_state():
         return False
 
 def save_auto_bot_config():
-    """Сохраняет конфигурацию автобота"""
+    """Сохраняет конфигурацию автобота в bot_config.py
+    
+    ✅ Теперь сохраняет напрямую в bot_engine/bot_config.py
+    - Все изменения сохраняются в Python-файл
+    - Комментарии в файле сохраняются
+    - Автоматически перезагружает модуль после сохранения (НЕ требуется перезапуск!)
+    """
     try:
+        from bots_modules.config_writer import save_auto_bot_config_to_py
+        import importlib
+        import sys
+        
         with bots_data_lock:
             config_data = bots_data['auto_bot_config'].copy()
         
-        with open(AUTO_BOT_CONFIG_FILE, 'w', encoding='utf-8') as f:
-            json.dump(config_data, f, indent=2, ensure_ascii=False)
+        # Сохраняем в bot_config.py
+        success = save_auto_bot_config_to_py(config_data)
         
-        logger.info(f"[SAVE_CONFIG] ✅ Конфигурация автобота сохранена в {AUTO_BOT_CONFIG_FILE}")
-        return True
+        if success:
+            logger.info(f"[SAVE_CONFIG] ✅ Конфигурация автобота сохранена в bot_engine/bot_config.py")
+            
+            # ✅ Принудительно перезагружаем модуль bot_config
+            try:
+                if 'bot_engine.bot_config' in sys.modules:
+                    logger.info(f"[SAVE_CONFIG] 🔄 Перезагружаем модуль bot_config...")
+                    import bot_engine.bot_config
+                    importlib.reload(bot_engine.bot_config)
+                    
+                    # Перечитываем конфигурацию из обновленного модуля
+                    from bot_engine.bot_config import DEFAULT_AUTO_BOT_CONFIG
+                    with bots_data_lock:
+                        bots_data['auto_bot_config'] = DEFAULT_AUTO_BOT_CONFIG.copy()
+                    
+                    logger.info(f"[SAVE_CONFIG] ✅ Модуль перезагружен, изменения применены БЕЗ перезапуска!")
+                else:
+                    logger.warning(f"[SAVE_CONFIG] ⚠️ Модуль bot_config не был загружен")
+            except Exception as reload_error:
+                logger.error(f"[SAVE_CONFIG] ❌ Ошибка перезагрузки модуля: {reload_error}")
+                logger.warning(f"[SAVE_CONFIG] ⚠️ Для применения изменений требуется перезапуск системы!")
+        
+        return success
         
     except Exception as e:
         logger.error(f"[SAVE_CONFIG] ❌ Ошибка сохранения конфигурации автобота: {e}")
@@ -463,20 +526,12 @@ def load_bots_state():
         
         logger.info(f"[LOAD_STATE] 📊 Версия состояния: {version}, последнее сохранение: {last_saved}")
         
-        # Восстанавливаем конфигурацию Auto Bot
-        if 'auto_bot_config' in state_data:
-            with bots_data_lock:
-                # КРИТИЧЕСКИ ВАЖНО: Сохраняем текущее состояние enabled (оно всегда False при старте)
-                current_enabled = bots_data['auto_bot_config'].get('enabled', False)
-                
-                # Восстанавливаем остальные настройки
-                bots_data['auto_bot_config'].update(state_data['auto_bot_config'])
-                
-                # ПРИНУДИТЕЛЬНО устанавливаем enabled = False (автобот должен запускаться ТОЛЬКО вручную!)
-                bots_data['auto_bot_config']['enabled'] = False
-                
-            logger.info(f"[LOAD_STATE] ⚙️ Конфигурация Auto Bot восстановлена")
-            logger.info(f"[LOAD_STATE] 🔒 Auto Bot принудительно выключен (запуск только вручную)")
+        # ✅ ИСПРАВЛЕНИЕ: НЕ перезаписываем конфигурацию Auto Bot из bots_state.json!
+        # Конфигурация должна загружаться ТОЛЬКО из auto_bot_config.json
+        # bots_state.json содержит только состояние ботов и глобальную статистику
+        
+        logger.info(f"[LOAD_STATE] ⚙️ Конфигурация Auto Bot НЕ загружается из bots_state.json")
+        logger.info(f"[LOAD_STATE] 💡 Конфигурация загружается только из auto_bot_config.json")
         
         # Восстанавливаем ботов
         restored_bots = 0
@@ -682,7 +737,7 @@ def update_bots_cache_data():
         return False
 
 def update_bot_positions_status():
-    """Обновляет статус позиций ботов (цена, PnL, ликвидация) каждые BOT_STATUS_UPDATE_INTERVAL секунд"""
+    """Обновляет статус позиций ботов (цена, PnL, ликвидация) каждые SystemConfig.BOT_STATUS_UPDATE_INTERVAL секунд"""
     try:
         if not ensure_exchange_initialized():
             return False
@@ -1009,6 +1064,12 @@ def sync_positions_with_exchange():
         # Получаем ботов в позиции из системы
         with bots_data_lock:
             bot_positions = []
+            # ✅ ИСПРАВЛЕНИЕ: Проверяем наличие ключа 'bots'
+            if 'bots' not in bots_data:
+                logger.warning("[POSITION_SYNC] ⚠️ bots_data не содержит ключ 'bots' - инициализируем")
+                bots_data['bots'] = {}
+                return False
+            
             for symbol, bot_data in bots_data['bots'].items():
                 if bot_data.get('status') in ['in_position_long', 'in_position_short']:
                     bot_positions.append({
@@ -1109,7 +1170,7 @@ def check_active_orders(symbol):
         return False
 
 def cleanup_inactive_bots():
-    """Удаляет ботов, которые не имеют реальных позиций на бирже в течение INACTIVE_BOT_TIMEOUT секунд"""
+    """Удаляет ботов, которые не имеют реальных позиций на бирже в течение SystemConfig.INACTIVE_BOT_TIMEOUT секунд"""
     try:
         current_time = time.time()
         removed_count = 0
@@ -1176,14 +1237,14 @@ def cleanup_inactive_bots():
                         last_update = datetime.fromisoformat(last_update_str.replace('Z', '+00:00'))
                         time_since_update = current_time - last_update.timestamp()
                         
-                        if time_since_update >= INACTIVE_BOT_TIMEOUT:
+                        if time_since_update >= SystemConfig.INACTIVE_BOT_TIMEOUT:
                             logger.warning(f"[INACTIVE_CLEANUP] ⏰ Бот {symbol} неактивен {time_since_update//60:.0f} мин (статус: {bot_status})")
                             bots_to_remove.append(symbol)
                             
                             # Логируем удаление неактивного бота в историю
-                            log_bot_stop(symbol, f"Неактивен {time_since_update//60:.0f} мин (статус: {bot_status})")
+                            # log_bot_stop(symbol, f"Неактивен {time_since_update//60:.0f} мин (статус: {bot_status})")  # TODO: Функция не определена
                         else:
-                            logger.info(f"[INACTIVE_CLEANUP] ⏳ Бот {symbol} неактивен {time_since_update//60:.0f} мин, ждем до {INACTIVE_BOT_TIMEOUT//60} мин")
+                            logger.info(f"[INACTIVE_CLEANUP] ⏳ Бот {symbol} неактивен {time_since_update//60:.0f} мин, ждем до {SystemConfig.INACTIVE_BOT_TIMEOUT//60} мин")
                     except Exception as e:
                         logger.error(f"[INACTIVE_CLEANUP] ❌ Ошибка парсинга времени для {symbol}: {e}")
                         # Если не можем распарсить время, считаем бота неактивным
@@ -1298,90 +1359,26 @@ def check_trading_rules_activation():
         
         logger.info(f"[TRADING_RULES] 🔍 Проверка активации правил торговли для зрелых монет")
         
+        # ✅ ИСПРАВЛЕНИЕ: НЕ создаем ботов автоматически для всех зрелых монет!
+        # Вместо этого просто обновляем время проверки в mature_coins_storage
+        
         with mature_coins_lock:
             for symbol, coin_data in mature_coins_storage.items():
                 last_verified = coin_data.get('last_verified', 0)
                 time_since_verification = current_time - last_verified
                 
-                # Если монета зрелая и не проверялась более 5 минут, активируем правила торговли
+                # Если монета зрелая и не проверялась более 5 минут, обновляем время проверки
                 if time_since_verification > 300:  # 5 минут
-                    logger.info(f"[TRADING_RULES] 🎯 Активация правил торговли для {symbol} (не проверялась {time_since_verification//60:.0f} мин)")
-                    
-                    # КРИТИЧЕСКИ ВАЖНО: Проверяем, нет ли уже позиции на бирже для этого символа
-                    has_existing_position = False
-                    try:
-                        if ensure_exchange_initialized():
-                            # Получаем биржу
-                            try:
-                                from bots_modules.imports_and_globals import get_exchange
-                                current_exchange = get_exchange()
-                            except:
-                                current_exchange = exchange
-                            
-                            if current_exchange:
-                                # Проверяем позиции на бирже для этого символа
-                                positions_response = current_exchange.client.get_positions(
-                                category="linear",
-                                symbol=f"{symbol}USDT"
-                            )
-                            
-                            if positions_response.get('retCode') == 0:
-                                positions = positions_response['result']['list']
-                                for pos in positions:
-                                    pos_symbol = pos.get('symbol', '')
-                                    if pos_symbol == f"{symbol}USDT":
-                                        size = float(pos.get('size', 0))
-                                        if abs(size) > 0:  # Есть активная позиция
-                                            has_existing_position = True
-                                            side = 'LONG' if pos.get('side') == 'Buy' else 'SHORT'
-                                            logger.warning(f"[TRADING_RULES] 🚫 {symbol}: НА БИРЖЕ УЖЕ ЕСТЬ ПОЗИЦИЯ {side} размер {size} - НЕ СОЗДАЕМ БОТА!")
-                                            break
-                    except Exception as check_error:
-                        logger.error(f"[TRADING_RULES] ⚠️ {symbol}: Ошибка проверки позиций на бирже: {check_error}")
-                        # В случае ошибки проверки - НЕ создаем бота для безопасности
-                        has_existing_position = True
-                    
-                    if has_existing_position:
-                        logger.info(f"[TRADING_RULES] ⏭️ {symbol}: Пропускаем создание бота - есть позиция на бирже")
-                        continue
-                    
-                    # Создаем бота для этой монеты, если его еще нет
-                if symbol not in bots_data['bots']:
-                    # КРИТИЧЕСКИ ВАЖНО: Блокируем обработку этой монеты чтобы избежать race conditions
-                    coin_lock = get_coin_processing_lock(symbol)
-                    with coin_lock:
-                        # Двойная проверка после получения блокировки
-                        if symbol not in bots_data['bots']:
-                            try:
-                                # Получаем конфигурацию автобота
-                                with bots_data_lock:
-                                    auto_bot_config = bots_data.get('auto_bot_config', {})
-                                    
-                                # Создаем бота с базовой конфигурацией
-                                bot_config = {
-                                    'symbol': symbol,
-                                    'status': 'running',
-                                    'volume_mode': 'usdt',
-                                    'volume_value': auto_bot_config.get('default_position_size', 20.0),
-                                    'created_at': datetime.now().isoformat(),
-                                    'last_signal_time': None
-                                }
-                                
-                                bots_data['bots'][symbol] = bot_config
-                                logger.info(f"[TRADING_RULES] ✅ Создан бот для {symbol}")
-                                activated_count += 1
-                                
-                            except Exception as e:
-                                logger.error(f"[TRADING_RULES] ❌ Ошибка создания бота для {symbol}: {e}")
-                        else:
-                            logger.debug(f"[TRADING_RULES] ⏳ Бот для {symbol} уже существует")
+                    # Обновляем время последней проверки
+                    coin_data['last_verified'] = current_time
+                    activated_count += 1
         
         if activated_count > 0:
-            logger.info(f"[TRADING_RULES] ✅ Активированы правила торговли для {activated_count} монет")
-            # Сохраняем состояние
-            save_bots_state()
+            logger.info(f"[TRADING_RULES] ✅ Обновлено время проверки для {activated_count} зрелых монет")
+            # Сохраняем обновленные данные зрелых монет
+            save_mature_coins_storage()
         else:
-            logger.info(f"[TRADING_RULES] ✅ Нет зрелых монет для активации правил торговли")
+            logger.info(f"[TRADING_RULES] ✅ Нет зрелых монет для обновления времени проверки")
         
         return activated_count > 0
         

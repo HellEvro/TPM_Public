@@ -231,14 +231,6 @@ def background_update():
                     (last_stats_time is None or 
                      current_time - last_stats_time >= TELEGRAM_NOTIFY['STATISTICS_INTERVAL'])
                 )
-                
-                # Логирование для диагностики (только важные моменты)
-                if should_send_stats:
-                    if last_stats_time is None:
-                        print(f"[Thread {thread_id}] Первый запуск - отправляем статистику")
-                    else:
-                        minutes_passed = time_since_last / 60
-                        print(f"[Thread {thread_id}] Прошло {minutes_passed:.1f} минут - отправляем статистику")
 
             positions, rapid_growth = current_exchange.get_positions()
             if not positions:
@@ -313,6 +305,13 @@ def background_update():
             if should_send_stats:
                 try:
                     with stats_lock:
+                        # Логирование для диагностики (только при реальной отправке)
+                        if last_stats_time is None:
+                            print(f"[Thread {thread_id}] Первый запуск - отправляем статистику")
+                        else:
+                            minutes_passed = time_since_last / 60
+                            print(f"[Thread {thread_id}] Прошло {minutes_passed:.1f} минут - отправляем статистику")
+                        
                         print(f"[Thread {thread_id}] Acquired stats_lock for sending")
                         print(f"[Thread {thread_id}] Sending statistics...")
                         telegram.send_statistics(positions_data['stats'])

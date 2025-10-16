@@ -50,9 +50,9 @@ class VolumeMode:
 
 # Настройки Auto Bot по умолчанию
 DEFAULT_AUTO_BOT_CONFIG = {
-    'enabled': False,
+    'enabled': True,
     'max_concurrent': 5,
-    'risk_cap_percent': 10.0,
+    'risk_cap_percent': 10,
     'scope': 'all',  # all | whitelist | blacklist
     'whitelist': [],
     'blacklist': [],
@@ -99,7 +99,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
 # Настройки по умолчанию для отдельного бота
 DEFAULT_BOT_CONFIG = {
     'volume_mode': VolumeMode.FIXED_USDT,
-    'volume_value': 10.0,
+    'volume_value': 5.0,
     'status': BotStatus.IDLE,
     'auto_managed': False,
     'max_loss_percent': 2.0  # Максимальная потеря в процентах для стоп-лосса
@@ -112,9 +112,11 @@ class SystemConfig:
     ACCOUNT_UPDATE_INTERVAL = 5  # 5 секунд
     UI_REFRESH_INTERVAL = 3  # 3 секунды
     AUTO_SAVE_INTERVAL = 30  # 30 секунд
-    BOT_STATUS_UPDATE_INTERVAL = 5  # 5 секунд - интервал обновления детальной информации о состоянии ботов (цена входа, SL, TP, ликвидация, PnL)
+    BOT_STATUS_UPDATE_INTERVAL = 30  # 30 секунд - интервал обновления детальной информации о состоянии ботов (цена входа, SL, TP, ликвидация, PnL)
     INACTIVE_BOT_CLEANUP_INTERVAL = 600  # 10 минут - интервал проверки и удаления неактивных ботов
     INACTIVE_BOT_TIMEOUT = 600  # 10 минут - время ожидания перед удалением бота без реальных позиций на бирже
+    STOP_LOSS_SETUP_INTERVAL = 300  # 5 минут - интервал установки недостающих стоп-лоссов
+    POSITION_SYNC_INTERVAL = 30  # 30 секунд - интервал синхронизации позиций с биржей
     
     # Умное обновление RSI
     SMART_RSI_UPDATE = True  # Учитывать время до закрытия свечи
@@ -123,8 +125,32 @@ class SystemConfig:
     # Улучшенная система RSI
     ENHANCED_RSI_ENABLED = True  # Включить улучшенную систему RSI для сильных трендов
     ENHANCED_RSI_REQUIRE_VOLUME_CONFIRMATION = True  # Требовать подтверждение объемом
-    ENHANCED_RSI_REQUIRE_DIVERGENCE_CONFIRMATION = False  # Требовать подтверждение дивергенцией (строгий режим)
+    ENHANCED_RSI_REQUIRE_DIVERGENCE_CONFIRMATION = True  # Требовать подтверждение дивергенцией (строгий режим)
     ENHANCED_RSI_USE_STOCH_RSI = True  # Использовать Stochastic RSI для дополнительного подтверждения
+    
+    # Настройки Enhanced RSI
+    RSI_EXTREME_ZONE_TIMEOUT = 3  # Таймаут экстремальной зоны (свечей)
+    RSI_EXTREME_OVERSOLD = 20  # Экстремальная перепроданность
+    RSI_EXTREME_OVERBOUGHT = 80  # Экстремальная перекупленность
+    RSI_VOLUME_CONFIRMATION_MULTIPLIER = 1.2  # Множитель объёма
+    RSI_DIVERGENCE_LOOKBACK = 10  # Период поиска дивергенций
+    
+    # Торговые параметры RSI согласно техзаданию
+    RSI_OVERSOLD = 29  # Зона покупки (LONG при RSI <= 29)
+    RSI_OVERBOUGHT = 71  # Зона продажи (SHORT при RSI >= 71)
+    RSI_EXIT_LONG = 65  # Выход из лонга (при RSI >= 65)
+    RSI_EXIT_SHORT = 35  # Выход из шорта (при RSI <= 35)
+    
+    # EMA параметры для анализа тренда
+    EMA_FAST = 50  # Быстрая EMA
+    EMA_SLOW = 200  # Медленная EMA
+    TREND_CONFIRMATION_BARS = 3  # Количество баров для подтверждения тренда
+    
+    # Константы для фильтрации зрелости монет
+    MIN_CANDLES_FOR_MATURITY = 400  # Минимум свечей для зрелой монеты (100 дней на 6H)
+    MIN_RSI_LOW = 35   # Минимальный достигнутый RSI
+    MAX_RSI_HIGH = 65  # Максимальный достигнутый RSI
+    MIN_VOLATILITY_THRESHOLD = 0.05  # Минимальная волатильность (5%)
     
     # Настройки API
     BOTS_SERVICE_PORT = 5001

@@ -16,11 +16,7 @@ from flask import Flask, request, jsonify
 logger = logging.getLogger('BotsService')
 
 # Импорт SystemConfig
-try:
-    from bot_engine.bot_config import SystemConfig
-except ImportError:
-    class SystemConfig:
-        SMART_RSI_UPDATE_INTERVAL = 300
+from bot_engine.bot_config import SystemConfig
 
 # Импорт Flask приложения и глобальных переменных из imports_and_globals
 from bots_modules.imports_and_globals import (
@@ -34,32 +30,12 @@ from bots_modules.imports_and_globals import (
 import bots_modules.imports_and_globals as globals_module
 
 # Импорт RSI констант из bot_config
-try:
-    from bot_engine.bot_config import (
-        RSI_EXTREME_ZONE_TIMEOUT, RSI_EXTREME_OVERSOLD, RSI_EXTREME_OVERBOUGHT,
-        RSI_VOLUME_CONFIRMATION_MULTIPLIER, RSI_DIVERGENCE_LOOKBACK
-    )
-except ImportError:
-    RSI_EXTREME_ZONE_TIMEOUT = 4
-    RSI_EXTREME_OVERSOLD = 20
-    RSI_EXTREME_OVERBOUGHT = 80
-    RSI_VOLUME_CONFIRMATION_MULTIPLIER = 1.5
-    RSI_DIVERGENCE_LOOKBACK = 14
+# Enhanced RSI константы теперь в SystemConfig
 
 # Импорт констант интервалов
 try:
-    from bots_modules.sync_and_cache import (
-        STOP_LOSS_SETUP_INTERVAL, POSITION_SYNC_INTERVAL,
-        INACTIVE_BOT_CLEANUP_INTERVAL, BOT_STATUS_UPDATE_INTERVAL,
-        SYSTEM_CONFIG_FILE
-    )
-    from bots_modules.imports_and_globals import INACTIVE_BOT_TIMEOUT
+    from bots_modules.sync_and_cache import SYSTEM_CONFIG_FILE
 except ImportError:
-    STOP_LOSS_SETUP_INTERVAL = 300
-    POSITION_SYNC_INTERVAL = 30
-    INACTIVE_BOT_CLEANUP_INTERVAL = 600
-    BOT_STATUS_UPDATE_INTERVAL = 30
-    INACTIVE_BOT_TIMEOUT = 600
     SYSTEM_CONFIG_FILE = 'data/system_config.json'
 
 # Импорт функций из других модулей
@@ -905,7 +881,7 @@ def delete_bot_endpoint():
             bots_data['global_stats']['bots_in_position'] = len([bot for bot in bots_data['bots'].values() if bot.get('position_side')])
         
         # Логируем удаление бота в историю
-        log_bot_stop(symbol, f"Удален: {reason}")
+        # log_bot_stop(symbol, f"Удален: {reason}")  # TODO: Функция не определена
         
         # Сохраняем состояние после удаления
         save_bots_state()
@@ -1093,7 +1069,7 @@ def log_config_change(key, old_value, new_value, description=""):
 @bots_app.route('/api/bots/system-config', methods=['GET', 'POST'])
 def system_config():
     """Получить или обновить системные настройки"""
-    global STOP_LOSS_SETUP_INTERVAL, POSITION_SYNC_INTERVAL, INACTIVE_BOT_CLEANUP_INTERVAL, INACTIVE_BOT_TIMEOUT, BOT_STATUS_UPDATE_INTERVAL
+    # Константы теперь в SystemConfig
     try:
         if request.method == 'GET':
             return jsonify({
@@ -1105,20 +1081,20 @@ def system_config():
                     'auto_refresh_ui': SystemConfig.AUTO_REFRESH_UI,
                     'refresh_interval': SystemConfig.UI_REFRESH_INTERVAL,
                     # Интервалы синхронизации и очистки
-                    'position_sync_interval': POSITION_SYNC_INTERVAL,
-                    'inactive_bot_cleanup_interval': INACTIVE_BOT_CLEANUP_INTERVAL,
-                    'inactive_bot_timeout': INACTIVE_BOT_TIMEOUT,
-                    'stop_loss_setup_interval': STOP_LOSS_SETUP_INTERVAL,
+                    'position_sync_interval': SystemConfig.POSITION_SYNC_INTERVAL,
+                    'inactive_bot_cleanup_interval': SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL,
+                    'inactive_bot_timeout': SystemConfig.INACTIVE_BOT_TIMEOUT,
+                    'stop_loss_setup_interval': SystemConfig.STOP_LOSS_SETUP_INTERVAL,
                     # Настройки улучшенного RSI
                     'enhanced_rsi_enabled': SystemConfig.ENHANCED_RSI_ENABLED,
                     'enhanced_rsi_require_volume_confirmation': SystemConfig.ENHANCED_RSI_REQUIRE_VOLUME_CONFIRMATION,
                     'enhanced_rsi_require_divergence_confirmation': SystemConfig.ENHANCED_RSI_REQUIRE_DIVERGENCE_CONFIRMATION,
                     'enhanced_rsi_use_stoch_rsi': SystemConfig.ENHANCED_RSI_USE_STOCH_RSI,
-                    'rsi_extreme_zone_timeout': RSI_EXTREME_ZONE_TIMEOUT,
-                    'rsi_extreme_oversold': RSI_EXTREME_OVERSOLD,
-                    'rsi_extreme_overbought': RSI_EXTREME_OVERBOUGHT,
-                    'rsi_volume_confirmation_multiplier': RSI_VOLUME_CONFIRMATION_MULTIPLIER,
-                    'rsi_divergence_lookback': RSI_DIVERGENCE_LOOKBACK
+                    'rsi_extreme_zone_timeout': SystemConfig.RSI_EXTREME_ZONE_TIMEOUT,
+                    'rsi_extreme_oversold': SystemConfig.RSI_EXTREME_OVERSOLD,
+                    'rsi_extreme_overbought': SystemConfig.RSI_EXTREME_OVERBOUGHT,
+                    'rsi_volume_confirmation_multiplier': SystemConfig.RSI_VOLUME_CONFIRMATION_MULTIPLIER,
+                    'rsi_divergence_lookback': SystemConfig.RSI_DIVERGENCE_LOOKBACK
                 }
             })
         
@@ -1129,6 +1105,7 @@ def system_config():
             
             # Счетчик изменений
             changes_count = 0
+            system_changes_count = 0
             
             # Обновляем настройки
             if 'rsi_update_interval' in data:
@@ -1171,61 +1148,96 @@ def system_config():
             
             # Интервалы синхронизации и очистки
             if 'stop_loss_setup_interval' in data:
-                old_value = STOP_LOSS_SETUP_INTERVAL
+                old_value = SystemConfig.STOP_LOSS_SETUP_INTERVAL
                 new_value = int(data['stop_loss_setup_interval'])
                 if log_config_change('stop_loss_setup_interval', old_value, new_value):
-                    STOP_LOSS_SETUP_INTERVAL = new_value
-                    changes_count += 1
+                    SystemConfig.STOP_LOSS_SETUP_INTERVAL = new_value
+                    system_changes_count += 1
             
             if 'position_sync_interval' in data:
-                old_value = POSITION_SYNC_INTERVAL
+                old_value = SystemConfig.POSITION_SYNC_INTERVAL
                 new_value = int(data['position_sync_interval'])
                 if log_config_change('position_sync_interval', old_value, new_value):
-                    POSITION_SYNC_INTERVAL = new_value
-                    changes_count += 1
+                    SystemConfig.POSITION_SYNC_INTERVAL = new_value
+                    system_changes_count += 1
             
             if 'inactive_bot_cleanup_interval' in data:
-                old_value = INACTIVE_BOT_CLEANUP_INTERVAL
+                old_value = SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL
                 new_value = int(data['inactive_bot_cleanup_interval'])
                 if log_config_change('inactive_bot_cleanup_interval', old_value, new_value):
-                    INACTIVE_BOT_CLEANUP_INTERVAL = new_value
-                    changes_count += 1
+                    SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL = new_value
+                    system_changes_count += 1
             
             if 'inactive_bot_timeout' in data:
-                old_value = globals_module.INACTIVE_BOT_TIMEOUT
+                old_value = SystemConfig.INACTIVE_BOT_TIMEOUT
                 new_value = int(data['inactive_bot_timeout'])
                 if log_config_change('inactive_bot_timeout', old_value, new_value):
-                    globals_module.INACTIVE_BOT_TIMEOUT = new_value
+                    SystemConfig.INACTIVE_BOT_TIMEOUT = new_value
                     changes_count += 1
             
-            # Настройки улучшенного RSI
-            if 'enhanced_rsi_enabled' in data:
-                old_value = SystemConfig.ENHANCED_RSI_ENABLED
-                new_value = bool(data['enhanced_rsi_enabled'])
-                if log_config_change('enhanced_rsi_enabled', old_value, new_value):
-                    SystemConfig.ENHANCED_RSI_ENABLED = new_value
-                    changes_count += 1
-            
-            if 'enhanced_rsi_require_volume_confirmation' in data:
-                old_value = SystemConfig.ENHANCED_RSI_REQUIRE_VOLUME_CONFIRMATION
-                new_value = bool(data['enhanced_rsi_require_volume_confirmation'])
-                if log_config_change('enhanced_rsi_require_volume_confirmation', old_value, new_value):
-                    SystemConfig.ENHANCED_RSI_REQUIRE_VOLUME_CONFIRMATION = new_value
-                    changes_count += 1
-            
-            if 'enhanced_rsi_require_divergence_confirmation' in data:
-                old_value = SystemConfig.ENHANCED_RSI_REQUIRE_DIVERGENCE_CONFIRMATION
-                new_value = bool(data['enhanced_rsi_require_divergence_confirmation'])
-                if log_config_change('enhanced_rsi_require_divergence_confirmation', old_value, new_value):
-                    SystemConfig.ENHANCED_RSI_REQUIRE_DIVERGENCE_CONFIRMATION = new_value
-                    changes_count += 1
-            
-            if 'enhanced_rsi_use_stoch_rsi' in data:
-                old_value = SystemConfig.ENHANCED_RSI_USE_STOCH_RSI
-                new_value = bool(data['enhanced_rsi_use_stoch_rsi'])
-                if log_config_change('enhanced_rsi_use_stoch_rsi', old_value, new_value):
-                    SystemConfig.ENHANCED_RSI_USE_STOCH_RSI = new_value
-                    changes_count += 1
+        # Настройки улучшенного RSI
+        if 'enhanced_rsi_enabled' in data:
+            old_value = SystemConfig.ENHANCED_RSI_ENABLED
+            new_value = bool(data['enhanced_rsi_enabled'])
+            log_config_change('enhanced_rsi_enabled', old_value, new_value)
+            SystemConfig.ENHANCED_RSI_ENABLED = new_value
+            system_changes_count += 1
+        
+        if 'enhanced_rsi_require_volume_confirmation' in data:
+            old_value = SystemConfig.ENHANCED_RSI_REQUIRE_VOLUME_CONFIRMATION
+            new_value = bool(data['enhanced_rsi_require_volume_confirmation'])
+            log_config_change('enhanced_rsi_require_volume_confirmation', old_value, new_value)
+            SystemConfig.ENHANCED_RSI_REQUIRE_VOLUME_CONFIRMATION = new_value
+            system_changes_count += 1
+        
+        if 'enhanced_rsi_require_divergence_confirmation' in data:
+            old_value = SystemConfig.ENHANCED_RSI_REQUIRE_DIVERGENCE_CONFIRMATION
+            new_value = bool(data['enhanced_rsi_require_divergence_confirmation'])
+            log_config_change('enhanced_rsi_require_divergence_confirmation', old_value, new_value)
+            SystemConfig.ENHANCED_RSI_REQUIRE_DIVERGENCE_CONFIRMATION = new_value
+            system_changes_count += 1
+        
+        if 'enhanced_rsi_use_stoch_rsi' in data:
+            old_value = SystemConfig.ENHANCED_RSI_USE_STOCH_RSI
+            new_value = bool(data['enhanced_rsi_use_stoch_rsi'])
+            log_config_change('enhanced_rsi_use_stoch_rsi', old_value, new_value)
+            SystemConfig.ENHANCED_RSI_USE_STOCH_RSI = new_value
+            system_changes_count += 1
+        
+        if 'rsi_extreme_zone_timeout' in data:
+            old_value = SystemConfig.RSI_EXTREME_ZONE_TIMEOUT
+            new_value = int(data['rsi_extreme_zone_timeout'])
+            log_config_change('rsi_extreme_zone_timeout', old_value, new_value)
+            SystemConfig.RSI_EXTREME_ZONE_TIMEOUT = new_value
+            system_changes_count += 1
+        
+        if 'rsi_extreme_oversold' in data:
+            old_value = SystemConfig.RSI_EXTREME_OVERSOLD
+            new_value = int(data['rsi_extreme_oversold'])
+            log_config_change('rsi_extreme_oversold', old_value, new_value)
+            SystemConfig.RSI_EXTREME_OVERSOLD = new_value
+            system_changes_count += 1
+        
+        if 'rsi_extreme_overbought' in data:
+            old_value = SystemConfig.RSI_EXTREME_OVERBOUGHT
+            new_value = int(data['rsi_extreme_overbought'])
+            log_config_change('rsi_extreme_overbought', old_value, new_value)
+            SystemConfig.RSI_EXTREME_OVERBOUGHT = new_value
+            system_changes_count += 1
+        
+        if 'rsi_volume_confirmation_multiplier' in data:
+            old_value = SystemConfig.RSI_VOLUME_CONFIRMATION_MULTIPLIER
+            new_value = float(data['rsi_volume_confirmation_multiplier'])
+            log_config_change('rsi_volume_confirmation_multiplier', old_value, new_value)
+            SystemConfig.RSI_VOLUME_CONFIRMATION_MULTIPLIER = new_value
+            system_changes_count += 1
+        
+        if 'rsi_divergence_lookback' in data:
+            old_value = SystemConfig.RSI_DIVERGENCE_LOOKBACK
+            new_value = int(data['rsi_divergence_lookback'])
+            log_config_change('rsi_divergence_lookback', old_value, new_value)
+            SystemConfig.RSI_DIVERGENCE_LOOKBACK = new_value
+            system_changes_count += 1
         
             # КРИТИЧЕСКИ ВАЖНО: Сохраняем системные настройки в файл
             # Сначала загружаем существующие настройки, чтобы не потерять другие поля
@@ -1246,15 +1258,20 @@ def system_config():
                 'auto_refresh_ui': SystemConfig.AUTO_REFRESH_UI,
                 'refresh_interval': SystemConfig.UI_REFRESH_INTERVAL,
                 # Интервалы синхронизации и очистки
-                'position_sync_interval': POSITION_SYNC_INTERVAL,
-                'inactive_bot_cleanup_interval': INACTIVE_BOT_CLEANUP_INTERVAL,
-                'inactive_bot_timeout': globals_module.INACTIVE_BOT_TIMEOUT,
-                'stop_loss_setup_interval': STOP_LOSS_SETUP_INTERVAL,
+                'position_sync_interval': SystemConfig.POSITION_SYNC_INTERVAL,
+                'inactive_bot_cleanup_interval': SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL,
+                'inactive_bot_timeout': SystemConfig.INACTIVE_BOT_TIMEOUT,
+                'stop_loss_setup_interval': SystemConfig.STOP_LOSS_SETUP_INTERVAL,
                 # Настройки улучшенного RSI
                 'enhanced_rsi_enabled': SystemConfig.ENHANCED_RSI_ENABLED,
                 'enhanced_rsi_require_volume_confirmation': SystemConfig.ENHANCED_RSI_REQUIRE_VOLUME_CONFIRMATION,
                 'enhanced_rsi_require_divergence_confirmation': SystemConfig.ENHANCED_RSI_REQUIRE_DIVERGENCE_CONFIRMATION,
-                'enhanced_rsi_use_stoch_rsi': SystemConfig.ENHANCED_RSI_USE_STOCH_RSI
+                'enhanced_rsi_use_stoch_rsi': SystemConfig.ENHANCED_RSI_USE_STOCH_RSI,
+                'rsi_extreme_zone_timeout': SystemConfig.RSI_EXTREME_ZONE_TIMEOUT,
+                'rsi_extreme_oversold': SystemConfig.RSI_EXTREME_OVERSOLD,
+                'rsi_extreme_overbought': SystemConfig.RSI_EXTREME_OVERBOUGHT,
+                'rsi_volume_confirmation_multiplier': SystemConfig.RSI_VOLUME_CONFIRMATION_MULTIPLIER,
+                'rsi_divergence_lookback': SystemConfig.RSI_DIVERGENCE_LOOKBACK
             })
             
             saved_to_file = save_system_config(system_config_data)
@@ -1265,7 +1282,13 @@ def system_config():
             else:
                 logger.info("[CONFIG] ℹ️  Изменений не обнаружено")
             
-            if saved_to_file and changes_count > 0:
+            # Выводим сообщение для system config
+            if system_changes_count > 0:
+                print(f"\033[92m[CONFIG] ✅ System config: изменено параметров: {system_changes_count}, конфигурация сохранена\033[0m")
+            else:
+                logger.info("[CONFIG] ℹ️  System config: изменений не обнаружено")
+            
+            if saved_to_file and (changes_count > 0 or system_changes_count > 0):
                 # Перезагружаем конфигурацию, чтобы применить изменения
                 load_system_config()
         
@@ -1801,32 +1824,39 @@ def auto_bot_config():
             maturity_keys = ['min_candles_for_maturity', 'min_rsi_low', 'max_rsi_high']
             changes_count = 0
             
+            # ✅ Сохраняем старую конфигурацию для сравнения
             with bots_data_lock:
                 old_config = bots_data['auto_bot_config'].copy()
-                
-                for key in maturity_keys:
-                    if key in data and data[key] != old_config.get(key):
-                        maturity_params_changed = True
-                        logger.warning(f"[MATURITY] ⚠️ Изменен критерий зрелости: {key} ({old_config.get(key)} → {data[key]})")
-                
+            
+            # ✅ Сначала проверяем какие изменения будут
+            for key in maturity_keys:
+                if key in data and data[key] != old_config.get(key):
+                    maturity_params_changed = True
+                    logger.warning(f"[MATURITY] ⚠️ Изменен критерий зрелости: {key} ({old_config.get(key)} → {data[key]})")
+            
+            for key, value in data.items():
+                if key in old_config:
+                    old_value = old_config[key]
+                    
+                    # Проверяем реальное изменение
+                    if old_value != value:
+                        changes_count += 1
+                        
+                        # Используем log_config_change с названием из словаря
+                        log_config_change(key, old_value, value)
+            
+            # ✅ Обновляем bots_data новыми значениями
+            with bots_data_lock:
                 for key, value in data.items():
                     if key in bots_data['auto_bot_config']:
-                        old_value = bots_data['auto_bot_config'][key]
-                        
-                        # Проверяем реальное изменение
-                        if old_value != value:
-                            bots_data['auto_bot_config'][key] = value
-                            changes_count += 1
-                            
-                            # Используем log_config_change с названием из словаря
-                            log_config_change(key, old_value, value)
+                        bots_data['auto_bot_config'][key] = value
             
-            # КРИТИЧЕСКИ ВАЖНО: Сохраняем конфигурацию в файл!
+            # КРИТИЧЕСКИ ВАЖНО: Сохраняем конфигурацию в файл (с перезагрузкой модуля)
             save_result = save_auto_bot_config()
             
             # Выводим итоговое сообщение
             if changes_count > 0:
-                print(f"\033[92m[CONFIG] ✅ Auto Bot: изменено параметров: {changes_count}, конфигурация сохранена\033[0m")
+                print(f"\033[92m[CONFIG] ✅ Auto Bot: изменено параметров: {changes_count}, конфигурация сохранена и перезагружена\033[0m")
             else:
                 logger.info("[CONFIG] ℹ️  Auto Bot: изменений не обнаружено")
             
@@ -2327,11 +2357,11 @@ def cleanup_bot_service():
         # 3. Сохраняем системную конфигурацию
         logger.info("[CLEANUP] 🔧 Сохранение системной конфигурации...")
         system_config_data = {
-            'bot_status_update_interval': BOT_STATUS_UPDATE_INTERVAL,
-            'position_sync_interval': POSITION_SYNC_INTERVAL,
-            'inactive_bot_cleanup_interval': INACTIVE_BOT_CLEANUP_INTERVAL,
-            'inactive_bot_timeout': globals_module.INACTIVE_BOT_TIMEOUT,
-            'stop_loss_setup_interval': STOP_LOSS_SETUP_INTERVAL
+            'bot_status_update_interval': SystemConfig.BOT_STATUS_UPDATE_INTERVAL,
+            'position_sync_interval': SystemConfig.POSITION_SYNC_INTERVAL,
+            'inactive_bot_cleanup_interval': SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL,
+            'inactive_bot_timeout': SystemConfig.INACTIVE_BOT_TIMEOUT,
+            'stop_loss_setup_interval': SystemConfig.STOP_LOSS_SETUP_INTERVAL
         }
         save_system_config(system_config_data)
         

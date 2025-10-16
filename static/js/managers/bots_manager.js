@@ -31,7 +31,7 @@ class BotsManager {
         this.apiUrl = `${window.location.protocol}//${window.location.hostname}:5001/api/bots`; // Для совместимости
         
         // Уровень логирования: 'error' - только ошибки, 'info' - важные события, 'debug' - все
-        this.logLevel = 'debug'; // Временно включаем debug для отладки ручных позиций
+        this.logLevel = 'error'; // ✅ ОТКЛЮЧЕНЫ СПАМ-ЛОГИ - только ошибки
         
         // Инициализация при создании
         this.init();
@@ -637,8 +637,8 @@ class BotsManager {
                     
                     // Получаем список ручных позиций
                     const manualPositions = data.manual_positions || [];
-                    console.log(`[BotsManager] ✋ Ручные позиции получены:`, manualPositions);
-                    console.log(`[BotsManager] ✋ Всего ручных позиций: ${manualPositions.length}`);
+                    this.logDebug(`[BotsManager] ✋ Ручные позиции получены:`, manualPositions);
+                    this.logDebug(`[BotsManager] ✋ Всего ручных позиций: ${manualPositions.length}`);
                     
                     // Помечаем монеты с ручными позициями
                     let markedCount = 0;
@@ -646,15 +646,15 @@ class BotsManager {
                         coin.manual_position = manualPositions.includes(coin.symbol);
                         if (coin.manual_position) {
                             markedCount++;
-                            console.log(`[BotsManager] ✋ Монета ${coin.symbol} помечена как ручная позиция`);
+                            this.logDebug(`[BotsManager] ✋ Монета ${coin.symbol} помечена как ручная позиция`);
                         }
                     });
                     
                     // Загружаем список зрелых монет и помечаем их
                     await this.loadMatureCoinsAndMark();
                     
-                    console.log(`[BotsManager] ✅ Загружено ${this.coinsRsiData.length} монет с RSI`);
-                    console.log(`[BotsManager] ✅ Помечено ${markedCount} монет с ручными позициями`);
+                    this.logDebug(`[BotsManager] ✅ Загружено ${this.coinsRsiData.length} монет с RSI`);
+                    this.logDebug(`[BotsManager] ✅ Помечено ${markedCount} монет с ручными позициями`);
                     this.logDebug('[BotsManager] 🔍 Первые 3 монеты:', this.coinsRsiData.slice(0, 3));
                     
                     // Обновляем интерфейс
@@ -734,12 +734,7 @@ class BotsManager {
             const isMature = coin.is_mature || false;
             const matureClass = isMature ? 'mature-coin' : '';
             
-            if (isManualPosition) {
-                console.log(`[BotsManager] 🎨 Рендер монеты ${coin.symbol} с классом manual-position`);
-            }
-            if (isMature) {
-                console.log(`[BotsManager] 💎 Рендер монеты ${coin.symbol} с классом mature-coin`);
-            }
+            // Убраны спам логи для лучшей отладки
             
             return `
                 <li class="coin-item ${rsiClass} ${trendClass} ${signalClass} ${manualClass} ${matureClass}" data-symbol="${coin.symbol}">
@@ -1106,13 +1101,13 @@ class BotsManager {
     }
 
     selectCoin(symbol) {
-        console.log('[BotsManager] 🎯 Выбрана монета:', symbol);
-        console.log('[BotsManager] 🔍 Доступные монеты в RSI данных:', this.coinsRsiData.length);
-        console.log('[BotsManager] 🔍 Первые 5 монет:', this.coinsRsiData.slice(0, 5).map(c => c.symbol));
+        this.logDebug('[BotsManager] 🎯 Выбрана монета:', symbol);
+        this.logDebug('[BotsManager] 🔍 Доступные монеты в RSI данных:', this.coinsRsiData.length);
+        this.logDebug('[BotsManager] 🔍 Первые 5 монет:', this.coinsRsiData.slice(0, 5).map(c => c.symbol));
         
         // Находим данные монеты
         const coinData = this.coinsRsiData.find(coin => coin.symbol === symbol);
-        console.log('[BotsManager] 🔍 Найденные данные монеты:', coinData);
+        this.logDebug('[BotsManager] 🔍 Найденные данные монеты:', coinData);
         
         if (!coinData) {
             console.warn('[BotsManager] ⚠️ Монета не найдена в RSI данных:', symbol);
@@ -4092,55 +4087,55 @@ class BotsManager {
         
         const enhancedRsiEnabledEl = document.getElementById('enhancedRsiEnabled');
         if (enhancedRsiEnabledEl) {
-            enhancedRsiEnabledEl.checked = autoBotConfig.enhanced_rsi_enabled !== false;
+            enhancedRsiEnabledEl.checked = systemConfig.enhanced_rsi_enabled || false;
             console.log('[BotsManager] 🧠 Enhanced RSI включен:', enhancedRsiEnabledEl.checked);
         }
         
         const enhancedRsiVolumeConfirmEl = document.getElementById('enhancedRsiVolumeConfirm');
         if (enhancedRsiVolumeConfirmEl) {
-            enhancedRsiVolumeConfirmEl.checked = autoBotConfig.enhanced_rsi_require_volume_confirmation !== false;
+            enhancedRsiVolumeConfirmEl.checked = systemConfig.enhanced_rsi_require_volume_confirmation || false;
             console.log('[BotsManager] 📊 Enhanced RSI требует подтверждение объёмом:', enhancedRsiVolumeConfirmEl.checked);
         }
         
         const enhancedRsiDivergenceConfirmEl = document.getElementById('enhancedRsiDivergenceConfirm');
         if (enhancedRsiDivergenceConfirmEl) {
-            enhancedRsiDivergenceConfirmEl.checked = autoBotConfig.enhanced_rsi_require_divergence_confirmation || false;
+            enhancedRsiDivergenceConfirmEl.checked = systemConfig.enhanced_rsi_require_divergence_confirmation || false;
             console.log('[BotsManager] 📈 Enhanced RSI требует дивергенцию:', enhancedRsiDivergenceConfirmEl.checked);
         }
         
         const enhancedRsiUseStochRsiEl = document.getElementById('enhancedRsiUseStochRsi');
         if (enhancedRsiUseStochRsiEl) {
-            enhancedRsiUseStochRsiEl.checked = autoBotConfig.enhanced_rsi_use_stoch_rsi !== false;
+            enhancedRsiUseStochRsiEl.checked = systemConfig.enhanced_rsi_use_stoch_rsi || false;
             console.log('[BotsManager] 📊 Enhanced RSI использует Stoch RSI:', enhancedRsiUseStochRsiEl.checked);
         }
         
         const rsiExtremeZoneTimeoutEl = document.getElementById('rsiExtremeZoneTimeout');
         if (rsiExtremeZoneTimeoutEl) {
-            rsiExtremeZoneTimeoutEl.value = autoBotConfig.rsi_extreme_zone_timeout || 3;
+            rsiExtremeZoneTimeoutEl.value = systemConfig.rsi_extreme_zone_timeout || 3;
             console.log('[BotsManager] ⏰ RSI экстремальная зона таймаут:', rsiExtremeZoneTimeoutEl.value);
         }
         
         const rsiExtremeOversoldEl = document.getElementById('rsiExtremeOversold');
         if (rsiExtremeOversoldEl) {
-            rsiExtremeOversoldEl.value = autoBotConfig.rsi_extreme_oversold || 20;
+            rsiExtremeOversoldEl.value = systemConfig.rsi_extreme_oversold || 20;
             console.log('[BotsManager] 📉 RSI экстремальный oversold:', rsiExtremeOversoldEl.value);
         }
         
         const rsiExtremeOverboughtEl = document.getElementById('rsiExtremeOverbought');
         if (rsiExtremeOverboughtEl) {
-            rsiExtremeOverboughtEl.value = autoBotConfig.rsi_extreme_overbought || 80;
+            rsiExtremeOverboughtEl.value = systemConfig.rsi_extreme_overbought || 80;
             console.log('[BotsManager] 📈 RSI экстремальный overbought:', rsiExtremeOverboughtEl.value);
         }
         
         const rsiVolumeMultiplierEl = document.getElementById('rsiVolumeMultiplier');
         if (rsiVolumeMultiplierEl) {
-            rsiVolumeMultiplierEl.value = autoBotConfig.rsi_volume_confirmation_multiplier || 1.2;
+            rsiVolumeMultiplierEl.value = systemConfig.rsi_volume_confirmation_multiplier || 1.2;
             console.log('[BotsManager] 📊 RSI множитель объёма:', rsiVolumeMultiplierEl.value);
         }
         
         const rsiDivergenceLookbackEl = document.getElementById('rsiDivergenceLookback');
         if (rsiDivergenceLookbackEl) {
-            rsiDivergenceLookbackEl.value = autoBotConfig.rsi_divergence_lookback || 10;
+            rsiDivergenceLookbackEl.value = systemConfig.rsi_divergence_lookback || 10;
             console.log('[BotsManager] 🔍 RSI период поиска дивергенций:', rsiDivergenceLookbackEl.value);
         }
         
@@ -4265,6 +4260,13 @@ class BotsManager {
     collectConfigurationData() {
         console.log('[BotsManager] 📋 Сбор данных конфигурации...');
         
+        // 🔍 ОТЛАДКА: Проверяем наличие Enhanced RSI элементов
+        console.log('[BotsManager] 🔍 Проверка Enhanced RSI элементов в DOM:');
+        console.log('  enhancedRsiEnabled элемент:', !!document.getElementById('enhancedRsiEnabled'));
+        console.log('  enhancedRsiVolumeConfirm элемент:', !!document.getElementById('enhancedRsiVolumeConfirm'));
+        console.log('  enhancedRsiDivergenceConfirm элемент:', !!document.getElementById('enhancedRsiDivergenceConfirm'));
+        console.log('  enhancedRsiUseStochRsi элемент:', !!document.getElementById('enhancedRsiUseStochRsi'));
+        
         // Проверяем значения новых полей
         const positionSyncEl = document.getElementById('positionSyncInterval');
         const inactiveCleanupEl = document.getElementById('inactiveBotCleanupInterval');
@@ -4280,7 +4282,7 @@ class BotsManager {
         // Собираем данные Auto Bot
         const autoBotConfig = {
             enabled: document.getElementById('globalAutoBotToggle')?.checked || false,
-            max_concurrent_bots: parseInt(document.getElementById('autoBotMaxConcurrent')?.value) || 5,
+            max_concurrent: parseInt(document.getElementById('autoBotMaxConcurrent')?.value) || 5,
             risk_cap_percent: parseFloat(document.getElementById('autoBotRiskCap')?.value) || 10,
             scope: document.getElementById('autoBotScope')?.value || 'all',
             rsi_long_threshold: parseInt(document.getElementById('rsiLongThreshold')?.value) || 29,
@@ -4301,6 +4303,7 @@ class BotsManager {
             min_candles_for_maturity: parseInt(document.getElementById('minCandlesForMaturity')?.value) || 200,
             min_rsi_low: parseInt(document.getElementById('minRsiLow')?.value) || 35,
             max_rsi_high: parseInt(document.getElementById('maxRsiHigh')?.value) || 65,
+            min_volatility_threshold: parseFloat(document.getElementById('minVolatilityThreshold')?.value) || 0.05,
             // RSI временной фильтр
             rsi_time_filter_enabled: document.getElementById('rsiTimeFilterEnabled')?.checked !== false,
             rsi_time_filter_candles: parseInt(document.getElementById('rsiTimeFilterCandles')?.value) || 8,
@@ -4315,10 +4318,30 @@ class BotsManager {
             trading_enabled: document.getElementById('tradingEnabled')?.checked !== false,
             use_test_server: document.getElementById('useTestServer')?.checked || false,
             max_risk_per_trade: parseFloat(document.getElementById('maxRiskPerTrade')?.value) || 2.0,
-            enhanced_rsi_enabled: document.getElementById('enhancedRsiEnabled')?.checked || false,
-            enhanced_rsi_require_volume_confirmation: document.getElementById('enhancedRsiVolumeConfirm')?.checked || false,
-            enhanced_rsi_require_divergence_confirmation: document.getElementById('enhancedRsiDivergenceConfirm')?.checked || false,
-            enhanced_rsi_use_stoch_rsi: document.getElementById('enhancedRsiUseStochRsi')?.checked || false,
+            enhanced_rsi_enabled: (() => {
+                const el = document.getElementById('enhancedRsiEnabled');
+                const checked = el?.checked || false;
+                console.log('[BotsManager] 🔍 Enhanced RSI Enabled - элемент:', !!el, 'значение:', checked);
+                return checked;
+            })(),
+            enhanced_rsi_require_volume_confirmation: (() => {
+                const el = document.getElementById('enhancedRsiVolumeConfirm');
+                const checked = el?.checked || false;
+                console.log('[BotsManager] 🔍 Enhanced RSI Volume - элемент:', !!el, 'значение:', checked);
+                return checked;
+            })(),
+            enhanced_rsi_require_divergence_confirmation: (() => {
+                const el = document.getElementById('enhancedRsiDivergenceConfirm');
+                const checked = el?.checked || false;
+                console.log('[BotsManager] 🔍 Enhanced RSI Divergence - элемент:', !!el, 'значение:', checked);
+                return checked;
+            })(),
+            enhanced_rsi_use_stoch_rsi: (() => {
+                const el = document.getElementById('enhancedRsiUseStochRsi');
+                const checked = el?.checked || false;
+                console.log('[BotsManager] 🔍 Enhanced RSI Stoch - элемент:', !!el, 'значение:', checked);
+                return checked;
+            })(),
             rsi_extreme_zone_timeout: parseInt(document.getElementById('rsiExtremeZoneTimeout')?.value) || 3,
             rsi_extreme_oversold: parseInt(document.getElementById('rsiExtremeOversold')?.value) || 20,
             rsi_extreme_overbought: parseInt(document.getElementById('rsiExtremeOverbought')?.value) || 80,
@@ -4336,13 +4359,268 @@ class BotsManager {
             position_sync_interval: parseInt(document.getElementById('positionSyncInterval')?.value) || 600,
             inactive_bot_cleanup_interval: parseInt(document.getElementById('inactiveBotCleanupInterval')?.value) || 600,
             inactive_bot_timeout: parseInt(document.getElementById('inactiveBotTimeout')?.value) || 600,
-            stop_loss_setup_interval: parseInt(document.getElementById('stopLossSetupInterval')?.value) || 300
+            stop_loss_setup_interval: parseInt(document.getElementById('stopLossSetupInterval')?.value) || 300,
+            // EMA параметры тренда
+            ema_fast: parseInt(document.getElementById('emaFast')?.value) || 50,
+            ema_slow: parseInt(document.getElementById('emaSlow')?.value) || 200,
+            trend_confirmation_bars: parseInt(document.getElementById('trendConfirmationBars')?.value) || 3,
+            // Enhanced RSI настройки
+            enhanced_rsi_enabled: autoBotConfig.enhanced_rsi_enabled,
+            enhanced_rsi_require_volume_confirmation: autoBotConfig.enhanced_rsi_require_volume_confirmation,
+            enhanced_rsi_require_divergence_confirmation: autoBotConfig.enhanced_rsi_require_divergence_confirmation,
+            enhanced_rsi_use_stoch_rsi: autoBotConfig.enhanced_rsi_use_stoch_rsi,
+            rsi_extreme_zone_timeout: autoBotConfig.rsi_extreme_zone_timeout,
+            rsi_extreme_oversold: autoBotConfig.rsi_extreme_oversold,
+            rsi_extreme_overbought: autoBotConfig.rsi_extreme_overbought,
+            rsi_volume_confirmation_multiplier: autoBotConfig.rsi_volume_confirmation_multiplier,
+            rsi_divergence_lookback: autoBotConfig.rsi_divergence_lookback
         };
         
-        return {
+        const result = {
             autoBot: autoBotConfig,
             system: systemConfig
         };
+        
+        // 🔍 ОТЛАДКА: Показываем итоговую конфигурацию Enhanced RSI
+        console.log('[BotsManager] 🔍 ИТОГОВАЯ конфигурация Enhanced RSI:');
+        console.log('  enhanced_rsi_enabled:', result.autoBot.enhanced_rsi_enabled);
+        console.log('  enhanced_rsi_require_volume_confirmation:', result.autoBot.enhanced_rsi_require_volume_confirmation);
+        console.log('  enhanced_rsi_require_divergence_confirmation:', result.autoBot.enhanced_rsi_require_divergence_confirmation);
+        console.log('  enhanced_rsi_use_stoch_rsi:', result.autoBot.enhanced_rsi_use_stoch_rsi);
+        
+        return result;
+    }
+
+    // ✅ НОВЫЕ ФУНКЦИИ ДЛЯ СОХРАНЕНИЯ ОТДЕЛЬНЫХ БЛОКОВ
+    
+    async saveBasicSettings() {
+        console.log('[BotsManager] 💾 Сохранение основных настроек...');
+        try {
+            const config = this.collectConfigurationData();
+            const basicSettings = {
+                enabled: config.autoBot.enabled,
+                max_concurrent: config.autoBot.max_concurrent,
+                risk_cap_percent: config.autoBot.risk_cap_percent,
+                scope: config.autoBot.scope
+            };
+            
+            await this.sendConfigUpdate('auto-bot', basicSettings, 'Основные настройки');
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка сохранения основных настроек:', error);
+            this.showNotification('❌ Ошибка сохранения основных настроек', 'error');
+        }
+    }
+    
+    async saveSystemSettings() {
+        console.log('[BotsManager] 💾 Сохранение системных настроек...');
+        try {
+            const config = this.collectConfigurationData();
+            const systemSettings = {
+                rsi_update_interval: config.system.rsi_update_interval,
+                auto_save_interval: config.system.auto_save_interval,
+                debug_mode: config.system.debug_mode,
+                auto_refresh_ui: config.system.auto_refresh_ui,
+                refresh_interval: config.system.refresh_interval
+            };
+            
+            await this.sendConfigUpdate('system-config', systemSettings, 'Системные настройки');
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка сохранения системных настроек:', error);
+            this.showNotification('❌ Ошибка сохранения системных настроек', 'error');
+        }
+    }
+    
+    async saveTradingParameters() {
+        console.log('[BotsManager] 💾 Сохранение торговых параметров...');
+        try {
+            const config = this.collectConfigurationData();
+            const tradingParams = {
+                rsi_long_threshold: config.autoBot.rsi_long_threshold,
+                rsi_short_threshold: config.autoBot.rsi_short_threshold,
+                rsi_exit_long: config.autoBot.rsi_exit_long,
+                rsi_exit_short: config.autoBot.rsi_exit_short,
+                default_position_size: config.autoBot.default_position_size,
+                check_interval: config.autoBot.check_interval
+            };
+            
+            await this.sendConfigUpdate('auto-bot', tradingParams, 'Торговые параметры');
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка сохранения торговых параметров:', error);
+            this.showNotification('❌ Ошибка сохранения торговых параметров', 'error');
+        }
+    }
+    
+    async saveRsiExits() {
+        console.log('[BotsManager] 💾 Сохранение RSI выходов...');
+        try {
+            const config = this.collectConfigurationData();
+            const rsiExits = {
+                rsi_exit_long: config.autoBot.rsi_exit_long,
+                rsi_exit_short: config.autoBot.rsi_exit_short
+            };
+            
+            await this.sendConfigUpdate('auto-bot', rsiExits, 'RSI выходы');
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка сохранения RSI выходов:', error);
+            this.showNotification('❌ Ошибка сохранения RSI выходов', 'error');
+        }
+    }
+    
+    async saveRsiTimeFilter() {
+        console.log('[BotsManager] 💾 Сохранение RSI временного фильтра...');
+        try {
+            const config = this.collectConfigurationData();
+            const rsiTimeFilter = {
+                rsi_time_filter_enabled: config.autoBot.rsi_time_filter_enabled,
+                rsi_time_filter_candles: config.autoBot.rsi_time_filter_candles,
+                rsi_time_filter_upper: config.autoBot.rsi_time_filter_upper,
+                rsi_time_filter_lower: config.autoBot.rsi_time_filter_lower
+            };
+            
+            await this.sendConfigUpdate('auto-bot', rsiTimeFilter, 'RSI временной фильтр');
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка сохранения RSI временного фильтра:', error);
+            this.showNotification('❌ Ошибка сохранения RSI временного фильтра', 'error');
+        }
+    }
+    
+    async saveExitScamFilter() {
+        console.log('[BotsManager] 💾 Сохранение ExitScam фильтра...');
+        try {
+            const config = this.collectConfigurationData();
+            const exitScamFilter = {
+                exit_scam_enabled: config.autoBot.exit_scam_enabled,
+                exit_scam_candles: config.autoBot.exit_scam_candles,
+                exit_scam_single_candle_percent: config.autoBot.exit_scam_single_candle_percent,
+                exit_scam_multi_candle_count: config.autoBot.exit_scam_multi_candle_count,
+                exit_scam_multi_candle_percent: config.autoBot.exit_scam_multi_candle_percent
+            };
+            
+            await this.sendConfigUpdate('auto-bot', exitScamFilter, 'ExitScam фильтр');
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка сохранения ExitScam фильтра:', error);
+            this.showNotification('❌ Ошибка сохранения ExitScam фильтра', 'error');
+        }
+    }
+    
+    async saveEnhancedRsi() {
+        console.log('[BotsManager] 💾 Сохранение Enhanced RSI...');
+        try {
+            const config = this.collectConfigurationData();
+            const enhancedRsi = {
+                enhanced_rsi_enabled: config.autoBot.enhanced_rsi_enabled,
+                enhanced_rsi_require_volume_confirmation: config.autoBot.enhanced_rsi_require_volume_confirmation,
+                enhanced_rsi_require_divergence_confirmation: config.autoBot.enhanced_rsi_require_divergence_confirmation,
+                enhanced_rsi_use_stoch_rsi: config.autoBot.enhanced_rsi_use_stoch_rsi,
+                rsi_extreme_zone_timeout: config.autoBot.rsi_extreme_zone_timeout,
+                rsi_extreme_oversold: config.autoBot.rsi_extreme_oversold,
+                rsi_extreme_overbought: config.autoBot.rsi_extreme_overbought,
+                rsi_volume_confirmation_multiplier: config.autoBot.rsi_volume_confirmation_multiplier,
+                rsi_divergence_lookback: config.autoBot.rsi_divergence_lookback
+            };
+            
+            await this.sendConfigUpdate('auto-bot', enhancedRsi, 'Enhanced RSI');
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка сохранения Enhanced RSI:', error);
+            this.showNotification('❌ Ошибка сохранения Enhanced RSI', 'error');
+        }
+    }
+    
+    async saveTradingSettings() {
+        console.log('[BotsManager] 💾 Сохранение торговых настроек...');
+        try {
+            const config = this.collectConfigurationData();
+            const tradingSettings = {
+                trading_enabled: config.autoBot.trading_enabled,
+                use_test_server: config.autoBot.use_test_server,
+                max_risk_per_trade: config.autoBot.max_risk_per_trade
+            };
+            
+            await this.sendConfigUpdate('auto-bot', tradingSettings, 'Торговые настройки');
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка сохранения торговых настроек:', error);
+            this.showNotification('❌ Ошибка сохранения торговых настроек', 'error');
+        }
+    }
+    
+    async saveProtectiveMechanisms() {
+        console.log('[BotsManager] 💾 Сохранение защитных механизмов...');
+        try {
+            const config = this.collectConfigurationData();
+            const protectiveMechanisms = {
+                max_loss_percent: config.autoBot.max_loss_percent,
+                trailing_stop_activation: config.autoBot.trailing_stop_activation,
+                trailing_stop_distance: config.autoBot.trailing_stop_distance,
+                max_position_hours: config.autoBot.max_position_hours,
+                break_even_protection: config.autoBot.break_even_protection,
+                break_even_trigger: config.autoBot.break_even_trigger,
+                avoid_down_trend: config.autoBot.avoid_down_trend,
+                avoid_up_trend: config.autoBot.avoid_up_trend
+            };
+            
+            await this.sendConfigUpdate('auto-bot', protectiveMechanisms, 'Защитные механизмы');
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка сохранения защитных механизмов:', error);
+            this.showNotification('❌ Ошибка сохранения защитных механизмов', 'error');
+        }
+    }
+    
+    async saveMaturitySettings() {
+        console.log('[BotsManager] 💾 Сохранение настроек зрелости...');
+        try {
+            const config = this.collectConfigurationData();
+            const maturitySettings = {
+                enable_maturity_check: config.autoBot.enable_maturity_check,
+                min_candles_for_maturity: config.autoBot.min_candles_for_maturity,
+                min_rsi_low: config.autoBot.min_rsi_low,
+                max_rsi_high: config.autoBot.max_rsi_high,
+                min_volatility_threshold: config.autoBot.min_volatility_threshold
+            };
+            
+            await this.sendConfigUpdate('auto-bot', maturitySettings, 'Настройки зрелости');
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка сохранения настроек зрелости:', error);
+            this.showNotification('❌ Ошибка сохранения настроек зрелости', 'error');
+        }
+    }
+    
+    async saveEmaParameters() {
+        console.log('[BotsManager] 💾 Сохранение EMA параметров...');
+        try {
+            const config = this.collectConfigurationData();
+            const emaParameters = {
+                ema_fast: config.system.ema_fast,
+                ema_slow: config.system.ema_slow,
+                trend_confirmation_bars: config.system.trend_confirmation_bars
+            };
+            
+            await this.sendConfigUpdate('system-config', emaParameters, 'EMA параметры');
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка сохранения EMA параметров:', error);
+            this.showNotification('❌ Ошибка сохранения EMA параметров', 'error');
+        }
+    }
+    
+    // ✅ ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ОТПРАВКИ КОНФИГУРАЦИИ
+    async sendConfigUpdate(endpoint, data, sectionName) {
+        this.showConfigurationLoading(true);
+        
+        try {
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                this.showNotification(`✅ ${sectionName} сохранены успешно`, 'success');
+                console.log(`[BotsManager] ✅ ${sectionName} сохранены успешно`);
+            } else {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+        } finally {
+            this.showConfigurationLoading(false);
+        }
     }
 
     async saveConfiguration() {
@@ -4350,6 +4628,13 @@ class BotsManager {
         
         try {
             const config = this.collectConfigurationData();
+            
+            // Отладочные логи для Enhanced RSI
+            console.log('[BotsManager] 🔍 Отправляемая конфигурация Enhanced RSI:');
+            console.log('  enhanced_rsi_enabled:', config.autoBot.enhanced_rsi_enabled);
+            console.log('  enhanced_rsi_require_volume_confirmation:', config.autoBot.enhanced_rsi_require_volume_confirmation);
+            console.log('  enhanced_rsi_require_divergence_confirmation:', config.autoBot.enhanced_rsi_require_divergence_confirmation);
+            console.log('  enhanced_rsi_use_stoch_rsi:', config.autoBot.enhanced_rsi_use_stoch_rsi);
             
             // Показываем индикатор загрузки
             this.showConfigurationLoading(true);
@@ -4372,8 +4657,8 @@ class BotsManager {
             const systemData = await systemResponse.json();
             
             if (autoBotData.success && systemData.success) {
-                this.showNotification('✅ Конфигурация сохранена успешно! Изменения применены.', 'success');
-                console.log('[BotsManager] ✅ Конфигурация сохранена');
+                this.showNotification('✅ Конфигурация сохранена в bot_config.py! Изменения применены автоматически.', 'success');
+                console.log('[BotsManager] ✅ Конфигурация сохранена в bot_config.py и перезагружена');
                 console.log('[BotsManager] 📊 Auto Bot сохранен:', autoBotData.saved_to_file);
                 console.log('[BotsManager] 🔧 System config сохранен:', systemData.saved_to_file);
                 
@@ -4419,7 +4704,7 @@ class BotsManager {
             const defaultConfig = {
                 autoBot: {
                     enabled: false,
-                    max_concurrent_bots: 5,
+                    max_concurrent: 5,
                     risk_cap_percent: 10,
                     scope: 'all',
                     rsi_long_threshold: 29,
@@ -4926,6 +5211,96 @@ class BotsManager {
             testConfigBtn.setAttribute('data-initialized', 'true');
             testConfigBtn.addEventListener('click', () => this.testConfiguration());
             console.log('[BotsManager] ✅ Кнопка "Тестировать конфигурацию" инициализирована');
+        }
+        
+        // ✅ ОБРАБОТЧИКИ ДЛЯ КНОПОК СОХРАНЕНИЯ ОТДЕЛЬНЫХ БЛОКОВ
+        
+        // Основные настройки
+        const saveBasicBtn = document.querySelector('.config-section-save-btn[data-section="basic"]');
+        if (saveBasicBtn && !saveBasicBtn.hasAttribute('data-initialized')) {
+            saveBasicBtn.setAttribute('data-initialized', 'true');
+            saveBasicBtn.addEventListener('click', () => this.saveBasicSettings());
+            console.log('[BotsManager] ✅ Кнопка "Сохранить основные настройки" инициализирована');
+        }
+        
+        // Системные настройки
+        const saveSystemBtn = document.querySelector('.config-section-save-btn[data-section="system"]');
+        if (saveSystemBtn && !saveSystemBtn.hasAttribute('data-initialized')) {
+            saveSystemBtn.setAttribute('data-initialized', 'true');
+            saveSystemBtn.addEventListener('click', () => this.saveSystemSettings());
+            console.log('[BotsManager] ✅ Кнопка "Сохранить системные настройки" инициализирована');
+        }
+        
+        // Торговые параметры
+        const saveTradingBtn = document.querySelector('.config-section-save-btn[data-section="trading"]');
+        if (saveTradingBtn && !saveTradingBtn.hasAttribute('data-initialized')) {
+            saveTradingBtn.setAttribute('data-initialized', 'true');
+            saveTradingBtn.addEventListener('click', () => this.saveTradingParameters());
+            console.log('[BotsManager] ✅ Кнопка "Сохранить торговые параметры" инициализирована');
+        }
+        
+        // RSI выходы
+        const saveRsiExitsBtn = document.querySelector('.config-section-save-btn[data-section="rsi-exits"]');
+        if (saveRsiExitsBtn && !saveRsiExitsBtn.hasAttribute('data-initialized')) {
+            saveRsiExitsBtn.setAttribute('data-initialized', 'true');
+            saveRsiExitsBtn.addEventListener('click', () => this.saveRsiExits());
+            console.log('[BotsManager] ✅ Кнопка "Сохранить RSI выходы" инициализирована');
+        }
+        
+        // RSI временной фильтр
+        const saveRsiTimeBtn = document.querySelector('.config-section-save-btn[data-section="rsi-time-filter"]');
+        if (saveRsiTimeBtn && !saveRsiTimeBtn.hasAttribute('data-initialized')) {
+            saveRsiTimeBtn.setAttribute('data-initialized', 'true');
+            saveRsiTimeBtn.addEventListener('click', () => this.saveRsiTimeFilter());
+            console.log('[BotsManager] ✅ Кнопка "Сохранить RSI временной фильтр" инициализирована');
+        }
+        
+        // ExitScam фильтр
+        const saveExitScamBtn = document.querySelector('.config-section-save-btn[data-section="exit-scam"]');
+        if (saveExitScamBtn && !saveExitScamBtn.hasAttribute('data-initialized')) {
+            saveExitScamBtn.setAttribute('data-initialized', 'true');
+            saveExitScamBtn.addEventListener('click', () => this.saveExitScamFilter());
+            console.log('[BotsManager] ✅ Кнопка "Сохранить ExitScam фильтр" инициализирована');
+        }
+        
+        // Enhanced RSI
+        const saveEnhancedRsiBtn = document.querySelector('.config-section-save-btn[data-section="enhanced-rsi"]');
+        if (saveEnhancedRsiBtn && !saveEnhancedRsiBtn.hasAttribute('data-initialized')) {
+            saveEnhancedRsiBtn.setAttribute('data-initialized', 'true');
+            saveEnhancedRsiBtn.addEventListener('click', () => this.saveEnhancedRsi());
+            console.log('[BotsManager] ✅ Кнопка "Сохранить Enhanced RSI" инициализирована');
+        }
+        
+        // Торговые настройки
+        const saveTradingSettingsBtn = document.querySelector('.config-section-save-btn[data-section="trading-settings"]');
+        if (saveTradingSettingsBtn && !saveTradingSettingsBtn.hasAttribute('data-initialized')) {
+            saveTradingSettingsBtn.setAttribute('data-initialized', 'true');
+            saveTradingSettingsBtn.addEventListener('click', () => this.saveTradingSettings());
+            console.log('[BotsManager] ✅ Кнопка "Сохранить торговые настройки" инициализирована');
+        }
+        
+        // Защитные механизмы
+        const saveProtectiveBtn = document.querySelector('.config-section-save-btn[data-section="protective"]');
+        if (saveProtectiveBtn && !saveProtectiveBtn.hasAttribute('data-initialized')) {
+            saveProtectiveBtn.setAttribute('data-initialized', 'true');
+            saveProtectiveBtn.addEventListener('click', () => this.saveProtectiveMechanisms());
+            console.log('[BotsManager] ✅ Кнопка "Сохранить защитные механизмы" инициализирована');
+        }
+        
+        // Настройки зрелости
+        const saveMaturityBtn = document.querySelector('.config-section-save-btn[data-section="maturity"]');
+        if (saveMaturityBtn && !saveMaturityBtn.hasAttribute('data-initialized')) {
+            saveMaturityBtn.setAttribute('data-initialized', 'true');
+            saveMaturityBtn.addEventListener('click', () => this.saveMaturitySettings());
+            console.log('[BotsManager] ✅ Кнопка "Сохранить настройки зрелости" инициализирована');
+        }
+        
+        // EMA параметры
+        const saveEmaBtn = document.querySelector('.config-section-save-btn[data-section="ema"]');
+        if (saveEmaBtn && !saveEmaBtn.hasAttribute('data-initialized')) {
+            saveEmaBtn.setAttribute('data-initialized', 'true');
+            saveEmaBtn.addEventListener('click', () => this.saveEmaParameters());
+            console.log('[BotsManager] ✅ Кнопка "Сохранить EMA параметры" инициализирована');
         }
         
         console.log('[BotsManager] ✅ Все кнопки конфигурации инициализированы');
@@ -5575,11 +5950,8 @@ class BotsManager {
                     coin.is_mature = data.mature_coins.includes(coin.symbol);
                     if (coin.is_mature) {
                         markedCount++;
-                        console.log(`[BotsManager] 💎 Монета ${coin.symbol} помечена как зрелая`);
                     }
                 });
-                
-                console.log(`[BotsManager] 💎 Помечено ${markedCount} зрелых монет из ${data.mature_coins.length} в файле`);
             }
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка загрузки зрелых монет:', error);

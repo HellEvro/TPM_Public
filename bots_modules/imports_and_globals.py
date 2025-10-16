@@ -253,12 +253,8 @@ BOTS_STATE_FILE = 'data/bots_state.json'
 BOTS_POSITIONS_REGISTRY_FILE = 'data/bot_positions_registry.json'  # Реестр позиций открытых ботами
 AUTO_BOT_CONFIG_FILE = 'data/auto_bot_config.json'
 
-# Константы для обновления позиций
-BOT_STATUS_UPDATE_INTERVAL = 30  # 30 секунд - интервал обновления детальной информации о состоянии ботов
-STOP_LOSS_SETUP_INTERVAL = 300  # 5 минут - интервал установки недостающих стоп-лоссов
-POSITION_SYNC_INTERVAL = 30  # 10 минут - интервал синхронизации позиций с биржей
-INACTIVE_BOT_CLEANUP_INTERVAL = 600  # 10 минут - интервал проверки и удаления неактивных ботов
-INACTIVE_BOT_TIMEOUT = 600  # 10 минут - время ожидания перед удалением бота без реальных позиций на бирже
+# ✅ ВСЕ КОНСТАНТЫ НАСТРОЕК ПЕРЕНЕСЕНЫ В SystemConfig (bot_engine/bot_config.py)
+# Используйте SystemConfig.КОНСТАНТА для доступа к настройкам
 
 # Глобальные переменные для кэшированных данных (как в app.py)
 bots_cache_data = {
@@ -279,12 +275,6 @@ RSI_CACHE_FILE = 'data/rsi_cache.json'
 DEFAULT_CONFIG_FILE = 'data/default_auto_bot_config.json'
 PROCESS_STATE_FILE = 'data/process_state.json'
 SYSTEM_CONFIG_FILE = 'data/system_config.json'
-
-# Константы для фильтрации зрелости монет
-MIN_CANDLES_FOR_MATURITY = 200  # Минимум свечей для зрелой монеты (50 дней на 6H)
-MIN_RSI_LOW = 35   # Минимальный достигнутый RSI
-MAX_RSI_HIGH = 65  # Максимальный достигнутый RSI
-MIN_VOLATILITY_THRESHOLD = 0.05  # Минимальная волатильность (5%)
 
 # Создаем папку для данных если её нет
 os.makedirs('data', exist_ok=True)
@@ -493,16 +483,12 @@ def init_exchange():
 
 # Инициализация биржи будет выполнена в init_bot_service()
 
-# Торговые параметры RSI согласно техзаданию (настраиваемые)
-RSI_OVERSOLD = 29  # Зона покупки (LONG при RSI <= 29)
-RSI_OVERBOUGHT = 71  # Зона продажи (SHORT при RSI >= 71)
-RSI_EXIT_LONG = 65  # Выход из лонга (при RSI >= 65)
-RSI_EXIT_SHORT = 35  # Выход из шорта (при RSI <= 35)
-
-# EMA параметры для анализа тренда 6H
-EMA_FAST = 50
-EMA_SLOW = 200
-TREND_CONFIRMATION_BARS = 3
+# ✅ ТОРГОВЫЕ ПАРАМЕТРЫ ПЕРЕНЕСЕНЫ В SystemConfig
+# Используйте:
+# - SystemConfig.RSI_OVERSOLD, SystemConfig.RSI_OVERBOUGHT
+# - SystemConfig.RSI_EXIT_LONG, SystemConfig.RSI_EXIT_SHORT
+# - SystemConfig.EMA_FAST, SystemConfig.EMA_SLOW
+# - SystemConfig.TREND_CONFIRMATION_BARS
 
 # Возможные статусы ботов
 BOT_STATUS = {
@@ -540,22 +526,27 @@ bots_data_lock = threading.Lock()
 
 # Загружаем сохраненную конфигурацию Auto Bot
 def load_auto_bot_config(force_disable=False):
-    """Загружает конфигурацию Auto Bot из файла"""
+    """Загружает конфигурацию Auto Bot из bot_config.py
+    
+    ✅ ЕДИНСТВЕННЫЙ источник истины: bot_engine/bot_config.py
+    - Все настройки в Python-файле с комментариями
+    - Можно редактировать руками с подробными пояснениями
+    - Система читает напрямую из DEFAULT_AUTO_BOT_CONFIG
+    """
     try:
-        config_file = 'data/auto_bot_config.json'
-        if os.path.exists(config_file):
-            with open(config_file, 'r', encoding='utf-8') as f:
-                saved_config = json.load(f)
-                with bots_data_lock:
-                    bots_data['auto_bot_config'].update(saved_config)
-                    # Отключаем автобот только при принудительном вызове (при запуске сервера)
-                    if force_disable:
-                        bots_data['auto_bot_config']['enabled'] = False
-                        logger.info(f"[CONFIG] 🔒 Auto Bot принудительно выключен при запуске")
-                logger.info(f"[CONFIG] ✅ Загружена конфигурация Auto Bot из {config_file}")
-        else:
-            logger.info(f"[CONFIG] 📁 Файл конфигурации {config_file} не найден, используем дефолтные настройки")
-            # Auto Bot уже выключен в дефолтной конфигурации
+        from bot_engine.bot_config import DEFAULT_AUTO_BOT_CONFIG
+        
+        with bots_data_lock:
+            # Загружаем конфигурацию напрямую из bot_config.py
+            bots_data['auto_bot_config'] = DEFAULT_AUTO_BOT_CONFIG.copy()
+            
+            # Отключаем автобот только при принудительном вызове (при запуске сервера)
+            if force_disable:
+                bots_data['auto_bot_config']['enabled'] = False
+                logger.info(f"[CONFIG] 🔒 Auto Bot принудительно выключен при запуске")
+        
+        logger.info(f"[CONFIG] ✅ Загружена конфигурация Auto Bot из bot_config.py")
+            
     except Exception as e:
         logger.error(f"[CONFIG] ❌ Ошибка загрузки конфигурации: {e}")
 
