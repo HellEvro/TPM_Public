@@ -137,13 +137,13 @@
                 
                 <!-- Фильтры RSI -->
                 <div class="rsi-filters-container">
-                    <button class="rsi-filter-btn active" data-filter="all"><span data-translate="all_filter">🌐 Все</span></button>
-                    <button class="rsi-filter-btn buy-filter" data-filter="buy-zone">🟢 ≤29</button>
-                    <button class="rsi-filter-btn sell-filter" data-filter="sell-zone">🔴 ≥71</button>
-                    <button class="rsi-filter-btn trend-up-filter" data-filter="trend-up">📈 UP</button>
-                    <button class="rsi-filter-btn trend-down-filter" data-filter="trend-down">📉 DOWN</button>
-                    <button class="rsi-filter-btn enter-long-filter" data-filter="enter-long">🚀 ENTER_LONG</button>
-                    <button class="rsi-filter-btn enter-short-filter" data-filter="enter-short">📉 ENTER_SHORT</button>
+                    <button class="rsi-filter-btn active" data-filter="all">🌐 Все (<span id="filterAllCount">0</span>)</button>
+                    <button class="rsi-filter-btn buy-filter" data-filter="buy-zone">🟢 ≤29 (<span id="filterBuyZoneCount">0</span>)</button>
+                    <button class="rsi-filter-btn sell-filter" data-filter="sell-zone">🔴 ≥71 (<span id="filterSellZoneCount">0</span>)</button>
+                    <button class="rsi-filter-btn trend-up-filter" data-filter="trend-up">📈 UP (<span id="filterTrendUpCount">0</span>)</button>
+                    <button class="rsi-filter-btn trend-down-filter" data-filter="trend-down">📉 DOWN (<span id="filterTrendDownCount">0</span>)</button>
+                    <button class="rsi-filter-btn enter-long-filter" data-filter="enter-long">🚀 LONG (<span id="filterLongCount">0</span>)</button>
+                    <button class="rsi-filter-btn enter-short-filter" data-filter="enter-short">📉 SHORT (<span id="filterShortCount">0</span>)</button>
                     <button class="rsi-filter-btn manual-position-filter" data-filter="manual-position">
                         <span class="filter-icon">✋</span>
                         <span class="filter-text">Ручные позиции</span>
@@ -152,6 +152,11 @@
                     <button class="btn btn-sm btn-info" id="refreshManualPositionsBtn" title="Обновить ручные позиции">
                         <span>🔄</span>
                     </button>
+                    <button class="rsi-filter-btn" style="cursor: default; opacity: 0.7;" title="Количество зрелых монет в системе">
+                        <span class="filter-icon">💎</span>
+                        <span class="filter-text">Зрелые монеты</span>
+                        <span class="filter-count" id="matureCoinsCount">(0)</span>
+                    </button>
             </div>
             
                 <!-- Список монет -->
@@ -159,11 +164,6 @@
                     <ul class="coins-list" id="coinsRsiList">
                     <!-- Список монет будет загружен динамически -->
                 </ul>
-                <div class="coins-counter">
-                        📈 <span data-translate="total_coins">Всего:</span> <span id="totalCoinsCount">0</span> | 
-                        🟢 <span data-translate="buy_zone">Buy:</span> <span id="buyZoneCount">0</span> | 
-                        🔴 <span data-translate="sell_zone">Sell:</span> <span id="sellZoneCount">0</span>
-                    </div>
             </div>
         </div>
 
@@ -1330,50 +1330,6 @@
                 </div>
 
             </div>
-            
-            <!-- Секция управления зрелыми монетами -->
-            <div class="config-section">
-                <div class="section-header">
-                    <h3 data-translate="mature_coins_management_title">🗑️ Управление зрелыми монетами</h3>
-                    <div class="section-description">
-                        <span data-translate="mature_coins_management_description">Удаление конкретных монет из списка зрелых (только при ошибке разработки)</span>
-                    </div>
-                </div>
-                
-                <div class="mature-coins-management">
-                    <div class="mature-coins-controls">
-                        <div class="mature-coins-input-group">
-                            <label class="config-label">
-                                <span class="label-icon">📝</span>
-                                <span class="label-text" data-translate="coins_to_remove_label">Монеты для удаления:</span>
-                            </label>
-                            <div class="input-with-button">
-                                <input type="text" id="coinsToRemove" class="config-input" 
-                                       placeholder="ARIA, AVNT, MIRA" 
-                                       title="Введите символы монет через запятую">
-                                <button class="btn btn-danger btn-sm" id="removeMatureCoinsBtn">
-                                    <span data-translate="remove_coins_btn">🗑️ Удалить</span>
-                                </button>
-                            </div>
-                            <small class="config-help" data-translate="coins_deletion_instruction_help">
-                                Введите символы монет через запятую (например: ARIA, AVNT). Будьте осторожны!
-                            </small>
-                        </div>
-                        
-                        <div class="mature-coins-info">
-                            <div class="info-item">
-                                <span class="info-label" data-translate="total_mature_coins_count">Всего зрелых монет:</span>
-                                <span class="info-value" id="totalMatureCoinsCount">0</span>
-                            </div>
-                            <div class="info-item">
-                                <span class="info-label" data-translate="last_removal">Последнее удаление:</span>
-                                <span class="info-value" id="lastRemovalInfo">-</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Кнопки сохранения -->
             <div class="config-actions">
                 <button class="btn btn-primary config-save-btn" id="saveConfigBtn">

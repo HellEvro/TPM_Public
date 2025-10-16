@@ -31,7 +31,7 @@ class BotsManager {
         this.apiUrl = `${window.location.protocol}//${window.location.hostname}:5001/api/bots`; // Для совместимости
         
         // Уровень логирования: 'error' - только ошибки, 'info' - важные события, 'debug' - все
-        this.logLevel = 'info'; // По умолчанию только важные события
+        this.logLevel = 'debug'; // Временно включаем debug для отладки ручных позиций
         
         // Инициализация при создании
         this.init();
@@ -148,8 +148,8 @@ class BotsManager {
         // Инициализируем кнопки конфигурации (должны работать всегда!)
         this.initializeConfigurationButtons();
         
-        // Инициализируем управление зрелыми монетами
-        this.initializeMatureCoinsManagement();
+        // Загружаем счётчик зрелых монет
+        this.loadMatureCoinsCount();
         
         // Принудительно применяем стили для читаемости
         this.applyReadabilityStyles();
@@ -637,14 +637,21 @@ class BotsManager {
                     
                     // Получаем список ручных позиций
                     const manualPositions = data.manual_positions || [];
-                    this.logDebug(`[BotsManager] ✋ Ручные позиции: ${manualPositions.length} - ${manualPositions.slice(0, 10)}`);
+                    console.log(`[BotsManager] ✋ Ручные позиции получены:`, manualPositions);
+                    console.log(`[BotsManager] ✋ Всего ручных позиций: ${manualPositions.length}`);
                     
                     // Помечаем монеты с ручными позициями
+                    let markedCount = 0;
                     this.coinsRsiData.forEach(coin => {
                         coin.manual_position = manualPositions.includes(coin.symbol);
+                        if (coin.manual_position) {
+                            markedCount++;
+                            console.log(`[BotsManager] ✋ Монета ${coin.symbol} помечена как ручная позиция`);
+                        }
                     });
                     
-                    this.logDebug(`[BotsManager] ✅ Загружено ${this.coinsRsiData.length} монет с RSI`);
+                    console.log(`[BotsManager] ✅ Загружено ${this.coinsRsiData.length} монет с RSI`);
+                    console.log(`[BotsManager] ✅ Помечено ${markedCount} монет с ручными позициями`);
                     this.logDebug('[BotsManager] 🔍 Первые 3 монеты:', this.coinsRsiData.slice(0, 3));
                     
                     // Обновляем интерфейс
@@ -719,6 +726,10 @@ class BotsManager {
             // Проверяем, есть ли ручная позиция
             const isManualPosition = coin.manual_position || false;
             const manualClass = isManualPosition ? 'manual-position' : '';
+            
+            if (isManualPosition) {
+                console.log(`[BotsManager] 🎨 Рендер монеты ${coin.symbol} с классом manual-position`);
+            }
             
             return `
                 <li class="coin-item ${rsiClass} ${trendClass} ${signalClass} ${manualClass}" data-symbol="${coin.symbol}">
@@ -986,22 +997,6 @@ class BotsManager {
     }
 
         updateCoinsCounter() {
-        const totalElement = document.getElementById('totalCoinsCount');
-        const buyZoneElement = document.getElementById('buyZoneCount');
-        const sellZoneElement = document.getElementById('sellZoneCount');
-        
-        if (totalElement) totalElement.textContent = this.coinsRsiData.length;
-        
-        if (buyZoneElement) {
-            const buyZoneCount = this.coinsRsiData.filter(coin => coin.effective_signal === 'ENTER_LONG').length;
-            buyZoneElement.textContent = buyZoneCount;
-        }
-        
-        if (sellZoneElement) {
-            const sellZoneCount = this.coinsRsiData.filter(coin => coin.effective_signal === 'ENTER_SHORT').length;
-            sellZoneElement.textContent = sellZoneCount;
-        }
-        
         // Обновляем счетчики для новых фильтров сигналов
         this.updateSignalCounters();
         
@@ -1042,23 +1037,61 @@ class BotsManager {
     }
 
     updateSignalCounters() {
-        // Используем универсальную функцию для подсчета
+        // Подсчитываем все категории
+        const allCount = this.coinsRsiData.length;
         const longCount = this.coinsRsiData.filter(coin => this.getEffectiveSignal(coin) === 'ENTER_LONG').length;
         const shortCount = this.coinsRsiData.filter(coin => this.getEffectiveSignal(coin) === 'ENTER_SHORT').length;
+        const buyZoneCount = this.coinsRsiData.filter(coin => coin.rsi6h && coin.rsi6h <= 29).length;
+        const sellZoneCount = this.coinsRsiData.filter(coin => coin.rsi6h && coin.rsi6h >= 71).length;
+        const trendUpCount = this.coinsRsiData.filter(coin => coin.trend6h === 'UP').length;
+        const trendDownCount = this.coinsRsiData.filter(coin => coin.trend6h === 'DOWN').length;
+        const manualPositionCount = this.coinsRsiData.filter(coin => coin.manual_position === true).length;
         
-        // Обновляем текст кнопок фильтров с количеством
-        const enterLongBtn = document.querySelector('.rsi-filter-btn[data-filter="enter-long"]');
-        const enterShortBtn = document.querySelector('.rsi-filter-btn[data-filter="enter-short"]');
+        // Обновляем счетчики в HTML (фильтры)
+        const allCountEl = document.getElementById('filterAllCount');
+        const buyZoneCountEl = document.getElementById('filterBuyZoneCount');
+        const sellZoneCountEl = document.getElementById('filterSellZoneCount');
         
-        if (enterLongBtn) {
-            enterLongBtn.innerHTML = `🚀 ENTER_LONG (${longCount})`;
+        // Если элементы не найдены, создаем их динамически
+        if (!buyZoneCountEl || !sellZoneCountEl) {
+            // Попробуем найти кнопки фильтров и добавить элементы динамически
+            const buyFilterBtn = document.querySelector('button[data-filter="buy-zone"]');
+            const sellFilterBtn = document.querySelector('button[data-filter="sell-zone"]');
+            
+            if (buyFilterBtn && !buyFilterBtn.querySelector('#filterBuyZoneCount')) {
+                const buySpan = document.createElement('span');
+                buySpan.id = 'filterBuyZoneCount';
+                buySpan.textContent = ` (${buyZoneCount})`;
+                buyFilterBtn.appendChild(buySpan);
+            }
+            
+            if (sellFilterBtn && !sellFilterBtn.querySelector('#filterSellZoneCount')) {
+                const sellSpan = document.createElement('span');
+                sellSpan.id = 'filterSellZoneCount';
+                sellSpan.textContent = ` (${sellZoneCount})`;
+                sellFilterBtn.appendChild(sellSpan);
+            }
         }
         
-        if (enterShortBtn) {
-            enterShortBtn.innerHTML = `📉 ENTER_SHORT (${shortCount})`;
-        }
+        const trendUpCountEl = document.getElementById('filterTrendUpCount');
+        const trendDownCountEl = document.getElementById('filterTrendDownCount');
+        const longCountEl = document.getElementById('filterLongCount');
+        const shortCountEl = document.getElementById('filterShortCount');
+        const manualCountEl = document.getElementById('manualCount');
         
-        this.logDebug(`[BotsManager] 📊 Счетчики сигналов: LONG=${longCount}, SHORT=${shortCount}`);
+        
+        // Обновляем счетчики фильтров
+        if (allCountEl) allCountEl.textContent = allCount;
+        
+        if (buyZoneCountEl) buyZoneCountEl.textContent = ` (${buyZoneCount})`;
+        if (sellZoneCountEl) sellZoneCountEl.textContent = ` (${sellZoneCount})`;
+        if (trendUpCountEl) trendUpCountEl.textContent = trendUpCount;
+        if (trendDownCountEl) trendDownCountEl.textContent = trendDownCount;
+        if (longCountEl) longCountEl.textContent = longCount;
+        if (shortCountEl) shortCountEl.textContent = shortCount;
+        if (manualCountEl) manualCountEl.textContent = `(${manualPositionCount})`;
+        
+        this.logDebug(`[BotsManager] 📊 Счетчики фильтров: ALL=${allCount}, BUY=${buyZoneCount}, SELL=${sellZoneCount}, UP=${trendUpCount}, DOWN=${trendDownCount}, LONG=${longCount}, SHORT=${shortCount}, MANUAL=${manualPositionCount}`);
     }
 
     selectCoin(symbol) {
@@ -5353,117 +5386,21 @@ class BotsManager {
      */
     
     /**
-     * Инициализирует управление зрелыми монетами
+     * Загружает счётчик зрелых монет
      */
-    initializeMatureCoinsManagement() {
-        const removeBtn = document.getElementById('removeMatureCoinsBtn');
-        const coinsInput = document.getElementById('coinsToRemove');
-        
-        if (removeBtn && coinsInput) {
-            removeBtn.addEventListener('click', () => {
-                this.removeMatureCoins();
-            });
-            
-            // Загружаем информацию о зрелых монетах
-            this.loadMatureCoinsInfo();
-        }
-    }
-    
-    /**
-     * Загружает информацию о зрелых монетах
-     */
-    async loadMatureCoinsInfo() {
+    async loadMatureCoinsCount() {
         try {
             const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/mature-coins-list`);
             const data = await response.json();
             
             if (data.success) {
-                const countEl = document.getElementById('totalMatureCoinsCount');
+                const countEl = document.getElementById('matureCoinsCount');
                 if (countEl) {
-                    countEl.textContent = data.total_count;
+                    countEl.textContent = `(${data.total_count})`;
                 }
             }
         } catch (error) {
-            console.error('[BotsManager] Ошибка загрузки списка зрелых монет:', error);
-        }
-    }
-    
-    /**
-     * Удаляет указанные монеты из зрелых
-     */
-    async removeMatureCoins() {
-        const coinsInput = document.getElementById('coinsToRemove');
-        const removeBtn = document.getElementById('removeMatureCoinsBtn');
-        
-        if (!coinsInput || !removeBtn) return;
-        
-        const coinsText = coinsInput.value.trim();
-        if (!coinsText) {
-            this.showNotification('Введите символы монет для удаления', 'warning');
-            return;
-        }
-        
-        // Парсим список монет
-        const coinsToRemove = coinsText.split(',').map(coin => coin.trim().toUpperCase()).filter(coin => coin);
-        
-        if (coinsToRemove.length === 0) {
-            this.showNotification('Неверный формат списка монет', 'warning');
-            return;
-        }
-        
-        // Подтверждение удаления
-        const confirmMessage = `Вы уверены, что хотите удалить ${coinsToRemove.length} монет из зрелых?\n\nМонеты: ${coinsToRemove.join(', ')}\n\nЭто действие необратимо!`;
-        if (!confirm(confirmMessage)) {
-            return;
-        }
-        
-        // Блокируем кнопку
-        removeBtn.disabled = true;
-        removeBtn.textContent = '🗑️ Удаление...';
-        
-        try {
-            const response = await fetch('/api/bots/remove-mature-coins', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    coins: coinsToRemove
-                })
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                this.showNotification(`✅ Удалено ${data.removed_count} монет из зрелых`, 'success');
-                
-                // Обновляем информацию
-                await this.loadMatureCoinsInfo();
-                
-                // Очищаем поле ввода
-                coinsInput.value = '';
-                
-                // Обновляем информацию о последнем удалении
-                const lastRemovalEl = document.getElementById('lastRemovalInfo');
-                if (lastRemovalEl) {
-                    const now = new Date().toLocaleString('ru-RU');
-                    lastRemovalEl.textContent = `${now} (${data.removed_coins.join(', ')})`;
-                }
-                
-                // Перезагружаем данные монет
-                await this.loadCoinsRsiData();
-                
-            } else {
-                this.showNotification(`❌ Ошибка удаления: ${data.error}`, 'error');
-            }
-            
-        } catch (error) {
-            console.error('[BotsManager] Ошибка удаления зрелых монет:', error);
-            this.showNotification('❌ Ошибка соединения с сервером', 'error');
-        } finally {
-            // Разблокируем кнопку
-            removeBtn.disabled = false;
-            removeBtn.innerHTML = '<span data-translate="remove_coins_btn">🗑️ Удалить</span>';
+            console.error('[BotsManager] Ошибка загрузки счётчика зрелых монет:', error);
         }
     }
 

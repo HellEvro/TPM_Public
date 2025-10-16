@@ -179,60 +179,14 @@ def save_mature_coins_storage():
         
         os.makedirs(os.path.dirname(MATURE_COINS_FILE), exist_ok=True)
         
-        # Создаем временный файл для атомарной записи
-        temp_file = MATURE_COINS_FILE + '.tmp'
-        max_retries = 3
-        retry_delay = 0.1  # 100ms
-        
-        for attempt in range(max_retries):
-            try:
-                with open(temp_file, 'w', encoding='utf-8') as f:
-                    json.dump(storage_copy, f, ensure_ascii=False, indent=2)
-                
-                # Атомарно заменяем оригинальный файл
-                if os.name == 'nt':  # Windows
-                    if os.path.exists(MATURE_COINS_FILE):
-                        os.remove(MATURE_COINS_FILE)
-                    os.rename(temp_file, MATURE_COINS_FILE)
-                else:  # Unix/Linux
-                    os.rename(temp_file, MATURE_COINS_FILE)
-                    
-                logger.debug(f"[MATURITY_STORAGE] Хранилище сохранено: {len(storage_copy)} монет")
-                break  # Успешно сохранили, выходим из цикла
-                
-            except (OSError, IOError) as temp_error:
-                if attempt < max_retries - 1:
-                    logger.warning(f"[MATURITY_STORAGE] Попытка {attempt + 1} неудачна, повторяем через {retry_delay}с: {temp_error}")
-                    time.sleep(retry_delay)
-                    retry_delay *= 2  # Увеличиваем задержку
-                    continue
-                else:
-                    # Удаляем временный файл в случае ошибки
-                    if os.path.exists(temp_file):
-                        try:
-                            os.remove(temp_file)
-                        except:
-                            pass
-                    raise temp_error
-            except Exception as temp_error:
-                # Удаляем временный файл в случае ошибки
-                if os.path.exists(temp_file):
-                    try:
-                        os.remove(temp_file)
-                    except:
-                        pass
-                raise temp_error
-            
+        # Используем стандартную функцию сохранения из bot_engine.storage
+        from bot_engine.storage import save_json_file
+        save_json_file(MATURE_COINS_FILE, storage_copy)
+        logger.debug(f"[MATURITY_STORAGE] Хранилище сохранено: {len(storage_copy)} монет")
+        return True
     except Exception as e:
         logger.error(f"[MATURITY_STORAGE] Ошибка сохранения хранилища: {e}")
-        # Попробуем создать резервную копию
-        try:
-            backup_file = MATURE_COINS_FILE + '.backup'
-            with open(backup_file, 'w', encoding='utf-8') as f:
-                json.dump(storage_copy, f, ensure_ascii=False, indent=2)
-            logger.info(f"[MATURITY_STORAGE] Создана резервная копия: {backup_file}")
-        except Exception as backup_error:
-            logger.error(f"[MATURITY_STORAGE] Не удалось создать резервную копию: {backup_error}")
+        return False
 
 def is_coin_mature_stored(symbol):
     """Проверяет, есть ли монета в постоянном хранилище зрелых монет"""

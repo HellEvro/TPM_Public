@@ -53,19 +53,21 @@ def load_mature_coins_storage():
             with open(MATURE_COINS_FILE, 'r', encoding='utf-8') as f:
                 loaded_data = json.load(f)
             
-            # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Используем блокировку при обновлении глобального хранилища
+            # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Изменяем словарь in-place, а не переприсваиваем
+            # Это важно, т.к. mature_coins_storage импортируется в другие модули
             with mature_coins_lock:
-                mature_coins_storage = loaded_data
+                mature_coins_storage.clear()
+                mature_coins_storage.update(loaded_data)
             
             logger.info(f"[MATURITY_STORAGE] ✅ Загружено {len(mature_coins_storage)} зрелых монет из файла")
         else:
             with mature_coins_lock:
-                mature_coins_storage = {}
+                mature_coins_storage.clear()
             logger.info("[MATURITY_STORAGE] Файл хранилища не найден, создаем новый")
     except Exception as e:
         logger.error(f"[MATURITY_STORAGE] Ошибка загрузки хранилища: {e}")
         with mature_coins_lock:
-            mature_coins_storage = {}
+            mature_coins_storage.clear()
 
 def save_mature_coins_storage():
     """Сохраняет постоянное хранилище зрелых монет в файл"""
@@ -76,65 +78,57 @@ def save_mature_coins_storage():
         
         os.makedirs(os.path.dirname(MATURE_COINS_FILE), exist_ok=True)
         
-        # Создаем временный файл для атомарной записи
-        temp_file = MATURE_COINS_FILE + '.tmp'
-        max_retries = 3
-        retry_delay = 0.1  # 100ms
-        
-        for attempt in range(max_retries):
-            try:
-                with open(temp_file, 'w', encoding='utf-8') as f:
-                    json.dump(storage_copy, f, ensure_ascii=False, indent=2)
-                
-                # Атомарно заменяем оригинальный файл
-                if os.name == 'nt':  # Windows
-                    if os.path.exists(MATURE_COINS_FILE):
-                        os.remove(MATURE_COINS_FILE)
-                    os.rename(temp_file, MATURE_COINS_FILE)
-                else:  # Unix/Linux
-                    os.rename(temp_file, MATURE_COINS_FILE)
-                    
-                logger.debug(f"[MATURITY_STORAGE] Хранилище сохранено: {len(storage_copy)} монет")
-                break  # Успешно сохранили, выходим из цикла
-                
-            except (OSError, IOError) as temp_error:
-                if attempt < max_retries - 1:
-                    logger.warning(f"[MATURITY_STORAGE] Попытка {attempt + 1} неудачна, повторяем через {retry_delay}с: {temp_error}")
-                    time.sleep(retry_delay)
-                    retry_delay *= 2  # Увеличиваем задержку
-                    continue
-                else:
-                    # Удаляем временный файл в случае ошибки
-                    if os.path.exists(temp_file):
-                        try:
-                            os.remove(temp_file)
-                        except:
-                            pass
-                    raise temp_error
-            except Exception as temp_error:
-                # Удаляем временный файл в случае ошибки
-                if os.path.exists(temp_file):
-                    try:
-                        os.remove(temp_file)
-                    except:
-                        pass
-                raise temp_error
-            
+        # Используем стандартную функцию сохранения из bot_engine.storage
+        from bot_engine.storage import save_json_file
+        save_json_file(MATURE_COINS_FILE, storage_copy)
+        logger.debug(f"[MATURITY_STORAGE] Хранилище сохранено: {len(storage_copy)} монет")
+        return True  # Успешно сохранили
     except Exception as e:
         logger.error(f"[MATURITY_STORAGE] Ошибка сохранения хранилища: {e}")
-        # Попробуем создать резервную копию
-        try:
-            backup_file = MATURE_COINS_FILE + '.backup'
-            with open(backup_file, 'w', encoding='utf-8') as f:
-                json.dump(storage_copy, f, ensure_ascii=False, indent=2)
-            logger.info(f"[MATURITY_STORAGE] Создана резервная копия: {backup_file}")
-        except Exception as backup_error:
-            logger.error(f"[MATURITY_STORAGE] Не удалось создать резервную копию: {backup_error}")
+        return False
 
 def is_coin_mature_stored(symbol):
-    """Проверяет, есть ли монета в постоянном хранилище зрелых монет"""
+    """Проверяет, есть ли монета в постоянном хранилище зрелых монет с актуальными настройками"""
     with mature_coins_lock:
-        return symbol in mature_coins_storage
+        if symbol not in mature_coins_storage:
+            return False
+        
+        # ✅ НОВАЯ ЛОГИКА: Сравниваем настройки зрелости
+        stored_data = mature_coins_storage[symbol]
+        maturity_data = stored_data.get('maturity_data', {})
+        stored_details = maturity_data.get('details', {})
+        
+        # Получаем текущие настройки
+        with bots_data_lock:
+            config = bots_data.get('auto_bot_config', {})
+        
+        current_min_candles = config.get('min_candles_for_maturity', MIN_CANDLES_FOR_MATURITY)
+        current_min_rsi_low = config.get('min_rsi_low', MIN_RSI_LOW)
+        current_max_rsi_high = config.get('max_rsi_high', MAX_RSI_HIGH)
+        
+        # ✅ СРАВНИВАЕМ С СОХРАНЕННЫМИ ПАРАМЕТРАМИ КОНФИГА
+        stored_min_candles = stored_details.get('min_required', 0)
+        stored_config_min_rsi_low = stored_details.get('config_min_rsi_low', 0)
+        stored_config_max_rsi_high = stored_details.get('config_max_rsi_high', 0)
+        
+        # Если параметры конфига изменились - перепроверяем монету
+        if stored_min_candles != current_min_candles:
+            logger.debug(f"[MATURITY_STORAGE] {symbol}: изменилось min_candles ({stored_min_candles} → {current_min_candles})")
+            del mature_coins_storage[symbol]
+            return False
+        
+        if stored_config_min_rsi_low != current_min_rsi_low:
+            logger.debug(f"[MATURITY_STORAGE] {symbol}: изменилось config_min_rsi_low ({stored_config_min_rsi_low} → {current_min_rsi_low})")
+            del mature_coins_storage[symbol]
+            return False
+        
+        if stored_config_max_rsi_high != current_max_rsi_high:
+            logger.debug(f"[MATURITY_STORAGE] {symbol}: изменилось config_max_rsi_high ({stored_config_max_rsi_high} → {current_max_rsi_high})")
+            del mature_coins_storage[symbol]
+            return False
+        
+        logger.debug(f"[MATURITY_STORAGE] {symbol}: найдена в хранилище с актуальными настройками")
+        return True
 
 def add_mature_coin_to_storage(symbol, maturity_data, auto_save=True):
     """Добавляет монету в постоянное хранилище зрелых монет (только если её там еще нет)"""
@@ -143,16 +137,14 @@ def add_mature_coin_to_storage(symbol, maturity_data, auto_save=True):
     with mature_coins_lock:
         # Проверяем, есть ли уже монета в хранилище
         if symbol in mature_coins_storage:
-            # Обновляем только время последней проверки
-            mature_coins_storage[symbol]['last_verified'] = time.time()
-            logger.debug(f"[MATURITY_STORAGE] {symbol}: обновлено время последней проверки")
+            # Монета уже есть - ничего не делаем
+            logger.debug(f"[MATURITY_STORAGE] {symbol}: уже есть в хранилище")
             return
         
         # Добавляем новую монету в хранилище
         mature_coins_storage[symbol] = {
             'timestamp': time.time(),
-            'maturity_data': maturity_data,
-            'last_verified': time.time()
+            'maturity_data': maturity_data
         }
     
     if auto_save:
@@ -168,14 +160,6 @@ def remove_mature_coin_from_storage(symbol):
         del mature_coins_storage[symbol]
         # Отключаем автоматическое сохранение - будет сохранено пакетно
         logger.debug(f"[MATURITY_STORAGE] Монета {symbol} удалена из хранилища (без автосохранения)")
-
-def update_mature_coin_verification(symbol):
-    """Обновляет время последней проверки зрелости монеты"""
-    global mature_coins_storage
-    if symbol in mature_coins_storage:
-        mature_coins_storage[symbol]['last_verified'] = time.time()
-        # Отключаем автоматическое сохранение - будет сохранено пакетно
-        logger.debug(f"[MATURITY_STORAGE] Обновлено время проверки для {symbol} (без автосохранения)")
 
 def load_optimal_ema_data():
     """Загружает данные об оптимальных EMA из файла"""
@@ -260,11 +244,8 @@ def check_coin_maturity_with_storage(symbol, candles):
     # Сначала проверяем постоянное хранилище
     if is_coin_mature_stored(symbol):
         logger.debug(f"[MATURITY_STORAGE] {symbol}: найдена в постоянном хранилище зрелых монет")
-        # Обновляем время последней проверки
-        update_mature_coin_verification(symbol)
         return {
             'is_mature': True,
-            'reason': 'Монета зрелая (из постоянного хранилища)',
             'details': {'stored': True, 'from_storage': True}
         }
     
@@ -337,31 +318,35 @@ def check_coin_maturity(symbol, candles):
         # Детальное логирование для отладки (отключено для уменьшения спама)
         # logger.info(f"[MATURITY_DEBUG] {symbol}: свечи={maturity_checks['sufficient_candles']} ({len(candles)}/{min_candles}), RSI_low={maturity_checks['rsi_reached_low']} (min={rsi_min:.1f}<=>{min_rsi_low}), RSI_high={maturity_checks['rsi_reached_high']} (max={rsi_max:.1f}>={max_rsi_high}), зрелая={is_mature}")
         
-        # Формируем детальную информацию
+        # Формируем детальную информацию с параметрами конфига
         details = {
             'candles_count': len(candles),
             'min_required': min_candles,
-            'rsi_min': rsi_min,
-            'rsi_max': rsi_max,
-            'rsi_range': rsi_range,
-            'checks': maturity_checks
+            'config_min_rsi_low': min_rsi_low,
+            'config_max_rsi_high': max_rsi_high,
+            'rsi_min': round(rsi_min, 1),
+            'rsi_max': round(rsi_max, 1)
         }
         
-        # Определяем причину незрелости
+        # Определяем причину незрелости (только для незрелых монет)
         if not is_mature:
             failed_checks = [check for check, passed in maturity_checks.items() if not passed]
             reason = f'Не пройдены проверки: {", ".join(failed_checks)}'
+            logger.debug(f"[MATURITY] {symbol}: {reason}")
+            logger.debug(f"[MATURITY] {symbol}: Свечи={len(candles)}, RSI={rsi_min:.1f}-{rsi_max:.1f}")
         else:
-            reason = 'Монета зрелая для торговли'
+            reason = None  # Для зрелых монет reason не нужен
         
-        logger.debug(f"[MATURITY] {symbol}: {reason}")
-        logger.debug(f"[MATURITY] {symbol}: Свечи={len(candles)}, RSI={rsi_min:.1f}-{rsi_max:.1f}")
-        
-        return {
+        result = {
             'is_mature': is_mature,
-            'reason': reason,
             'details': details
         }
+        
+        # Добавляем reason только для незрелых монет
+        if reason:
+            result['reason'] = reason
+        
+        return result
         
     except Exception as e:
         logger.error(f"[MATURITY] Ошибка проверки зрелости {symbol}: {e}")

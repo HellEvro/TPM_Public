@@ -30,13 +30,12 @@ try:
     from bot_engine.utils.rsi_utils import calculate_rsi, calculate_rsi_history
     from bot_engine.utils.ema_utils import calculate_ema
     from bot_engine.filters import check_rsi_time_filter, check_exit_scam_filter, check_no_existing_position
-    from bot_engine.maturity_checker import (
-        check_coin_maturity, check_coin_maturity_with_storage,
-        check_coin_maturity_stored_or_verify, is_coin_mature_stored,
-        add_mature_coin_to_storage, remove_mature_coin_from_storage,
-        update_mature_coin_verification, get_mature_coins_storage,
-        set_mature_coins_storage, clear_mature_coins_storage as clear_mature_storage,
-        mature_coins_storage, mature_coins_lock
+    # ✅ ИСПРАВЛЕНО: Используем модуль bots_modules.maturity вместо bot_engine.maturity_checker
+    from bots_modules.maturity import (
+        mature_coins_storage, mature_coins_lock,
+        load_mature_coins_storage, save_mature_coins_storage,
+        is_coin_mature_stored, add_mature_coin_to_storage,
+        remove_mature_coin_from_storage
     )
     from bot_engine.storage import (
         save_rsi_cache as storage_save_rsi_cache,
@@ -251,6 +250,7 @@ from bot_engine.trading_bot import TradingBot as RealTradingBot
 
 # Константы для файлов состояния
 BOTS_STATE_FILE = 'data/bots_state.json'
+BOTS_POSITIONS_REGISTRY_FILE = 'data/bot_positions_registry.json'  # Реестр позиций открытых ботами
 AUTO_BOT_CONFIG_FILE = 'data/auto_bot_config.json'
 
 # Константы для обновления позиций
@@ -539,7 +539,7 @@ rsi_data_lock = threading.Lock()
 bots_data_lock = threading.Lock()
 
 # Загружаем сохраненную конфигурацию Auto Bot
-def load_auto_bot_config():
+def load_auto_bot_config(force_disable=False):
     """Загружает конфигурацию Auto Bot из файла"""
     try:
         config_file = 'data/auto_bot_config.json'
@@ -548,10 +548,11 @@ def load_auto_bot_config():
                 saved_config = json.load(f)
                 with bots_data_lock:
                     bots_data['auto_bot_config'].update(saved_config)
-                    # ВАЖНО: Всегда отключаем автобот при запуске!
-                    bots_data['auto_bot_config']['enabled'] = False
+                    # Отключаем автобот только при принудительном вызове (при запуске сервера)
+                    if force_disable:
+                        bots_data['auto_bot_config']['enabled'] = False
+                        logger.info(f"[CONFIG] 🔒 Auto Bot принудительно выключен при запуске")
                 logger.info(f"[CONFIG] ✅ Загружена конфигурация Auto Bot из {config_file}")
-                logger.info(f"[CONFIG] 🔒 Auto Bot принудительно выключен при запуске")
         else:
             logger.info(f"[CONFIG] 📁 Файл конфигурации {config_file} не найден, используем дефолтные настройки")
             # Auto Bot уже выключен в дефолтной конфигурации
@@ -560,4 +561,104 @@ def load_auto_bot_config():
 
 # ВАЖНО: load_auto_bot_config() теперь вызывается в if __name__ == '__main__'
 # чтобы check_and_stop_existing_bots_processes() мог вывести свои сообщения первым
+
+
+# ===== РЕЕСТР ПОЗИЦИЙ БОТОВ =====
+
+def load_bot_positions_registry():
+    """Загружает реестр позиций, открытых ботами"""
+    try:
+        if os.path.exists(BOTS_POSITIONS_REGISTRY_FILE):
+            with open(BOTS_POSITIONS_REGISTRY_FILE, 'r', encoding='utf-8') as f:
+                registry = json.load(f)
+                logger.info(f"[REGISTRY] ✅ Загружен реестр позиций: {len(registry)} записей")
+                return registry
+        else:
+            logger.info(f"[REGISTRY] 📁 Реестр позиций не найден, создаём новый")
+            return {}
+    except Exception as e:
+        logger.error(f"[REGISTRY] ❌ Ошибка загрузки реестра: {e}")
+        return {}
+
+
+def save_bot_positions_registry(registry):
+    """Сохраняет реестр позиций ботов"""
+    try:
+        with open(BOTS_POSITIONS_REGISTRY_FILE, 'w', encoding='utf-8') as f:
+            json.dump(registry, f, indent=2, ensure_ascii=False)
+        logger.debug(f"[REGISTRY] ✅ Реестр позиций сохранён: {len(registry)} записей")
+        return True
+    except Exception as e:
+        logger.error(f"[REGISTRY] ❌ Ошибка сохранения реестра: {e}")
+        return False
+
+
+def register_bot_position(symbol, order_id, side, entry_price, quantity):
+    """
+    Регистрирует позицию, открытую ботом
+    
+    Args:
+        symbol: Символ монеты
+        order_id: ID ордера на бирже
+        side: Сторона (LONG/SHORT)
+        entry_price: Цена входа
+        quantity: Количество
+    """
+    try:
+        registry = load_bot_positions_registry()
+        
+        # Ключ — order_id, значение — информация о позиции
+        registry[order_id] = {
+            'symbol': symbol,
+            'side': side,
+            'entry_price': entry_price,
+            'quantity': quantity,
+            'opened_at': datetime.now().isoformat(),
+            'managed_by_bot': True
+        }
+        
+        save_bot_positions_registry(registry)
+        logger.info(f"[REGISTRY] ✅ Зарегистрирована позиция: {symbol} {side}, order_id={order_id}")
+        return True
+    except Exception as e:
+        logger.error(f"[REGISTRY] ❌ Ошибка регистрации позиции: {e}")
+        return False
+
+
+def unregister_bot_position(order_id):
+    """Удаляет позицию из реестра (когда позиция закрыта)"""
+    try:
+        registry = load_bot_positions_registry()
+        
+        if order_id in registry:
+            position_info = registry.pop(order_id)
+            save_bot_positions_registry(registry)
+            logger.info(f"[REGISTRY] ✅ Удалена позиция из реестра: {position_info.get('symbol')} (order_id={order_id})")
+            return True
+        else:
+            logger.debug(f"[REGISTRY] ⚠️ Позиция с order_id={order_id} не найдена в реестре")
+            return False
+    except Exception as e:
+        logger.error(f"[REGISTRY] ❌ Ошибка удаления позиции из реестра: {e}")
+        return False
+
+
+def is_bot_position(order_id):
+    """Проверяет, является ли позиция с данным order_id позицией бота"""
+    try:
+        registry = load_bot_positions_registry()
+        return order_id in registry
+    except Exception as e:
+        logger.error(f"[REGISTRY] ❌ Ошибка проверки позиции: {e}")
+        return False
+
+
+def get_bot_position_info(order_id):
+    """Получает информацию о позиции бота из реестра"""
+    try:
+        registry = load_bot_positions_registry()
+        return registry.get(order_id)
+    except Exception as e:
+        logger.error(f"[REGISTRY] ❌ Ошибка получения информации о позиции: {e}")
+        return None
 

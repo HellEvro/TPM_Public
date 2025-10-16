@@ -116,18 +116,10 @@ class AsyncRSILoader:
             if not rsi_data:
                 return None
             
-            # Проверяем maturity только если RSI данные получены успешно
-            try:
-                if not is_coin_mature_stored(symbol):
-                    # Добавляем в maturity storage без автосохранения
-                    maturity_data = {
-                        'timestamp': time.time(),
-                        'rsi_data': rsi_data
-                    }
-                    add_mature_coin_to_storage(symbol, maturity_data, auto_save=False)
-                    logger.debug(f"[ASYNC_RSI] {symbol}: добавлен в maturity storage")
-            except Exception as maturity_error:
-                logger.warning(f"[ASYNC_RSI] {symbol}: ошибка maturity проверки: {maturity_error}")
+            # ❌ УДАЛЕНО: Неправильная логика добавления RSI данных в maturity storage
+            # Зрелость монеты проверяется в get_coin_rsi_data() и check_coin_maturity_with_storage()
+            # НЕ нужно добавлять монеты в maturity storage здесь - это делается только
+            # когда монета ДЕЙСТВИТЕЛЬНО прошла проверку зрелости!
             
             return rsi_data
             
