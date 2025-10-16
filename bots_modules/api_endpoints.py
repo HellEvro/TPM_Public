@@ -2315,6 +2315,61 @@ def signal_handler(signum, frame):
         logger.error(f"[SHUTDOWN] ⚠️ Ошибка при graceful shutdown: {e}")
         os._exit(1)
 
+@bots_app.route('/api/system/reload-modules', methods=['POST'])
+def reload_modules():
+    """Перезагружает модули без перезапуска сервера (Hot Reload)"""
+    try:
+        import importlib
+        import sys
+        
+        modules_to_reload = [
+            'bot_engine.bot_config',
+            'bots_modules.filters',
+            'bots_modules.calculations',
+            'bots_modules.maturity',
+            'bots_modules.sync_and_cache',
+            'bot_engine.indicators',
+        ]
+        
+        reloaded = []
+        failed = []
+        
+        for module_name in modules_to_reload:
+            try:
+                if module_name in sys.modules:
+                    logger.info(f"[RELOAD] 🔄 Перезагрузка модуля {module_name}...")
+                    module = sys.modules[module_name]
+                    importlib.reload(module)
+                    reloaded.append(module_name)
+                    logger.info(f"[RELOAD] ✅ Модуль {module_name} перезагружен")
+                else:
+                    logger.warning(f"[RELOAD] ⚠️ Модуль {module_name} не был загружен")
+            except Exception as e:
+                logger.error(f"[RELOAD] ❌ Ошибка перезагрузки {module_name}: {e}")
+                failed.append({'module': module_name, 'error': str(e)})
+        
+        # Перезагружаем конфигурацию
+        try:
+            from bots_modules.imports_and_globals import load_auto_bot_config
+            load_auto_bot_config()
+            logger.info(f"[RELOAD] ✅ Конфигурация Auto Bot перезагружена")
+        except Exception as e:
+            logger.error(f"[RELOAD] ❌ Ошибка перезагрузки конфигурации: {e}")
+        
+        return jsonify({
+            'success': True,
+            'reloaded': reloaded,
+            'failed': failed,
+            'message': f'Перезагружено {len(reloaded)} модулей, ошибок: {len(failed)}'
+        })
+        
+    except Exception as e:
+        logger.error(f"[RELOAD] ❌ Общая ошибка перезагрузки: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 def cleanup_bot_service():
     """Очистка ресурсов при завершении сервиса"""
     global smart_rsi_manager, system_initialized
