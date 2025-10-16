@@ -544,6 +544,25 @@ class TradingBot:
                 self.status = (BotStatus.IN_POSITION_LONG if side == 'LONG' 
                               else BotStatus.IN_POSITION_SHORT)
                 
+                # ✅ РЕГИСТРИРУЕМ ПОЗИЦИЮ В РЕЕСТРЕ
+                try:
+                    from bots_modules.imports_and_globals import register_bot_position
+                    order_id = order_result.get('order_id')
+                    if order_id:
+                        register_bot_position(
+                            symbol=self.symbol,
+                            order_id=order_id,
+                            side=side,
+                            entry_price=order_result.get('price'),
+                            quantity=quantity
+                        )
+                        self.logger.info(f"[TRADING_BOT] {self.symbol}: ✅ Позиция зарегистрирована в реестре: order_id={order_id}")
+                    else:
+                        self.logger.warning(f"[TRADING_BOT] {self.symbol}: ⚠️ Не удалось зарегистрировать позицию - нет order_id")
+                except Exception as registry_error:
+                    self.logger.error(f"[TRADING_BOT] {self.symbol}: ❌ Ошибка регистрации позиции в реестре: {registry_error}")
+                    # Не блокируем торговлю из-за ошибки реестра
+                
                 # Устанавливаем стоп-лосс
                 try:
                     stop_result = self._place_stop_loss(side, self.entry_price, self.max_loss_percent)
@@ -594,6 +613,19 @@ class TradingBot:
                     pnl = self._calculate_pnl(exit_price)
                 
                 self.logger.info(f"Exited position: PnL = {pnl}")
+                
+                # ✅ УДАЛЯЕМ ПОЗИЦИЮ ИЗ РЕЕСТРА
+                try:
+                    from bots_modules.imports_and_globals import unregister_bot_position
+                    order_id = self.position.get('order_id') if self.position else None
+                    if order_id:
+                        unregister_bot_position(order_id)
+                        self.logger.info(f"[TRADING_BOT] {self.symbol}: ✅ Позиция удалена из реестра: order_id={order_id}")
+                    else:
+                        self.logger.warning(f"[TRADING_BOT] {self.symbol}: ⚠️ Не удалось удалить позицию из реестра - нет order_id")
+                except Exception as registry_error:
+                    self.logger.error(f"[TRADING_BOT] {self.symbol}: ❌ Ошибка удаления позиции из реестра: {registry_error}")
+                    # Не блокируем торговлю из-за ошибки реестра
                 
                 # Сбрасываем состояние
                 self.position = None

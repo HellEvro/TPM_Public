@@ -39,7 +39,8 @@ try:
         mature_coins_storage, mature_coins_lock, BOT_STATUS,
         DEFAULT_AUTO_BOT_CONFIG, RSI_CACHE_FILE, PROCESS_STATE_FILE,
         SYSTEM_CONFIG_FILE, BOTS_STATE_FILE, AUTO_BOT_CONFIG_FILE,
-        DEFAULT_CONFIG_FILE, INACTIVE_BOT_TIMEOUT, should_log_message
+        DEFAULT_CONFIG_FILE, INACTIVE_BOT_TIMEOUT, should_log_message,
+        get_coin_processing_lock
     )
     # MATURE_COINS_FILE определен в maturity.py
     try:
@@ -1196,6 +1197,21 @@ def cleanup_inactive_bots():
             for symbol in bots_to_remove:
                 bot_data = bots_data['bots'][symbol]
                 logger.info(f"[INACTIVE_CLEANUP] 🗑️ Удаление неактивного бота {symbol} (статус: {bot_data.get('status')})")
+                
+                # ✅ УДАЛЯЕМ ПОЗИЦИЮ ИЗ РЕЕСТРА ПРИ УДАЛЕНИИ НЕАКТИВНОГО БОТА
+                try:
+                    from bots_modules.imports_and_globals import unregister_bot_position
+                    position = bot_data.get('position')
+                    if position and position.get('order_id'):
+                        order_id = position['order_id']
+                        unregister_bot_position(order_id)
+                        logger.info(f"[INACTIVE_CLEANUP] ✅ Позиция удалена из реестра при удалении неактивного бота {symbol}: order_id={order_id}")
+                    else:
+                        logger.info(f"[INACTIVE_CLEANUP] ℹ️ У неактивного бота {symbol} нет позиции в реестре")
+                except Exception as registry_error:
+                    logger.error(f"[INACTIVE_CLEANUP] ❌ Ошибка удаления позиции из реестра для бота {symbol}: {registry_error}")
+                    # Не блокируем удаление бота из-за ошибки реестра
+                
                 del bots_data['bots'][symbol]
                 removed_count += 1
         

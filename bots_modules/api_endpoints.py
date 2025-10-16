@@ -79,7 +79,8 @@ try:
     )
     from bots_modules.filters import (
         get_effective_signal, check_auto_bot_filters,
-        process_auto_bot_signals, test_exit_scam_filter, test_rsi_time_filter
+        process_auto_bot_signals, test_exit_scam_filter, test_rsi_time_filter,
+        process_trading_signals_for_all_bots
     )
     # Для clear_mature_coins_storage может быть в разных модулях
     try:
@@ -99,7 +100,9 @@ except ImportError as e:
     def save_auto_bot_config():
         pass
     def get_effective_signal(coin):
-        return 'WAIT'
+        # Используем настоящую функцию из filters.py
+        from bots_modules.filters import get_effective_signal as real_get_effective_signal
+        return real_get_effective_signal(coin)
     def check_auto_bot_filters(symbol):
         return {'allowed': True}
     def process_auto_bot_signals(exchange_obj=None):
@@ -270,7 +273,7 @@ def get_account_info():
             bots_list = list(bots_data['bots'].values())
             account_info["bots_count"] = len(bots_list)
             account_info["active_bots"] = sum(1 for bot in bots_list 
-                                            if bot.get('status') not in ['idle', 'paused'])
+                                            if bot.get('status') not in ['paused'])
         
         response = jsonify(account_info)
         response.headers.add('Access-Control-Allow-Origin', '*')
@@ -287,26 +290,57 @@ def get_account_info():
 
 @bots_app.route('/api/bots/manual-positions/refresh', methods=['POST'])
 def refresh_manual_positions():
-    """Обновить список монет с ручными позициями на бирже"""
+    """Обновить список монет с ручными позициями на бирже (позиции БЕЗ ботов)"""
     try:
         manual_positions = []
+        
+        # Получаем exchange объект
+        try:
+            from bots_modules.imports_and_globals import get_exchange
+            exchange = get_exchange()
+        except ImportError:
+            exchange = None
+        
         if exchange:
             exchange_positions = exchange.get_positions()
+            
             if isinstance(exchange_positions, tuple):
                 positions_list = exchange_positions[0] if exchange_positions else []
             else:
                 positions_list = exchange_positions if exchange_positions else []
             
-            # Извлекаем символы с активными позициями
+            # Получаем список символов с ботами (включая сохраненных)
+            with bots_data_lock:
+                active_bot_symbols = set(bots_data['bots'].keys())
+            
+            # Также загружаем сохраненных ботов из файла
+            saved_bot_symbols = set()
+            try:
+                import json
+                bots_state_file = 'data/bots_state.json'
+                if os.path.exists(bots_state_file):
+                    with open(bots_state_file, 'r', encoding='utf-8') as f:
+                        saved_data = json.load(f)
+                        if 'bots' in saved_data:
+                            saved_bot_symbols = set(saved_data['bots'].keys())
+            except Exception as e:
+                logger.warning(f"[MANUAL_POSITIONS] ⚠️ Не удалось загрузить сохраненных ботов: {e}")
+            
+            # Объединяем активных и сохраненных ботов
+            system_bot_symbols = active_bot_symbols.union(saved_bot_symbols)
+            
+            # Извлекаем символы с активными позициями, для которых НЕТ бота в системе
             for pos in positions_list:
                 if abs(float(pos.get('size', 0))) > 0:
                     symbol = pos.get('symbol', '')
                     # Убираем USDT из символа для сопоставления с coins_rsi_data
                     clean_symbol = symbol.replace('USDT', '') if symbol else ''
-                    if clean_symbol and clean_symbol not in manual_positions:
-                        manual_positions.append(clean_symbol)
+                    
+                    # ✅ РУЧНЫЕ ПОЗИЦИИ = позиции на бирже БЕЗ бота в системе
+                    if clean_symbol and clean_symbol not in system_bot_symbols:
+                        if clean_symbol not in manual_positions:
+                            manual_positions.append(clean_symbol)
             
-            logger.info(f"[MANUAL_POSITIONS] ✋ Обновлено {len(manual_positions)} монет с позициями")
             
         return jsonify({
             'success': True,
@@ -315,7 +349,9 @@ def refresh_manual_positions():
         })
         
     except Exception as e:
-        logger.error(f"[ERROR] Ошибка обновления ручных позиций: {str(e)}")
+        logger.error(f"[MANUAL_POSITIONS] ❌ Ошибка обновления ручных позиций: {str(e)}")
+        import traceback
+        logger.error(f"[MANUAL_POSITIONS] ❌ Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @bots_app.route('/api/bots/coins-with-rsi', methods=['GET'])
@@ -385,9 +421,16 @@ def get_coins_with_rsi():
                 
                 cleaned_coins[symbol] = cleaned_coin
             
-            # Получаем список монет с ручными позициями на бирже
+            # Получаем список монет с ручными позициями на бирже (позиции БЕЗ ботов)
             manual_positions = []
             try:
+                # Получаем exchange объект
+                try:
+                    from bots_modules.imports_and_globals import get_exchange
+                    exchange = get_exchange()
+                except ImportError:
+                    exchange = None
+                
                 if exchange:
                     exchange_positions = exchange.get_positions()
                     if isinstance(exchange_positions, tuple):
@@ -395,18 +438,38 @@ def get_coins_with_rsi():
                     else:
                         positions_list = exchange_positions if exchange_positions else []
                     
-                    # Извлекаем символы с активными позициями
+                    # Получаем список символов с ботами (включая сохраненных)
+                    with bots_data_lock:
+                        active_bot_symbols = set(bots_data['bots'].keys())
+                    
+                    # Также загружаем сохраненных ботов из файла
+                    saved_bot_symbols = set()
+                    try:
+                        bots_state_file = 'data/bots_state.json'
+                        if os.path.exists(bots_state_file):
+                            with open(bots_state_file, 'r', encoding='utf-8') as f:
+                                saved_data = json.load(f)
+                                if 'bots' in saved_data:
+                                    saved_bot_symbols = set(saved_data['bots'].keys())
+                    except Exception as e:
+                        logger.warning(f"[MANUAL_POSITIONS] ⚠️ Не удалось загрузить сохраненных ботов: {e}")
+                    
+                    # Объединяем активных и сохраненных ботов
+                    system_bot_symbols = active_bot_symbols.union(saved_bot_symbols)
+                    
+                    # Извлекаем символы с активными позициями, для которых НЕТ бота в системе
                     for pos in positions_list:
                         if abs(float(pos.get('size', 0))) > 0:
                             symbol = pos.get('symbol', '')
                             # Убираем USDT из символа для сопоставления с coins_rsi_data
                             clean_symbol = symbol.replace('USDT', '') if symbol else ''
-                            if clean_symbol and clean_symbol not in manual_positions:
-                                manual_positions.append(clean_symbol)
+                            
+                            # ✅ РУЧНЫЕ ПОЗИЦИИ = позиции на бирже БЕЗ бота в системе
+                            if clean_symbol and clean_symbol not in system_bot_symbols:
+                                if clean_symbol not in manual_positions:
+                                    manual_positions.append(clean_symbol)
                     
-                    # ✅ Логируем только если есть изменения
-                    if len(manual_positions) > 0:
-                        logger.debug(f"[MANUAL_POSITIONS] ✋ {len(manual_positions)} монет с позициями")
+                    # ✅ Детальное логирование для отладки
             except Exception as e:
                 logger.error(f"[ERROR] Ошибка получения ручных позиций: {str(e)}")
             
@@ -473,8 +536,8 @@ def get_bots_list():
             auto_bot_enabled = bots_data.get('auto_bot_config', {}).get('enabled', False)
             last_update = bots_data.get('last_update', 'Неизвестно')
         
-        # Подсчитываем статистику
-        active_bots = sum(1 for bot in bots_list if bot.get('status') not in ['idle', 'paused'])
+        # Подсчитываем статистику (idle боты считаются активными для UI)
+        active_bots = sum(1 for bot in bots_list if bot.get('status') not in ['paused'])
         
         response_data = {
             'success': True,
@@ -690,7 +753,7 @@ def stop_bot_endpoint():
             logger.error(f"[BOT] {symbol}: Биржа не инициализирована, позиция {position_to_close} не может быть закрыта")
         
         # Логируем остановку бота в историю
-        log_bot_stop(symbol, reason)
+        # log_bot_stop(symbol, reason)  # TODO: Функция не определена
         
         # Сохраняем состояние после остановки
         save_bots_state()
@@ -819,6 +882,21 @@ def delete_bot_endpoint():
             
             # Получаем данные бота перед удалением для истории
             bot_data = bots_data['bots'][symbol]
+            
+            # ✅ УДАЛЯЕМ ПОЗИЦИЮ ИЗ РЕЕСТРА ПРИ УДАЛЕНИИ БОТА
+            try:
+                from bots_modules.imports_and_globals import unregister_bot_position
+                position = bot_data.get('position')
+                if position and position.get('order_id'):
+                    order_id = position['order_id']
+                    unregister_bot_position(order_id)
+                    logger.info(f"[API] ✅ Позиция удалена из реестра при удалении бота {symbol}: order_id={order_id}")
+                else:
+                    logger.info(f"[API] ℹ️ У бота {symbol} нет позиции в реестре")
+            except Exception as registry_error:
+                logger.error(f"[API] ❌ Ошибка удаления позиции из реестра для бота {symbol}: {registry_error}")
+                # Не блокируем удаление бота из-за ошибки реестра
+            
             del bots_data['bots'][symbol]
             logger.info(f"[BOT] {symbol}: Бот удален")
             
@@ -965,6 +1043,53 @@ def close_position_endpoint():
         logger.error(f"[ERROR] Ошибка закрытия позиций: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# Словарь человекочитаемых названий параметров конфигурации
+CONFIG_NAMES = {
+    # Auto Bot Configuration
+    'enabled': 'Auto Bot включен',
+    'max_concurrent': 'Максимум одновременных ботов',
+    'default_position_size': 'Размер позиции по умолчанию (USDT)',
+    'rsi_long_threshold': 'RSI порог для LONG',
+    'rsi_short_threshold': 'RSI порог для SHORT',
+    'rsi_time_filter_enabled': 'RSI Time Filter (фильтр по времени)',
+    'rsi_time_filter_candles': 'RSI Time Filter - количество свечей',
+    'avoid_down_trend': 'Фильтр DOWN тренда для LONG',
+    'avoid_up_trend': 'Фильтр UP тренда для SHORT',
+    'trend_detection_enabled': 'Определение тренда включено',
+    'min_candles_for_maturity': 'Минимум свечей для зрелости',
+    'min_rsi_low': 'Минимальный RSI Low для зрелости',
+    'max_rsi_high': 'Максимальный RSI High для зрелости',
+    'tp_percent': 'Take Profit (%)',
+    'sl_percent': 'Stop Loss (%)',
+    'leverage': 'Плечо',
+    
+    # System Configuration
+    'rsi_update_interval': 'Интервал обновления RSI (сек)',
+    'auto_save_interval': 'Интервал автосохранения (сек)',
+    'debug_mode': 'Режим отладки',
+    'auto_refresh_ui': 'Автообновление UI',
+    'refresh_interval': 'Интервал обновления UI (сек)',
+    'position_sync_interval': 'Интервал синхронизации позиций (сек)',
+    'inactive_bot_cleanup_interval': 'Интервал очистки неактивных ботов (сек)',
+    'inactive_bot_timeout': 'Таймаут неактивного бота (сек)',
+    'stop_loss_setup_interval': 'Интервал установки Stop Loss (сек)',
+    'enhanced_rsi_enabled': 'Улучшенная система RSI',
+    'enhanced_rsi_require_volume_confirmation': 'Подтверждение объемом',
+    'enhanced_rsi_require_divergence_confirmation': 'Строгий режим (дивергенции)',
+    'enhanced_rsi_use_stoch_rsi': 'Использовать Stochastic RSI',
+}
+
+def log_config_change(key, old_value, new_value, description=""):
+    """Логирует изменение конфигурации только если значение изменилось"""
+    if old_value != new_value:
+        arrow = '→'
+        # Используем понятное название из словаря или техническое название
+        display_name = description or CONFIG_NAMES.get(key, key)
+        # Используем print напрямую для ANSI кодов, чтобы обойти логгер
+        print(f"\033[92m[CONFIG] ✓ {display_name}: {old_value} {arrow} {new_value}\033[0m")
+        return True
+    return False
+
 @bots_app.route('/api/bots/system-config', methods=['GET', 'POST'])
 def system_config():
     """Получить или обновить системные настройки"""
@@ -1002,71 +1127,105 @@ def system_config():
             if not data:
                 return jsonify({'success': False, 'error': 'No data provided'}), 400
             
-            logger.info(f"[CONFIG] Обновление системных настроек: {data}")
+            # Счетчик изменений
+            changes_count = 0
             
             # Обновляем настройки
             if 'rsi_update_interval' in data:
-                SystemConfig.RSI_UPDATE_INTERVAL = int(data['rsi_update_interval'])
-                logger.info(f"[CONFIG] RSI интервал обновлен: {SystemConfig.RSI_UPDATE_INTERVAL} сек")
-                
-                # Обновляем интервал в SmartRSIManager если он активен
-                if 'smart_rsi_manager' in globals() and smart_rsi_manager:
-                    smart_rsi_manager.update_monitoring_interval(SystemConfig.RSI_UPDATE_INTERVAL)
-                    logger.info(f"[CONFIG] ✅ SmartRSIManager обновлен с новым интервалом")
+                old_value = SystemConfig.RSI_UPDATE_INTERVAL
+                new_value = int(data['rsi_update_interval'])
+                if log_config_change('rsi_update_interval', old_value, new_value):
+                    SystemConfig.RSI_UPDATE_INTERVAL = new_value
+                    changes_count += 1
+                    # Обновляем интервал в SmartRSIManager если он активен
+                    if 'smart_rsi_manager' in globals() and smart_rsi_manager:
+                        smart_rsi_manager.update_monitoring_interval(SystemConfig.RSI_UPDATE_INTERVAL)
             
             if 'auto_save_interval' in data:
-                SystemConfig.AUTO_SAVE_INTERVAL = int(data['auto_save_interval'])
-                logger.info(f"[CONFIG] Автосохранение интервал обновлен: {SystemConfig.AUTO_SAVE_INTERVAL} сек")
+                old_value = SystemConfig.AUTO_SAVE_INTERVAL
+                new_value = int(data['auto_save_interval'])
+                if log_config_change('auto_save_interval', old_value, new_value):
+                    SystemConfig.AUTO_SAVE_INTERVAL = new_value
+                    changes_count += 1
             
             if 'debug_mode' in data:
-                SystemConfig.DEBUG_MODE = bool(data['debug_mode'])
-                logger.info(f"[CONFIG] Режим отладки: {SystemConfig.DEBUG_MODE}")
+                old_value = SystemConfig.DEBUG_MODE
+                new_value = bool(data['debug_mode'])
+                if log_config_change('debug_mode', old_value, new_value):
+                    SystemConfig.DEBUG_MODE = new_value
+                    changes_count += 1
             
             if 'auto_refresh_ui' in data:
-                SystemConfig.AUTO_REFRESH_UI = bool(data['auto_refresh_ui'])
-                logger.info(f"[CONFIG] Автообновление UI: {SystemConfig.AUTO_REFRESH_UI}")
+                old_value = SystemConfig.AUTO_REFRESH_UI
+                new_value = bool(data['auto_refresh_ui'])
+                if log_config_change('auto_refresh_ui', old_value, new_value):
+                    SystemConfig.AUTO_REFRESH_UI = new_value
+                    changes_count += 1
             
             if 'refresh_interval' in data:
-                SystemConfig.UI_REFRESH_INTERVAL = int(data['refresh_interval'])
-                logger.info(f"[CONFIG] Интервал обновления UI: {SystemConfig.UI_REFRESH_INTERVAL} сек")
+                old_value = SystemConfig.UI_REFRESH_INTERVAL
+                new_value = int(data['refresh_interval'])
+                if log_config_change('refresh_interval', old_value, new_value):
+                    SystemConfig.UI_REFRESH_INTERVAL = new_value
+                    changes_count += 1
             
             # Интервалы синхронизации и очистки
             if 'stop_loss_setup_interval' in data:
                 old_value = STOP_LOSS_SETUP_INTERVAL
-                STOP_LOSS_SETUP_INTERVAL = int(data['stop_loss_setup_interval'])
-                logger.info(f"[CONFIG] Stop Loss интервал обновлен: {old_value} → {STOP_LOSS_SETUP_INTERVAL} сек")
+                new_value = int(data['stop_loss_setup_interval'])
+                if log_config_change('stop_loss_setup_interval', old_value, new_value):
+                    STOP_LOSS_SETUP_INTERVAL = new_value
+                    changes_count += 1
             
             if 'position_sync_interval' in data:
                 old_value = POSITION_SYNC_INTERVAL
-                POSITION_SYNC_INTERVAL = int(data['position_sync_interval'])
-                logger.info(f"[CONFIG] Position Sync интервал обновлен: {old_value} → {POSITION_SYNC_INTERVAL} сек")
+                new_value = int(data['position_sync_interval'])
+                if log_config_change('position_sync_interval', old_value, new_value):
+                    POSITION_SYNC_INTERVAL = new_value
+                    changes_count += 1
             
             if 'inactive_bot_cleanup_interval' in data:
                 old_value = INACTIVE_BOT_CLEANUP_INTERVAL
-                INACTIVE_BOT_CLEANUP_INTERVAL = int(data['inactive_bot_cleanup_interval'])
-                logger.info(f"[CONFIG] Inactive Bot Cleanup интервал обновлен: {old_value} → {INACTIVE_BOT_CLEANUP_INTERVAL} сек")
+                new_value = int(data['inactive_bot_cleanup_interval'])
+                if log_config_change('inactive_bot_cleanup_interval', old_value, new_value):
+                    INACTIVE_BOT_CLEANUP_INTERVAL = new_value
+                    changes_count += 1
             
             if 'inactive_bot_timeout' in data:
                 old_value = globals_module.INACTIVE_BOT_TIMEOUT
-                globals_module.INACTIVE_BOT_TIMEOUT = int(data['inactive_bot_timeout'])
-                logger.info(f"[CONFIG] Inactive Bot Timeout обновлен: {old_value} → {globals_module.INACTIVE_BOT_TIMEOUT} сек")
+                new_value = int(data['inactive_bot_timeout'])
+                if log_config_change('inactive_bot_timeout', old_value, new_value):
+                    globals_module.INACTIVE_BOT_TIMEOUT = new_value
+                    changes_count += 1
             
             # Настройки улучшенного RSI
             if 'enhanced_rsi_enabled' in data:
-                SystemConfig.ENHANCED_RSI_ENABLED = bool(data['enhanced_rsi_enabled'])
-                logger.info(f"[CONFIG] Улучшенная система RSI: {SystemConfig.ENHANCED_RSI_ENABLED}")
+                old_value = SystemConfig.ENHANCED_RSI_ENABLED
+                new_value = bool(data['enhanced_rsi_enabled'])
+                if log_config_change('enhanced_rsi_enabled', old_value, new_value):
+                    SystemConfig.ENHANCED_RSI_ENABLED = new_value
+                    changes_count += 1
             
             if 'enhanced_rsi_require_volume_confirmation' in data:
-                SystemConfig.ENHANCED_RSI_REQUIRE_VOLUME_CONFIRMATION = bool(data['enhanced_rsi_require_volume_confirmation'])
-                logger.info(f"[CONFIG] Подтверждение объемом: {SystemConfig.ENHANCED_RSI_REQUIRE_VOLUME_CONFIRMATION}")
+                old_value = SystemConfig.ENHANCED_RSI_REQUIRE_VOLUME_CONFIRMATION
+                new_value = bool(data['enhanced_rsi_require_volume_confirmation'])
+                if log_config_change('enhanced_rsi_require_volume_confirmation', old_value, new_value):
+                    SystemConfig.ENHANCED_RSI_REQUIRE_VOLUME_CONFIRMATION = new_value
+                    changes_count += 1
             
             if 'enhanced_rsi_require_divergence_confirmation' in data:
-                SystemConfig.ENHANCED_RSI_REQUIRE_DIVERGENCE_CONFIRMATION = bool(data['enhanced_rsi_require_divergence_confirmation'])
-                logger.info(f"[CONFIG] Строгий режим (дивергенции): {SystemConfig.ENHANCED_RSI_REQUIRE_DIVERGENCE_CONFIRMATION}")
+                old_value = SystemConfig.ENHANCED_RSI_REQUIRE_DIVERGENCE_CONFIRMATION
+                new_value = bool(data['enhanced_rsi_require_divergence_confirmation'])
+                if log_config_change('enhanced_rsi_require_divergence_confirmation', old_value, new_value):
+                    SystemConfig.ENHANCED_RSI_REQUIRE_DIVERGENCE_CONFIRMATION = new_value
+                    changes_count += 1
             
             if 'enhanced_rsi_use_stoch_rsi' in data:
-                SystemConfig.ENHANCED_RSI_USE_STOCH_RSI = bool(data['enhanced_rsi_use_stoch_rsi'])
-                logger.info(f"[CONFIG] Использовать Stochastic RSI: {SystemConfig.ENHANCED_RSI_USE_STOCH_RSI}")
+                old_value = SystemConfig.ENHANCED_RSI_USE_STOCH_RSI
+                new_value = bool(data['enhanced_rsi_use_stoch_rsi'])
+                if log_config_change('enhanced_rsi_use_stoch_rsi', old_value, new_value):
+                    SystemConfig.ENHANCED_RSI_USE_STOCH_RSI = new_value
+                    changes_count += 1
         
             # КРИТИЧЕСКИ ВАЖНО: Сохраняем системные настройки в файл
             # Сначала загружаем существующие настройки, чтобы не потерять другие поля
@@ -1099,14 +1258,16 @@ def system_config():
             })
             
             saved_to_file = save_system_config(system_config_data)
-            if saved_to_file:
-                logger.info("[CONFIG] ✅ Системные настройки сохранены в файл")
-                # Перезагружаем конфигурацию, чтобы применить изменения
-                logger.info("[CONFIG] 🔄 Перезагружаем конфигурацию из файла...")
-                load_system_config()
-                logger.info("[CONFIG] ✅ Конфигурация успешно перезагружена")
+            
+            # Выводим итоговое сообщение
+            if changes_count > 0:
+                print(f"\033[92m[CONFIG] ✅ Изменено параметров: {changes_count}, конфигурация сохранена\033[0m")
             else:
-                logger.error("[CONFIG] ❌ Ошибка сохранения системных настроек")
+                logger.info("[CONFIG] ℹ️  Изменений не обнаружено")
+            
+            if saved_to_file and changes_count > 0:
+                # Перезагружаем конфигурацию, чтобы применить изменения
+                load_system_config()
         
         return jsonify({
             'success': True,
@@ -1465,8 +1626,8 @@ def restart_service_endpoint():
         system_initialized = False
         logger.info("[HOT_RELOAD] 🔄 Сброшен флаг инициализации")
         
-        # Перезагружаем конфигурацию
-        load_auto_bot_config()
+        # Перезагружаем конфигурацию (БЕЗ принудительного выключения автобота)
+        load_auto_bot_config(force_disable=False)
         load_system_config()
         logger.info("[HOT_RELOAD] 🔄 Перезагружена конфигурация")
         
@@ -1635,11 +1796,10 @@ def auto_bot_config():
             if not data:
                 return jsonify({'success': False, 'error': 'No data provided'}), 400
             
-            logger.info(f"[CONFIG] Обновление конфигурации Auto Bot: {data}")
-            
             # Проверяем изменение критериев зрелости
             maturity_params_changed = False
             maturity_keys = ['min_candles_for_maturity', 'min_rsi_low', 'max_rsi_high']
+            changes_count = 0
             
             with bots_data_lock:
                 old_config = bots_data['auto_bot_config'].copy()
@@ -1652,23 +1812,23 @@ def auto_bot_config():
                 for key, value in data.items():
                     if key in bots_data['auto_bot_config']:
                         old_value = bots_data['auto_bot_config'][key]
-                        bots_data['auto_bot_config'][key] = value
-                        logger.info(f"[CONFIG] {key}: {old_value} → {value}")
                         
-                        # Специальное логирование для фильтров тренда
-                        if key == 'avoid_down_trend':
-                            trend_status = "включен" if value else "выключен"
-                            logger.info(f"[TREND_FILTER] 🔻 Фильтр DOWN тренда для LONG позиций: {trend_status}")
-                        elif key == 'avoid_up_trend':
-                            trend_status = "включен" if value else "выключен"
-                            logger.info(f"[TREND_FILTER] 📈 Фильтр UP тренда для SHORT позиций: {trend_status}")
+                        # Проверяем реальное изменение
+                        if old_value != value:
+                            bots_data['auto_bot_config'][key] = value
+                            changes_count += 1
+                            
+                            # Используем log_config_change с названием из словаря
+                            log_config_change(key, old_value, value)
             
             # КРИТИЧЕСКИ ВАЖНО: Сохраняем конфигурацию в файл!
             save_result = save_auto_bot_config()
-            if save_result:
-                logger.info("[CONFIG] ✅ Конфигурация Auto Bot сохранена в файл")
+            
+            # Выводим итоговое сообщение
+            if changes_count > 0:
+                print(f"\033[92m[CONFIG] ✅ Auto Bot: изменено параметров: {changes_count}, конфигурация сохранена\033[0m")
             else:
-                logger.error("[CONFIG] ❌ Ошибка сохранения конфигурации Auto Bot")
+                logger.info("[CONFIG] ℹ️  Auto Bot: изменений не обнаружено")
             
             # ✅ АВТОМАТИЧЕСКАЯ ОЧИСТКА при изменении критериев зрелости
             if maturity_params_changed:
@@ -1686,11 +1846,11 @@ def auto_bot_config():
                     logger.error(f"[MATURITY] ❌ Ошибка очистки файла зрелых монет: {e}")
             
             # КРИТИЧЕСКИ ВАЖНО: При включении Auto Bot запускаем немедленную проверку
-            auto_bot_enabled = bots_data['auto_bot_config']['enabled']
-            if 'enabled' in data and data['enabled'] is True and auto_bot_enabled:
+            # Показываем блок только если enabled реально изменился с False на True
+            if 'enabled' in data and old_config.get('enabled') == False and data['enabled'] == True:
                 # ✅ ЯРКИЙ ЛОГ ВКЛЮЧЕНИЯ (ЗЕЛЕНЫЙ)
                 logger.info("=" * 80)
-                logger.info("\033[92m🟢 AUTO BOT ВКЛЮЧЕН! 🟢\033[0m")
+                print("\033[92m🟢 AUTO BOT ВКЛЮЧЕН! 🟢\033[0m")
                 logger.info("=" * 80)
                 logger.info("⚠️  ВНИМАНИЕ: Автобот будет автоматически создавать ботов!")
                 logger.info(f"⚙️  Макс. одновременных ботов: {bots_data['auto_bot_config'].get('max_concurrent', 5)}")
@@ -1705,10 +1865,11 @@ def auto_bot_config():
                     logger.error(f"[CONFIG] ❌ Ошибка немедленной проверки Auto Bot: {e}")
             
             # КРИТИЧЕСКИ ВАЖНО: При отключении Auto Bot НЕ удаляем ботов!
-            if 'enabled' in data and data['enabled'] is False:
+            # Показываем блок только если enabled реально изменился с True на False
+            if 'enabled' in data and old_config.get('enabled') == True and data['enabled'] == False:
                 # ✅ ЯРКИЙ ЛОГ ВЫКЛЮЧЕНИЯ (КРАСНЫЙ)
                 logger.info("=" * 80)
-                logger.info("\033[91m🔴 AUTO BOT ВЫКЛЮЧЕН! 🔴\033[0m")
+                print("\033[91m🔴 AUTO BOT ВЫКЛЮЧЕН! 🔴\033[0m")
                 logger.info("=" * 80)
                 
                 with bots_data_lock:
@@ -2517,8 +2678,8 @@ if __name__ == '__main__':
         print("❌ Запуск отменен")
         sys.exit(0)
     
-    # Загружаем конфигурацию Auto Bot после проверки процессов
-    load_auto_bot_config()
+    # Загружаем конфигурацию Auto Bot после проверки процессов (С принудительным выключением при запуске)
+    load_auto_bot_config(force_disable=True)
     
     print("=" * 60)
     print("INFOBOT - Trading Bots Service")

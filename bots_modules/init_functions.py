@@ -24,7 +24,8 @@ try:
     from bots_modules.imports_and_globals import (
         exchange, smart_rsi_manager, async_processor, async_processor_task,
         system_initialized, shutdown_flag, bots_data_lock, bots_data,
-        process_state, mature_coins_storage, ASYNC_AVAILABLE, BOT_STATUS
+        process_state, mature_coins_storage, ASYNC_AVAILABLE, BOT_STATUS,
+        RealTradingBot
     )
     # Импорт optimal_ema_data из модуля
     try:
@@ -74,7 +75,7 @@ try:
     from bots_modules.maturity import load_mature_coins_storage
     from bots_modules.optimal_ema import load_optimal_ema_data
     from bots_modules.imports_and_globals import load_auto_bot_config
-    from bots_modules.filters import load_all_coins_rsi
+    from bots_modules.filters import load_all_coins_rsi, process_trading_signals_for_all_bots
     from bots_modules.sync_and_cache import (
         save_default_config, load_system_config,
         load_bots_state, load_process_state, check_startup_position_conflicts,
@@ -146,45 +147,78 @@ def init_bot_service():
             
             # 5.1. Инициализируем загруженных ботов (после инициализации биржи)
             with bots_data_lock:
-                for symbol, bot_data in bots_data['bots'].items():
-                    try:
-                        # Создаем объект бота из сохраненных данных
-                        bot_config = {
-                            'volume_mode': bot_data.get('volume_mode', 'usdt'),
-                            'volume_value': bot_data.get('volume_value', 10),
-                            'status': bot_data.get('status', 'paused')
-                        }
-                        
-                        trading_bot = RealTradingBot(
-                            symbol=bot_data['symbol'],
-                            exchange=exchange,
-                            config=bot_config
-                        )
-                        
-                        # Восстанавливаем состояние бота
-                        trading_bot.status = bot_data.get('status', 'paused')
-                        trading_bot.created_at = bot_data.get('created_at', datetime.now().isoformat())
-                        trading_bot.entry_price = bot_data.get('entry_price', '')
-                        trading_bot.last_price = bot_data.get('last_price', '')
-                        trading_bot.last_rsi = bot_data.get('last_rsi', '')
-                        trading_bot.last_signal_time = bot_data.get('last_signal_time', '')
-                        trading_bot.last_trend = bot_data.get('last_trend', '')
-                        trading_bot.position_side = bot_data.get('position_side', '')
-                        trading_bot.position_start_time = bot_data.get('position_start_time', '')
-                        trading_bot.unrealized_pnl = bot_data.get('unrealized_pnl', 0)
-                        trading_bot.max_profit_achieved = bot_data.get('max_profit_achieved', 0)
-                        trading_bot.trailing_stop_price = bot_data.get('trailing_stop_price', '')
-                        trading_bot.break_even_activated = bot_data.get('break_even_activated', False)
-                        trading_bot.rsi_data = bot_data.get('rsi_data', {})
-                        
-                        # Обновляем данные в bots_data
+                # Создаем копию списка ботов для безопасной итерации
+                bots_to_init = list(bots_data['bots'].items())
+                
+            # Инициализируем ботов вне блокировки для избежания deadlock
+            bots_to_remove = []
+            for symbol, bot_data in bots_to_init:
+                try:
+                    # Создаем объект бота из сохраненных данных
+                    # Получаем настройки из конфига для fallback
+                    with bots_data_lock:
+                        auto_bot_config = bots_data['auto_bot_config']
+                    
+                    bot_config = {
+                        'volume_mode': bot_data.get('volume_mode', 'usdt'),
+                        'volume_value': bot_data.get('volume_value', auto_bot_config['default_position_size']),  # Fallback из конфига для старых ботов
+                        'status': bot_data.get('status', 'paused')
+                    }
+                    
+                    trading_bot = RealTradingBot(
+                        symbol=bot_data['symbol'],
+                        exchange=exchange,
+                        config=bot_config
+                    )
+                    
+                    # Восстанавливаем состояние бота
+                    trading_bot.status = bot_data.get('status', 'paused')
+                    trading_bot.created_at = bot_data.get('created_at', datetime.now().isoformat())
+                    trading_bot.entry_price = bot_data.get('entry_price', '')
+                    trading_bot.last_price = bot_data.get('last_price', '')
+                    trading_bot.last_rsi = bot_data.get('last_rsi', '')
+                    trading_bot.last_signal_time = bot_data.get('last_signal_time', '')
+                    trading_bot.last_trend = bot_data.get('last_trend', '')
+                    trading_bot.position_side = bot_data.get('position_side', '')
+                    trading_bot.position_start_time = bot_data.get('position_start_time', '')
+                    trading_bot.unrealized_pnl = bot_data.get('unrealized_pnl', 0)
+                    trading_bot.max_profit_achieved = bot_data.get('max_profit_achieved', 0)
+                    trading_bot.trailing_stop_price = bot_data.get('trailing_stop_price', '')
+                    trading_bot.break_even_activated = bot_data.get('break_even_activated', False)
+                    trading_bot.rsi_data = bot_data.get('rsi_data', {})
+                    
+                    # Обновляем данные в bots_data
+                    with bots_data_lock:
                         bots_data['bots'][symbol] = trading_bot.to_dict()
-                        
-                    except Exception as e:
-                        logger.error(f"[INIT] ❌ Ошибка инициализации бота {symbol}: {e}")
-                        # Удаляем некорректного бота
+                    
+                except Exception as e:
+                    logger.error(f"[INIT] ❌ Ошибка инициализации бота {symbol}: {e}")
+                    # Помечаем бота для удаления
+                    bots_to_remove.append(symbol)
+            
+            # Удаляем некорректных ботов после итерации
+            if bots_to_remove:
+                with bots_data_lock:
+                    for symbol in bots_to_remove:
                         if symbol in bots_data['bots']:
+                            bot_data = bots_data['bots'][symbol]
+                            
+                            # ✅ УДАЛЯЕМ ПОЗИЦИЮ ИЗ РЕЕСТРА ПРИ УДАЛЕНИИ НЕКОРРЕКТНОГО БОТА
+                            try:
+                                from bots_modules.imports_and_globals import unregister_bot_position
+                                position = bot_data.get('position')
+                                if position and position.get('order_id'):
+                                    order_id = position['order_id']
+                                    unregister_bot_position(order_id)
+                                    logger.info(f"[INIT] ✅ Позиция удалена из реестра при удалении некорректного бота {symbol}: order_id={order_id}")
+                                else:
+                                    logger.info(f"[INIT] ℹ️ У некорректного бота {symbol} нет позиции в реестре")
+                            except Exception as registry_error:
+                                logger.error(f"[INIT] ❌ Ошибка удаления позиции из реестра для бота {symbol}: {registry_error}")
+                                # Не блокируем удаление бота из-за ошибки реестра
+                            
                             del bots_data['bots'][symbol]
+                logger.info(f"[INIT] 🗑️ Удалено {len(bots_to_remove)} некорректных ботов")
             
             # 6. Запускаем Smart RSI Manager (после инициализации биржи)
             global smart_rsi_manager
@@ -264,6 +298,18 @@ def init_bot_service():
         logger.info("🎯 СИСТЕМА ГОТОВА К РАБОТЕ!")
         logger.info("💡 Логи будут показывать только важные события")
         logger.info("=" * 80)
+        
+        # ✅ ВОССТАНАВЛИВАЕМ ПОТЕРЯННЫХ БОТОВ ИЗ РЕЕСТРА
+        try:
+            from bots_modules.imports_and_globals import restore_lost_bots
+            restored_bots = restore_lost_bots()
+            if restored_bots:
+                logger.info(f"[INIT] 🎯 Восстановлено {len(restored_bots)} ботов из реестра позиций")
+            else:
+                logger.info("[INIT] ℹ️ Ботов для восстановления не найдено")
+        except Exception as restore_error:
+            logger.error(f"[INIT] ❌ Ошибка восстановления ботов: {restore_error}")
+            # Не блокируем запуск системы из-за ошибки восстановления
         
         return True
         
@@ -359,7 +405,7 @@ def create_bot(symbol, config=None, exchange_obj=None):
         # Получаем default_position_size из конфигурации Auto Bot
         with bots_data_lock:
             auto_bot_config = bots_data['auto_bot_config']
-            default_volume = auto_bot_config.get('default_position_size', 20.0)
+            default_volume = auto_bot_config['default_position_size']
         
         config = {
             'volume_mode': 'usdt',
@@ -377,7 +423,7 @@ def create_bot(symbol, config=None, exchange_obj=None):
         auto_bot_config = bots_data['auto_bot_config']
         base_config = {
             'volume_mode': 'usdt',
-            'volume_value': auto_bot_config.get('default_position_size', 20.0),
+            'volume_value': auto_bot_config['default_position_size'],
             'status': BOT_STATUS['RUNNING'],
             'entry_price': None,
             'position_side': None,
@@ -434,7 +480,7 @@ def create_bot(symbol, config=None, exchange_obj=None):
         logger.info(f"[BOT_ACTIVE] Статус {symbol}: {trading_bot.status}")
     
     # Логируем создание бота в историю
-    log_bot_start(symbol, config)
+    # log_bot_start(symbol, config)  # TODO: Функция не определена
     
     # Автоматически сохраняем состояние после создания бота
     save_bots_state()

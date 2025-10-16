@@ -662,3 +662,93 @@ def get_bot_position_info(order_id):
         logger.error(f"[REGISTRY] ❌ Ошибка получения информации о позиции: {e}")
         return None
 
+
+def restore_lost_bots():
+    """Восстанавливает потерянных ботов на основе реестра позиций"""
+    try:
+        registry = load_bot_positions_registry()
+        if not registry:
+            logger.info("[REGISTRY] ℹ️ Реестр позиций пуст - нет ботов для восстановления")
+            return []
+        
+        # Получаем позиции с биржи
+        exch = get_exchange()
+        if not exch:
+            logger.error("[REGISTRY] ❌ Биржа не инициализирована")
+            return []
+        
+        exchange_positions = exch.get_positions()
+        if not exchange_positions:
+            logger.warning("[REGISTRY] ⚠️ Не удалось получить позиции с биржи")
+            return []
+        
+        # Преобразуем в словарь для быстрого поиска
+        if isinstance(exchange_positions, tuple):
+            positions_list = exchange_positions[0] if exchange_positions else []
+        else:
+            positions_list = exchange_positions if exchange_positions else []
+        
+        exchange_positions_dict = {pos.get('symbol'): pos for pos in positions_list if abs(float(pos.get('size', 0))) > 0}
+        
+        restored_bots = []
+        
+        with bots_data_lock:
+            # Проверяем каждую позицию в реестре
+            for order_id, position_info in registry.items():
+                symbol = position_info.get('symbol')
+                if not symbol:
+                    continue
+                
+                # Проверяем, есть ли уже бот для этой монеты
+                if symbol in bots_data['bots']:
+                    continue
+                
+                # Проверяем, есть ли позиция на бирже
+                if symbol not in exchange_positions_dict:
+                    logger.debug(f"[REGISTRY] 🔍 Позиция {symbol} (order_id={order_id}) не найдена на бирже - возможно закрыта")
+                    continue
+                
+                exchange_position = exchange_positions_dict[symbol]
+                exchange_side = exchange_position.get('side', 'UNKNOWN')
+                registry_side = position_info.get('side', 'UNKNOWN')
+                
+                # Проверяем совпадение стороны
+                if exchange_side != registry_side:
+                    logger.warning(f"[REGISTRY] ⚠️ Несовпадение стороны для {symbol}: реестр={registry_side}, биржа={exchange_side}")
+                    continue
+                
+                # Создаём восстановленного бота
+                restored_bot = {
+                    'symbol': symbol,
+                    'status': 'IN_POSITION_LONG' if registry_side == 'LONG' else 'IN_POSITION_SHORT',
+                    'position': {
+                        'side': registry_side,
+                        'quantity': float(exchange_position.get('size', 0)),
+                        'entry_price': position_info.get('entry_price', 0),
+                        'order_id': order_id
+                    },
+                    'entry_price': position_info.get('entry_price', 0),
+                    'entry_time': position_info.get('opened_at', datetime.now().isoformat()),
+                    'created_time': datetime.now().isoformat(),
+                    'restored_from_registry': True,
+                    'restoration_order_id': order_id
+                }
+                
+                bots_data['bots'][symbol] = restored_bot
+                restored_bots.append(symbol)
+                
+                logger.info(f"[REGISTRY] ✅ Восстановлен бот {symbol} (order_id={order_id}) из реестра")
+        
+        if restored_bots:
+            logger.info(f"[REGISTRY] 🎯 Восстановлено {len(restored_bots)} ботов: {restored_bots}")
+            # Сохраняем состояние
+            save_bots_state()
+        else:
+            logger.info("[REGISTRY] ℹ️ Ботов для восстановления не найдено")
+        
+        return restored_bots
+        
+    except Exception as e:
+        logger.error(f"[REGISTRY] ❌ Ошибка восстановления ботов: {e}")
+        return []
+
