@@ -154,7 +154,8 @@ def auto_bot_worker():
                     logger.info(f"[AUTO_BOT] {log_message}")
                 
                 logger.info(f"[AUTO_BOT] 🚀 Вызываем process_auto_bot_signals...")
-                process_auto_bot_signals(exchange_obj=exchange)
+                from bots_modules.imports_and_globals import get_exchange
+                process_auto_bot_signals(exchange_obj=get_exchange())
                 logger.info(f"[AUTO_BOT] ✅ process_auto_bot_signals завершена")
                 
                 # Обновляем статистику

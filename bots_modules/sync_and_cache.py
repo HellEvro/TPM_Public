@@ -629,7 +629,10 @@ def update_bots_cache_data():
                 if bot_data.get('status') in ['in_position_long', 'in_position_short']:
                     try:
                         # Получаем текущую цену
-                        ticker_data = exchange.get_ticker(symbol)
+                        current_exchange = get_exchange()
+                        if not current_exchange:
+                            continue
+                        ticker_data = current_exchange.get_ticker(symbol)
                         if ticker_data and 'last_price' in ticker_data:
                             current_price = float(ticker_data['last_price'])
                             entry_price = bot_data.get('entry_price')
@@ -768,7 +771,10 @@ def update_bot_positions_status():
                 
                 try:
                     # Получаем текущую цену
-                    ticker_data = exchange.get_ticker(symbol)
+                    current_exchange = get_exchange()
+                    if not current_exchange:
+                        continue
+                    ticker_data = current_exchange.get_ticker(symbol)
                     if not ticker_data or 'last_price' not in ticker_data:
                         continue
                     current_price = float(ticker_data['last_price'])
@@ -916,7 +922,11 @@ def get_exchange_positions():
         except Exception as api_error:
             logger.error(f"[EXCHANGE_POSITIONS] ❌ Ошибка прямого обращения к API: {api_error}")
             # Fallback к существующему методу
-            positions, _ = exchange.get_positions()
+            current_exchange = get_exchange()
+            if not current_exchange:
+                logger.error("[EXCHANGE_POSITIONS] ❌ Биржа не инициализирована")
+                return []
+            positions, _ = current_exchange.get_positions()
             logger.info(f"[EXCHANGE_POSITIONS] Fallback: получено {len(positions) if positions else 0} позиций")
             
             if not positions:
@@ -1178,7 +1188,10 @@ def check_active_orders(symbol):
             return False
         
         # Получаем активные ордера для символа
-        orders = exchange.get_open_orders(symbol)
+        current_exchange = get_exchange()
+        if not current_exchange:
+            return False
+        orders = current_exchange.get_open_orders(symbol)
         return len(orders) > 0
         
     except Exception as e:

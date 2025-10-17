@@ -237,7 +237,14 @@ def get_account_info():
             }), 500
         
         # Получаем актуальные данные с биржи
-        account_info = exchange.get_unified_account_info()
+        from bots_modules.imports_and_globals import get_exchange
+        current_exchange = get_exchange()
+        if not current_exchange:
+            return jsonify({
+                'success': False,
+                'error': 'Exchange not initialized'
+            }), 500
+        account_info = current_exchange.get_unified_account_info()
         if not account_info.get("success"):
             account_info = {
                 'success': False,
@@ -340,7 +347,8 @@ def get_coins_with_rsi():
             logger.info(f"[API] 🔄 Запрос на обновление RSI данных для {refresh_symbol}")
             try:
                 if ensure_exchange_initialized():
-                    coin_data = get_coin_rsi_data(refresh_symbol, exchange)
+                    from bots_modules.imports_and_globals import get_exchange
+                    coin_data = get_coin_rsi_data(refresh_symbol, get_exchange())
                     if coin_data:
                         with rsi_data_lock:
                             coins_rsi_data['coins'][refresh_symbol] = coin_data
@@ -564,7 +572,14 @@ def create_bot_endpoint():
         enable_maturity_check_coin = config.get('enable_maturity_check', True)
         if enable_maturity_check_coin:
             # Получаем данные свечей для проверки зрелости
-            chart_response = exchange.get_chart_data(symbol, '6h', '30d')
+            from bots_modules.imports_and_globals import get_exchange
+            current_exchange = get_exchange()
+            if not current_exchange:
+                return jsonify({
+                    'success': False,
+                    'error': 'Exchange not initialized'
+                }), 503
+            chart_response = current_exchange.get_chart_data(symbol, '6h', '30d')
             if chart_response and chart_response.get('success'):
                 candles = chart_response['data']['candles']
                 if candles and len(candles) >= 15:
@@ -590,7 +605,8 @@ def create_bot_endpoint():
                 }), 400
         
         # Создаем бота
-        bot_config = create_bot(symbol, config, exchange_obj=exchange)
+        from bots_modules.imports_and_globals import get_exchange
+        bot_config = create_bot(symbol, config, exchange_obj=get_exchange())
         
         logger.info(f"[BOT_CREATE] ✅ Бот для {symbol} создан и запущен")
         logger.info(f"[BOT_CREATE] Статус: {bot_config.get('status', 'UNKNOWN')}")
@@ -687,12 +703,14 @@ def stop_bot_endpoint():
             bots_data['global_stats']['bots_in_position'] = len([bot for bot in bots_data['bots'].values() if bot.get('position_side')])
         
         # Закрываем позицию на бирже, если она была открыта
-        if position_to_close and exchange:
+        from bots_modules.imports_and_globals import get_exchange
+        current_exchange = get_exchange()
+        if position_to_close and current_exchange:
             try:
                 logger.info(f"[BOT] {symbol}: Закрываем позицию {position_to_close} на бирже...")
                 
                 # Получаем текущие позиции для определения размера
-                positions_response = exchange.get_positions()
+                positions_response = current_exchange.get_positions()
                 if positions_response and positions_response.get('success'):
                     positions = positions_response.get('data', [])
                     
@@ -706,8 +724,8 @@ def stop_bot_endpoint():
                             break
                     
                     if our_position:
-                        # Закрываем позицию через exchange.close_position
-                        close_result = exchange.close_position(
+                        # Закрываем позицию через current_exchange.close_position
+                        close_result = current_exchange.close_position(
                             symbol=symbol,
                             size=float(our_position['size']),
                             side=position_to_close,
@@ -725,7 +743,7 @@ def stop_bot_endpoint():
                     
             except Exception as e:
                 logger.error(f"[BOT] {symbol}: Ошибка при закрытии позиции на бирже: {str(e)}")
-        elif position_to_close and not exchange:
+        elif position_to_close and not current_exchange:
             logger.error(f"[BOT] {symbol}: Биржа не инициализирована, позиция {position_to_close} не может быть закрыта")
         
         # Логируем остановку бота в историю
@@ -774,12 +792,14 @@ def pause_bot_endpoint():
             logger.info(f"[BOT] {symbol}: Бот приостановлен (был: {old_status})")
         
         # Закрываем позицию на бирже, если она была открыта
-        if position_to_close and exchange:
+        from bots_modules.imports_and_globals import get_exchange
+        current_exchange = get_exchange()
+        if position_to_close and current_exchange:
             try:
                 logger.info(f"[BOT] {symbol}: Закрываем позицию {position_to_close} на бирже...")
                 
                 # Получаем текущие позиции для определения размера
-                positions_response = exchange.get_positions()
+                positions_response = current_exchange.get_positions()
                 if positions_response and positions_response.get('success'):
                     positions = positions_response.get('data', [])
                     
@@ -793,8 +813,8 @@ def pause_bot_endpoint():
                             break
                     
                     if our_position:
-                        # Закрываем позицию через exchange.close_position
-                        close_result = exchange.close_position(
+                        # Закрываем позицию через current_exchange.close_position
+                        close_result = current_exchange.close_position(
                             symbol=symbol,
                             size=float(our_position['size']),
                             side=position_to_close,
@@ -812,7 +832,7 @@ def pause_bot_endpoint():
                     
             except Exception as e:
                 logger.error(f"[BOT] {symbol}: Ошибка при закрытии позиции на бирже: {str(e)}")
-        elif position_to_close and not exchange:
+        elif position_to_close and not current_exchange:
             logger.error(f"[BOT] {symbol}: Биржа не инициализирована, позиция {position_to_close} не может быть закрыта")
         
         return jsonify({
@@ -924,12 +944,14 @@ def close_position_endpoint():
         symbol = data['symbol']
         force_close = data.get('force', False)  # Принудительное закрытие даже если бот не в позиции
         
-        if not exchange:
+        from bots_modules.imports_and_globals import get_exchange
+        current_exchange = get_exchange()
+        if not current_exchange:
             logger.error(f"[API] ❌ Биржа не инициализирована")
             return jsonify({'success': False, 'error': 'Exchange not initialized'}), 500
         
         # Получаем текущие позиции с биржи
-        positions_response = exchange.get_positions()
+        positions_response = current_exchange.get_positions()
         if not positions_response or not positions_response.get('success'):
             logger.error(f"[API] ❌ Не удалось получить позиции с биржи")
             return jsonify({'success': False, 'error': 'Failed to get positions from exchange'}), 500
@@ -960,7 +982,7 @@ def close_position_endpoint():
                 
                 logger.info(f"[API] 🔄 Закрываем позицию {position_side} размером {position_size} для {symbol}")
                 
-                close_result = exchange.close_position(
+                close_result = current_exchange.close_position(
                     symbol=symbol,
                     size=position_size,
                     side=position_side,
@@ -1606,7 +1628,7 @@ def reload_modules_endpoint():
 def refresh_rsi_for_coin(symbol):
     """Обновляет RSI данные для конкретной монеты (применяет новую логику)"""
     try:
-        global coins_rsi_data, exchange
+        global coins_rsi_data
         
         logger.info(f"[HOT_RELOAD] 🔄 Обновление RSI данных для {symbol}...")
         
@@ -1615,7 +1637,8 @@ def refresh_rsi_for_coin(symbol):
             return jsonify({'success': False, 'error': 'Биржа не инициализирована'}), 500
         
         # Получаем новые данные монеты
-        coin_data = get_coin_rsi_data(symbol, exchange)
+        from bots_modules.imports_and_globals import get_exchange
+        coin_data = get_coin_rsi_data(symbol, get_exchange())
         
         if coin_data:
             # Обновляем в глобальном кэше
@@ -1643,7 +1666,7 @@ def refresh_rsi_for_coin(symbol):
 def refresh_rsi_for_all_coins():
     """Обновляет RSI данные для всех монет (применяет новую логику)"""
     try:
-        global coins_rsi_data, exchange
+        global coins_rsi_data
         
         logger.info("[HOT_RELOAD] 🔄 Обновление RSI данных для всех монет...")
         
@@ -1657,9 +1680,12 @@ def refresh_rsi_for_all_coins():
         updated_count = 0
         failed_count = 0
         
+        from bots_modules.imports_and_globals import get_exchange
+        current_exchange = get_exchange()
+        
         for symbol in existing_symbols:
             try:
-                coin_data = get_coin_rsi_data(symbol, exchange)
+                coin_data = get_coin_rsi_data(symbol, current_exchange)
                 if coin_data:
                     with rsi_data_lock:
                         coins_rsi_data['coins'][symbol] = coin_data
@@ -1732,7 +1758,8 @@ def process_trading_signals_endpoint():
         logger.info("[API] 🔄 Принудительная обработка торговых сигналов...")
         
         # Вызываем process_trading_signals_for_all_bots в основном процессе
-        process_trading_signals_for_all_bots(exchange_obj=exchange)
+        from bots_modules.imports_and_globals import get_exchange
+        process_trading_signals_for_all_bots(exchange_obj=get_exchange())
         
         # Получаем количество активных ботов для отчета
         with bots_data_lock:
@@ -2615,7 +2642,8 @@ def run_bots_service():
                 # Обрабатываем ботов каждые 30 секунд
                 if current_time - last_bot_processing >= bot_processing_interval:
                     logger.info("[MAIN_LOOP] 🤖 Обработка ботов...")
-                    process_trading_signals_for_all_bots(exchange_obj=exchange)
+                    from bots_modules.imports_and_globals import get_exchange
+                    process_trading_signals_for_all_bots(exchange_obj=get_exchange())
                     last_bot_processing = current_time
                     logger.info("[MAIN_LOOP] ✅ Обработка ботов завершена")
                 

@@ -598,8 +598,9 @@ def load_all_coins_rsi():
         try:
             from bots_modules.imports_and_globals import get_exchange
             current_exchange = get_exchange()
-        except:
-            current_exchange = exchange
+        except Exception as e:
+            logger.error(f"[RSI] ❌ Ошибка получения биржи: {e}")
+            current_exchange = None
         
         # Получаем список всех пар
         if not current_exchange:
@@ -716,10 +717,10 @@ def load_all_coins_rsi():
         save_rsi_cache()
         
         # Обрабатываем торговые сигналы для существующих ботов
-        process_trading_signals_for_all_bots(exchange_obj=exchange)
+        process_trading_signals_for_all_bots(exchange_obj=current_exchange)
         
         # Проверяем автобот сигналы для создания новых ботов
-        process_auto_bot_signals(exchange_obj=exchange)  # ВКЛЮЧЕНО!
+        process_auto_bot_signals(exchange_obj=current_exchange)  # ВКЛЮЧЕНО!
         
         return True
         
@@ -899,7 +900,8 @@ def process_trading_signals_for_all_bots(exchange_obj=None):
                 logger.debug(f"[NEW_BOT_SIGNALS] 🔍 Обрабатываем бота {symbol}...")
                 
                 # Используем переданную биржу или глобальную переменную
-                exchange_to_use = exchange_obj if exchange_obj else exchange
+                from bots_modules.imports_and_globals import get_exchange
+                exchange_to_use = exchange_obj if exchange_obj else get_exchange()
                 
                 # Создаем экземпляр нового бота из сохраненных данных
                 trading_bot = NewTradingBot(symbol, bot_data, exchange_to_use)
@@ -1010,11 +1012,12 @@ def check_coin_maturity_stored_or_verify(symbol):
 
 def check_exit_scam_filter(symbol, coin_data):
     """
-    EXIT SCAM ФИЛЬТР
+    EXIT SCAM ФИЛЬТР + AI ANOMALY DETECTION
     
     Защита от резких движений цены (памп/дамп/скам):
     1. Одна свеча превысила максимальный % изменения
     2. N свечей суммарно превысили максимальный % изменения
+    3. ИИ обнаружил аномалию (если включен)
     """
     try:
         # Получаем настройки из конфига
@@ -1078,7 +1081,52 @@ def check_exit_scam_filter(symbol, coin_data):
                 logger.info(f"[EXIT_SCAM] {symbol}: Первая свеча: {first_open:.4f}, Последняя свеча: {last_close:.4f}")
                 return False
         
-        logger.info(f"[EXIT_SCAM] {symbol}: ✅ РЕЗУЛЬТАТ: ПРОЙДЕН")
+        logger.info(f"[EXIT_SCAM] {symbol}: ✅ Базовые проверки пройдены")
+        
+        # 3. ПРОВЕРКА: AI Anomaly Detection (если включен)
+        try:
+            from bot_engine.bot_config import AIConfig
+            
+            if AIConfig.AI_ENABLED and AIConfig.AI_ANOMALY_DETECTION_ENABLED:
+                try:
+                    from bot_engine.ai.ai_manager import get_ai_manager
+                    
+                    ai_manager = get_ai_manager()
+                    
+                    if ai_manager and ai_manager.anomaly_detector:
+                        # Анализируем свечи с помощью ИИ
+                        anomaly_result = ai_manager.anomaly_detector.detect(candles)
+                        
+                        if anomaly_result.get('is_anomaly'):
+                            severity = anomaly_result.get('severity', 0)
+                            anomaly_type = anomaly_result.get('anomaly_type', 'UNKNOWN')
+                            
+                            # Блокируем если severity > threshold
+                            if severity > AIConfig.AI_ANOMALY_BLOCK_THRESHOLD:
+                                logger.warning(
+                                    f"[EXIT_SCAM] {symbol}: ❌ БЛОКИРОВКА (AI): "
+                                    f"Обнаружена аномалия {anomaly_type} "
+                                    f"(severity: {severity:.2%})"
+                                )
+                                return False
+                            else:
+                                logger.warning(
+                                    f"[EXIT_SCAM] {symbol}: ⚠️ ПРЕДУПРЕЖДЕНИЕ (AI): "
+                                    f"Аномалия {anomaly_type} "
+                                    f"(severity: {severity:.2%} - ниже порога {AIConfig.AI_ANOMALY_BLOCK_THRESHOLD:.2%})"
+                                )
+                        else:
+                            logger.debug(f"[EXIT_SCAM] {symbol}: ✅ AI: Аномалий не обнаружено")
+                    
+                except ImportError as e:
+                    logger.debug(f"[EXIT_SCAM] {symbol}: AI модуль не доступен: {e}")
+                except Exception as e:
+                    logger.error(f"[EXIT_SCAM] {symbol}: Ошибка AI проверки: {e}")
+        
+        except ImportError:
+            pass  # AIConfig не доступен - пропускаем AI проверку
+        
+        logger.info(f"[EXIT_SCAM] {symbol}: ✅ РЕЗУЛЬТАТ: ПРОЙДЕН (включая AI)")
         return True
         
     except Exception as e:
@@ -1120,7 +1168,8 @@ def check_no_existing_position(symbol, signal):
 def create_new_bot(symbol, config=None, exchange_obj=None):
     """Создает нового бота"""
     try:
-        exchange_to_use = exchange_obj if exchange_obj else exchange
+        from bots_modules.imports_and_globals import get_exchange
+        exchange_to_use = exchange_obj if exchange_obj else get_exchange()
         
         # Получаем размер позиции из конфига
         with bots_data_lock:
