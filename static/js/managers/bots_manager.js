@@ -5318,7 +5318,7 @@ class BotsManager {
         console.log('[BotsManager] 🔄 Перезагрузка модулей...');
         
         try {
-            const response = await fetch('/api/system/reload-modules', {
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/system/reload-modules`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
