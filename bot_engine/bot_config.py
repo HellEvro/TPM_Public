@@ -19,12 +19,18 @@ RSI_VOLUME_CONFIRMATION_MULTIPLIER = 1.2  # Множитель объема дл
 RSI_STOCH_PERIOD = 14  # Период для стохастического RSI
 RSI_EXTREME_ZONE_TIMEOUT = 3  # Максимальное количество свечей в экстремальной зоне без дополнительного подтверждения
 
-# EMA параметры
+# EMA параметры (по умолчанию, если нет оптимальных)
 EMA_FAST = 50
 EMA_SLOW = 200
 
-# Подтверждение тренда (количество баров)
-TREND_CONFIRMATION_BARS = 3
+# Параметры подтверждения тренда (гибкая настройка)
+TREND_CONFIRMATION_BARS = 3  # Количество свечей для подтверждения (по умолчанию)
+TREND_MIN_CONFIRMATIONS = 2  # Минимум подтверждений из 3 возможных (мягкие условия)
+
+# Опциональность проверок для определения тренда
+TREND_REQUIRE_SLOPE = False  # Требовать наклон EMA_long (False = опциональный критерий)
+TREND_REQUIRE_PRICE = True   # Требовать цену выше/ниже EMA_long (True = обязательный)
+TREND_REQUIRE_CANDLES = True # Требовать N свечей подряд (True = обязательный)
 
 # Таймфрейм для анализа
 TIMEFRAME = '6h'
@@ -61,13 +67,13 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'rsi_short_threshold': 71,  # Вход в SHORT при RSI >= 71
     'rsi_exit_long': 65,        # Выход из LONG при RSI >= 65
     'rsi_exit_short': 35,       # Выход из SHORT при RSI <= 35
-    'default_position_size': 10.0,  # Размер позиции в USDT
+    'default_position_size': 10,  # Размер позиции в USDT
     'check_interval': 180,      # Интервал проверки в секундах (3 мин = 180 сек)
     'monitoring_interval': 10,  # Интервал мониторинга активных ботов в секундах
     # Торговые настройки
     'trading_enabled': True,    # Включить реальную торговлю
     'use_test_server': False,   # Использовать тестовый сервер
-    'max_risk_per_trade': 2.0,  # Максимальный риск на сделку в %
+    'max_risk_per_trade': 2,  # Максимальный риск на сделку в %
     # Защитные механизмы
     'max_loss_percent': 15,   # Максимальный убыток в % от входа (стоп-лосс)
     'trailing_stop_activation': 300,  # Активация trailing stop при прибыли в % (x3 = 300%)
@@ -91,9 +97,9 @@ DEFAULT_AUTO_BOT_CONFIG = {
     # ExitScam фильтр (защита от резких движений цены)
     'exit_scam_enabled': True,          # Включить проверку на ExitScam
     'exit_scam_candles': 10,            # Количество свечей для проверки (10 = 60 часов на 6H)
-    'exit_scam_single_candle_percent': 15.0,  # Максимальный % изменения одной свечи (15% = блокировка)
+    'exit_scam_single_candle_percent': 15,  # Максимальный % изменения одной свечи (15% = блокировка)
     'exit_scam_multi_candle_count': 4,        # Количество свечей для суммарного анализа
-    'exit_scam_multi_candle_percent': 50.0,   # Максимальный суммарный % за N свечей (50% = блокировка)
+    'exit_scam_multi_candle_percent': 50,   # Максимальный суммарный % за N свечей (50% = блокировка)
 }
 
 # Настройки по умолчанию для отдельного бота
@@ -141,10 +147,18 @@ class SystemConfig:
     RSI_EXIT_LONG = 65  # Выход из лонга (при RSI >= 65)
     RSI_EXIT_SHORT = 35  # Выход из шорта (при RSI <= 35)
     
-    # EMA параметры для анализа тренда
+    # EMA параметры для анализа тренда (дефолтные, если нет оптимальных)
     EMA_FAST = 50  # Быстрая EMA
     EMA_SLOW = 200  # Медленная EMA
-    TREND_CONFIRMATION_BARS = 3  # Количество баров для подтверждения тренда
+    
+    # Параметры подтверждения тренда (гибкая настройка)
+    TREND_CONFIRMATION_BARS = 3  # Количество свечей для подтверждения (по умолчанию)
+    TREND_MIN_CONFIRMATIONS = 2  # Минимум подтверждений из 3 возможных (мягкие условия)
+    
+    # Опциональность проверок для определения тренда
+    TREND_REQUIRE_SLOPE = False  # Требовать наклон EMA_long (False = опциональный критерий, дает +1 балл)
+    TREND_REQUIRE_PRICE = True   # Требовать цену выше/ниже EMA_long (True = обязательный критерий)
+    TREND_REQUIRE_CANDLES = True # Требовать N свечей подряд (True = обязательный критерий)
     
     # Константы для фильтрации зрелости монет
     MIN_CANDLES_FOR_MATURITY = 400  # Минимум свечей для зрелой монеты (100 дней на 6H)

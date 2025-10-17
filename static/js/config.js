@@ -631,7 +631,21 @@ const TRANSLATIONS = {
         'volume_multiplier_label': 'Множитель объёма:',
         'divergence_lookback_label': 'Период поиска дивергенций:',
         'mature_coins_management_title': '💰 Управление зрелыми монетами',
-        'mature_coins_management_description': 'Удаление конкретных монет из списка зрелых (только в случае ошибки разработки)'
+        'mature_coins_management_description': 'Удаление конкретных монет из списка зрелых (только в случае ошибки разработки)',
+        // Параметры определения тренда
+        'trend_params_title': '📊 Параметры определения тренда',
+        'trend_params_desc': 'Гибкая настройка критериев подтверждения тренда (глобальные настройки)',
+        'trend_confirmation_bars_label': 'Количество свечей для проверки:',
+        'trend_confirmation_bars_help': 'Сколько последних свечей анализировать. По умолчанию: 3',
+        'trend_min_confirmations_label': 'Минимум подтверждений:',
+        'trend_min_confirmations_help': 'Минимум критериев из 3 возможных. По умолчанию: 2 (мягкие условия)',
+        'trend_require_slope_label': 'Требовать наклон EMA:',
+        'trend_require_slope_help': 'Если выключено - наклон опциональный (+1 балл, но не блокирует)',
+        'trend_require_price_label': 'Требовать позицию цены:',
+        'trend_require_price_help': 'Цена должна быть выше/ниже EMA_long (рекомендуется включить)',
+        'trend_require_candles_label': 'Требовать подтверждение свечами:',
+        'trend_require_candles_help': 'N свечей подряд должны быть выше/ниже EMA_long (рекомендуется включить)',
+        'save_trend_section_btn': '💾 Сохранить параметры тренда'
     },
     en: {
         theme: '🌓 Toggle Theme',
@@ -1262,7 +1276,22 @@ const TRANSLATIONS = {
         'coins_deletion_instruction_help': 'Enter coin symbols separated by commas (e.g.: ARIA, AVNT). Be careful!',
         'last_removal': 'Last deletion:',
         'total_mature_coins_count': 'Total mature coins:',
-        'remove_coins_btn': '🗑️ Delete'
+        'remove_coins_btn': '🗑️ Delete',
+        
+        // Trend parameters
+        'trend_params_title': '📊 Trend Determination Parameters',
+        'trend_params_desc': 'Flexible configuration of trend confirmation criteria (global settings)',
+        'trend_confirmation_bars_label': 'Number of candles to check:',
+        'trend_confirmation_bars_help': 'How many recent candles to analyze. Default: 3',
+        'trend_min_confirmations_label': 'Minimum confirmations:',
+        'trend_min_confirmations_help': 'Minimum criteria out of 3 possible. Default: 2 (soft conditions)',
+        'trend_require_slope_label': 'Require EMA slope:',
+        'trend_require_slope_help': 'If disabled - slope is optional (+1 point, but does not block)',
+        'trend_require_price_label': 'Require price position:',
+        'trend_require_price_help': 'Price must be above/below EMA_long (recommended to enable)',
+        'trend_require_candles_label': 'Require candle confirmation:',
+        'trend_require_candles_help': 'N candles in a row must be above/below EMA_long (recommended to enable)',
+        'save_trend_section_btn': '💾 Save Trend Parameters'
     }
 };
 

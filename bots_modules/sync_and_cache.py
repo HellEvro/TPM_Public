@@ -386,6 +386,22 @@ def load_system_config():
                 if 'rsi_divergence_lookback' in config_data:
                     SystemConfig.RSI_DIVERGENCE_LOOKBACK = int(config_data['rsi_divergence_lookback'])
                 
+                # Параметры определения тренда
+                if 'trend_confirmation_bars' in config_data:
+                    SystemConfig.TREND_CONFIRMATION_BARS = int(config_data['trend_confirmation_bars'])
+                
+                if 'trend_min_confirmations' in config_data:
+                    SystemConfig.TREND_MIN_CONFIRMATIONS = int(config_data['trend_min_confirmations'])
+                
+                if 'trend_require_slope' in config_data:
+                    SystemConfig.TREND_REQUIRE_SLOPE = bool(config_data['trend_require_slope'])
+                
+                if 'trend_require_price' in config_data:
+                    SystemConfig.TREND_REQUIRE_PRICE = bool(config_data['trend_require_price'])
+                
+                if 'trend_require_candles' in config_data:
+                    SystemConfig.TREND_REQUIRE_CANDLES = bool(config_data['trend_require_candles'])
+                
                 logger.info(f"[SYSTEM_CONFIG] ✅ Системные настройки загружены из {SYSTEM_CONFIG_FILE}")
                 logger.info(f"[SYSTEM_CONFIG] RSI интервал: {SystemConfig.RSI_UPDATE_INTERVAL} сек")
                 

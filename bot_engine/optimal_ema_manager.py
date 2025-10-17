@@ -19,7 +19,7 @@ def load_optimal_ema_data():
 
 
 def get_optimal_ema_periods(symbol):
-    """Получает оптимальные EMA периоды для монеты"""
+    """Получает оптимальные EMA периоды и параметры подтверждения для монеты"""
     global optimal_ema_data
     
     if symbol in optimal_ema_data:
@@ -33,7 +33,13 @@ def get_optimal_ema_periods(symbol):
                 'accuracy': data.get('accuracy', 0),
                 'long_signals': data.get('long_signals', 0),
                 'short_signals': data.get('short_signals', 0),
-                'analysis_method': data.get('analysis_method', 'unknown')
+                'analysis_method': data.get('analysis_method', 'unknown'),
+                # Параметры подтверждения тренда (индивидуальные для монеты)
+                'trend_confirmation_bars': data.get('trend_confirmation_bars', None),
+                'trend_min_confirmations': data.get('trend_min_confirmations', None),
+                'trend_require_slope': data.get('trend_require_slope', None),
+                'trend_require_price': data.get('trend_require_price', None),
+                'trend_require_candles': data.get('trend_require_candles', None)
             }
         # Поддержка старого формата
         elif 'ema_short' in data and 'ema_long' in data:
@@ -43,7 +49,13 @@ def get_optimal_ema_periods(symbol):
                 'accuracy': data.get('accuracy', 0),
                 'long_signals': 0,
                 'short_signals': 0,
-                'analysis_method': 'legacy'
+                'analysis_method': 'legacy',
+                # Дефолтные параметры
+                'trend_confirmation_bars': None,
+                'trend_min_confirmations': None,
+                'trend_require_slope': None,
+                'trend_require_price': None,
+                'trend_require_candles': None
             }
         else:
             logger.warning(f"[OPTIMAL_EMA] Неизвестный формат данных для {symbol}")
@@ -53,14 +65,20 @@ def get_optimal_ema_periods(symbol):
 
 
 def get_default_ema_periods():
-    """Возвращает дефолтные EMA периоды"""
+    """Возвращает дефолтные EMA периоды и параметры подтверждения"""
     return {
         'ema_short': 50,
         'ema_long': 200,
         'accuracy': 0,
         'long_signals': 0,
         'short_signals': 0,
-        'analysis_method': 'default'
+        'analysis_method': 'default',
+        # Дефолтные параметры подтверждения (используются глобальные из SystemConfig)
+        'trend_confirmation_bars': None,
+        'trend_min_confirmations': None,
+        'trend_require_slope': None,
+        'trend_require_price': None,
+        'trend_require_candles': None
     }
 
 

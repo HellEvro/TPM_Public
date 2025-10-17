@@ -4139,6 +4139,40 @@ class BotsManager {
             console.log('[BotsManager] 🔍 RSI период поиска дивергенций:', rsiDivergenceLookbackEl.value);
         }
         
+        // ==========================================
+        // ПАРАМЕТРЫ ОПРЕДЕЛЕНИЯ ТРЕНДА
+        // ==========================================
+        
+        const trendConfirmationBarsEl = document.getElementById('trendConfirmationBars');
+        if (trendConfirmationBarsEl && systemConfig.trend_confirmation_bars !== undefined) {
+            trendConfirmationBarsEl.value = systemConfig.trend_confirmation_bars;
+            console.log('[BotsManager] 📊 Количество свечей для подтверждения тренда:', trendConfirmationBarsEl.value);
+        }
+        
+        const trendMinConfirmationsEl = document.getElementById('trendMinConfirmations');
+        if (trendMinConfirmationsEl && systemConfig.trend_min_confirmations !== undefined) {
+            trendMinConfirmationsEl.value = systemConfig.trend_min_confirmations;
+            console.log('[BotsManager] ✅ Минимум подтверждений тренда:', trendMinConfirmationsEl.value);
+        }
+        
+        const trendRequireSlopeEl = document.getElementById('trendRequireSlope');
+        if (trendRequireSlopeEl) {
+            trendRequireSlopeEl.checked = systemConfig.trend_require_slope || false;
+            console.log('[BotsManager] 📈 Требовать наклон EMA:', trendRequireSlopeEl.checked);
+        }
+        
+        const trendRequirePriceEl = document.getElementById('trendRequirePrice');
+        if (trendRequirePriceEl) {
+            trendRequirePriceEl.checked = systemConfig.trend_require_price !== false;
+            console.log('[BotsManager] 💰 Требовать позицию цены:', trendRequirePriceEl.checked);
+        }
+        
+        const trendRequireCandlesEl = document.getElementById('trendRequireCandles');
+        if (trendRequireCandlesEl) {
+            trendRequireCandlesEl.checked = systemConfig.trend_require_candles !== false;
+            console.log('[BotsManager] 🕯️ Требовать подтверждение свечами:', trendRequireCandlesEl.checked);
+        }
+        
         console.log('[BotsManager] ✅ Форма заполнена данными из API');
     }
     
@@ -4363,7 +4397,12 @@ class BotsManager {
             // EMA параметры тренда
             ema_fast: parseInt(document.getElementById('emaFast')?.value) || 50,
             ema_slow: parseInt(document.getElementById('emaSlow')?.value) || 200,
+            // Параметры определения тренда
             trend_confirmation_bars: parseInt(document.getElementById('trendConfirmationBars')?.value) || 3,
+            trend_min_confirmations: parseInt(document.getElementById('trendMinConfirmations')?.value) || 2,
+            trend_require_slope: document.getElementById('trendRequireSlope')?.checked || false,
+            trend_require_price: document.getElementById('trendRequirePrice')?.checked !== false,
+            trend_require_candles: document.getElementById('trendRequireCandles')?.checked !== false,
             // Enhanced RSI настройки
             enhanced_rsi_enabled: autoBotConfig.enhanced_rsi_enabled,
             enhanced_rsi_require_volume_confirmation: autoBotConfig.enhanced_rsi_require_volume_confirmation,
@@ -4598,6 +4637,27 @@ class BotsManager {
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка сохранения EMA параметров:', error);
             this.showNotification('❌ Ошибка сохранения EMA параметров', 'error');
+        }
+    }
+    
+    async saveTrendParameters() {
+        console.log('[BotsManager] 💾 Сохранение параметров определения тренда...');
+        try {
+            const config = this.collectConfigurationData();
+            const trendParameters = {
+                trend_confirmation_bars: config.system.trend_confirmation_bars,
+                trend_min_confirmations: config.system.trend_min_confirmations,
+                trend_require_slope: config.system.trend_require_slope,
+                trend_require_price: config.system.trend_require_price,
+                trend_require_candles: config.system.trend_require_candles
+            };
+            
+            console.log('[BotsManager] 📊 Параметры тренда для сохранения:', trendParameters);
+            
+            await this.sendConfigUpdate('system-config', trendParameters, 'Параметры определения тренда');
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка сохранения параметров тренда:', error);
+            this.showNotification('❌ Ошибка сохранения параметров тренда', 'error');
         }
     }
     
@@ -5301,6 +5361,14 @@ class BotsManager {
             saveEmaBtn.setAttribute('data-initialized', 'true');
             saveEmaBtn.addEventListener('click', () => this.saveEmaParameters());
             console.log('[BotsManager] ✅ Кнопка "Сохранить EMA параметры" инициализирована');
+        }
+        
+        // Параметры тренда
+        const saveTrendBtn = document.querySelector('.config-section-save-btn[data-section="trend"]');
+        if (saveTrendBtn && !saveTrendBtn.hasAttribute('data-initialized')) {
+            saveTrendBtn.setAttribute('data-initialized', 'true');
+            saveTrendBtn.addEventListener('click', () => this.saveTrendParameters());
+            console.log('[BotsManager] ✅ Кнопка "Сохранить параметры тренда" инициализирована');
         }
         
         // Hot Reload кнопка

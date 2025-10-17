@@ -1094,7 +1094,13 @@ def system_config():
                     'rsi_extreme_oversold': SystemConfig.RSI_EXTREME_OVERSOLD,
                     'rsi_extreme_overbought': SystemConfig.RSI_EXTREME_OVERBOUGHT,
                     'rsi_volume_confirmation_multiplier': SystemConfig.RSI_VOLUME_CONFIRMATION_MULTIPLIER,
-                    'rsi_divergence_lookback': SystemConfig.RSI_DIVERGENCE_LOOKBACK
+                    'rsi_divergence_lookback': SystemConfig.RSI_DIVERGENCE_LOOKBACK,
+                    # Параметры определения тренда
+                    'trend_confirmation_bars': SystemConfig.TREND_CONFIRMATION_BARS,
+                    'trend_min_confirmations': SystemConfig.TREND_MIN_CONFIRMATIONS,
+                    'trend_require_slope': SystemConfig.TREND_REQUIRE_SLOPE,
+                    'trend_require_price': SystemConfig.TREND_REQUIRE_PRICE,
+                    'trend_require_candles': SystemConfig.TREND_REQUIRE_CANDLES
                 }
             })
         
@@ -1239,6 +1245,42 @@ def system_config():
             SystemConfig.RSI_DIVERGENCE_LOOKBACK = new_value
             system_changes_count += 1
         
+        # Параметры определения тренда
+        if 'trend_confirmation_bars' in data:
+            old_value = SystemConfig.TREND_CONFIRMATION_BARS
+            new_value = int(data['trend_confirmation_bars'])
+            log_config_change('trend_confirmation_bars', old_value, new_value)
+            SystemConfig.TREND_CONFIRMATION_BARS = new_value
+            system_changes_count += 1
+        
+        if 'trend_min_confirmations' in data:
+            old_value = SystemConfig.TREND_MIN_CONFIRMATIONS
+            new_value = int(data['trend_min_confirmations'])
+            log_config_change('trend_min_confirmations', old_value, new_value)
+            SystemConfig.TREND_MIN_CONFIRMATIONS = new_value
+            system_changes_count += 1
+        
+        if 'trend_require_slope' in data:
+            old_value = SystemConfig.TREND_REQUIRE_SLOPE
+            new_value = bool(data['trend_require_slope'])
+            log_config_change('trend_require_slope', old_value, new_value)
+            SystemConfig.TREND_REQUIRE_SLOPE = new_value
+            system_changes_count += 1
+        
+        if 'trend_require_price' in data:
+            old_value = SystemConfig.TREND_REQUIRE_PRICE
+            new_value = bool(data['trend_require_price'])
+            log_config_change('trend_require_price', old_value, new_value)
+            SystemConfig.TREND_REQUIRE_PRICE = new_value
+            system_changes_count += 1
+        
+        if 'trend_require_candles' in data:
+            old_value = SystemConfig.TREND_REQUIRE_CANDLES
+            new_value = bool(data['trend_require_candles'])
+            log_config_change('trend_require_candles', old_value, new_value)
+            SystemConfig.TREND_REQUIRE_CANDLES = new_value
+            system_changes_count += 1
+        
             # КРИТИЧЕСКИ ВАЖНО: Сохраняем системные настройки в файл
             # Сначала загружаем существующие настройки, чтобы не потерять другие поля
             existing_config = {}
@@ -1271,7 +1313,13 @@ def system_config():
                 'rsi_extreme_oversold': SystemConfig.RSI_EXTREME_OVERSOLD,
                 'rsi_extreme_overbought': SystemConfig.RSI_EXTREME_OVERBOUGHT,
                 'rsi_volume_confirmation_multiplier': SystemConfig.RSI_VOLUME_CONFIRMATION_MULTIPLIER,
-                'rsi_divergence_lookback': SystemConfig.RSI_DIVERGENCE_LOOKBACK
+                'rsi_divergence_lookback': SystemConfig.RSI_DIVERGENCE_LOOKBACK,
+                # Параметры определения тренда
+                'trend_confirmation_bars': SystemConfig.TREND_CONFIRMATION_BARS,
+                'trend_min_confirmations': SystemConfig.TREND_MIN_CONFIRMATIONS,
+                'trend_require_slope': SystemConfig.TREND_REQUIRE_SLOPE,
+                'trend_require_price': SystemConfig.TREND_REQUIRE_PRICE,
+                'trend_require_candles': SystemConfig.TREND_REQUIRE_CANDLES
             })
             
             saved_to_file = save_system_config(system_config_data)

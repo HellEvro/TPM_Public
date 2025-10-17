@@ -29,18 +29,10 @@ except ImportError as e:
     mature_coins_lock = threading.Lock()
     exchange = None
 
-# Константы
-BOT_STATUS_UPDATE_INTERVAL = 30
-STOP_LOSS_SETUP_INTERVAL = 300
-POSITION_SYNC_INTERVAL = 30
-INACTIVE_BOT_CLEANUP_INTERVAL = 600
+# Константы теперь в SystemConfig
 
 # Импорт функций (будут доступны после импорта)
-try:
-    from bot_engine.bot_config import SystemConfig
-except:
-    class SystemConfig:
-        AUTO_SAVE_INTERVAL = 60
+from bot_engine.bot_config import SystemConfig
 
 # Импорт функций из других модулей
 try:
@@ -133,10 +125,10 @@ def auto_bot_worker():
     logger.info("[AUTO_BOT] ✅ Автобот готов к ручному запуску через UI")
     
     # Входим в основной цикл - НО проверяем сигналы ТОЛЬКО если автобот включен вручную
-    last_position_update = time.time() - BOT_STATUS_UPDATE_INTERVAL
-    last_stop_loss_setup = time.time() - STOP_LOSS_SETUP_INTERVAL
-    last_position_sync = time.time() - POSITION_SYNC_INTERVAL
-    last_inactive_cleanup = time.time() - INACTIVE_BOT_CLEANUP_INTERVAL
+    last_position_update = time.time() - SystemConfig.BOT_STATUS_UPDATE_INTERVAL
+    last_stop_loss_setup = time.time() - SystemConfig.STOP_LOSS_SETUP_INTERVAL
+    last_position_sync = time.time() - SystemConfig.POSITION_SYNC_INTERVAL
+    last_inactive_cleanup = time.time() - SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL
     
     logger.info("[AUTO_BOT] 🔄 Входим в основной цикл (автобот выключен, ждем ручного включения)...")
     while not shutdown_flag.is_set():
@@ -187,17 +179,17 @@ def auto_bot_worker():
             # Подавляем частые сообщения о времени обновления
             should_log_time, log_time_message = should_log_message(
                 'position_update_time', 
-                f"Время с последнего обновления: {time_since_last_update:.1f}с (нужно {BOT_STATUS_UPDATE_INTERVAL}с)",
+                f"Время с последнего обновления: {time_since_last_update:.1f}с (нужно {SystemConfig.BOT_STATUS_UPDATE_INTERVAL}с)",
                 interval_seconds=300  # Логируем раз в 5 минут
             )
             if should_log_time:
                 logger.info(f"[POSITION_UPDATE] {log_time_message}")
             
-            if time_since_last_update >= BOT_STATUS_UPDATE_INTERVAL:
+            if time_since_last_update >= SystemConfig.BOT_STATUS_UPDATE_INTERVAL:
                 # Подавляем частые сообщения об обновлении кэша
                 should_log, log_message = should_log_message(
                     'position_update', 
-                    f"🔄 Обновление кэшированных данных ботов (каждые {BOT_STATUS_UPDATE_INTERVAL} сек)",
+                    f"🔄 Обновление кэшированных данных ботов (каждые {SystemConfig.BOT_STATUS_UPDATE_INTERVAL} сек)",
                     interval_seconds=300  # Логируем раз в 5 минут
                 )
                 if should_log:
@@ -206,24 +198,24 @@ def auto_bot_worker():
                 update_bots_cache_data()
                 last_position_update = current_time
             
-            # Устанавливаем недостающие стоп-лоссы каждые STOP_LOSS_SETUP_INTERVAL секунд
+            # Устанавливаем недостающие стоп-лоссы каждые SystemConfig.STOP_LOSS_SETUP_INTERVAL секунд
             time_since_stop_setup = current_time - last_stop_loss_setup
-            if time_since_stop_setup >= STOP_LOSS_SETUP_INTERVAL:
-                logger.info(f"[STOP_LOSS_SETUP] 🔧 Установка недостающих стоп-лоссов (каждые {STOP_LOSS_SETUP_INTERVAL//60} мин)")
+            if time_since_stop_setup >= SystemConfig.STOP_LOSS_SETUP_INTERVAL:
+                logger.info(f"[STOP_LOSS_SETUP] 🔧 Установка недостающих стоп-лоссов (каждые {SystemConfig.STOP_LOSS_SETUP_INTERVAL//60} мин)")
                 check_missing_stop_losses()
                 last_stop_loss_setup = current_time
             
-            # Умная синхронизация позиций с биржей каждые POSITION_SYNC_INTERVAL секунд - ВРЕМЕННО ОТКЛЮЧЕНА
+            # Умная синхронизация позиций с биржей каждые SystemConfig.POSITION_SYNC_INTERVAL секунд - ВРЕМЕННО ОТКЛЮЧЕНА
             # time_since_sync = current_time - last_position_sync
-            # if time_since_sync >= POSITION_SYNC_INTERVAL:
-            #     logger.info(f"[POSITION_SYNC] 🔄 Синхронизация позиций с биржей (каждые {POSITION_SYNC_INTERVAL//60} мин)")
+            # if time_since_sync >= SystemConfig.POSITION_SYNC_INTERVAL:
+            #     logger.info(f"[POSITION_SYNC] 🔄 Синхронизация позиций с биржей (каждые {SystemConfig.POSITION_SYNC_INTERVAL//60} мин)")
             #     sync_positions_with_exchange()
             #     last_position_sync = current_time
             
-            # Очищаем неактивные боты каждые INACTIVE_BOT_CLEANUP_INTERVAL секунд
+            # Очищаем неактивные боты каждые SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL секунд
             time_since_cleanup = current_time - last_inactive_cleanup
-            if time_since_cleanup >= INACTIVE_BOT_CLEANUP_INTERVAL:
-                logger.info(f"[INACTIVE_CLEANUP] 🧹 Очистка неактивных ботов (каждые {INACTIVE_BOT_CLEANUP_INTERVAL//60} мин)")
+            if time_since_cleanup >= SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL:
+                logger.info(f"[INACTIVE_CLEANUP] 🧹 Очистка неактивных ботов (каждые {SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL//60} мин)")
                 cleanup_inactive_bots()
                 
                 # УДАЛЕНО: Очистка зрелых монет - зрелость необратима!
