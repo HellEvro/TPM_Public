@@ -660,17 +660,23 @@ def init_exchange_sync():
 def ensure_exchange_initialized():
     """Проверяет что биржа инициализирована"""
     global exchange
-    if exchange is None:
+    from bots_modules.imports_and_globals import set_exchange, get_exchange
+    
+    # Проверяем глобальное состояние
+    current_exchange = get_exchange()
+    if current_exchange is None:
         logger.warning("[WARNING] Биржа не инициализирована, попытка переподключения...")
         try:
             logger.info(f"[DEBUG] Создание exchange с ключами: api_key={EXCHANGES['BYBIT']['api_key'][:10]}...")
-            exchange = ExchangeFactory.create_exchange(
+            new_exchange = ExchangeFactory.create_exchange(
                 'BYBIT', 
                 EXCHANGES['BYBIT']['api_key'], 
                 EXCHANGES['BYBIT']['api_secret']
             )
-            if exchange:
-                logger.info("[OK] Биржа переподключена успешно")
+            if new_exchange:
+                # ✅ ИСПРАВЛЕНИЕ: Обновляем глобальное состояние
+                exchange = set_exchange(new_exchange)
+                logger.info("[OK] Биржа переподключена успешно и обновлена в GlobalState")
                 return True
             else:
                 logger.error("[ERROR] ExchangeFactory вернул None")
@@ -678,7 +684,10 @@ def ensure_exchange_initialized():
         except Exception as e:
             logger.error(f"[ERROR] Не удалось переподключиться к бирже: {str(e)}")
             return False
-    logger.debug("[DEBUG] Exchange уже инициализирован")
-    return True
+    else:
+        # Обновляем локальную переменную
+        exchange = current_exchange
+        logger.debug("[DEBUG] Exchange уже инициализирован в GlobalState")
+        return True
 
 # API endpoints

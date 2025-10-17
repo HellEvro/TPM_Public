@@ -187,7 +187,9 @@ def main():
         if blocked_details:
             print(f"\n🔍 Детали заблокированных монет (первые 10):")
             for detail in blocked_details[:10]:
-                print(f"   • {detail['symbol']:12s} | RSI: {detail['rsi']:5.1f} | Signal: {detail['signal']:12s} | Mature: {detail['is_mature']}")
+                mature_icon = "💎" if detail['is_mature'] else "❌"
+                blocked_text = f"Blocked: {detail['blocked_by']}" if detail['blocked_by'] else "No blocked_by field"
+                print(f"   {mature_icon} {detail['symbol']:12s} | RSI: {detail['rsi']:5.1f} | Signal: {detail['signal']:12s} | {blocked_text}")
         
         # Монеты готовые к торговле
         print_section("🎯 МОНЕТЫ ГОТОВЫЕ К ТОРГОВЛЕ")

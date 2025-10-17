@@ -79,7 +79,7 @@ except ImportError as e:
 # Импортируем глобальные переменные и функции из imports_and_globals
 try:
     from bots_modules.imports_and_globals import (
-        bots_data_lock, bots_data, rsi_data_lock, coins_rsi_data, exchange,
+        bots_data_lock, bots_data, rsi_data_lock, coins_rsi_data,
         BOT_STATUS, system_initialized, get_exchange
     )
     from bot_engine.bot_config import SystemConfig
@@ -88,7 +88,6 @@ except ImportError:
     bots_data = {}
     rsi_data_lock = threading.Lock()
     coins_rsi_data = {}
-    exchange = None
     BOT_STATUS = {}
     system_initialized = False
     def get_exchange():
@@ -342,7 +341,8 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
         # logger.debug(f"[DEBUG] Обработка {symbol}...")  # Отключено для ускорения
         
         # Используем переданную биржу или глобальную
-        exchange_to_use = exchange_obj if exchange_obj is not None else exchange
+        from bots_modules.imports_and_globals import get_exchange
+        exchange_to_use = exchange_obj if exchange_obj is not None else get_exchange()
         
         # Проверяем, что биржа доступна
         if exchange_to_use is None:

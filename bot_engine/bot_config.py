@@ -69,15 +69,15 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'use_test_server': False,   # Использовать тестовый сервер
     'max_risk_per_trade': 2.0,  # Максимальный риск на сделку в %
     # Защитные механизмы
-    'max_loss_percent': 15.0,   # Максимальный убыток в % от входа (стоп-лосс)
-    'trailing_stop_activation': 300.0,  # Активация trailing stop при прибыли в % (x3 = 300%)
-    'trailing_stop_distance': 150.0,    # Расстояние trailing stop в % (x1.5 = 150%)
+    'max_loss_percent': 15,   # Максимальный убыток в % от входа (стоп-лосс)
+    'trailing_stop_activation': 300,  # Активация trailing stop при прибыли в % (x3 = 300%)
+    'trailing_stop_distance': 150,    # Расстояние trailing stop в % (x1.5 = 150%)
     'max_position_hours': 0,     # Максимальное время удержания позиции в часах (0 = отключено)
     'break_even_protection': True,      # Защита безубыточности
-    'break_even_trigger': 100.0,        # Триггер для break even в % (x1 = 100%)
+    'break_even_trigger': 100,        # Триггер для break even в % (x1 = 100%)
     # Фильтры по тренду
-    'avoid_down_trend': True,           # Не входить в LONG при нисходящем тренде
-    'avoid_up_trend': True,             # Не входить в SHORT при восходящем тренде
+    'avoid_down_trend': True,          # Не входить в LONG при нисходящем тренде (КРИТИЧЕСКИ ВАЖНО!)
+    'avoid_up_trend': True,            # Не входить в SHORT при восходящем тренде (КРИТИЧЕСКИ ВАЖНО!)
     # Настройки зрелости монет
     'enable_maturity_check': True,      # Включить проверку зрелости монет
     'min_candles_for_maturity': 400,    # Минимум свечей для зрелой монеты (100 дней на 6H)
@@ -123,7 +123,7 @@ class SystemConfig:
     RSI_CANDLE_CHECK_INTERVAL = 300  # 5 минут для проверки изменений текущей свечи
     
     # Улучшенная система RSI
-    ENHANCED_RSI_ENABLED = True  # Включить улучшенную систему RSI для сильных трендов
+    ENHANCED_RSI_ENABLED = False  # Включить улучшенную систему RSI для сильных трендов (ОТКЛЮЧЕНО для тестирования)
     ENHANCED_RSI_REQUIRE_VOLUME_CONFIRMATION = True  # Требовать подтверждение объемом
     ENHANCED_RSI_REQUIRE_DIVERGENCE_CONFIRMATION = True  # Требовать подтверждение дивергенцией (строгий режим)
     ENHANCED_RSI_USE_STOCH_RSI = True  # Использовать Stochastic RSI для дополнительного подтверждения
