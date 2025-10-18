@@ -57,7 +57,7 @@ class VolumeMode:
 # Настройки Auto Bot по умолчанию
 DEFAULT_AUTO_BOT_CONFIG = {
     'enabled': True,
-    'max_concurrent': 5,
+    'max_concurrent': 10,
     'risk_cap_percent': 10,
     'scope': 'all',  # all | whitelist | blacklist
     'whitelist': [],
@@ -65,9 +65,9 @@ DEFAULT_AUTO_BOT_CONFIG = {
     # RSI параметры согласно ТЗ
     'rsi_long_threshold': 29,   # Вход в LONG при RSI <= 29
     'rsi_short_threshold': 71,  # Вход в SHORT при RSI >= 71
-    'rsi_exit_long': 65,        # Выход из LONG при RSI >= 65
-    'rsi_exit_short': 35,       # Выход из SHORT при RSI <= 35
-    'default_position_size': 10,  # Размер позиции в USDT
+    'rsi_exit_long': 55,        # Выход из LONG при RSI >= 65
+    'rsi_exit_short': 45,       # Выход из SHORT при RSI <= 35
+    'default_position_size': 5,  # Размер позиции в USDT
     'check_interval': 180,      # Интервал проверки в секундах (3 мин = 180 сек)
     'monitoring_interval': 10,  # Интервал мониторинга активных ботов в секундах
     # Торговые настройки
@@ -96,7 +96,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'rsi_time_filter_lower': 35,        # Нижняя граница спокойной зоны для LONG
     # ExitScam фильтр (защита от резких движений цены)
     'exit_scam_enabled': True,          # Включить проверку на ExitScam
-    'exit_scam_candles': 10,            # Количество свечей для проверки (10 = 60 часов на 6H)
+    'exit_scam_candles': 8,            # Количество свечей для проверки (10 = 60 часов на 6H)
     'exit_scam_single_candle_percent': 15,  # Максимальный % изменения одной свечи (15% = блокировка)
     'exit_scam_multi_candle_count': 4,        # Количество свечей для суммарного анализа
     'exit_scam_multi_candle_percent': 50,   # Максимальный суммарный % за N свечей (50% = блокировка)
@@ -213,3 +213,76 @@ class ExchangeConfig:
     DEFAULT_EXCHANGE = 'bybit'
     SUPPORTED_EXCHANGES = ['bybit', 'binance', 'okx']
     FUTURES_ONLY = True
+
+# ==========================================
+# ИИ МОДУЛИ (ПРЕМИУМ ФУНКЦИИ)
+# ==========================================
+
+class AIConfig:
+    """
+    Настройки ИИ модулей
+    
+    ИИ функции являются премиум дополнением и требуют лицензии.
+    Для активации лицензии: python scripts/activate_premium.py
+    """
+    
+    # Общие настройки
+    AI_ENABLED = True
+    AI_CONFIDENCE_THRESHOLD = 0.65  # Минимальная уверенность для применения рекомендации ИИ (0.0-1.0)
+    
+    # Anomaly Detection - обнаружение аномалий (pump/dump)
+    AI_ANOMALY_DETECTION_ENABLED = True
+    AI_ANOMALY_MODEL_PATH = 'data/ai/models/anomaly_detector.pkl'
+    AI_ANOMALY_SCALER_PATH = 'data/ai/models/anomaly_scaler.pkl'
+    AI_ANOMALY_BLOCK_THRESHOLD = 0.7
+    
+    # LSTM Predictor - предсказание движения цены
+    AI_LSTM_ENABLED = True  # Включено для увеличения прибыли
+    AI_LSTM_MODEL_PATH = 'data/ai/models/lstm_predictor.h5'
+    AI_LSTM_SCALER_PATH = 'data/ai/models/lstm_scaler.pkl'
+    AI_LSTM_WEIGHT = 1.5  # Вес в голосовании (если уверенность > 0.7)
+    AI_LSTM_MIN_CONFIDENCE = 0.6  # Минимальная уверенность для применения
+    
+    # Pattern Recognition - распознавание графических паттернов
+    AI_PATTERN_ENABLED = True  # Включено для увеличения прибыли
+    AI_PATTERN_MODEL_PATH = 'data/ai/models/pattern_detector.pkl'
+    AI_PATTERN_SCALER_PATH = 'data/ai/models/pattern_scaler.pkl'
+    AI_PATTERN_WEIGHT = 1.2  # Вес в голосовании
+    AI_PATTERN_MIN_CONFIDENCE = 0.6  # Минимальная уверенность для применения
+    
+    # Dynamic Risk Management - умный SL/TP
+    AI_RISK_MANAGEMENT_ENABLED = True
+    AI_RISK_MODEL_PATH = 'data/ai/models/risk_manager.h5'
+    AI_RISK_UPDATE_INTERVAL = 300
+    
+    # Кэширование предсказаний
+    AI_CACHE_PREDICTIONS = True
+    AI_CACHE_TTL = 300  # Время жизни кэша в секундах (5 минут)
+    
+    # Логирование ИИ решений
+    AI_LOG_PREDICTIONS = True
+    AI_LOG_ANOMALIES = True
+    AI_LOG_PATTERNS = True
+    
+    # ==========================================
+    # АВТОМАТИЧЕСКОЕ ОБУЧЕНИЕ
+    # ==========================================
+    
+    # Включить автоматическое обучение
+    AI_AUTO_TRAIN_ENABLED = True
+    
+    # Первичная настройка при старте (если модель не найдена)
+    AI_AUTO_TRAIN_ON_STARTUP = True  # True = автоматически собрать данные и обучить модель
+    
+    # Частота обновления данных
+    AI_AUTO_UPDATE_DATA = True
+    AI_DATA_UPDATE_INTERVAL = 86400
+    AI_UPDATE_COINS_COUNT = 0  # 0 = ВСЕ монеты с биржи (инкрементальное обновление)
+    AI_INITIAL_COINS_COUNT = 0  # 0 = ВСЕ монеты при первичной настройке (полная история)
+    
+    # Частота переобучения модели
+    AI_AUTO_RETRAIN = True
+    AI_RETRAIN_INTERVAL = 604800
+    
+    # Время запуска обучения (по умолчанию - ночью)
+    AI_RETRAIN_HOUR = 3

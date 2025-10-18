@@ -6062,7 +6062,7 @@ class BotsManager {
                 });
                 
                 // ✅ ИСПРАВЛЕНИЕ: Обновляем счетчик зрелых монет в UI
-                await this.updateMatureCoinsCount();
+                await this.loadMatureCoinsCount();
                 
                 this.logDebug(`[BotsManager] 💎 Помечено ${markedCount} зрелых монет из ${data.total_count} общих`);
             }

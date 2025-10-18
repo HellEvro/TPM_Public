@@ -514,6 +514,35 @@ class TradingBot:
             
             self.logger.info(f"[TRADING_BOT] {self.symbol}: Начинаем открытие {side} позиции...")
             
+            # Адаптируем размер позиции с помощью AI (если доступно)
+            try:
+                from bot_engine.bot_config import AIConfig
+                if AIConfig.AI_ENABLED and AIConfig.AI_RISK_MANAGEMENT_ENABLED:
+                    from bot_engine.ai.ai_manager import get_ai_manager
+                    ai_manager = get_ai_manager()
+                    
+                    if ai_manager and ai_manager.risk_manager and self.volume_mode == VolumeMode.FIXED_USDT:
+                        # Получаем свечи и баланс
+                        candles = self.exchange.get_chart_data(self.symbol, '6h', limit=50)
+                        balance = self._get_available_balance() or 1000  # Fallback
+                        
+                        if candles and len(candles) >= 20:
+                            dynamic_size = ai_manager.risk_manager.calculate_position_size(
+                                self.symbol, candles, balance, signal_confidence=0.7
+                            )
+                            
+                            # Обновляем volume_value для адаптивного размера
+                            original_size = self.volume_value
+                            self.volume_value = dynamic_size['size_usdt']
+                            
+                            self.logger.info(
+                                f"[TRADING_BOT] {self.symbol}: 🤖 AI адаптировал размер: "
+                                f"{original_size} USDT → {self.volume_value} USDT "
+                                f"({dynamic_size['reason']})"
+                            )
+            except Exception as ai_error:
+                self.logger.debug(f"[TRADING_BOT] {self.symbol}: AI адаптация размера недоступна: {ai_error}")
+            
             # Рассчитываем размер позиции
             quantity = self._calculate_position_size()
             self.logger.info(f"[TRADING_BOT] {self.symbol}: Рассчитанный размер позиции: {quantity}")
@@ -563,11 +592,42 @@ class TradingBot:
                     self.logger.error(f"[TRADING_BOT] {self.symbol}: ❌ Ошибка регистрации позиции в реестре: {registry_error}")
                     # Не блокируем торговлю из-за ошибки реестра
                 
-                # Устанавливаем стоп-лосс
+                # Устанавливаем стоп-лосс (с AI адаптацией если доступно)
                 try:
-                    stop_result = self._place_stop_loss(side, self.entry_price, self.max_loss_percent)
+                    # Пытаемся получить динамический SL от AI
+                    sl_percent = self.max_loss_percent
+                    ai_reason = None
+                    
+                    try:
+                        from bot_engine.bot_config import AIConfig
+                        if AIConfig.AI_ENABLED and AIConfig.AI_RISK_MANAGEMENT_ENABLED:
+                            from bot_engine.ai.ai_manager import get_ai_manager
+                            ai_manager = get_ai_manager()
+                            
+                            if ai_manager and ai_manager.risk_manager:
+                                # Получаем свечи для анализа
+                                candles = self.exchange.get_chart_data(self.symbol, '6h', limit=50)
+                                
+                                if candles and len(candles) >= 20:
+                                    dynamic_sl = ai_manager.risk_manager.calculate_dynamic_sl(
+                                        self.symbol, candles, side
+                                    )
+                                    
+                                    sl_percent = dynamic_sl['sl_percent']
+                                    ai_reason = dynamic_sl['reason']
+                                    
+                                    self.logger.info(
+                                        f"[TRADING_BOT] {self.symbol}: 🤖 AI адаптировал SL: "
+                                        f"{self.max_loss_percent}% → {sl_percent}% "
+                                        f"({ai_reason})"
+                                    )
+                    except Exception as ai_error:
+                        self.logger.debug(f"[TRADING_BOT] {self.symbol}: AI SL недоступен: {ai_error}")
+                    
+                    # Устанавливаем стоп-лосс (стандартный или адаптивный)
+                    stop_result = self._place_stop_loss(side, self.entry_price, sl_percent)
                     if stop_result and stop_result.get('success'):
-                        self.logger.info(f"[TRADING_BOT] {self.symbol}: ✅ Стоп-лосс установлен на {self.max_loss_percent}%")
+                        self.logger.info(f"[TRADING_BOT] {self.symbol}: ✅ Стоп-лосс установлен на {sl_percent}%")
                     else:
                         self.logger.warning(f"[TRADING_BOT] {self.symbol}: ⚠️ Не удалось установить стоп-лосс")
                 except Exception as stop_error:

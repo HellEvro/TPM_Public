@@ -38,6 +38,15 @@ const TRANSLATIONS = {
         'no_active_bots': 'Нет активных ботов',
         'create_bots_for_trading': 'Создайте ботов для торговли',
         'updated': 'Обновлено',
+        'manual_positions': 'ручных позиций',
+        'manual_positions_filter': 'Ручные позиции',
+        'refresh_manual_positions': 'Обновить ручные позиции',
+        'mature_coins': 'Зрелые монеты',
+        'unknown': 'неизвестно',
+        'all': 'Все',
+        'all_coins': 'Все монеты',
+        'loading_rsi_data': 'Загрузка данных RSI...',
+        'first_load_warning': 'Первая загрузка может занять несколько минут',
         'total_pnl': 'Общий PnL',
         'in_position': 'В позиции',
         'management': 'Управление',
@@ -367,6 +376,81 @@ const TRANSLATIONS = {
         'min_volatility_label': 'Мин. волатильность (%):',
         'min_volatility_help': 'Минимальная волатильность для торговли (защита от мертвых монет)',
         
+        // AI Модули
+        'ai_modules_title': 'AI Модули (Premium)',
+        'ai_modules_description': 'Умное управление торговлей с помощью машинного обучения',
+        'license_active': 'Лицензия активна',
+        'license_invalid': 'Лицензия недействительна',
+        'ai_master_switch': '🤖 Включить AI модули:',
+        'ai_master_help': 'Мастер-переключатель для всех AI функций',
+        
+        // Anomaly Detection
+        'anomaly_detection_title': 'Anomaly Detection',
+        'anomaly_enabled_label': 'Обнаружение аномалий:',
+        'anomaly_enabled_help': 'Блокировать входы при обнаружении PUMP/DUMP',
+        'anomaly_threshold_label': 'Порог блокировки:',
+        'anomaly_threshold_help': 'Блокировать если severity > этого значения (0.7 = 70%)',
+        'anomaly_log_label': 'Логировать аномалии:',
+        'anomaly_log_help': 'Записывать обнаруженные аномалии в логи',
+        
+        // LSTM Predictor
+        'lstm_predictor_title': 'LSTM Predictor',
+        'lstm_enabled_label': 'LSTM предсказание цены:',
+        'lstm_enabled_help': 'Использовать нейронную сеть для предсказания движения цены',
+        'lstm_min_confidence_label': 'Минимальная уверенность:',
+        'lstm_min_confidence_help': 'Минимальная уверенность LSTM для применения (0.6 = 60%)',
+        'lstm_weight_label': 'Вес в голосовании:',
+        'lstm_weight_help': 'Влияние LSTM на общее решение (1.5 = повышенный вес)',
+        
+        // Pattern Recognition
+        'pattern_recognition_title': 'Pattern Recognition',
+        'pattern_enabled_label': 'Распознавание паттернов:',
+        'pattern_enabled_help': 'Анализ классических графических паттернов (H&S, Double Top, и др.)',
+        'pattern_min_confidence_label': 'Минимальная уверенность:',
+        'pattern_min_confidence_help': 'Минимальная уверенность паттернов для применения (0.6 = 60%)',
+        'pattern_weight_label': 'Вес в голосовании:',
+        'pattern_weight_help': 'Влияние паттернов на общее решение (1.2 = повышенный вес)',
+        
+        // Risk Management
+        'risk_management_title': 'Risk Management',
+        'risk_enabled_label': 'Умное управление рисками:',
+        'risk_enabled_help': 'Адаптивные SL/TP и размер позиции',
+        'risk_update_interval_label': 'Интервал обновления:',
+        'risk_update_help': 'Частота мониторинга открытых позиций (рекомендуется 300 сек = 5 минут)',
+        
+        // Auto Training
+        'auto_training_title': 'Auto Training',
+        'auto_train_enabled_label': 'Автоматическое обучение:',
+        'auto_train_help': 'Автоматическое обновление данных и переобучение модели',
+        'auto_update_data_label': 'Обновление данных:',
+        'auto_update_help': 'Ежедневное обновление исторических данных',
+        'data_update_interval_label': 'Интервал обновления данных:',
+        'data_update_interval_help': '24 часа (86400 сек) = ежедневное обновление',
+        'auto_retrain_label': 'Автоматическое переобучение:',
+        'auto_retrain_help': 'Еженедельное переобучение модели',
+        'retrain_interval_label': 'Интервал переобучения:',
+        'retrain_interval_help': '7 дней (604800 сек) = еженедельное переобучение',
+        'retrain_hour_label': 'Время переобучения:',
+        'retrain_hour_help': 'Час для запуска переобучения (3 = 3:00 AM, минимальная нагрузка)',
+        
+        // AI Logging
+        'ai_logging_title': 'Логирование AI',
+        'log_predictions_label': 'Логировать предсказания:',
+        'log_predictions_help': 'Записывать все AI решения в логи',
+        'log_anomalies_label': 'Логировать аномалии:',
+        'log_anomalies_help': 'Записывать обнаруженные аномалии в логи',
+        'log_patterns_label': 'Логировать паттерны:',
+        'log_patterns_help': 'Записывать найденные графические паттерны в логи',
+        
+        // Кнопки
+        'save_ai_section_btn': '💾 Сохранить AI настройки',
+        
+        // Единицы измерения
+        'seconds_unit': 'сек',
+        'hours_unit': 'часов',
+        'days_unit': 'дней',
+        'hour_unit': 'час',
+        
         rapidGrowth: 'Быстрорастущие позиции',
         clear: 'Очистить',
         noPositions: 'Нет позиций',
@@ -685,6 +769,15 @@ const TRANSLATIONS = {
         'no_active_bots': 'No active bots',
         'create_bots_for_trading': 'Create bots for trading',
         'updated': 'Updated',
+        'manual_positions': 'manual positions',
+        'manual_positions_filter': 'Manual positions',
+        'refresh_manual_positions': 'Refresh manual positions',
+        'mature_coins': 'Mature coins',
+        'unknown': 'unknown',
+        'all': 'All',
+        'all_coins': 'All coins',
+        'loading_rsi_data': 'Loading RSI data...',
+        'first_load_warning': 'The first load may take several minutes',
         'total_pnl': 'Total PnL',
         'in_position': 'In position',
         'management': 'Management',
@@ -1013,6 +1106,81 @@ const TRANSLATIONS = {
         'max_rsi_high_help': 'RSI should have risen to this level (close to overbought)',
         'min_volatility_label': 'Min volatility (%):',
         'min_volatility_help': 'Minimum volatility for trading (protection from dead coins)',
+        
+        // AI Modules
+        'ai_modules_title': 'AI Modules (Premium)',
+        'ai_modules_description': 'Smart trading management using machine learning',
+        'license_active': 'License Active',
+        'license_invalid': 'License Invalid',
+        'ai_master_switch': '🤖 Enable AI modules:',
+        'ai_master_help': 'Master switch for all AI features',
+        
+        // Anomaly Detection
+        'anomaly_detection_title': 'Anomaly Detection',
+        'anomaly_enabled_label': 'Anomaly detection:',
+        'anomaly_enabled_help': 'Block entries when PUMP/DUMP detected',
+        'anomaly_threshold_label': 'Block threshold:',
+        'anomaly_threshold_help': 'Block if severity > this value (0.7 = 70%)',
+        'anomaly_log_label': 'Log anomalies:',
+        'anomaly_log_help': 'Write detected anomalies to logs',
+        
+        // LSTM Predictor
+        'lstm_predictor_title': 'LSTM Predictor',
+        'lstm_enabled_label': 'LSTM price prediction:',
+        'lstm_enabled_help': 'Use neural network for price movement prediction',
+        'lstm_min_confidence_label': 'Minimum confidence:',
+        'lstm_min_confidence_help': 'Minimum LSTM confidence for application (0.6 = 60%)',
+        'lstm_weight_label': 'Voting weight:',
+        'lstm_weight_help': 'LSTM influence on final decision (1.5 = higher weight)',
+        
+        // Pattern Recognition
+        'pattern_recognition_title': 'Pattern Recognition',
+        'pattern_enabled_label': 'Pattern recognition:',
+        'pattern_enabled_help': 'Analysis of classic chart patterns (H&S, Double Top, etc.)',
+        'pattern_min_confidence_label': 'Minimum confidence:',
+        'pattern_min_confidence_help': 'Minimum pattern confidence for application (0.6 = 60%)',
+        'pattern_weight_label': 'Voting weight:',
+        'pattern_weight_help': 'Pattern influence on final decision (1.2 = higher weight)',
+        
+        // Risk Management
+        'risk_management_title': 'Risk Management',
+        'risk_enabled_label': 'Smart risk management:',
+        'risk_enabled_help': 'Adaptive SL/TP and position sizing',
+        'risk_update_interval_label': 'Update interval:',
+        'risk_update_help': 'Frequency of open positions monitoring (recommended 300 sec = 5 minutes)',
+        
+        // Auto Training
+        'auto_training_title': 'Auto Training',
+        'auto_train_enabled_label': 'Automatic training:',
+        'auto_train_help': 'Automatic data update and model retraining',
+        'auto_update_data_label': 'Data update:',
+        'auto_update_help': 'Daily update of historical data',
+        'data_update_interval_label': 'Data update interval:',
+        'data_update_interval_help': '24 hours (86400 sec) = daily update',
+        'auto_retrain_label': 'Automatic retraining:',
+        'auto_retrain_help': 'Weekly model retraining',
+        'retrain_interval_label': 'Retrain interval:',
+        'retrain_interval_help': '7 days (604800 sec) = weekly retraining',
+        'retrain_hour_label': 'Retrain time:',
+        'retrain_hour_help': 'Hour to start retraining (3 = 3:00 AM, minimal load)',
+        
+        // AI Logging
+        'ai_logging_title': 'AI Logging',
+        'log_predictions_label': 'Log predictions:',
+        'log_predictions_help': 'Write all AI decisions to logs',
+        'log_anomalies_label': 'Log anomalies:',
+        'log_anomalies_help': 'Write detected anomalies to logs',
+        'log_patterns_label': 'Log patterns:',
+        'log_patterns_help': 'Write detected chart patterns to logs',
+        
+        // Buttons
+        'save_ai_section_btn': '💾 Save AI Settings',
+        
+        // Units
+        'seconds_unit': 'sec',
+        'hours_unit': 'hours',
+        'days_unit': 'days',
+        'hour_unit': 'hour',
         
         rapidGrowth: 'Rapid Growth Positions',
         clear: 'Clear',

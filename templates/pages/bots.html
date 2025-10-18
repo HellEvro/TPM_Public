@@ -137,7 +137,7 @@
                 
                 <!-- Фильтры RSI -->
                 <div class="rsi-filters-container">
-                    <button class="rsi-filter-btn active" data-filter="all">🌐 Все (<span id="filterAllCount">0</span>)</button>
+                    <button class="rsi-filter-btn active" data-filter="all">🌐 <span data-translate="all">Все</span> (<span id="filterAllCount">0</span>)</button>
                     <button class="rsi-filter-btn buy-filter" data-filter="buy-zone">🟢 ≤29 (<span id="filterBuyZoneCount">0</span>)</button>
                     <button class="rsi-filter-btn sell-filter" data-filter="sell-zone">🔴 ≥71 (<span id="filterSellZoneCount">0</span>)</button>
                     <button class="rsi-filter-btn trend-up-filter" data-filter="trend-up">📈 UP (<span id="filterTrendUpCount">0</span>)</button>
@@ -146,15 +146,15 @@
                     <button class="rsi-filter-btn enter-short-filter" data-filter="enter-short">📉 SHORT (<span id="filterShortCount">0</span>)</button>
                     <button class="rsi-filter-btn manual-position-filter" data-filter="manual-position">
                         <span class="filter-icon">✋</span>
-                        <span class="filter-text">Ручные позиции</span>
+                        <span class="filter-text" data-translate="manual_positions_filter">Ручные позиции</span>
                         <span class="filter-count" id="manualCount">(0)</span>
                     </button>
-                    <button class="btn btn-sm btn-info" id="refreshManualPositionsBtn" title="Обновить ручные позиции">
+                    <button class="btn btn-sm btn-info" id="refreshManualPositionsBtn" title="Обновить ручные позиции" data-translate-title="refresh_manual_positions">
                         <span>🔄</span>
                     </button>
                     <button class="rsi-filter-btn mature-coins-filter" data-filter="mature-coins" title="Показать только зрелые монеты">
                         <span class="filter-icon">💎</span>
-                        <span class="filter-text">Зрелые монеты</span>
+                        <span class="filter-text" data-translate="mature_coins">Зрелые монеты</span>
                         <span class="filter-count" id="matureCoinsCount">(0)</span>
                     </button>
             </div>
@@ -642,7 +642,7 @@
                             </label>
                             <div class="config-scope-buttons">
                                 <button type="button" class="scope-btn active" data-value="all" data-translate="all_coins_select">
-                                    🌐 Все монеты
+                                    🌐 <span data-translate="all_coins">Все монеты</span>
                                 </button>
                                 <button type="button" class="scope-btn" data-value="whitelist" data-translate="whitelist_option">
                                     ✅ Белый список
@@ -1534,6 +1534,316 @@
                     <div class="config-section-actions">
                         <button class="btn btn-success config-section-save-btn" data-section="ema">
                             <span data-translate="save_section_btn">💾 Сохранить EMA параметры</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 🤖 AI Модули (Premium) - показывается только если есть лицензия -->
+                <div class="config-section" id="aiConfigSection" style="display: none;">
+                    <div class="section-header">
+                        <h3>🤖 <span data-translate="ai_modules_title">AI Модули (Premium)</span></h3>
+                        <div class="section-description">
+                            <span data-translate="ai_modules_description">Умное управление торговлей с помощью машинного обучения</span>
+                        </div>
+                        <div class="ai-license-badge" id="aiLicenseBadge" style="margin-top: 10px;">
+                            <span class="badge badge-success">✅ <span data-translate="license_active">Лицензия активна</span></span>
+                        </div>
+                    </div>
+                    
+                    <div class="config-grid">
+                        <!-- Мастер-переключатель AI -->
+                        <div class="config-item config-item-highlight">
+                            <label class="config-label">
+                                <span class="label-text" data-translate="ai_master_switch">🤖 Включить AI модули:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="aiEnabled" />
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <small class="config-help" data-translate="ai_master_help">Мастер-переключатель для всех AI функций</small>
+                        </div>
+                        
+                        <!-- Anomaly Detection -->
+                        <div class="config-subsection">
+                            <h4>🛡️ <span data-translate="anomaly_detection_title">Anomaly Detection</span></h4>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="anomaly_enabled_label">Обнаружение аномалий:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="anomalyDetectionEnabled" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="anomaly_enabled_help">Блокировать входы при обнаружении PUMP/DUMP</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">⚠️</span>
+                                    <span class="label-text" data-translate="anomaly_threshold_label">Порог блокировки:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="anomalyBlockThreshold" class="config-input" 
+                                           min="0.5" max="0.95" step="0.05" value="0.7"
+                                           placeholder="0.7">
+                                    <span class="input-unit">%</span>
+                                </div>
+                                <small class="config-help" data-translate="anomaly_threshold_help">Блокировать если severity > этого значения (0.7 = 70%)</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="anomaly_log_label">Логировать аномалии:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="anomalyLogEnabled" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="anomaly_log_help">Записывать обнаруженные аномалии в логи</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Risk Management -->
+                        <div class="config-subsection">
+                            <h4>⚖️ <span data-translate="risk_management_title">Risk Management</span></h4>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="risk_enabled_label">Умное управление рисками:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="riskManagementEnabled" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="risk_enabled_help">Адаптивные SL/TP и размер позиции</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">⏰</span>
+                                    <span class="label-text" data-translate="risk_update_interval_label">Интервал обновления:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="riskUpdateInterval" class="config-input" 
+                                           min="60" max="3600" step="60" value="300"
+                                           placeholder="300">
+                                    <span class="input-unit" data-translate="seconds_unit">сек</span>
+                                </div>
+                                <small class="config-help" data-translate="risk_update_help">Частота мониторинга открытых позиций (рекомендуется 300 сек = 5 минут)</small>
+                            </div>
+                        </div>
+                        
+                        <!-- LSTM Predictor -->
+                        <div class="config-subsection">
+                            <h4>🧠 <span data-translate="lstm_predictor_title">LSTM Predictor</span></h4>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="lstm_enabled_label">LSTM предсказание цены:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="lstmEnabled" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="lstm_enabled_help">Использовать нейронную сеть для предсказания движения цены</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">🎯</span>
+                                    <span class="label-text" data-translate="lstm_min_confidence_label">Минимальная уверенность:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="lstmMinConfidence" class="config-input" 
+                                           min="0.3" max="0.95" step="0.05" value="0.6"
+                                           placeholder="0.6">
+                                    <span class="input-unit">%</span>
+                                </div>
+                                <small class="config-help" data-translate="lstm_min_confidence_help">Минимальная уверенность LSTM для применения (0.6 = 60%)</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">⚖️</span>
+                                    <span class="label-text" data-translate="lstm_weight_label">Вес в голосовании:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="lstmWeight" class="config-input" 
+                                           min="0.5" max="3.0" step="0.1" value="1.5"
+                                           placeholder="1.5">
+                                    <span class="input-unit">x</span>
+                                </div>
+                                <small class="config-help" data-translate="lstm_weight_help">Влияние LSTM на общее решение (1.5 = повышенный вес)</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Pattern Recognition -->
+                        <div class="config-subsection">
+                            <h4>📊 <span data-translate="pattern_recognition_title">Pattern Recognition</span></h4>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="pattern_enabled_label">Распознавание паттернов:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="patternEnabled" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="pattern_enabled_help">Анализ классических графических паттернов (H&S, Double Top, и др.)</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">🎯</span>
+                                    <span class="label-text" data-translate="pattern_min_confidence_label">Минимальная уверенность:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="patternMinConfidence" class="config-input" 
+                                           min="0.3" max="0.95" step="0.05" value="0.6"
+                                           placeholder="0.6">
+                                    <span class="input-unit">%</span>
+                                </div>
+                                <small class="config-help" data-translate="pattern_min_confidence_help">Минимальная уверенность паттернов для применения (0.6 = 60%)</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">⚖️</span>
+                                    <span class="label-text" data-translate="pattern_weight_label">Вес в голосовании:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="patternWeight" class="config-input" 
+                                           min="0.5" max="3.0" step="0.1" value="1.2"
+                                           placeholder="1.2">
+                                    <span class="input-unit">x</span>
+                                </div>
+                                <small class="config-help" data-translate="pattern_weight_help">Влияние паттернов на общее решение (1.2 = повышенный вес)</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Auto Training -->
+                        <div class="config-subsection">
+                            <h4>🔄 <span data-translate="auto_training_title">Auto Training</span></h4>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="auto_train_enabled_label">Автоматическое обучение:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="autoTrainEnabled" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="auto_train_help">Автоматическое обновление данных и переобучение модели</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="auto_update_data_label">Обновление данных:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="autoUpdateData" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="auto_update_help">Ежедневное обновление исторических данных</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">📥</span>
+                                    <span class="label-text" data-translate="data_update_interval_label">Интервал обновления данных:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="dataUpdateInterval" class="config-input" 
+                                           min="3600" max="604800" step="3600" value="86400"
+                                           placeholder="86400">
+                                    <span class="input-unit" data-translate="hours_unit">часов</span>
+                                </div>
+                                <small class="config-help" data-translate="data_update_interval_help">24 часа (86400 сек) = ежедневное обновление</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="auto_retrain_label">Автоматическое переобучение:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="autoRetrain" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="auto_retrain_help">Еженедельное переобучение модели</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">🧠</span>
+                                    <span class="label-text" data-translate="retrain_interval_label">Интервал переобучения:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="retrainInterval" class="config-input" 
+                                           min="86400" max="2592000" step="86400" value="604800"
+                                           placeholder="604800">
+                                    <span class="input-unit" data-translate="days_unit">дней</span>
+                                </div>
+                                <small class="config-help" data-translate="retrain_interval_help">7 дней (604800 сек) = еженедельное переобучение</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">⏰</span>
+                                    <span class="label-text" data-translate="retrain_hour_label">Время переобучения:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="retrainHour" class="config-input" 
+                                           min="0" max="23" step="1" value="3"
+                                           placeholder="3">
+                                    <span class="input-unit" data-translate="hour_unit">час</span>
+                                </div>
+                                <small class="config-help" data-translate="retrain_hour_help">Час для запуска переобучения (3 = 3:00 AM, минимальная нагрузка)</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Логирование AI -->
+                        <div class="config-subsection">
+                            <h4>📝 <span data-translate="ai_logging_title">Логирование AI</span></h4>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="log_predictions_label">Логировать предсказания:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="logPredictions" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="log_predictions_help">Записывать все AI решения в логи</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="log_anomalies_label">Логировать аномалии:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="logAnomalies" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="log_anomalies_help">Записывать обнаруженные аномалии в логи</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="log_patterns_label">Логировать паттерны:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="logPatterns" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="log_patterns_help">Записывать найденные графические паттерны в логи</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="config-section-actions">
+                        <button class="btn btn-success config-section-save-btn" data-section="ai">
+                            <span data-translate="save_ai_section_btn">💾 Сохранить AI настройки</span>
                         </button>
                     </div>
                 </div>

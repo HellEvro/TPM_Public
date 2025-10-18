@@ -415,6 +415,16 @@ def api_status():
         'test': 'simple_endpoint'
     })
 
+# Регистрируем AI endpoints
+try:
+    from bot_engine.api.endpoints_ai import register_ai_endpoints
+    register_ai_endpoints(bots_app)
+    logger.info("✅ AI endpoints зарегистрированы")
+except ImportError as e:
+    logger.warning(f"⚠️ AI endpoints недоступны: {e}")
+except Exception as e:
+    logger.error(f"❌ Ошибка регистрации AI endpoints: {e}")
+
 # Добавляем обработчик ошибок JSON сериализации
 @bots_app.errorhandler(TypeError)
 def handle_json_error(e):

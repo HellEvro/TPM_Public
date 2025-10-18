@@ -2548,6 +2548,16 @@ def run_bots_service():
         logger.info(f"🌐 Запуск Flask сервера для ботов на {SystemConfig.BOTS_SERVICE_HOST}:{SystemConfig.BOTS_SERVICE_PORT}...")
         logger.info("📋 Этот сервис предоставляет API для торговых ботов")
         
+        # Регистрируем AI endpoints
+        try:
+            from bot_engine.api.endpoints_ai import register_ai_endpoints
+            register_ai_endpoints(bots_app)
+            logger.info("✅ AI endpoints зарегистрированы")
+        except ImportError as e:
+            logger.warning(f"⚠️ AI endpoints недоступны: {e}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка регистрации AI endpoints: {e}")
+        
         # Запускаем Flask сервер в отдельном потоке СРАЗУ
         def run_flask_server():
             try:

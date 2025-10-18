@@ -230,22 +230,16 @@ def check_rsi_time_filter(candles, rsi, signal):
             # 3. От найденного лоя проверяем ВСЕ свечи до текущей
             # 4. Все должны быть <= 35 (иначе был прорыв вверх - вход упущен)
             
-            # Шаг 1: Проверяем последние N свечей
-            last_n_candles_start = max(0, current_index - rsi_time_filter_candles + 1)
-            last_n_candles = rsi_history[last_n_candles_start:current_index + 1]
-            
-            # Ищем лои (<= 29) в последних N свечах
+            # Ищем лой, который даст нам достаточно свечей после него
             low_index = None
-            for i in range(last_n_candles_start, current_index + 1):
-                if rsi_history[i] <= rsi_long_threshold:
-                    low_index = i
-                    break  # Берем САМЫЙ РАННИЙ лой
             
-            # Шаг 2: Если не нашли лой в последних N - ищем дальше в ВСЕЙ истории
-            if low_index is None:
-                # Ищем по всей доступной истории (без ограничений)
-                for i in range(last_n_candles_start - 1, -1, -1):
-                    if rsi_history[i] <= rsi_long_threshold:
+            # Ищем лой, начиная с текущей свечи и идя назад
+            # Нам нужен лой, после которого будет минимум rsi_time_filter_candles свечей
+            for i in range(current_index, -1, -1):
+                if rsi_history[i] <= rsi_long_threshold:
+                    # Проверяем, достаточно ли свечей после этого лоя
+                    candles_after_low = current_index - i
+                    if candles_after_low >= rsi_time_filter_candles:
                         low_index = i
                         break
             
@@ -264,7 +258,13 @@ def check_rsi_time_filter(candles, rsi, signal):
             
             # Берем все свечи ПОСЛЕ лоя (не включая сам лой)
             start_check = low_index + 1
+            # Исправляем: current_index уже указывает на последнюю свечу, поэтому не добавляем +1
             check_candles = rsi_history[start_check:current_index + 1]
+            
+            # Отладочная информация (только в DEBUG режиме)
+            if SystemConfig.DEBUG_MODE:
+                logger.debug(f"[RSI_TIME_FILTER] {signal}: low_index={low_index}, current_index={current_index}, start_check={start_check}")
+                logger.debug(f"[RSI_TIME_FILTER] {signal}: check_candles length={len(check_candles)}, rsi_values={check_candles}")
             
             # Проверяем что ВСЕ свечи <= 35
             invalid_candles = [rsi_val for rsi_val in check_candles if rsi_val > rsi_time_filter_lower]
@@ -1087,13 +1087,19 @@ def check_exit_scam_filter(symbol, coin_data):
         try:
             from bot_engine.bot_config import AIConfig
             
+            # Быстрая проверка: AI включен и Anomaly Detection включен
             if AIConfig.AI_ENABLED and AIConfig.AI_ANOMALY_DETECTION_ENABLED:
                 try:
                     from bot_engine.ai.ai_manager import get_ai_manager
                     
                     ai_manager = get_ai_manager()
                     
-                    if ai_manager and ai_manager.anomaly_detector:
+                    # Быстрая проверка доступности: если AI недоступен, пропускаем
+                    if not ai_manager.is_available():
+                        # AI модули не загружены (нет лицензии или не установлены)
+                        # Не логируем каждый раз, чтобы не спамить
+                        pass
+                    elif ai_manager.anomaly_detector:
                         # Анализируем свечи с помощью ИИ
                         anomaly_result = ai_manager.anomaly_detector.detect(candles)
                         
@@ -1135,6 +1141,175 @@ def check_exit_scam_filter(symbol, coin_data):
 
 # Алиас для обратной совместимости
 check_anti_dump_pump = check_exit_scam_filter
+
+
+def get_lstm_prediction(symbol, signal, current_price):
+    """
+    Получает предсказание LSTM для монеты
+    
+    Args:
+        symbol: Символ монеты
+        signal: Сигнал ('LONG' или 'SHORT')
+        current_price: Текущая цена
+    
+    Returns:
+        Dict с предсказанием или None
+    """
+    try:
+        from bot_engine.bot_config import AIConfig
+        
+        # Проверяем, включен ли LSTM
+        if not (AIConfig.AI_ENABLED and AIConfig.AI_LSTM_ENABLED):
+            return None
+        
+        try:
+            from bot_engine.ai.ai_manager import get_ai_manager
+            
+            ai_manager = get_ai_manager()
+            
+            # Проверяем доступность LSTM
+            if not ai_manager.is_available() or not ai_manager.lstm_predictor:
+                return None
+            
+            # Получаем свечи для анализа
+            exch = get_exchange()
+            if not exch:
+                return None
+            
+            chart_response = exch.get_chart_data(symbol, '6h', '30d')
+            if not chart_response or not chart_response.get('success'):
+                return None
+            
+            candles = chart_response.get('data', {}).get('candles', [])
+            if len(candles) < 60:  # LSTM требует минимум 60 свечей
+                return None
+            
+            # Получаем предсказание
+            prediction = ai_manager.lstm_predictor.predict(candles, current_price)
+            
+            if prediction and prediction.get('confidence', 0) >= AIConfig.AI_LSTM_MIN_CONFIDENCE:
+                # Проверяем совпадение направлений
+                lstm_direction = "LONG" if prediction['direction'] > 0 else "SHORT"
+                confidence = prediction['confidence']
+                
+                if lstm_direction == signal:
+                    logger.info(
+                        f"[LSTM] {symbol}: ✅ ПОДТВЕРЖДЕНИЕ: "
+                        f"LSTM предсказывает {lstm_direction} "
+                        f"(изменение: {prediction['change_percent']:+.2f}%, "
+                        f"уверенность: {confidence:.1f}%)"
+                    )
+                else:
+                    logger.warning(
+                        f"[LSTM] {symbol}: ⚠️ ПРОТИВОРЕЧИЕ: "
+                        f"Сигнал {signal}, но LSTM предсказывает {lstm_direction} "
+                        f"(изменение: {prediction['change_percent']:+.2f}%, "
+                        f"уверенность: {confidence:.1f}%)"
+                    )
+                
+                return {
+                    **prediction,
+                    'lstm_direction': lstm_direction,
+                    'matches_signal': lstm_direction == signal
+                }
+            
+            return None
+            
+        except ImportError as e:
+            logger.debug(f"[LSTM] {symbol}: AI модуль не доступен: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"[LSTM] {symbol}: Ошибка LSTM предсказания: {e}")
+            return None
+    
+    except ImportError:
+        return None
+
+
+def get_pattern_analysis(symbol, signal, current_price):
+    """
+    Получает анализ паттернов для монеты
+    
+    Args:
+        symbol: Символ монеты
+        signal: Сигнал ('LONG' или 'SHORT')
+        current_price: Текущая цена
+    
+    Returns:
+        Dict с анализом паттернов или None
+    """
+    try:
+        from bot_engine.bot_config import AIConfig
+        
+        # Проверяем, включен ли Pattern Recognition
+        if not (AIConfig.AI_ENABLED and AIConfig.AI_PATTERN_ENABLED):
+            return None
+        
+        try:
+            from bot_engine.ai.ai_manager import get_ai_manager
+            
+            ai_manager = get_ai_manager()
+            
+            # Проверяем доступность Pattern Detector
+            if not ai_manager.is_available() or not ai_manager.pattern_detector:
+                return None
+            
+            # Получаем свечи для анализа
+            exch = get_exchange()
+            if not exch:
+                return None
+            
+            chart_response = exch.get_chart_data(symbol, '6h', '30d')
+            if not chart_response or not chart_response.get('success'):
+                return None
+            
+            candles = chart_response.get('data', {}).get('candles', [])
+            if len(candles) < 100:  # Pattern требует минимум 100 свечей
+                return None
+            
+            # Получаем анализ паттернов
+            pattern_signal = ai_manager.pattern_detector.get_pattern_signal(
+                candles, 
+                current_price, 
+                signal
+            )
+            
+            if pattern_signal['patterns_found'] > 0:
+                # Проверяем подтверждение
+                if pattern_signal['confirmation']:
+                    logger.info(
+                        f"[PATTERN] {symbol}: ✅ ПОДТВЕРЖДЕНИЕ: "
+                        f"Паттерны подтверждают {signal} "
+                        f"(найдено: {pattern_signal['patterns_found']}, "
+                        f"уверенность: {pattern_signal['confidence']:.1f}%)"
+                    )
+                    
+                    if pattern_signal['strongest_pattern']:
+                        strongest = pattern_signal['strongest_pattern']
+                        logger.info(
+                            f"[PATTERN] {symbol}:    └─ {strongest['name']}: "
+                            f"{strongest['description']}"
+                        )
+                else:
+                    logger.warning(
+                        f"[PATTERN] {symbol}: ⚠️ ПРОТИВОРЕЧИЕ: "
+                        f"Сигнал {signal}, но паттерны указывают на {pattern_signal['signal']} "
+                        f"(уверенность: {pattern_signal['confidence']:.1f}%)"
+                    )
+                
+                return pattern_signal
+            
+            return None
+            
+        except ImportError as e:
+            logger.debug(f"[PATTERN] {symbol}: AI модуль не доступен: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"[PATTERN] {symbol}: Ошибка анализа паттернов: {e}")
+            return None
+    
+    except ImportError:
+        return None  # AIConfig не доступен
 
 def check_no_existing_position(symbol, signal):
     """Проверяет, что нет существующих позиций на бирже"""
