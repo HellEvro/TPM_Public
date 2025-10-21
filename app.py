@@ -1146,6 +1146,54 @@ def toggle_auto_bot():
     status_code = 200 if result.get('success') else 500
     return jsonify(result), status_code
 
+@app.route('/api/bots/account-info', methods=['GET'])
+def get_account_info():
+    """Получить информацию об аккаунте (прокси к сервису ботов)"""
+    result = call_bots_service('/api/bots/account-info')
+    status_code = 200 if result.get('success') else 500
+    return jsonify(result), status_code
+
+@app.route('/api/bots/sync-positions', methods=['GET', 'POST'])
+def sync_positions():
+    """Синхронизировать позиции (прокси к сервису ботов, работает с GET и POST)"""
+    method = request.method
+    result = call_bots_service('/api/bots/sync-positions', method=method)
+    status_code = 200 if result.get('success') else 500
+    return jsonify(result), status_code
+
+@app.route('/api/bots/coins-with-rsi', methods=['GET'])
+def get_coins_with_rsi():
+    """Получить монеты с RSI данными (прокси к сервису ботов)"""
+    result = call_bots_service('/api/bots/coins-with-rsi')
+    status_code = 200 if result.get('success') else 500
+    return jsonify(result), status_code
+
+@app.route('/api/bots/individual-settings/<symbol>', methods=['GET', 'POST'])
+def individual_settings(symbol):
+    """Индивидуальные настройки бота (прокси к сервису ботов)"""
+    if request.method == 'GET':
+        result = call_bots_service(f'/api/bots/individual-settings/{symbol}')
+    else:
+        data = request.get_json()
+        result = call_bots_service(f'/api/bots/individual-settings/{symbol}', method='POST', data=data)
+    status_code = 200 if result.get('success') else 500
+    return jsonify(result), status_code
+
+@app.route('/api/bots/individual-settings/<symbol>/copy-to-all', methods=['POST'])
+def copy_individual_settings(symbol):
+    """Копировать индивидуальные настройки на все боты (прокси к сервису ботов)"""
+    result = call_bots_service(f'/api/bots/individual-settings/{symbol}/copy-to-all', method='POST')
+    status_code = 200 if result.get('success') else 500
+    return jsonify(result), status_code
+
+@app.route('/api/bots/start', methods=['POST'])
+def start_bot():
+    """Запустить бота (прокси к сервису ботов)"""
+    data = request.get_json()
+    result = call_bots_service('/api/bots/start', method='POST', data=data)
+    status_code = 200 if result.get('success') else 500
+    return jsonify(result), status_code
+
 @app.route('/get_symbol_chart/<symbol>')
 def get_symbol_chart(symbol):
     """Получение миниграфика для символа"""

@@ -131,9 +131,18 @@ class AsyncRSILoader:
         """Асинхронно загружает RSI данные для пакета монет"""
         logger.info(f"[ASYNC_RSI] 🚀 Начинаем асинхронную загрузку {len(symbols)} монет")
         
+        # ⚡ БАЛАНС: Семафор на 10 - стабильность + скорость
+        semaphore = asyncio.Semaphore(10)  # БАЛАНС: 10 одновременных
+        
+        async def load_with_semaphore(symbol):
+            async with semaphore:
+                # Минимальная задержка для стабильности
+                await asyncio.sleep(0.1)
+                return await self.load_coin_rsi_async(symbol)
+        
         tasks = []
         for symbol in symbols:
-            task = asyncio.create_task(self.load_coin_rsi_async(symbol))
+            task = asyncio.create_task(load_with_semaphore(symbol))  # С семафором и задержкой
             tasks.append((symbol, task))
         
         results = {}

@@ -71,10 +71,10 @@ try:
     from bots_modules.maturity import load_mature_coins_storage
     from bots_modules.optimal_ema import load_optimal_ema_data
     from bots_modules.imports_and_globals import load_auto_bot_config
-    from bots_modules.filters import load_all_coins_rsi, process_trading_signals_for_all_bots
+    from bots_modules.filters import load_all_coins_rsi, process_trading_signals_for_all_bots, process_auto_bot_signals
     from bots_modules.sync_and_cache import (
         save_default_config, load_system_config,
-        load_bots_state, load_process_state, check_startup_position_conflicts,
+        load_bots_state, save_bots_state, load_process_state, check_startup_position_conflicts,
         sync_bots_with_exchange, update_process_state, save_auto_bot_config
     )
 except ImportError as e:
@@ -91,6 +91,8 @@ except ImportError as e:
     def load_auto_bot_config():
         pass
     def load_bots_state():
+        pass
+    def save_bots_state():
         pass
     def load_process_state():
         pass
@@ -116,8 +118,12 @@ def init_bot_service():
         logger.info(f"🔧 Версия: 1.0")
         logger.info("=" * 80)
         
-        # 0. Загружаем постоянное хранилище зрелых монет
+        # 0. Загружаем постоянное хранилище зрелых монет (с проверкой конфига!)
         load_mature_coins_storage()
+        
+        # 0.1. 🚀 Загружаем кэш последней проверки зрелости
+        from bots_modules.maturity import load_maturity_check_cache
+        load_maturity_check_cache()
         
         # 0.1. Загружаем данные об оптимальных EMA
         load_optimal_ema_data()
@@ -218,25 +224,39 @@ def init_bot_service():
                             del bots_data['bots'][symbol]
                 logger.info(f"[INIT] 🗑️ Удалено {len(bots_to_remove)} некорректных ботов")
             
-            # 6. Запускаем Smart RSI Manager (после инициализации биржи)
-            global smart_rsi_manager
-            smart_rsi_manager = SmartRSIManager(
-                rsi_update_callback=load_all_coins_rsi,
-                trading_signal_callback=process_trading_signals_on_candle_close,
-                exchange_obj=exchange
-            )
-            smart_rsi_manager.start()
+            # 6. ⚠️ Smart RSI Manager ОТКЛЮЧЕН - автобот сам обновляет данные каждые 3 минуты
+            # Это избыточно и может привести к конфликтам обновлений
+            # global smart_rsi_manager
+            # smart_rsi_manager = SmartRSIManager(
+            #     rsi_update_callback=load_all_coins_rsi,
+            #     trading_signal_callback=process_trading_signals_on_candle_close,
+            #     exchange_obj=exchange
+            # )
+            # smart_rsi_manager.start()
+            
+            logger.info("[INIT] ℹ️ Smart RSI Manager отключен - автобот обновляет данные самостоятельно")
             
             update_process_state('smart_rsi_manager', {
-                'active': True,
-                'last_update': datetime.now().isoformat()
+                'active': False,
+                'last_update': None,
+                'reason': 'Disabled - auto_bot handles updates'
             })
             
             # 7. Синхронизируем с биржей (после инициализации биржи)
-            sync_bots_with_exchange()
+            # ⚠️ КРИТИЧНО: Запускаем в отдельном потоке чтобы не блокировать Flask!
+            import threading
+            def startup_sync():
+                try:
+                    logger.info("[STARTUP_SYNC] 🔄 Запуск стартовой синхронизации в фоне...")
+                    sync_bots_with_exchange()
+                    check_startup_position_conflicts()
+                    logger.info("[STARTUP_SYNC] ✅ Стартовая синхронизация завершена")
+                except Exception as e:
+                    logger.error(f"[STARTUP_SYNC] ❌ Ошибка стартовой синхронизации: {e}")
             
-            # 7.1. КРИТИЧЕСКИ ВАЖНО: Проверяем конфликты позиций при запуске
-            check_startup_position_conflicts()
+            sync_thread = threading.Thread(target=startup_sync, daemon=True, name="StartupSync")
+            sync_thread.start()
+            logger.info("[INIT] 🧵 Стартовая синхронизация запущена в фоне")
         else:
             logger.error("[INIT] ❌ Не удалось инициализировать биржу")
             update_process_state('exchange_connection', {
@@ -244,31 +264,44 @@ def init_bot_service():
                 'last_error': 'Initialization failed'
             })
         
-        # 8. Воркеры запускаются в main блоке bots.py (после init_bot_service)
-        logger.info("[INIT] ✅ Инициализация завершена, воркеры будут запущены из main блока")
+        # 8. 🔄 ЗАПУСК НЕПРЕРЫВНОГО ЗАГРУЗЧИКА ДАННЫХ
+        # Воркер будет постоянно обновлять все данные по кругу
+        # Все остальные модули будут просто читать актуальные данные из хранилища
+        logger.info("[INIT] 🔄 Запускаем непрерывный загрузчик данных...")
+        try:
+            from bots_modules.continuous_data_loader import start_continuous_loader
+            
+            # Запускаем воркер с интервалом 180 сек (3 минуты)
+            continuous_loader = start_continuous_loader(exchange_obj=exchange, update_interval=180)
+            
+            if continuous_loader:
+                logger.info("[INIT] ✅ Непрерывный загрузчик данных запущен (интервал: 180с)")
+                logger.info("[INIT] 💡 Все данные будут обновляться автоматически по кругу")
+                logger.info("[INIT] 💡 Автобот и API будут использовать актуальные данные из хранилища")
+            else:
+                logger.error("[INIT] ❌ Не удалось запустить непрерывный загрузчик")
+                
+        except Exception as e:
+            logger.error(f"[INIT] ❌ Ошибка запуска непрерывного загрузчика: {e}")
         
-        # Запускаем асинхронный процессор для улучшения производительности
-        if start_async_processor():
-            pass  # Успешно запущен
-        else:
-            logger.warning("[INIT] ⚠️ Асинхронный процессор не запущен, работаем в синхронном режиме")
+        # 9. Воркеры запускаются в main блоке bots.py (после init_bot_service)
+        logger.info("[INIT] ✅ Инициализация завершена, воркеры будут запущены из main блока")
         
         # КРИТИЧЕСКИ ВАЖНО: Устанавливаем флаг инициализации ПОСЛЕ всех загрузок
         global system_initialized
         system_initialized = True
         
-        # КРИТИЧЕСКИ ВАЖНО: Проверяем Auto Bot при старте - он ДОЛЖЕН быть выключен!
+        # Проверяем статус Auto Bot при старте
         with bots_data_lock:
             auto_bot_enabled = bots_data['auto_bot_config']['enabled']
         auto_bot_config = bots_data['auto_bot_config']
         bots_count = len(bots_data['bots'])
             
-        # ПРИНУДИТЕЛЬНО выключаем автобот при старте системы для безопасности!
+        # Логируем статус Auto Bot
         if auto_bot_enabled:
-            logger.warning("[INIT] ⚠️ Автобот включен при старте! Принудительно выключаем для безопасности...")
-            bots_data['auto_bot_config']['enabled'] = False
-            auto_bot_enabled = False
-            save_auto_bot_config()  # Сохраняем изменение
+            logger.info("[INIT] ✅ Автобот включен и готов к работе")
+        else:
+            logger.info("[INIT] ⏹️ Автобот выключен. Включите через UI при необходимости.")
         
         # ✅ ИТОГОВАЯ ИНФОРМАЦИЯ О ЗАПУСКЕ
         logger.info("=" * 80)
@@ -284,7 +317,9 @@ def init_bot_service():
         logger.info(f"📈 Данные:")
         logger.info(f"  🤖 Загружено ботов: {bots_count}")
         logger.info(f"  ✅ Зрелых монет: {len(mature_coins_storage)}")
-        logger.info(f"  📊 Optimal EMA: {len(optimal_ema_data)}")
+        # Получаем актуальное значение из глобального модуля
+        from bots_modules.optimal_ema import optimal_ema_data as actual_optimal_ema
+        logger.info(f"  📊 Optimal EMA: {len(actual_optimal_ema)}")
         logger.info("")
         logger.info(f"⚙️ Конфигурация Auto Bot:")
         logger.info(f"  📊 RSI: LONG≤{auto_bot_config.get('rsi_long_threshold')}, SHORT≥{auto_bot_config.get('rsi_short_threshold')}")
@@ -406,9 +441,10 @@ def create_bot(symbol, config=None, exchange_obj=None):
             default_volume = auto_bot_config['default_position_size']
         
         config = {
+            'id': f"{symbol}_{int(time.time())}",  # Генерируем уникальный ID
             'volume_mode': 'usdt',
             'volume_value': default_volume,
-            'status': BOT_STATUS['RUNNING'],
+            'status': BOT_STATUS['RUNNING'],  # ✅ Бот должен сразу работать
             'entry_price': None,
             'position_side': None,
             'unrealized_pnl': 0.0,
@@ -420,6 +456,7 @@ def create_bot(symbol, config=None, exchange_obj=None):
     with bots_data_lock:
         auto_bot_config = bots_data['auto_bot_config']
         base_config = {
+            'id': f"{symbol}_{int(time.time())}",  # Генерируем уникальный ID
             'volume_mode': 'usdt',
             'volume_value': auto_bot_config['default_position_size'],
             'status': BOT_STATUS['RUNNING'],
@@ -512,7 +549,7 @@ def process_trading_signals_on_candle_close(candle_timestamp: int, exchange_obj=
             logger.info("[TRADING] 📭 Нет активных ботов для обработки сигналов")
             # Но все равно проверяем Auto Bot сигналы!
             logger.info("[TRADING] 🤖 Проверяем Auto Bot сигналы (нет активных ботов)...")
-            # process_auto_bot_signals(exchange_obj=exchange_obj)  # ОТКЛЮЧЕНО!
+            process_auto_bot_signals(exchange_obj=exchange_obj)  # ВКЛЮЧЕНО!
             return
         
         logger.info(f"[TRADING] 🤖 Обработка сигналов для {len(active_bots)} активных ботов")
@@ -563,7 +600,7 @@ def process_trading_signals_on_candle_close(candle_timestamp: int, exchange_obj=
             auto_bot_enabled = bots_data['auto_bot_config']['enabled']
         if auto_bot_enabled:
             logger.info("[TRADING]  Проверяем Auto Bot сигналы после обработки существующих ботов...")
-            # process_auto_bot_signals(exchange_obj=exchange_obj)  # ОТКЛЮЧЕНО!
+            process_auto_bot_signals(exchange_obj=exchange_obj)  # ВКЛЮЧЕНО!
         
         # Сохраняем состояние после обработки сигналов
         save_bots_state()

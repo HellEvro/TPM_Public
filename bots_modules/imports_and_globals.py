@@ -463,6 +463,7 @@ system_initialized = _state.system_initialized
 smart_rsi_manager = _state.smart_rsi_manager
 async_processor = _state.async_processor
 async_processor_task = _state.async_processor_task
+service_start_time = time.time()  # Время запуска сервиса для расчета uptime
 
 # БЛОКИРОВКИ для предотвращения race conditions
 coin_processing_locks = {}  # Блокировки для обработки каждой монеты
@@ -516,7 +517,9 @@ coins_rsi_data = {
     'update_in_progress': False,
     'total_coins': 0,
     'successful_coins': 0,
-    'failed_coins': 0
+    'failed_coins': 0,
+    'data_version': 0,  # ✅ Версия данных для предотвращения "гуляющих" данных
+    'ui_update_paused': False  # ✅ Флаг паузы UI обновлений
 }
 
 # Модель данных для ботов
@@ -752,4 +755,11 @@ def restore_lost_bots():
     except Exception as e:
         logger.error(f"[REGISTRY] ❌ Ошибка восстановления ботов: {e}")
         return []
+
+# ✅ ИСПРАВЛЕНИЕ: Загружаем зрелые монеты при импорте модуля
+try:
+    load_mature_coins_storage()
+    logger.info(f"[IMPORTS] ✅ Загружено {len(mature_coins_storage)} зрелых монет при импорте")
+except Exception as e:
+    logger.error(f"[IMPORTS] ❌ Ошибка загрузки зрелых монет: {e}")
 

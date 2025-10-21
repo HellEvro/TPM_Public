@@ -433,8 +433,8 @@ class BotsManager {
         if (coins.length === 0) {
             coinsListElement.innerHTML = `
                 <div class="loading-state">
-                    <p>⏳ Загрузка данных RSI...</p>
-                    <small>Первая загрузка может занять несколько минут</small>
+                    <p>⏳ ${window.languageUtils.translate('loading_rsi_data')}</p>
+                    <small>${window.languageUtils.translate('first_load_warning')}</small>
                 </div>
             `;
             return;

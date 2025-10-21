@@ -312,15 +312,33 @@ class TechnicalIndicators:
         if len(candles_data) < period:
             return []
             
-        closes = [float(candle['close']) for candle in candles_data]
-        rsi_history = []
+        closes = np.array([float(candle['close']) for candle in candles_data])
         
-        # Рассчитываем RSI для каждой точки от period до конца (включая текущую свечу)
-        for i in range(period, len(closes)):
-            rsi = TechnicalIndicators.calculate_rsi(closes[:i+1], period)
-            if rsi is not None:
-                rsi_history.append(rsi)
-                
+        # ⚡ ОПТИМИЗАЦИЯ: Рассчитываем RSI ОДИН РАЗ для всего массива, а не N раз в цикле!
+        deltas = np.diff(closes)
+        gains = np.where(deltas > 0, deltas, 0)
+        losses = np.where(deltas < 0, -deltas, 0)
+        
+        rsi_history = []
+        avg_gain = np.mean(gains[:period])
+        avg_loss = np.mean(losses[:period])
+        
+        # Вычисляем RSI для каждой точки ОДНИМ проходом (было: N вызовов calculate_rsi)
+        for i in range(period, len(gains)):
+            avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+            avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+            
+            if avg_loss == 0:
+                rsi = 100.0
+            else:
+                rs = avg_gain / avg_loss
+                rsi = 100.0 - (100.0 / (1.0 + rs))
+            
+            rsi_history.append(float(rsi))
+        
+        # Возвращаем только последние history_length значений
+        if len(rsi_history) > history_length:
+            return rsi_history[-history_length:]
         return rsi_history
     
     @staticmethod
@@ -532,11 +550,9 @@ class SignalGenerator:
             else:
                 return {'action': 'ENTER_SHORT', 'reason': f'rsi_overbought_{rsi:.1f}'}
         
-        # Выходы зависят от текущих позиций и RSI уровней
-        elif rsi >= RSI_EXIT_LONG:
-            return {'action': 'EXIT_LONG', 'reason': f'rsi_exit_long_{rsi:.1f}'}
-        elif rsi <= RSI_EXIT_SHORT:
-            return {'action': 'EXIT_SHORT', 'reason': f'rsi_exit_short_{rsi:.1f}'}
+        # ❌ ИСПРАВЛЕНИЕ: EXIT сигналы НЕ должны показываться для монет без ботов!
+        # EXIT сигналы должны определяться только в контексте активных ботов
+        # Здесь мы определяем только сигналы входа (ENTER_LONG, ENTER_SHORT, WAIT)
         
         # RSI между 30-70 - ждем
         else:
@@ -658,10 +674,9 @@ class SignalGenerator:
                     }
         
         # Логика выхода (остается как было, но с адаптивными уровнями)
-        elif rsi >= RSI_EXIT_LONG:
-            return {'action': 'EXIT_LONG', 'reason': f'rsi_exit_long_{rsi:.1f}'}
-        elif rsi <= RSI_EXIT_SHORT:
-            return {'action': 'EXIT_SHORT', 'reason': f'rsi_exit_short_{rsi:.1f}'}
+        # ❌ ИСПРАВЛЕНИЕ: EXIT сигналы НЕ должны показываться для монет без ботов!
+        # EXIT сигналы должны определяться только в контексте активных ботов
+        # Здесь мы определяем только сигналы входа (ENTER_LONG, ENTER_SHORT, WAIT)
         
         # По умолчанию ждем
         return {'action': 'WAIT', 'reason': f'enhanced_neutral_{rsi:.1f}'}

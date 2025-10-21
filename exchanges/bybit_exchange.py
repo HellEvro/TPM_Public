@@ -1168,7 +1168,7 @@ class BybitExchange(BaseExchange):
             }
 
     @with_timeout(15)  # 15 секунд таймаут для размещения ордера
-    def place_order(self, symbol, side, quantity, order_type='market', price=None):
+    def place_order(self, symbol, side, quantity, order_type='market', price=None, take_profit=None):
         """Размещение ордера для бота
         
         Args:
@@ -1177,6 +1177,7 @@ class BybitExchange(BaseExchange):
             quantity (float): Количество в USDT
             order_type (str): Тип ордера ('market' или 'limit')
             price (float, optional): Цена для лимитного ордера
+            take_profit (float, optional): Цена Take Profit
             
         Returns:
             dict: Результат размещения ордера
@@ -1203,56 +1204,21 @@ class BybitExchange(BaseExchange):
                     'message': f'Неизвестная сторона ордера: {side}'
                 }
             
-            # Получаем текущую цену для расчета количества
-            ticker = self.get_ticker(symbol)
-            if not ticker:
-                return {
-                    'success': False,
-                    'message': 'Не удалось получить текущую цену'
-                }
+            # ⚡ УПРОЩЕНИЕ: Используем marketUnit="quoteCoin" для указания стоимости в USDT напрямую!
+            # Больше не нужно рассчитывать количество монет и округлять - биржа сама всё сделает!
+            qty_usdt = quantity  # quantity это стоимость в USDT
             
-            # quantity приходит в количестве монет, это и есть qty для API
-            current_price = ticker['last']
-            qty = quantity  # quantity уже в количестве монет
+            print(f"[BYBIT_BOT] 💰 {symbol}: Открываем ордер на {qty_usdt:.2f} USDT")
+            print(f"[BYBIT_BOT] 💡 {symbol}: Используем marketUnit='quoteCoin' (биржа сама рассчитает количество монет)")
             
-            # Детальное логирование для отладки
-            print(f"[BYBIT_BOT] 🔍 {symbol}: Детальная отладка расчета количества:")
-            print(f"[BYBIT_BOT] 🔍 {symbol}: quantity (входной параметр) = {quantity}")
-            print(f"[BYBIT_BOT] 🔍 {symbol}: current_price = {current_price}")
-            print(f"[BYBIT_BOT] 🔍 {symbol}: qty (для API) = {qty}")
-            print(f"[BYBIT_BOT] 🔍 {symbol}: Стоимость в USDT = {qty * current_price:.2f} USDT")
-            
-            # Получаем информацию о торговых правилах для символа
-            try:
-                instruments_info = self.get_instruments_info(f"{symbol}USDT")
-                min_order_qty = float(instruments_info.get('minOrderQty', 0.000001))
-                qty_step = float(instruments_info.get('qtyStep', 0.000001))
-                
-                # Округляем qty согласно qtyStep
-                qty = round(qty / qty_step) * qty_step
-                
-                # Проверяем минимальный размер ордера
-                if qty < min_order_qty:
-                    print(f"[BYBIT_BOT] ❌ Qty {qty} меньше минимального {min_order_qty}")
-                    return {
-                        'success': False,
-                        'message': f"Размер ордера {qty} меньше минимального {min_order_qty}"
-                    }
-                
-                print(f"[BYBIT_BOT] 📊 {symbol}: Price=${current_price:.4f}, Qty={qty:.6f} (min={min_order_qty}, step={qty_step})")
-                
-            except Exception as e:
-                print(f"[BYBIT_BOT] ⚠️ Не удалось получить правила торговли для {symbol}: {e}")
-                # Используем базовое округление
-                qty = round(qty, 6)
-            
-            # Базовые параметры ордера
+            # Базовые параметры ордера (используем marketUnit для указания стоимости в USDT)
             order_params = {
                 "category": "linear",
                 "symbol": f"{symbol}USDT",
                 "side": bybit_side,
                 "orderType": order_type.title(),  # Market или Limit
-                "qty": str(qty),
+                "qty": str(qty_usdt),  # Стоимость в USDT
+                "marketUnit": "quoteCoin",  # ⚡ Указываем что qty в USDT, а не в монетах!
                 "positionIdx": position_idx
             }
             
@@ -1267,6 +1233,11 @@ class BybitExchange(BaseExchange):
                 
                 order_params["price"] = str(round(price, 2))
                 order_params["timeInForce"] = "GTC"
+            
+            # 🎯 Добавляем Take Profit если указан
+            if take_profit is not None and take_profit > 0:
+                order_params["takeProfit"] = str(round(take_profit, 6))
+                print(f"[BYBIT_BOT] 🎯 Take Profit установлен: {take_profit:.6f}")
             
             print(f"[BYBIT_BOT] Параметры ордера: {order_params}")
             
@@ -1295,4 +1266,63 @@ class BybitExchange(BaseExchange):
             return {
                 'success': False,
                 'message': f"Ошибка размещения ордера: {str(e)}"
+            }
+    
+    @with_timeout(15)  # 15 секунд таймаут для обновления TP
+    def update_take_profit(self, symbol, take_profit_price):
+        """
+        Обновляет Take Profit для существующей позиции
+        
+        Args:
+            symbol (str): Символ торговой пары (например, 'BTC')
+            take_profit_price (float): Новая цена Take Profit
+            
+        Returns:
+            dict: Результат обновления TP
+        """
+        try:
+            print(f"[BYBIT_BOT] Обновление Take Profit: {symbol} → {take_profit_price:.6f}")
+            
+            # Параметры для обновления TP (используем Trading Stop API)
+            tp_params = {
+                "category": "linear",
+                "symbol": f"{symbol}USDT",
+                "takeProfit": str(round(take_profit_price, 6)),
+                "positionIdx": 0  # One-way mode, используем 0 для обновления обеих позиций
+            }
+            
+            print(f"[BYBIT_BOT] Параметры TP: {tp_params}")
+            
+            # Обновляем TP через API - используем метод set_trading_stop
+            try:
+                response = self.client.set_trading_stop(**tp_params)
+                print(f"[BYBIT_BOT] Ответ API TP: {response}")
+                
+                if response['retCode'] == 0:
+                    return {
+                        'success': True,
+                        'message': f'Take Profit обновлен: {take_profit_price:.6f}',
+                        'take_profit': take_profit_price
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'message': f"Ошибка обновления TP: {response['retMsg']}"
+                    }
+            except AttributeError:
+                # Если метод set_trading_stop не существует, пробуем альтернативный способ
+                print(f"[BYBIT_BOT] ⚠️ Метод set_trading_stop не найден, используем альтернативный способ")
+                # Пока просто логируем - TP будет установлен при открытии позиции
+                return {
+                    'success': False,
+                    'message': f"Метод set_trading_stop не поддерживается"
+                }
+                
+        except Exception as e:
+            print(f"[BYBIT_BOT] Ошибка обновления Take Profit: {str(e)}")
+            import traceback
+            print(f"[BYBIT_BOT] Трейсбек: {traceback.format_exc()}")
+            return {
+                'success': False,
+                'message': f"Ошибка обновления TP: {str(e)}"
             }

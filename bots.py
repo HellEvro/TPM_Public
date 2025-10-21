@@ -7,6 +7,26 @@
 import os
 import sys
 
+# 🔍 ТРЕЙСИНГ из конфига (после импорта sys, но до остальных импортов)
+try:
+    # Читаем настройку трейсинга из конфига
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from bot_engine.bot_config import SystemConfig
+    ENABLE_TRACE = SystemConfig.ENABLE_CODE_TRACING
+    
+    if ENABLE_TRACE:
+        from trace_debug import enable_trace
+        enable_trace()
+        print("=" * 80)
+        print("TRACE: ENABLED - all code execution will be logged with timing")
+        print("WARNING: This will slow down the system significantly!")
+        print("=" * 80, flush=True)
+    else:
+        print("[INFO] Code tracing DISABLED (set SystemConfig.ENABLE_CODE_TRACING = True to enable)")
+except Exception as e:
+    print(f"[WARNING] Could not initialize tracing: {e}")
+    ENABLE_TRACE = False
+
 # Настройка кодировки для Windows консоли
 if os.name == 'nt':
     try:
@@ -139,19 +159,24 @@ from bots_modules.bot_class import *
 from bots_modules.sync_and_cache import *
 from bots_modules.workers import *
 from bots_modules.init_functions import *
-from bots_modules.api_endpoints import *
 
-print("Все модули загружены!")
-
-# Импорт системы истории ботов (после импорта модулей, чтобы логирование было настроено)
+# Импорт системы истории ботов (ПЕРЕД импортом API endpoints!)
 try:
+    print("[BOT_HISTORY] 🔄 Попытка импорта bot_history...")
     from bot_engine.bot_history import (
         bot_history_manager, log_bot_start, log_bot_stop, log_bot_signal,
         log_position_opened, log_position_closed
     )
+    print(f"[BOT_HISTORY] ✅ Импорт успешен, bot_history_manager: {bot_history_manager}")
     BOT_HISTORY_AVAILABLE = True
     logger = logging.getLogger('BotsService')
     logger.info("[BOT_HISTORY] ✅ Модуль bot_history загружен успешно")
+    
+    # Устанавливаем bot_history_manager в глобальный модуль
+    import bots_modules.imports_and_globals as globals_module
+    globals_module.bot_history_manager = bot_history_manager
+    globals_module.BOT_HISTORY_AVAILABLE = True
+    print(f"[BOT_HISTORY] ✅ Установлен в глобальный модуль: {globals_module.bot_history_manager}")
 except ImportError as e:
     print(f"[WARNING] Модуль bot_history недоступен: {e}")
     # Создаем заглушки
@@ -168,6 +193,21 @@ except ImportError as e:
     def log_position_opened(*args, **kwargs): pass
     def log_position_closed(*args, **kwargs): pass
     BOT_HISTORY_AVAILABLE = False
+    
+    # Устанавливаем заглушку в глобальный модуль
+    import bots_modules.imports_and_globals as globals_module
+    globals_module.bot_history_manager = bot_history_manager
+    globals_module.BOT_HISTORY_AVAILABLE = False
+    print(f"[BOT_HISTORY] ⚠️ Установлена заглушка в глобальный модуль: {globals_module.bot_history_manager}")
+except Exception as e:
+    print(f"[ERROR] Неожиданная ошибка при импорте bot_history: {e}")
+    import traceback
+    traceback.print_exc()
+
+# Теперь импортируем API endpoints (после установки bot_history_manager)
+from bots_modules.api_endpoints import *
+
+print("Все модули загружены!")
 
 # Настройка логирования
 setup_color_logging()
@@ -222,6 +262,11 @@ def cleanup_bot_service():
     logger.info("=" * 80)
     
     try:
+        # 🔄 Останавливаем непрерывный загрузчик данных
+        logger.info("🔄 Останавливаем непрерывный загрузчик данных...")
+        from bots_modules.continuous_data_loader import stop_continuous_loader
+        stop_continuous_loader()
+        
         if async_processor:
             logger.info("Остановка асинхронного процессора...")
             stop_async_processor()
@@ -229,6 +274,7 @@ def cleanup_bot_service():
         logger.info("Сохранение состояния ботов...")
         save_bots_state()
         
+        # ✅ ВОССТАНОВЛЕНО: Сохранение зрелых монет при завершении (ТОЛЬКО если данные валидны)
         logger.info("Сохранение хранилища зрелых монет...")
         save_mature_coins_storage()
         
@@ -263,6 +309,17 @@ def run_bots_service():
         )
     except KeyboardInterrupt:
         raise
+    except SystemExit as e:
+        if e.code == 42:
+            # Специальный код для горячей перезагрузки
+            logger.info("🔄 Горячая перезагрузка: перезапуск сервера...")
+            print("🔄 Горячая перезагрузка: перезапуск сервера...")
+            # Запускаем новый процесс
+            import subprocess
+            subprocess.Popen([sys.executable] + sys.argv)
+            sys.exit(0)
+        else:
+            raise
     except Exception as e:
         logger.error(f"Ошибка запуска Flask сервера: {e}")
         raise
@@ -275,7 +332,7 @@ if __name__ == '__main__':
     atexit.register(cleanup_bot_service)
     
     try:
-        from bots_modules.workers import auto_save_worker, auto_bot_worker
+        from bots_modules.workers import auto_save_worker, auto_bot_worker, positions_monitor_worker
         
         load_auto_bot_config()
         
@@ -286,16 +343,13 @@ if __name__ == '__main__':
             import traceback
             traceback.print_exc()
         
-        # Запускаем воркер Optimal EMA
-        try:
-            from bot_engine.optimal_ema_worker import start_optimal_ema_worker
-            optimal_ema_worker = start_optimal_ema_worker(update_interval=21600)  # 6 часов
-            if optimal_ema_worker:
-                logger.info("📊 Optimal EMA Worker запущен (обновление каждые 6 часов)")
-            else:
-                logger.warning("⚠️ Optimal EMA Worker не запущен (скрипт не найден)")
-        except Exception as ema_error:
-            logger.warning(f"⚠️ Не удалось запустить Optimal EMA Worker: {ema_error}")
+        # ✅ Optimal EMA Worker - расчет оптимальных EMA в фоне
+        from bot_engine.optimal_ema_worker import start_optimal_ema_worker
+        optimal_ema_worker = start_optimal_ema_worker(update_interval=21600) # 6 часов
+        if optimal_ema_worker:
+            logger.info("✅ Optimal EMA Worker запущен (обновление каждые 6 часов)")
+        else:
+            logger.warning("⚠️ Не удалось запустить Optimal EMA Worker")
         
         auto_save_thread = threading.Thread(target=auto_save_worker, daemon=True)
         auto_save_thread.start()
@@ -304,6 +358,37 @@ if __name__ == '__main__':
         auto_bot_thread = threading.Thread(target=auto_bot_worker, daemon=True)
         auto_bot_thread.start()
         logger.info("Auto Bot Worker запущен")
+        
+        # ✅ Positions Monitor Worker - мониторинг позиций каждые 5 секунд
+        positions_monitor_thread = threading.Thread(target=positions_monitor_worker, daemon=True)
+        positions_monitor_thread.start()
+        logger.info("📊 Positions Monitor Worker запущен (обновление каждые 5с)")
+        
+        # Инициализируем AI Manager (проверка лицензии и загрузка модулей)
+        ai_manager = None
+        try:
+            from bot_engine.bot_config import AIConfig
+            
+            if AIConfig.AI_ENABLED:
+                logger.info("🤖 Инициализация AI модулей...")
+                from bot_engine.ai.ai_manager import get_ai_manager
+                ai_manager = get_ai_manager()
+                
+                # Если лицензия валидна и модули загружены, запускаем Auto Trainer
+                if ai_manager.is_available() and AIConfig.AI_AUTO_TRAIN_ENABLED:
+                    from bot_engine.ai.auto_trainer import start_auto_trainer
+                    start_auto_trainer()
+                    logger.info("🤖 AI Auto Trainer запущен (автообновление данных и переобучение)")
+                elif ai_manager.is_available():
+                    logger.info("🤖 AI модули активны (автообучение отключено)")
+                else:
+                    logger.warning("⚠️ AI модули не загружены (проверьте лицензию)")
+            else:
+                logger.info("ℹ️ AI модули отключены в конфигурации")
+        except ImportError as ai_import_error:
+            logger.debug(f"AI модули не доступны: {ai_import_error}")
+        except Exception as ai_error:
+            logger.warning(f"⚠️ Ошибка инициализации AI: {ai_error}")
         
         run_bots_service()
         
@@ -316,6 +401,13 @@ if __name__ == '__main__':
         traceback.print_exc()
     finally:
         try:
+            # Останавливаем AI Auto Trainer
+            try:
+                from bot_engine.ai.auto_trainer import stop_auto_trainer
+                stop_auto_trainer()
+            except:
+                pass
+            
             cleanup_bot_service()
             print("✅ Сервис остановлен\n")
         except:

@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Личные данные и логи
+logs/
+*.log
+data/*.json
+!data/default_auto_bot_config.json
+
+# Конфигурация с секретами (НЕ КОММИТИТЬ!)
+app/config.py              # Ваша конфигурация
+app/keys.py                # API ключи бирж и Telegram токены
+app/telegram_states.json   # Состояния Telegram бота
+app/current_language.txt   # Текущий язык
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Резервные копии
+backups/
+
+# Временные файлы
+*.tmp
+*.bak
+*.old
+

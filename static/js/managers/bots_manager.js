@@ -683,7 +683,7 @@ class BotsManager {
                     }
                     
                     // Обновляем статус
-                    this.updateServiceStatus('online', `Обновлено: ${data.last_update ? new Date(data.last_update).toLocaleTimeString() : 'неизвестно'}`);
+                    this.updateServiceStatus('online', `${window.languageUtils.translate('updated')}: ${data.last_update ? new Date(data.last_update).toLocaleTimeString() : window.languageUtils.translate('unknown')}`);
                 } else {
                     throw new Error(data.error || 'Ошибка загрузки данных');
                 }
@@ -710,8 +710,8 @@ class BotsManager {
             console.warn('[BotsManager] ⚠️ Нет данных RSI для отображения');
             coinsListElement.innerHTML = `
                 <div class="loading-state">
-                    <p>⏳ Загрузка данных RSI...</p>
-                    <small>Первая загрузка может занять несколько минут</small>
+                    <p>⏳ ${window.languageUtils.translate('loading_rsi_data')}</p>
+                    <small>${window.languageUtils.translate('first_load_warning')}</small>
                 </div>
             `;
             return;
@@ -841,36 +841,78 @@ class BotsManager {
     generateEnhancedSignalInfo(coin) {
         // Генерирует дополнительную информацию о сигнале
         const enhancedRsi = coin.enhanced_rsi;
-        
-        if (!enhancedRsi || !enhancedRsi.enabled) {
-            return '';
-        }
-        
-        const extremeDuration = enhancedRsi.extreme_duration;
-        const confirmations = enhancedRsi.confirmations || {};
-        
         let infoElements = [];
         
-        // Показываем продолжительность в экстремальной зоне
-        if (extremeDuration > 0) {
-            infoElements.push(`<span class="extreme-duration" title="Время в экстремальной зоне">${extremeDuration}🕐</span>`);
+        // console.log(`[DEBUG] ${coin.symbol}: enhanced_rsi =`, enhancedRsi);
+        
+        // СТОХАСТИК - показываем ВСЕГДА если есть данные!
+        let stochK = null;
+        let stochD = null;
+        
+        // Проверяем разные источники данных стохастика
+        if (coin.stoch_rsi_k !== undefined && coin.stoch_rsi_k !== null) {
+            stochK = coin.stoch_rsi_k;
+            stochD = coin.stoch_rsi_d || 0;
+        } else if (enhancedRsi && enhancedRsi.confirmations) {
+            stochK = enhancedRsi.confirmations.stoch_rsi_k;
+            stochD = enhancedRsi.confirmations.stoch_rsi_d || 0;
         }
         
-        // Показываем подтверждения
-        if (confirmations.volume) {
-            infoElements.push(`<span class="confirmation-volume" title="Подтверждение объемом">📊</span>`);
+        if (stochK !== null && stochK !== undefined) {
+            let stochIcon, stochStatus, stochDescription;
+            
+            // Определяем статус и описание стохастика
+            if (stochK < 20) {
+                stochIcon = '⬇️';
+                stochStatus = 'OVERSOLD';
+                stochDescription = 'Перепроданность: %K ниже 20 - возможен разворот вверх';
+            } else if (stochK > 80) {
+                stochIcon = '⬆️';
+                stochStatus = 'OVERBOUGHT';
+                stochDescription = 'Перекупленность: %K выше 80 - возможен разворот вниз';
+            } else {
+                stochIcon = '➡️';
+                stochStatus = 'NEUTRAL';
+                stochDescription = 'Нейтральная зона: %K между 20-80 - тренд продолжается';
+            }
+            
+            // Добавляем информацию о пересечении %K и %D
+            let crossoverInfo = '';
+            if (stochK > stochD) {
+                crossoverInfo = ' (%K выше %D - бычий сигнал)';
+            } else if (stochK < stochD) {
+                crossoverInfo = ' (%K ниже %D - медвежий сигнал)';
+            } else {
+                crossoverInfo = ' (%K = %D - нейтрально)';
+            }
+            
+            const fullDescription = `${stochDescription}${crossoverInfo}`;
+            
+            // console.log(`[DEBUG] ${coin.symbol}: ГЕНЕРИРУЮ СТОХАСТИК %K=${stochK}, %D=${stochD}, статус=${stochStatus}, icon=${stochIcon}`);
+            infoElements.push(`<span class="confirmation-stoch" title="${fullDescription}">${stochIcon}</span>`);
+        } else {
+            // console.log(`[DEBUG] ${coin.symbol}: НЕТ СТОХАСТИКА - stoch_rsi_k=${coin.stoch_rsi_k}, enhanced_rsi=${!!enhancedRsi}`);
         }
         
-        if (confirmations.divergence) {
-            const divIcon = confirmations.divergence === 'BULLISH_DIVERGENCE' ? '📈' : '📉';
-            infoElements.push(`<span class="confirmation-divergence" title="Дивергенция: ${confirmations.divergence}">${divIcon}</span>`);
-        }
-        
-        if (confirmations.stoch_rsi_k !== undefined && confirmations.stoch_rsi_k !== null) {
-            const stochK = confirmations.stoch_rsi_k;
-            const stochD = confirmations.stoch_rsi_d || 0;
-            const stochIcon = stochK < 20 ? '⬇️' : stochK > 80 ? '⬆️' : '➡️';
-            infoElements.push(`<span class="confirmation-stoch" title="Stochastic RSI: %K=${stochK.toFixed(1)}, %D=${stochD.toFixed(1)}">${stochIcon}</span>`);
+        // Enhanced RSI данные - только если включен
+        if (enhancedRsi && enhancedRsi.enabled) {
+            const extremeDuration = enhancedRsi.extreme_duration;
+            const confirmations = enhancedRsi.confirmations || {};
+            
+            // Показываем продолжительность в экстремальной зоне
+            if (extremeDuration > 0) {
+                infoElements.push(`<span class="extreme-duration" title="Время в экстремальной зоне">${extremeDuration}🕐</span>`);
+            }
+            
+            // Показываем подтверждения
+            if (confirmations.volume) {
+                infoElements.push(`<span class="confirmation-volume" title="Подтверждение объемом">📊</span>`);
+            }
+            
+            if (confirmations.divergence) {
+                const divIcon = confirmations.divergence === 'BULLISH_DIVERGENCE' ? '📈' : '📉';
+                infoElements.push(`<span class="confirmation-divergence" title="Дивергенция: ${confirmations.divergence}">${divIcon}</span>`);
+            }
         }
         
         if (infoElements.length > 0) {
@@ -885,8 +927,11 @@ class BotsManager {
         const timeFilterInfo = coin.time_filter_info;
         
         if (!timeFilterInfo) {
+            // console.log(`[DEBUG] ${coin.symbol}: НЕТ time_filter_info`);
             return '';
         }
+        
+        // console.log(`[DEBUG] ${coin.symbol}: time_filter_info =`, timeFilterInfo);
         
         const isBlocked = timeFilterInfo.blocked;
         const reason = timeFilterInfo.reason;
@@ -915,10 +960,14 @@ class BotsManager {
             }
         }
         
+        console.log(`[DEBUG] ${coin.symbol}: isBlocked=${isBlocked}, reason="${reason}", icon="${icon}", title="${title}"`);
+        
         if (icon && title) {
+            console.log(`[DEBUG] ${coin.symbol}: ГЕНЕРИРУЮ ИКОНКУ RSI Time Filter`);
             return `<div class="time-filter-info ${className}" title="${title}">${icon}</div>`;
         }
         
+        console.log(`[DEBUG] ${coin.symbol}: НЕ ГЕНЕРИРУЮ ИКОНКУ - icon="${icon}", title="${title}"`);
         return '';
     }
     
@@ -1247,7 +1296,7 @@ class BotsManager {
         
         // Используем правильные поля из RSI данных
         if (priceElement) {
-            const price = coin.last_price || coin.price || 0;
+            const price = coin.current_price || coin.mark_price || coin.last_price || coin.price || 0;
             priceElement.textContent = `$${price.toFixed(6)}`;
             console.log('[BotsManager] ✅ Цена обновлена:', price);
         }
@@ -1294,6 +1343,570 @@ class BotsManager {
         }
         
         console.log('[BotsManager] ✅ Информация о монете обновлена полностью');
+        
+        // Обновляем активные иконки монеты
+        this.updateActiveCoinIcons();
+        
+        // ПРИНУДИТЕЛЬНО ПОКАЗЫВАЕМ СТАТУС БОТА
+        setTimeout(() => {
+            const botStatusItem = document.getElementById('botStatusItem');
+            if (botStatusItem) {
+                botStatusItem.style.display = 'flex';
+                console.log('[BotsManager] 🔧 ПРИНУДИТЕЛЬНО ПОКАЗАН СТАТУС БОТА');
+            }
+        }, 100);
+    }
+    
+    updateActiveCoinIcons() {
+        if (!this.selectedCoin) return;
+        
+        const coin = this.selectedCoin;
+        const activeStatusData = {};
+        
+        // Тренд убираем - он уже показан выше в ТРЕНД 6Н
+        
+        // Зону RSI убираем - она уже показана выше в ЗОНА RSI
+        
+        // 2. Статус бота - проверяем активные боты
+        let botStatus = 'Нет бота';
+        if (this.activeBots && this.activeBots[coin.symbol]) {
+            const bot = this.activeBots[coin.symbol];
+            if (bot.status === 'running') {
+                botStatus = 'Активен';
+            } else if (bot.status === 'waiting') {
+                botStatus = 'Ожидание сигнала';
+            } else if (bot.status === 'in_position_long') {
+                botStatus = 'В позиции LONG';
+            } else if (bot.status === 'in_position_short') {
+                botStatus = 'В позиции SHORT';
+            } else {
+                botStatus = bot.status || 'Нет бота';
+            }
+        }
+        activeStatusData.bot = botStatus;
+        
+        // 3. ФИЛЬТРЫ - проверяем ВСЕ возможные поля
+        
+        // Подтверждение объемом (Volume Confirmation) - проверяем разные поля
+        if (coin.volume_confirmation && coin.volume_confirmation !== 'NONE' && coin.volume_confirmation !== null) {
+            activeStatusData.volume_confirmation = coin.volume_confirmation;
+        } else if (coin.volume_confirmation_status && coin.volume_confirmation_status !== 'NONE') {
+            activeStatusData.volume_confirmation = coin.volume_confirmation_status;
+        } else if (coin.volume_status && coin.volume_status !== 'NONE') {
+            activeStatusData.volume_confirmation = coin.volume_status;
+        }
+        
+        // Стохастик (Stochastic) - проверяем разные поля
+        let stochValue = null;
+        if (coin.stochastic_rsi && coin.stochastic_rsi !== 'NONE' && coin.stochastic_rsi !== null) {
+            stochValue = coin.stochastic_rsi;
+        } else if (coin.stochastic_status && coin.stochastic_status !== 'NONE') {
+            stochValue = coin.stochastic_status;
+        } else if (coin.stochastic && coin.stochastic !== 'NONE') {
+            stochValue = coin.stochastic;
+        } else if (coin.stoch_rsi_k !== undefined && coin.stoch_rsi_k !== null) {
+            // Используем числовые значения стохастика с подробным описанием
+            const stochK = coin.stoch_rsi_k;
+            const stochD = coin.stoch_rsi_d || 0;
+            let stochStatus = '';
+            let crossoverInfo = '';
+            
+            if (stochK < 20) {
+                stochStatus = 'OVERSOLD';
+                crossoverInfo = stochK > stochD ? ' (%K выше %D - бычий сигнал)' : ' (%K ниже %D - медвежий сигнал)';
+                stochValue = `<span style="color: #44ff44;">Перепроданность: %K=${stochK.toFixed(1)} (ниже 20) - возможен разворот цены вверх.</span><br><span style="color: ${stochK > stochD ? '#44ff44' : '#ff4444'};">${stochK > stochD ? 'Бычий сигнал' : 'Медвежий сигнал'}: %D=${stochD.toFixed(1)} (${stochK > stochD ? '%K выше %D' : '%K ниже %D'})</span>`;
+            } else if (stochK > 80) {
+                stochStatus = 'OVERBOUGHT';
+                crossoverInfo = stochK > stochD ? ' (%K выше %D - бычий сигнал)' : ' (%K ниже %D - медвежий сигнал)';
+                stochValue = `<span style="color: #ff4444;">Перекупленность: %K=${stochK.toFixed(1)} (выше 80) - возможен разворот цены вниз.</span><br><span style="color: ${stochK > stochD ? '#44ff44' : '#ff4444'};">${stochK > stochD ? 'Бычий сигнал' : 'Медвежий сигнал'}: %D=${stochD.toFixed(1)} (${stochK > stochD ? '%K выше %D' : '%K ниже %D'})</span>`;
+            } else {
+                stochStatus = 'NEUTRAL';
+                crossoverInfo = stochK > stochD ? ' (%K выше %D - бычий сигнал)' : ' (%K ниже %D - медвежий сигнал)';
+                stochValue = `<span style="color: #ffff44;">Нейтральная зона: %K=${stochK.toFixed(1)} (между 20-80) - тренд продолжается.</span><br><span style="color: ${stochK > stochD ? '#44ff44' : '#ff4444'};">${stochK > stochD ? 'Бычий сигнал' : 'Медвежий сигнал'}: %D=${stochD.toFixed(1)} (${stochK > stochD ? '%K выше %D' : '%K ниже %D'})</span>`;
+            }
+        } else if (coin.enhanced_rsi && coin.enhanced_rsi.confirmations) {
+            const stochK = coin.enhanced_rsi.confirmations.stoch_rsi_k;
+            const stochD = coin.enhanced_rsi.confirmations.stoch_rsi_d || 0;
+            if (stochK !== undefined && stochK !== null) {
+                let stochStatus = '';
+                let crossoverInfo = '';
+                
+                if (stochK < 20) {
+                    stochStatus = 'OVERSOLD';
+                    crossoverInfo = stochK > stochD ? ' (%K выше %D - бычий сигнал)' : ' (%K ниже %D - медвежий сигнал)';
+                    stochValue = `<span style="color: #44ff44;">Перепроданность: %K=${stochK.toFixed(1)} (ниже 20) - возможен разворот цены вверх.</span><br><span style="color: ${stochK > stochD ? '#44ff44' : '#ff4444'};">${stochK > stochD ? 'Бычий сигнал' : 'Медвежий сигнал'}: %D=${stochD.toFixed(1)} (${stochK > stochD ? '%K выше %D' : '%K ниже %D'})</span>`;
+                } else if (stochK > 80) {
+                    stochStatus = 'OVERBOUGHT';
+                    crossoverInfo = stochK > stochD ? ' (%K выше %D - бычий сигнал)' : ' (%K ниже %D - медвежий сигнал)';
+                    stochValue = `<span style="color: #ff4444;">Перекупленность: %K=${stochK.toFixed(1)} (выше 80) - возможен разворот цены вниз.</span><br><span style="color: ${stochK > stochD ? '#44ff44' : '#ff4444'};">${stochK > stochD ? 'Бычий сигнал' : 'Медвежий сигнал'}: %D=${stochD.toFixed(1)} (${stochK > stochD ? '%K выше %D' : '%K ниже %D'})</span>`;
+                } else {
+                    stochStatus = 'NEUTRAL';
+                    crossoverInfo = stochK > stochD ? ' (%K выше %D - бычий сигнал)' : ' (%K ниже %D - медвежий сигнал)';
+                    stochValue = `<span style="color: #ffff44;">Нейтральная зона: %K=${stochK.toFixed(1)} (между 20-80) - тренд продолжается.</span><br><span style="color: ${stochK > stochD ? '#44ff44' : '#ff4444'};">${stochK > stochD ? 'Бычий сигнал' : 'Медвежий сигнал'}: %D=${stochD.toFixed(1)} (${stochK > stochD ? '%K выше %D' : '%K ниже %D'})</span>`;
+                }
+            }
+        }
+        
+        if (stochValue) {
+            activeStatusData.stochastic_rsi = stochValue;
+        }
+        
+        // ExitScam защита (ExitScam Protection) - проверяем разные поля
+        if (coin.exit_scam_status && coin.exit_scam_status !== 'NONE' && coin.exit_scam_status !== null) {
+            activeStatusData.exit_scam = coin.exit_scam_status;
+        } else if (coin.exit_scam && coin.exit_scam !== 'NONE') {
+            activeStatusData.exit_scam = coin.exit_scam;
+        } else if (coin.scam_status && coin.scam_status !== 'NONE') {
+            activeStatusData.exit_scam = coin.scam_status;
+        }
+        
+        // RSI Time Filter - проверяем разные поля
+        if (coin.rsi_time_filter && coin.rsi_time_filter !== 'NONE' && coin.rsi_time_filter !== null) {
+            activeStatusData.rsi_time_filter = coin.rsi_time_filter;
+        } else if (coin.time_filter && coin.time_filter !== 'NONE') {
+            activeStatusData.rsi_time_filter = coin.time_filter;
+        } else if (coin.rsi_time_status && coin.rsi_time_status !== 'NONE') {
+            activeStatusData.rsi_time_filter = coin.rsi_time_status;
+        }
+        
+        // Enhanced RSI Warning (если есть)
+        if (coin.enhanced_rsi?.warning_type && coin.enhanced_rsi.warning_type !== 'ERROR') {
+            activeStatusData.enhanced_warning = coin.enhanced_rsi.warning_type;
+        }
+        
+        // Manual Position (если есть)
+        if (coin.is_manual_position) {
+            activeStatusData.manual_position = 'MANUAL';
+        }
+        
+        // Maturity (зрелость монеты)
+        if (coin.is_mature === true) {
+            const actualCandles = coin.candles_count || 'N/A';
+            const minCandles = this.autoBotConfig?.min_candles_for_maturity || 400;
+            activeStatusData.maturity = `Зрелая монета: ${actualCandles} > ${minCandles} свечей - достаточно истории для торговли`;
+        } else if (coin.is_mature === false) {
+            const minCandles = this.autoBotConfig?.min_candles_for_maturity || 400;
+            activeStatusData.maturity = `Незрелая монета, менее ${minCandles} свечей - недостаточно истории`;
+        }
+        
+        console.log('[BotsManager] 🎯 Обновление активных иконок:', activeStatusData);
+        console.log('[BotsManager] 🔍 ВСЕ ДАННЫЕ МОНЕТЫ:', coin);
+        
+        // Обновляем иконки в верхнем блоке
+        this.updateCoinStatusIcons(activeStatusData);
+        
+        // ОТЛАДКА: Принудительно показываем ВСЕ фильтры для тестирования
+        this.forceShowAllFilters();
+    }
+    
+    getRsiZone(rsi) {
+        if (rsi === '-' || rsi === null || rsi === undefined) return 'NEUTRAL';
+        if (rsi <= 30) return 'OVERSOLD';
+        if (rsi >= 70) return 'OVERBOUGHT';
+        return 'NEUTRAL';
+    }
+    
+    updateCoinStatusIcons(activeStatusData) {
+        // Обновляем основные иконки
+        this.updateStatusIcon('rsiIcon', activeStatusData.zone);
+        this.updateStatusIcon('trendIcon', activeStatusData.trend);
+        this.updateStatusIcon('zoneIcon', activeStatusData.zone);
+        this.updateStatusIcon('signalIcon', activeStatusData.signal);
+        
+        // Обновляем дополнительные фильтры
+        this.updateFilterItem('volumeConfirmationItem', 'selectedCoinVolumeConfirmation', 'volumeConfirmationIcon', 
+                             activeStatusData.volume_confirmation, 'Подтверждение объемом');
+        
+        this.updateFilterItem('stochasticItem', 'selectedCoinStochastic', 'stochasticIcon', 
+                             activeStatusData.stochastic_rsi, 'Стохастик');
+        
+        this.updateFilterItem('exitScamItem', 'selectedCoinExitScam', 'exitScamIcon', 
+                             activeStatusData.exit_scam, 'ExitScam защита');
+        
+        this.updateFilterItem('rsiTimeFilterItem', 'selectedCoinRsiTimeFilter', 'rsiTimeFilterIcon', 
+                             activeStatusData.rsi_time_filter, 'RSI Time Filter');
+        
+        this.updateFilterItem('maturityDiamondItem', 'selectedCoinMaturityDiamond', 'maturityDiamondIcon', 
+                             activeStatusData.maturity, 'Зрелость монеты');
+        
+        this.updateFilterItem('botStatusItem', 'selectedCoinBotStatus', 'botStatusIcon', 
+                             activeStatusData.bot, 'Статус бота');
+    }
+    
+    updateStatusIcon(iconId, statusValue) {
+        const iconElement = document.getElementById(iconId);
+        if (iconElement && statusValue) {
+            const icon = this.getStatusIcon('zone', statusValue); // Используем зону как базовую
+            iconElement.textContent = icon;
+            iconElement.style.display = 'inline';
+        } else if (iconElement) {
+            iconElement.style.display = 'none';
+        }
+    }
+    
+    updateFilterItem(itemId, valueId, iconId, statusValue, label) {
+        const itemElement = document.getElementById(itemId);
+        const valueElement = document.getElementById(valueId);
+        const iconElement = document.getElementById(iconId);
+        
+        if (itemElement && valueElement && iconElement) {
+            if (statusValue && statusValue !== 'NONE' && statusValue !== null && statusValue !== undefined) {
+                itemElement.style.display = 'flex';
+                valueElement.textContent = statusValue;
+                
+                // Получаем правильную иконку для каждого типа статуса
+                let icon = '❓';
+                let description = '';
+                
+                if (label === 'Подтверждение объемом') {
+                    if (statusValue.includes('CONFIRMED')) { icon = '📊'; description = 'Объем подтвержден'; }
+                    else if (statusValue.includes('NOT_CONFIRMED')) { icon = '❌'; description = 'Объем не подтвержден'; }
+                    else if (statusValue.includes('LOW_VOLUME')) { icon = '⚠️'; description = 'Низкий объем'; }
+                    else if (statusValue.includes('HIGH_VOLUME')) { icon = '📈'; description = 'Высокий объем'; }
+                }
+                else if (label === 'Стохастик') {
+                    // Специальная обработка для стохастика с HTML и цветами
+                    if (statusValue.includes('<br>') || statusValue.includes('<span')) {
+                        // Это HTML контент с цветовым кодированием
+                        valueElement.innerHTML = statusValue;
+                        return; // Выходим рано для HTML контента
+                    }
+                    
+                    if (statusValue.includes('OVERSOLD')) { icon = '🔴'; description = 'Stochastic перепродан'; }
+                    else if (statusValue.includes('OVERBOUGHT')) { icon = '🟢'; description = 'Stochastic перекуплен'; }
+                    else if (statusValue.includes('NEUTRAL')) { icon = '🟡'; description = 'Stochastic нейтральный'; }
+                    else if (statusValue.includes('BULLISH')) { icon = '📈'; description = 'Stochastic бычий сигнал'; }
+                    else if (statusValue.includes('BEARISH')) { icon = '📉'; description = 'Stochastic медвежий сигнал'; }
+                }
+                else if (label === 'ExitScam защита') {
+                    // Специальная обработка для ExitScam с цветами
+                    if (statusValue.includes('Блокирует:')) {
+                        valueElement.innerHTML = `<span style="color: #ff4444;">${statusValue}</span>`;
+                        return; // Выходим рано для цветного контента
+                    } else if (statusValue.includes('Безопасно:')) {
+                        valueElement.innerHTML = `<span style="color: #44ff44;">${statusValue}</span>`;
+                        return; // Выходим рано для цветного контента
+                    }
+                    
+                    if (statusValue.includes('SAFE')) { icon = '🛡️'; description = 'ExitScam: Безопасно'; }
+                    else if (statusValue.includes('RISK')) { icon = '⚠️'; description = 'ExitScam: Риск обнаружен'; }
+                    else if (statusValue.includes('SCAM')) { icon = '🚨'; description = 'ExitScam: Возможный скам'; }
+                    else if (statusValue.includes('CHECKING')) { icon = '🔍'; description = 'ExitScam: Проверка'; }
+                }
+                else if (label === 'RSI Time Filter') {
+                    if (statusValue.includes('ALLOWED')) { icon = '✅'; description = 'RSI Time Filter разрешен'; }
+                    else if (statusValue.includes('BLOCKED')) { icon = '❌'; description = 'RSI Time Filter заблокирован'; }
+                    else if (statusValue.includes('WAITING')) { icon = '⏳'; description = 'RSI Time Filter ожидание'; }
+                    else if (statusValue.includes('TIMEOUT')) { icon = '⏰'; description = 'RSI Time Filter таймаут'; }
+                }
+                else if (label === 'Статус бота') {
+                    if (statusValue === 'Нет бота') { 
+                        icon = '❓'; 
+                        description = 'Бот не создан';
+                        
+                        // Показываем кнопку "Включить" только для монет с сигналами LONG/SHORT
+                        const enableBotBtn = document.getElementById('enableBotBtn');
+                        if (enableBotBtn && this.selectedCoin) {
+                            const signal = this.selectedCoin.signal;
+                            if (signal === 'ENTER_LONG' || signal === 'ENTER_SHORT') {
+                                enableBotBtn.style.display = 'inline-block';
+                            } else {
+                                enableBotBtn.style.display = 'none';
+                            }
+                        }
+                    }
+                    else if (statusValue.includes('running')) { 
+                        icon = '🟢'; 
+                        description = 'Бот активен и работает';
+                        // Скрываем кнопку для активных ботов
+                        const enableBotBtn = document.getElementById('enableBotBtn');
+                        if (enableBotBtn) enableBotBtn.style.display = 'none';
+                    }
+                    else if (statusValue.includes('waiting')) { icon = '🔵'; description = 'Ожидание сигнала'; }
+                    else if (statusValue.includes('error')) { icon = '🔴'; description = 'Ошибка в работе'; }
+                    else if (statusValue.includes('stopped')) { icon = '🔴'; description = 'Бот остановлен'; }
+                    else if (statusValue.includes('in_position')) { icon = '🟣'; description = 'В позиции'; }
+                    else if (statusValue.includes('paused')) { icon = '⚪'; description = 'Приостановлен'; }
+                }
+                
+                iconElement.textContent = icon;
+                iconElement.title = `${label}: ${description || statusValue}`;
+                valueElement.title = `${label}: ${description || statusValue}`;
+            } else {
+                itemElement.style.display = 'none';
+            }
+        }
+    }
+    
+    getStatusIcon(statusType, statusValue) {
+        const iconMap = {
+            'OVERSOLD': '🔴',
+            'OVERBOUGHT': '🟢',
+            'NEUTRAL': '🟡',
+            'UP': '📈',
+            'DOWN': '📉'
+        };
+        
+        return iconMap[statusValue] || '';
+    }
+    
+    forceShowAllFilters() {
+        console.log('[BotsManager] 🔧 ПРИНУДИТЕЛЬНО ПОКАЗЫВАЕМ ВСЕ ФИЛЬТРЫ');
+        
+        if (!this.selectedCoin) return;
+        const coin = this.selectedCoin;
+        
+        // Получаем РЕАЛЬНЫЕ данные из объекта coin и конфига
+        const realFilters = [];
+        
+        // 1. Ручная позиция
+        if (coin.is_manual_position) {
+            realFilters.push({
+                itemId: 'manualPositionItem',
+                valueId: 'selectedCoinManualPosition',
+                iconId: 'manualPositionIcon',
+                value: 'Ручная позиция',
+                icon: '',
+                description: 'Монета в ручной позиции'
+            });
+        }
+        
+        // 2. Зрелость монеты
+        if (coin.is_mature) {
+            const actualCandles = coin.candles_count || 'N/A';
+            const minCandles = this.autoBotConfig?.min_candles_for_maturity || 400;
+            realFilters.push({
+                itemId: 'maturityDiamondItem',
+                valueId: 'selectedCoinMaturityDiamond',
+                iconId: 'maturityDiamondIcon',
+                value: `Зрелая монета: ${actualCandles} > ${minCandles} свечей - достаточно истории для торговли`,
+                icon: '',
+                description: 'Монета имеет достаточно истории для надежного анализа'
+            });
+        } else if (coin.is_mature === false) {
+            const minCandles = this.autoBotConfig?.min_candles_for_maturity || 400;
+            realFilters.push({
+                itemId: 'maturityDiamondItem',
+                valueId: 'selectedCoinMaturityDiamond',
+                iconId: 'maturityDiamondIcon',
+                value: `Незрелая монета, менее ${minCandles} свечей - недостаточно истории`,
+                icon: '',
+                description: 'Монета не имеет достаточно истории для надежного анализа'
+            });
+        }
+        
+        // 3. Enhanced RSI данные
+        if (coin.enhanced_rsi && coin.enhanced_rsi.enabled) {
+            const enhancedRsi = coin.enhanced_rsi;
+            
+            // Время в экстремальной зоне
+            if (enhancedRsi.extreme_duration > 0) {
+                realFilters.push({
+                    itemId: 'extremeDurationItem',
+                    valueId: 'selectedCoinExtremeDuration',
+                    iconId: 'extremeDurationIcon',
+                    value: `${enhancedRsi.extreme_duration}🕐`,
+                    icon: '',
+                    description: 'Время в экстремальной зоне RSI'
+                });
+            }
+            
+            // Подтверждения
+            if (enhancedRsi.confirmations) {
+                const conf = enhancedRsi.confirmations;
+                
+                // Подтверждение объемом
+                if (conf.volume) {
+                    realFilters.push({
+                        itemId: 'volumeConfirmationItem',
+                        valueId: 'selectedCoinVolumeConfirmation',
+                        iconId: 'volumeConfirmationIcon',
+                        value: 'Подтвержден объемом',
+                        icon: '📊',
+                        description: 'Объем подтверждает сигнал'
+                    });
+                }
+                
+                // Дивергенция
+                if (conf.divergence) {
+                    const divIcon = conf.divergence === 'BULLISH_DIVERGENCE' ? '📈' : '📉';
+                    realFilters.push({
+                        itemId: 'divergenceItem',
+                        valueId: 'selectedCoinDivergence',
+                        iconId: 'divergenceIcon',
+                        value: conf.divergence,
+                        icon: divIcon,
+                        description: `Дивергенция: ${conf.divergence}`
+                    });
+                }
+                
+                // Stochastic RSI
+                if (conf.stoch_rsi_k !== undefined && conf.stoch_rsi_k !== null) {
+                    const stochK = conf.stoch_rsi_k;
+                    const stochD = conf.stoch_rsi_d || 0;
+                    
+                    let stochIcon, stochStatus, stochDescription;
+                    
+                    // Определяем статус и описание
+                    if (stochK < 20) {
+                        stochIcon = '⬇️';
+                        stochStatus = 'OVERSOLD';
+                        stochDescription = 'Перепроданность: %K ниже 20 - возможен разворот вверх';
+                    } else if (stochK > 80) {
+                        stochIcon = '⬆️';
+                        stochStatus = 'OVERBOUGHT';
+                        stochDescription = 'Перекупленность: %K выше 80 - возможен разворот вниз';
+                    } else {
+                        stochIcon = '➡️';
+                        stochStatus = 'NEUTRAL';
+                        stochDescription = 'Нейтральная зона: %K между 20-80 - тренд продолжается';
+                    }
+                    
+                    // Добавляем информацию о пересечении
+                    let crossoverInfo = '';
+                    if (stochK > stochD) {
+                        crossoverInfo = ' (%K выше %D - бычий сигнал)';
+                    } else if (stochK < stochD) {
+                        crossoverInfo = ' (%K ниже %D - медвежий сигнал)';
+                    } else {
+                        crossoverInfo = ' (%K = %D - нейтрально)';
+                    }
+                    
+                    const fullDescription = `Stochastic RSI: ${stochDescription}${crossoverInfo}`;
+                    
+                    // Создаем подробное описание для отображения на странице
+                    let detailedValue = '';
+                    
+                    // Определяем сигнал пересечения с цветами
+                    let signalInfo = '';
+                    if (stochK > stochD) {
+                        signalInfo = `<span style="color: #44ff44;">Бычий сигнал: %D=${stochD.toFixed(1)} (%K выше %D)</span>`;
+                    } else if (stochK < stochD) {
+                        signalInfo = `<span style="color: #ff4444;">Медвежий сигнал: %D=${stochD.toFixed(1)} (%K ниже %D)</span>`;
+                    } else {
+                        signalInfo = `<span style="color: #ffff44;">Нейтральный сигнал: %D=${stochD.toFixed(1)} (%K = %D)</span>`;
+                    }
+                    
+                    if (stochStatus === 'OVERSOLD') {
+                        detailedValue = `<span style="color: #44ff44;">Перепроданность: %K=${stochK.toFixed(1)} (ниже 20) - возможен разворот цены вверх.</span><br>${signalInfo}`;
+                    } else if (stochStatus === 'OVERBOUGHT') {
+                        detailedValue = `<span style="color: #ff4444;">Перекупленность: %K=${stochK.toFixed(1)} (выше 80) - возможен разворот цены вниз.</span><br>${signalInfo}`;
+                    } else {
+                        detailedValue = `<span style="color: #ffff44;">Нейтральная зона: %K=${stochK.toFixed(1)} (между 20-80) - тренд продолжается.</span><br>${signalInfo}`;
+                    }
+                    
+                    realFilters.push({
+                        itemId: 'stochasticRsiItem',
+                        valueId: 'selectedCoinStochasticRsi',
+                        iconId: 'stochasticRsiIcon',
+                        value: detailedValue,
+                        icon: '',
+                        description: fullDescription
+                    });
+                }
+            }
+            
+            // Warning типы
+            if (enhancedRsi.warning_type && enhancedRsi.warning_type !== 'ERROR') {
+                const warningType = enhancedRsi.warning_type;
+                const warningMessage = enhancedRsi.warning_message || '';
+                
+                if (warningType === 'EXTREME_OVERSOLD_LONG') {
+                    realFilters.push({
+                        itemId: 'extremeOversoldItem',
+                        valueId: 'selectedCoinExtremeOversold',
+                        iconId: 'extremeOversoldIcon',
+                        value: 'EXTREME_OVERSOLD_LONG',
+                        icon: '⚠️',
+                        description: `ВНИМАНИЕ: ${warningMessage}. Требуются дополнительные подтверждения для LONG`
+                    });
+                } else if (warningType === 'EXTREME_OVERBOUGHT_LONG') {
+                    realFilters.push({
+                        itemId: 'extremeOverboughtItem',
+                        valueId: 'selectedCoinExtremeOverbought',
+                        iconId: 'extremeOverboughtIcon',
+                        value: 'EXTREME_OVERBOUGHT_LONG',
+                        icon: '⚠️',
+                        description: `ВНИМАНИЕ: ${warningMessage}. Требуются дополнительные подтверждения для SHORT`
+                    });
+                } else if (warningType === 'OVERSOLD') {
+                    realFilters.push({
+                        itemId: 'oversoldWarningItem',
+                        valueId: 'selectedCoinOversoldWarning',
+                        iconId: 'oversoldWarningIcon',
+                        value: 'OVERSOLD',
+                        icon: '🟢',
+                        description: warningMessage
+                    });
+                } else if (warningType === 'OVERBOUGHT') {
+                    realFilters.push({
+                        itemId: 'overboughtWarningItem',
+                        valueId: 'selectedCoinOverboughtWarning',
+                        iconId: 'overboughtWarningIcon',
+                        value: 'OVERBOUGHT',
+                        icon: '🔴',
+                        description: warningMessage
+                    });
+                }
+            }
+        }
+        
+        // 4. RSI Time Filter
+        if (coin.time_filter_info) {
+            const timeFilter = coin.time_filter_info;
+            const isBlocked = timeFilter.blocked;
+            const reason = timeFilter.reason || '';
+            const calmCandles = timeFilter.calm_candles || 0;
+            
+            realFilters.push({
+                itemId: 'rsiTimeFilterItem',
+                valueId: 'selectedCoinRsiTimeFilter',
+                iconId: 'rsiTimeFilterIcon',
+                value: isBlocked ? `Блокирует: ${reason}` : `Разрешено: ${reason}`,
+                icon: isBlocked ? '⏰' : '⏱️',
+                description: `RSI Time Filter: ${reason}${calmCandles > 0 ? ` (${calmCandles} спокойных свечей)` : ''}`
+            });
+        }
+        
+        // 5. ExitScam фильтр
+        if (coin.exit_scam_info) {
+            const exitScam = coin.exit_scam_info;
+            const isBlocked = exitScam.blocked;
+            const reason = exitScam.reason || '';
+            
+            // Добавляем цветовое кодирование
+            let coloredValue = '';
+            if (isBlocked) {
+                coloredValue = `<span style="color: #ff4444;">Блокирует: ${reason}</span>`;
+            } else {
+                coloredValue = `<span style="color: #44ff44;">Безопасно: ${reason}</span>`;
+            }
+            
+            realFilters.push({
+                itemId: 'exitScamItem',
+                valueId: 'selectedCoinExitScam',
+                iconId: 'exitScamIcon',
+                value: coloredValue,
+                icon: '',
+                description: `ExitScam фильтр: ${reason}`
+            });
+        }
+        
+        realFilters.forEach(filter => {
+            const itemElement = document.getElementById(filter.itemId);
+            const valueElement = document.getElementById(filter.valueId);
+            const iconElement = document.getElementById(filter.iconId);
+            
+            if (itemElement && valueElement && iconElement) {
+                itemElement.style.display = 'flex';
+                // Используем innerHTML для поддержки цветного HTML контента
+                valueElement.innerHTML = filter.value;
+                iconElement.textContent = '';
+                iconElement.title = filter.description;
+                valueElement.title = filter.description;
+                console.log(`[BotsManager] ✅ Показан фильтр: ${filter.itemId}`);
+            }
+        });
     }
 
     filterCoins(searchTerm) {
@@ -3321,12 +3934,12 @@ class BotsManager {
                             <div class="bot-details" style="font-size: 12px; color: #ccc; margin-bottom: 10px;">
                                 <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
                                     <span>💰 Объем:</span>
-                                    <span style="color: #fff; font-weight: 500;">${bot.volume_value} ${bot.volume_mode.toUpperCase()}</span>
+                                    <span style="color: #fff; font-weight: 500;">${bot.position_size || bot.volume_value} ${(bot.volume_mode || 'USDT').toUpperCase()}</span>
                                 </div>
                                 
                                 <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
                                     <span>📊 PnL:</span>
-                                    <span style="color: ${bot.unrealized_pnl >= 0 ? '#4caf50' : '#f44336'}; font-weight: 500;">$${(bot.unrealized_pnl || 0).toFixed(2)}</span>
+                                    <span style="color: ${(bot.unrealized_pnl || bot.unrealized_pnl_usdt || 0) >= 0 ? '#4caf50' : '#f44336'}; font-weight: 500;">$${(bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0).toFixed(3)}</span>
                                 </div>
                                 
                                 ${positionInfo}
@@ -3394,7 +4007,7 @@ class BotsManager {
                             </div>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px; color: #ccc;">
                                 <div>📊 PnL: <span style="color: ${bot.unrealized_pnl >= 0 ? '#4caf50' : '#f44336'};">$${(bot.unrealized_pnl || 0).toFixed(2)}</span></div>
-                                <div>💰 Объем: ${bot.volume_value} ${bot.volume_mode.toUpperCase()}</div>
+                                <div>💰 Объем: ${bot.volume_value} ${(bot.volume_mode || 'USDT').toUpperCase()}</div>
                                 <div>📅 Создан: ${new Date(bot.created_at).toLocaleString('ru-RU')}</div>
                                 <div>🎯 RSI: ${bot.rsi_data ? bot.rsi_data.rsi6h?.toFixed(1) : 'загрузка...'}</div>
                             </div>
@@ -4965,7 +5578,7 @@ class BotsManager {
         }
     }
     
-    initializeGlobalAutoBotToggle() {
+    async initializeGlobalAutoBotToggle() {
         const globalAutoBotToggleEl = document.getElementById('globalAutoBotToggle');
         console.log('[BotsManager] 🔍 initializeGlobalAutoBotToggle вызван');
         console.log('[BotsManager] 🔍 Элемент найден:', !!globalAutoBotToggleEl);
@@ -4974,6 +5587,33 @@ class BotsManager {
         if (globalAutoBotToggleEl && !globalAutoBotToggleEl.hasAttribute('data-initialized')) {
             console.log('[BotsManager] 🔧 Устанавливаем обработчик события...');
             globalAutoBotToggleEl.setAttribute('data-initialized', 'true');
+            
+            // КРИТИЧЕСКИ ВАЖНО: Загружаем текущее состояние Auto Bot с сервера
+            try {
+                console.log('[BotsManager] 🔄 Загрузка текущего состояния Auto Bot...');
+                const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/auto-bot`);
+                const data = await response.json();
+                
+                if (data.success && data.config) {
+                    const autoBotEnabled = data.config.enabled;
+                    console.log('[BotsManager] 🤖 Текущее состояние Auto Bot с сервера:', autoBotEnabled ? 'ВКЛ' : 'ВЫКЛ');
+                    
+                    // Устанавливаем состояние переключателя
+                    globalAutoBotToggleEl.checked = autoBotEnabled;
+                    
+                    // Обновляем визуальное состояние
+                    const toggleLabel = globalAutoBotToggleEl.closest('.auto-bot-toggle')?.querySelector('.toggle-label');
+                    if (toggleLabel) {
+                        toggleLabel.textContent = autoBotEnabled ? '🤖 Auto Bot (ВКЛ)' : '🤖 Auto Bot (ВЫКЛ)';
+                    }
+                    
+                    console.log('[BotsManager] ✅ Переключатель Auto Bot инициализирован с состоянием:', autoBotEnabled);
+                } else {
+                    console.error('[BotsManager] ❌ Ошибка загрузки состояния Auto Bot:', data.message);
+                }
+            } catch (error) {
+                console.error('[BotsManager] ❌ Ошибка запроса состояния Auto Bot:', error);
+            }
             
             globalAutoBotToggleEl.addEventListener('change', async (e) => {
                 const isEnabled = e.target.checked;
@@ -5783,21 +6423,22 @@ class BotsManager {
             </div>
         `;
         
-        // Используем current_price из position_details (обновляется каждые 5 секунд)
-        if (bot.position_details && bot.position_details.current_price) {
-            const currentPrice = bot.position_details.current_price;
-            const priceChange = bot.position_details.price_change || 0;
+        // ✅ ИСПРАВЛЕНО: Используем current_price напрямую из bot (обновляется каждую секунду)
+        if (bot.current_price || bot.mark_price) {
+            const currentPrice = bot.current_price || bot.mark_price;
+            const entryPrice = bot.entry_price || 0;
+            const priceChange = entryPrice > 0 ? ((currentPrice - entryPrice) / entryPrice) * 100 : 0;
             const priceChangeColor = priceChange >= 0 ? '#4caf50' : '#f44336';
             const priceChangeIcon = priceChange >= 0 ? '↗️' : '↘️';
             
             positionHtml += `
                 <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
                     <span>📊 Текущая:</span>
-                    <span style="color: #fff; font-weight: 500;">$${currentPrice.toFixed(6)}</span>
+                    <span style="color: ${priceChangeColor}; font-weight: 500;">$${currentPrice.toFixed(6)} ${priceChangeIcon}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                    <span>${priceChangeIcon} Изменение:</span>
-                    <span style="color: ${priceChangeColor}; font-weight: 500;">${priceChange.toFixed(2)}%</span>
+                    <span>📊 PnL:</span>
+                    <span style="color: ${(bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0) >= 0 ? '#4caf50' : '#f44336'}; font-weight: 500;">$${(bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0).toFixed(3)}</span>
                 </div>
             `;
         }
@@ -5806,29 +6447,64 @@ class BotsManager {
     }
     
     getBotTimeInfo(bot) {
-        if (!bot.created_at) {
-            return '';
+        let timeInfoHtml = '';
+        
+        // Время работы бота
+        if (bot.created_at) {
+            const createdTime = new Date(bot.created_at);
+            const now = new Date();
+            const timeDiff = now - createdTime;
+            const hours = Math.floor(timeDiff / (1000 * 60 * 60));
+            const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+            
+            let timeText = '';
+            if (hours > 0) {
+                timeText = `${hours}ч ${minutes}м`;
+            } else {
+                timeText = `${minutes}м`;
+            }
+            
+            timeInfoHtml += `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                    <span>⏱️ Время:</span>
+                    <span style="color: #888; font-weight: 500;">${timeText}</span>
+                </div>
+            `;
         }
         
-        const createdTime = new Date(bot.created_at);
-        const now = new Date();
-        const timeDiff = now - createdTime;
-        const hours = Math.floor(timeDiff / (1000 * 60 * 60));
-        const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
-        
-        let timeText = '';
-        if (hours > 0) {
-            timeText = `${hours}ч ${minutes}м`;
-        } else {
-            timeText = `${minutes}м`;
+        // Время обновления данных позиции (если бот в позиции)
+        if (bot.status && (bot.status.includes('position') || bot.status.includes('in_position')) && bot.last_update) {
+            const lastUpdateTime = new Date(bot.last_update);
+            const now = new Date();
+            const updateDiff = now - lastUpdateTime;
+            const updateMinutes = Math.floor(updateDiff / (1000 * 60));
+            const updateSeconds = Math.floor((updateDiff % (1000 * 60)) / 1000);
+            
+            let updateTimeText = '';
+            if (updateMinutes > 0) {
+                updateTimeText = `${updateMinutes}м ${updateSeconds}с назад`;
+            } else {
+                updateTimeText = `${updateSeconds}с назад`;
+            }
+            
+            // Цвет в зависимости от давности обновления
+            let updateColor = '#4caf50'; // зеленый - свежие данные
+            if (updateMinutes > 1) {
+                updateColor = '#ff9800'; // оранжевый - данные старше минуты
+            }
+            if (updateMinutes > 5) {
+                updateColor = '#f44336'; // красный - данные старше 5 минут
+            }
+            
+            timeInfoHtml += `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                    <span>🔄 Обновлено:</span>
+                    <span style="color: ${updateColor}; font-weight: 500;">${updateTimeText}</span>
+                </div>
+            `;
         }
         
-        return `
-            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                <span>⏱️ Время:</span>
-                <span style="color: #888; font-weight: 500;">${timeText}</span>
-            </div>
-        `;
+        return timeInfoHtml;
     }
     
     renderTradesInfo(coinSymbol) {
@@ -5875,7 +6551,7 @@ class BotsManager {
             trades.push({
                 side: 'LONG',
                 entryPrice: bot.entry_price,
-                currentPrice: bot.position_details?.current_price || bot.entry_price,
+                currentPrice: bot.current_price || bot.mark_price || bot.entry_price,
                 stopLossPrice: stopLossPrice,
                 stopLossPercent: stopLossPercent,
                 pnl: bot.unrealized_pnl || 0,
@@ -5895,7 +6571,7 @@ class BotsManager {
             trades.push({
                 side: 'SHORT',
                 entryPrice: bot.entry_price,
-                currentPrice: bot.position_details?.current_price || bot.entry_price,
+                currentPrice: bot.current_price || bot.mark_price || bot.entry_price,
                 stopLossPrice: stopLossPrice,
                 stopLossPercent: stopLossPercent,
                 pnl: bot.unrealized_pnl || 0,
@@ -5962,7 +6638,7 @@ class BotsManager {
                 
                 <div class="trade-pnl ${pnlClass}">
                     <span>${pnlIcon} PnL:</span>
-                    <span>${trade.pnl.toFixed(2)}%</span>
+                    <span>$${trade.pnl.toFixed(3)}</span>
                 </div>
             </div>
         `;
@@ -5997,7 +6673,7 @@ class BotsManager {
                         
                         // Показываем уведомление
                         if (window.showToast) {
-                            window.showToast(`Обновлено ${result.count} ручных позиций`, 'success');
+                            window.showToast(`${window.languageUtils.translate('updated')} ${result.count} ${window.languageUtils.translate('manual_positions')}`, 'success');
                         }
                     } else {
                         throw new Error(`HTTP error! status: ${response.status}`);
@@ -6070,13 +6746,507 @@ class BotsManager {
             console.error('[BotsManager] ❌ Ошибка загрузки зрелых монет:', error);
         }
     }
-
+    
     /**
      * Показывает уведомление
      */
     showNotification(message, type = 'info') {
         // Простое уведомление в консоли, можно заменить на toast
         console.log(`[${type.toUpperCase()}] ${message}`);
+    }
+
+    // ==================== ИСТОРИЯ БОТОВ ====================
+
+    /**
+     * Инициализирует вкладку истории ботов
+     */
+    initializeHistoryTab() {
+        console.log('[BotsManager] 📊 Инициализация вкладки истории ботов...');
+        
+        // Инициализируем фильтры
+        this.initializeHistoryFilters();
+        
+        // Инициализируем подвкладки истории
+        this.initializeHistorySubTabs();
+        
+        // Загружаем данные
+        this.loadHistoryData();
+        
+        // Инициализируем кнопки действий
+        this.initializeHistoryActionButtons();
+    }
+
+    /**
+     * Инициализирует фильтры истории
+     */
+    initializeHistoryFilters() {
+        // Фильтр по боту
+        const botFilter = document.getElementById('historyBotFilter');
+        if (botFilter) {
+            botFilter.addEventListener('change', () => this.loadHistoryData());
+        }
+
+        // Фильтр по типу действия
+        const actionFilter = document.getElementById('historyActionFilter');
+        if (actionFilter) {
+            actionFilter.addEventListener('change', () => this.loadHistoryData());
+        }
+
+        // Фильтр по периоду
+        const dateFilter = document.getElementById('historyDateFilter');
+        if (dateFilter) {
+            dateFilter.addEventListener('change', () => this.loadHistoryData());
+        }
+
+        // Кнопки фильтров
+        const applyBtn = document.querySelector('.history-filters .btn-primary');
+        if (applyBtn) {
+            applyBtn.addEventListener('click', () => this.loadHistoryData());
+        }
+
+        const clearBtn = document.querySelector('.history-filters .btn-secondary');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => this.clearHistoryFilters());
+        }
+
+        const exportBtn = document.querySelector('.history-filters .btn-info');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', () => this.exportHistoryData());
+        }
+    }
+
+    /**
+     * Инициализирует подвкладки истории
+     */
+    initializeHistorySubTabs() {
+        const tabButtons = document.querySelectorAll('.history-tab-btn');
+        const tabContents = document.querySelectorAll('.history-tab-content');
+
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const tabName = button.dataset.historyTab;
+                
+                // Убираем активный класс со всех кнопок и контента
+                tabButtons.forEach(btn => btn.classList.remove('active'));
+                tabContents.forEach(content => content.classList.remove('active'));
+                
+                // Добавляем активный класс к выбранной кнопке и контенту
+                button.classList.add('active');
+                const targetContent = document.getElementById(`${tabName}History`);
+                if (targetContent) {
+                    targetContent.classList.add('active');
+                }
+                
+                // Загружаем данные для выбранной вкладки
+                this.loadHistoryData(tabName);
+            });
+        });
+    }
+
+    /**
+     * Инициализирует кнопки действий истории
+     */
+    initializeHistoryActionButtons() {
+        // Кнопка обновления
+        const refreshBtn = document.querySelector('.history-actions .btn-primary');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => this.loadHistoryData());
+        }
+
+        // Кнопка создания демо-данных
+        const demoBtn = document.querySelector('.history-actions .btn-success');
+        if (demoBtn) {
+            demoBtn.addEventListener('click', () => this.createDemoHistoryData());
+        }
+
+        // Кнопка очистки истории
+        const clearBtn = document.querySelector('.history-actions .btn-warning');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => this.clearAllHistory());
+        }
+    }
+
+    /**
+     * Загружает данные истории
+     */
+    async loadHistoryData(tabName = 'actions') {
+        try {
+            console.log(`[BotsManager] 📊 Загрузка данных истории: ${tabName}`);
+            
+            // Получаем параметры фильтров
+            const filters = this.getHistoryFilters();
+            
+            // Загружаем данные в зависимости от вкладки
+            switch (tabName) {
+                case 'actions':
+                    await this.loadBotActions(filters);
+                    break;
+                case 'trades':
+                    await this.loadBotTrades(filters);
+                    break;
+                case 'signals':
+                    await this.loadBotSignals(filters);
+                    break;
+            }
+            
+            // Загружаем статистику
+            await this.loadHistoryStatistics(filters.symbol);
+            
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка загрузки данных истории:', error);
+            this.showNotification(`Ошибка загрузки истории: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * Получает параметры фильтров
+     */
+    getHistoryFilters() {
+        const botFilter = document.getElementById('historyBotFilter');
+        const actionFilter = document.getElementById('historyActionFilter');
+        const dateFilter = document.getElementById('historyDateFilter');
+        
+        return {
+            symbol: botFilter ? botFilter.value : null,
+            action_type: actionFilter ? actionFilter.value : null,
+            trade_type: actionFilter ? actionFilter.value : null,
+            period: dateFilter ? dateFilter.value : null,
+            limit: 100
+        };
+    }
+
+    /**
+     * Загружает действия ботов
+     */
+    async loadBotActions(filters) {
+        try {
+            const params = new URLSearchParams();
+            if (filters.symbol && filters.symbol !== 'all') params.append('symbol', filters.symbol);
+            if (filters.action_type && filters.action_type !== 'all') params.append('action_type', filters.action_type);
+            params.append('limit', filters.limit);
+            
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/history?${params}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                this.displayBotActions(data.history);
+            } else {
+                throw new Error(data.error || 'Ошибка загрузки действий');
+            }
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка загрузки действий ботов:', error);
+            this.displayBotActions([]);
+        }
+    }
+
+    /**
+     * Загружает сделки ботов
+     */
+    async loadBotTrades(filters) {
+        try {
+            const params = new URLSearchParams();
+            if (filters.symbol && filters.symbol !== 'all') params.append('symbol', filters.symbol);
+            if (filters.trade_type && filters.trade_type !== 'all') params.append('trade_type', filters.trade_type);
+            params.append('limit', filters.limit);
+            
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/trades?${params}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                this.displayBotTrades(data.trades);
+            } else {
+                throw new Error(data.error || 'Ошибка загрузки сделок');
+            }
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка загрузки сделок ботов:', error);
+            this.displayBotTrades([]);
+        }
+    }
+    
+    /**
+     * Загружает сигналы ботов
+     */
+    async loadBotSignals(filters) {
+        try {
+            const params = new URLSearchParams();
+            if (filters.symbol && filters.symbol !== 'all') params.append('symbol', filters.symbol);
+            params.append('action_type', 'SIGNAL');
+            params.append('limit', filters.limit);
+            
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/history?${params}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                this.displayBotSignals(data.history);
+            } else {
+                throw new Error(data.error || 'Ошибка загрузки сигналов');
+            }
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка загрузки сигналов ботов:', error);
+            this.displayBotSignals([]);
+        }
+    }
+
+    /**
+     * Загружает статистику истории
+     */
+    async loadHistoryStatistics(symbol = null) {
+        try {
+            const params = new URLSearchParams();
+            if (symbol && symbol !== 'all') params.append('symbol', symbol);
+            
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/statistics?${params}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                this.displayHistoryStatistics(data.statistics);
+            }
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка загрузки статистики:', error);
+        }
+    }
+
+    /**
+     * Отображает действия ботов
+     */
+    displayBotActions(actions) {
+        const container = document.getElementById('botActionsList');
+        if (!container) return;
+        
+        if (actions.length === 0) {
+            container.innerHTML = `
+                <div class="empty-history-state">
+                    <div class="empty-icon">📊</div>
+                    <p data-translate="no_actions_found">История действий не найдена</p>
+                    <p data-translate="actions_will_appear">Действия ботов будут отображаться здесь</p>
+                </div>
+            `;
+            return;
+        }
+        
+        const html = actions.map(action => `
+            <div class="history-item">
+                <div class="history-item-header">
+                    <span class="history-action-type">${this.getActionIcon(action.action_type)} ${action.action_name}</span>
+                    <span class="history-timestamp">${this.formatTimestamp(action.timestamp)}</span>
+                </div>
+                <div class="history-item-content">
+                    <div class="history-symbol">${action.symbol || 'N/A'}</div>
+                    <div class="history-details">${action.details}</div>
+                    ${action.bot_id ? `<div class="history-bot-id">Bot ID: ${action.bot_id}</div>` : ''}
+                </div>
+            </div>
+        `).join('');
+        
+        container.innerHTML = html;
+    }
+
+    /**
+     * Отображает сделки ботов
+     */
+    displayBotTrades(trades) {
+        const container = document.getElementById('botTradesList');
+        if (!container) return;
+        
+        if (trades.length === 0) {
+            container.innerHTML = `
+                <div class="empty-history-state">
+                    <div class="empty-icon">💼</div>
+                    <p data-translate="no_trades_found">История сделок не найдена</p>
+                    <p data-translate="trades_will_appear">Сделки ботов будут отображаться здесь</p>
+                </div>
+            `;
+            return;
+        }
+        
+        const html = trades.map(trade => `
+            <div class="history-item trade-item ${trade.status === 'CLOSED' ? 'closed' : 'open'}">
+                <div class="history-item-header">
+                    <span class="history-trade-direction ${trade.direction.toLowerCase()}">${trade.direction}</span>
+                    <span class="history-timestamp">${this.formatTimestamp(trade.timestamp)}</span>
+                </div>
+                <div class="history-item-content">
+                    <div class="history-symbol">${trade.symbol}</div>
+                    <div class="trade-details">
+                        <div class="trade-price">Вход: ${trade.entry_price?.toFixed(4) || 'N/A'}</div>
+                        ${trade.exit_price ? `<div class="trade-price">Выход: ${trade.exit_price.toFixed(4)}</div>` : ''}
+                        <div class="trade-size">Размер: ${trade.size}</div>
+                        ${trade.pnl !== null ? `<div class="trade-pnl ${trade.pnl >= 0 ? 'profit' : 'loss'}">PnL: ${trade.pnl.toFixed(2)} USDT</div>` : ''}
+                        ${trade.roi !== null ? `<div class="trade-roi ${trade.roi >= 0 ? 'profit' : 'loss'}">ROI: ${trade.roi.toFixed(2)}%</div>` : ''}
+                    </div>
+                    <div class="trade-status">Статус: ${trade.status === 'OPEN' ? 'Открыта' : 'Закрыта'}</div>
+                </div>
+            </div>
+        `).join('');
+        
+        container.innerHTML = html;
+    }
+
+    /**
+     * Отображает сигналы ботов
+     */
+    displayBotSignals(signals) {
+        const container = document.getElementById('botSignalsList');
+        if (!container) return;
+        
+        if (signals.length === 0) {
+            container.innerHTML = `
+                <div class="empty-history-state">
+                    <div class="empty-icon">⚡</div>
+                    <p data-translate="no_signals_found">История сигналов не найдена</p>
+                    <p data-translate="signals_will_appear">Сигналы ботов будут отображаться здесь</p>
+                </div>
+            `;
+            return;
+        }
+        
+        const html = signals.map(signal => `
+            <div class="history-item signal-item">
+                <div class="history-item-header">
+                    <span class="history-signal-type">⚡ ${signal.signal_type || 'SIGNAL'}</span>
+                    <span class="history-timestamp">${this.formatTimestamp(signal.timestamp)}</span>
+                </div>
+                <div class="history-item-content">
+                    <div class="history-symbol">${signal.symbol}</div>
+                    <div class="signal-details">
+                        <div class="signal-rsi">RSI: ${signal.rsi?.toFixed(2) || 'N/A'}</div>
+                        <div class="signal-price">Цена: ${signal.price?.toFixed(4) || 'N/A'}</div>
+                    </div>
+                    <div class="signal-description">${signal.details}</div>
+                </div>
+            </div>
+        `).join('');
+        
+        container.innerHTML = html;
+    }
+
+    /**
+     * Отображает статистику истории
+     */
+    displayHistoryStatistics(stats) {
+        // Обновляем карточки статистики
+        const totalActionsEl = document.querySelector('.history-stats .stat-card:nth-child(1) .stat-value');
+        const totalTradesEl = document.querySelector('.history-stats .stat-card:nth-child(2) .stat-value');
+        const totalPnlEl = document.querySelector('.history-stats .stat-card:nth-child(3) .stat-value');
+        const successRateEl = document.querySelector('.history-stats .stat-card:nth-child(4) .stat-value');
+        
+        if (totalActionsEl) totalActionsEl.textContent = stats.total_trades || 0;
+        if (totalTradesEl) totalTradesEl.textContent = stats.total_trades || 0;
+        if (totalPnlEl) totalPnlEl.textContent = `$${stats.total_pnl?.toFixed(2) || '0.00'}`;
+        if (successRateEl) successRateEl.textContent = `${stats.win_rate?.toFixed(1) || '0'}%`;
+    }
+
+    /**
+     * Очищает фильтры истории
+     */
+    clearHistoryFilters() {
+        const botFilter = document.getElementById('historyBotFilter');
+        const actionFilter = document.getElementById('historyActionFilter');
+        const dateFilter = document.getElementById('historyDateFilter');
+        
+        if (botFilter) botFilter.value = 'all';
+        if (actionFilter) actionFilter.value = 'all';
+        if (dateFilter) dateFilter.value = 'today';
+        
+        this.loadHistoryData();
+    }
+
+    /**
+     * Экспортирует данные истории
+     */
+    exportHistoryData() {
+        console.log('[BotsManager] 📤 Экспорт данных истории (функция в разработке)');
+        this.showNotification('Функция экспорта в разработке', 'info');
+    }
+
+    /**
+     * Создает демо-данные истории
+     */
+    async createDemoHistoryData() {
+        try {
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/history/demo`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                this.showNotification('Демо-данные созданы успешно', 'success');
+                this.loadHistoryData();
+            } else {
+                throw new Error(data.error || 'Ошибка создания демо-данных');
+            }
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка создания демо-данных:', error);
+            this.showNotification(`Ошибка создания демо-данных: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * Очищает всю историю
+     */
+    async clearAllHistory() {
+        if (!confirm('Вы уверены, что хотите очистить всю историю? Это действие нельзя отменить.')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/history/clear`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({})
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                this.showNotification('История очищена', 'success');
+                this.loadHistoryData();
+            } else {
+                throw new Error(data.error || 'Ошибка очистки истории');
+            }
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка очистки истории:', error);
+            this.showNotification(`Ошибка очистки истории: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * Получает иконку для типа действия
+     */
+    getActionIcon(actionType) {
+        const icons = {
+            'BOT_START': '🚀',
+            'BOT_STOP': '🛑',
+            'SIGNAL': '⚡',
+            'POSITION_OPENED': '📈',
+            'POSITION_CLOSED': '📉',
+            'STOP_LOSS': '🛡️',
+            'TAKE_PROFIT': '🎯',
+            'TRAILING_STOP': '📊',
+            'ERROR': '❌'
+        };
+        return icons[actionType] || '📋';
+    }
+
+    /**
+     * Форматирует timestamp
+     */
+    formatTimestamp(timestamp) {
+        const date = new Date(timestamp);
+        return date.toLocaleString('ru-RU', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
     }
 }
 

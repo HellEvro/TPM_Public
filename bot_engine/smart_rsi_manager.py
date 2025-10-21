@@ -107,20 +107,14 @@ class SmartRSIManager:
     def should_process_trading_signals_after_update(self) -> tuple[bool, str, int]:
         """
         Определяет, нужно ли обрабатывать торговые сигналы после обновления RSI
-        (только если свеча недавно закрылась)
+        ВСЕГДА обрабатываем сигналы - убираем глупое условие закрытия свечи!
         """
         current_time = int(time.time())
         last_candle_close = self.get_last_6h_candle_close()
         
-        # Проверяем, закрылась ли свеча недавно (в пределах допуска)
-        time_since_close = current_time - last_candle_close
-        
-        if 0 <= time_since_close <= self.candle_close_tolerance:
-            # Проверяем, что эту свечу мы еще не обрабатывали
-            if last_candle_close not in self.processed_candles:
-                return True, f"свеча закрылась {time_since_close//60}м назад", last_candle_close
-        
-        return False, f"свеча закрылась {time_since_close//60}м назад (слишком давно или уже обработана)", last_candle_close
+        # ВСЕГДА обрабатываем торговые сигналы!
+        # Убираем глупое условие ожидания закрытия свечи
+        return True, f"обработка сигналов включена всегда", last_candle_close
     
     def check_significant_price_changes(self) -> bool:
         """
@@ -141,9 +135,15 @@ class SmartRSIManager:
         try:
             self.last_update_time = int(time.time())
             
-            # Вызываем функцию обновления RSI
-            logger.info(f"[SMART_RSI] 📊 Плановое обновление RSI данных...")
-            self.rsi_update_callback()
+            # ⚡ БЫСТРАЯ ЗАГРУЗКА: Сначала грузим ТОЛЬКО свечи
+            logger.info(f"[SMART_RSI] 🚀 Быстрая загрузка свечей...")
+            from bots_modules.filters import load_all_coins_candles_fast
+            if load_all_coins_candles_fast():
+                logger.info(f"[SMART_RSI] ✅ Свечи загружены! Теперь локальные расчеты...")
+                # Потом вызываем полную загрузку с расчетами (она будет использовать кэш свечей)
+                self.rsi_update_callback()
+            else:
+                logger.error(f"[SMART_RSI] ❌ Не удалось загрузить свечи")
             
             time_to_close = self.get_time_to_candle_close()
             hours = time_to_close // 3600
@@ -188,6 +188,15 @@ class SmartRSIManager:
     
     def run_smart_worker(self):
         """Основной цикл умного обновления RSI и проверки торговых сигналов"""
+        # ⚡ АКТИВИРУЕМ ТРЕЙСИНГ для этого потока (если включен)
+        if SystemConfig.ENABLE_CODE_TRACING:
+            try:
+                from trace_debug import enable_trace
+                enable_trace()
+                logger.info("[SMART_RSI] 🔍 Трейсинг активирован в потоке Smart RSI")
+            except:
+                pass
+        
         logger.info("=" * 80)
         logger.info("[SMART_RSI] 🚀 ЗАПУСК ОПТИМИЗИРОВАННОЙ СИСТЕМЫ RSI")
         logger.info("[SMART_RSI] 📊 Режим: Плановое обновление каждые 60 минут")
@@ -196,7 +205,9 @@ class SmartRSIManager:
         logger.info("=" * 80)
         
         # Первое обновление сразу
+        logger.info("[SMART_RSI] 📡 Начинаем первое обновление RSI...")
         self.update_rsi_data()
+        logger.info("[SMART_RSI] ✅ Первое обновление RSI завершено")
         
         while not self.shutdown_flag.is_set():
             try:

@@ -17,6 +17,16 @@ AI_CONFIG_NAMES = {
     'anomaly_block_threshold': 'Порог блокировки аномалий',
     'anomaly_log_enabled': 'Логирование аномалий',
     
+    # LSTM Predictor
+    'lstm_enabled': 'LSTM предсказание цены',
+    'lstm_min_confidence': 'Минимальная уверенность LSTM',
+    'lstm_weight': 'Вес LSTM в голосовании',
+    
+    # Pattern Recognition
+    'pattern_enabled': 'Распознавание паттернов',
+    'pattern_min_confidence': 'Минимальная уверенность паттернов',
+    'pattern_weight': 'Вес паттернов в голосовании',
+    
     # Risk Management
     'risk_management_enabled': 'Умное управление рисками',
     'risk_update_interval': 'Интервал обновления рисков (сек)',
@@ -32,17 +42,7 @@ AI_CONFIG_NAMES = {
     # AI Logging
     'log_predictions': 'Логирование предсказаний',
     'log_anomalies': 'Логирование аномалий',
-    
-    # LSTM (будущие)
-    'lstm_enabled': 'LSTM Predictor',
-    'lstm_min_confidence': 'Минимальная уверенность LSTM',
-    
-    # Pattern Recognition (будущие)
-    'pattern_enabled': 'Pattern Recognition',
-    'pattern_min_confidence': 'Минимальная уверенность Pattern',
-    
-    # AI Confidence
-    'ai_confidence_threshold': 'Общий порог уверенности AI',
+    'log_patterns': 'Логирование паттернов',
 }
 
 def log_ai_config_change(key, old_value, new_value):
@@ -150,10 +150,12 @@ def register_ai_endpoints(app):
                     # LSTM Predictor
                     'lstm_enabled': AIConfig.AI_LSTM_ENABLED,
                     'lstm_min_confidence': AIConfig.AI_LSTM_MIN_CONFIDENCE,
+                    'lstm_weight': AIConfig.AI_LSTM_WEIGHT,
                     
                     # Pattern Recognition
                     'pattern_enabled': AIConfig.AI_PATTERN_ENABLED,
                     'pattern_min_confidence': AIConfig.AI_PATTERN_MIN_CONFIDENCE,
+                    'pattern_weight': AIConfig.AI_PATTERN_WEIGHT,
                     
                     # Auto Training
                     'auto_train_enabled': AIConfig.AI_AUTO_TRAIN_ENABLED,
@@ -166,7 +168,8 @@ def register_ai_endpoints(app):
                     
                     # Logging
                     'log_predictions': AIConfig.AI_LOG_PREDICTIONS,
-                    'log_anomalies': AIConfig.AI_LOG_ANOMALIES
+                    'log_anomalies': AIConfig.AI_LOG_ANOMALIES,
+                    'log_patterns': AIConfig.AI_LOG_PATTERNS
                 }
             })
         
@@ -223,6 +226,12 @@ def register_ai_endpoints(app):
                 'ai_confidence_threshold': AIConfig.AI_CONFIDENCE_THRESHOLD,
                 'anomaly_detection_enabled': AIConfig.AI_ANOMALY_DETECTION_ENABLED,
                 'anomaly_block_threshold': AIConfig.AI_ANOMALY_BLOCK_THRESHOLD,
+                'lstm_enabled': AIConfig.AI_LSTM_ENABLED,
+                'lstm_min_confidence': AIConfig.AI_LSTM_MIN_CONFIDENCE,
+                'lstm_weight': AIConfig.AI_LSTM_WEIGHT,
+                'pattern_enabled': AIConfig.AI_PATTERN_ENABLED,
+                'pattern_min_confidence': AIConfig.AI_PATTERN_MIN_CONFIDENCE,
+                'pattern_weight': AIConfig.AI_PATTERN_WEIGHT,
                 'risk_management_enabled': AIConfig.AI_RISK_MANAGEMENT_ENABLED,
                 'risk_update_interval': AIConfig.AI_RISK_UPDATE_INTERVAL,
                 'auto_train_enabled': AIConfig.AI_AUTO_TRAIN_ENABLED,
@@ -233,6 +242,7 @@ def register_ai_endpoints(app):
                 'retrain_hour': AIConfig.AI_RETRAIN_HOUR,
                 'log_predictions': AIConfig.AI_LOG_PREDICTIONS,
                 'log_anomalies': AIConfig.AI_LOG_ANOMALIES,
+                'log_patterns': AIConfig.AI_LOG_PATTERNS,
             }
             
             # Читаем текущий файл bot_config.py
@@ -311,6 +321,40 @@ def register_ai_endpoints(app):
                             changes_count += 1
                         line = f"    AI_RETRAIN_HOUR = {data['retrain_hour']}\n"
                     
+                    # LSTM Predictor
+                    elif 'AI_LSTM_ENABLED =' in line and 'lstm_enabled' in data:
+                        old_value = old_config.get('lstm_enabled', AIConfig.AI_LSTM_ENABLED)
+                        if log_ai_config_change('lstm_enabled', old_value, data['lstm_enabled']):
+                            changes_count += 1
+                        line = f"    AI_LSTM_ENABLED = {data['lstm_enabled']}\n"
+                    elif 'AI_LSTM_MIN_CONFIDENCE =' in line and 'lstm_min_confidence' in data:
+                        old_value = old_config.get('lstm_min_confidence', AIConfig.AI_LSTM_MIN_CONFIDENCE)
+                        if log_ai_config_change('lstm_min_confidence', old_value, data['lstm_min_confidence']):
+                            changes_count += 1
+                        line = f"    AI_LSTM_MIN_CONFIDENCE = {data['lstm_min_confidence']}\n"
+                    elif 'AI_LSTM_WEIGHT =' in line and 'lstm_weight' in data:
+                        old_value = old_config.get('lstm_weight', AIConfig.AI_LSTM_WEIGHT)
+                        if log_ai_config_change('lstm_weight', old_value, data['lstm_weight']):
+                            changes_count += 1
+                        line = f"    AI_LSTM_WEIGHT = {data['lstm_weight']}\n"
+                    
+                    # Pattern Recognition
+                    elif 'AI_PATTERN_ENABLED =' in line and 'pattern_enabled' in data:
+                        old_value = old_config.get('pattern_enabled', AIConfig.AI_PATTERN_ENABLED)
+                        if log_ai_config_change('pattern_enabled', old_value, data['pattern_enabled']):
+                            changes_count += 1
+                        line = f"    AI_PATTERN_ENABLED = {data['pattern_enabled']}\n"
+                    elif 'AI_PATTERN_MIN_CONFIDENCE =' in line and 'pattern_min_confidence' in data:
+                        old_value = old_config.get('pattern_min_confidence', AIConfig.AI_PATTERN_MIN_CONFIDENCE)
+                        if log_ai_config_change('pattern_min_confidence', old_value, data['pattern_min_confidence']):
+                            changes_count += 1
+                        line = f"    AI_PATTERN_MIN_CONFIDENCE = {data['pattern_min_confidence']}\n"
+                    elif 'AI_PATTERN_WEIGHT =' in line and 'pattern_weight' in data:
+                        old_value = old_config.get('pattern_weight', AIConfig.AI_PATTERN_WEIGHT)
+                        if log_ai_config_change('pattern_weight', old_value, data['pattern_weight']):
+                            changes_count += 1
+                        line = f"    AI_PATTERN_WEIGHT = {data['pattern_weight']}\n"
+                    
                     # Logging
                     elif 'AI_LOG_PREDICTIONS =' in line and 'log_predictions' in data:
                         if log_ai_config_change('log_predictions', old_config['log_predictions'], data['log_predictions']):
@@ -320,6 +364,11 @@ def register_ai_endpoints(app):
                         if log_ai_config_change('log_anomalies', old_config['log_anomalies'], data['log_anomalies']):
                             changes_count += 1
                         line = f"    AI_LOG_ANOMALIES = {data['log_anomalies']}\n"
+                    elif 'AI_LOG_PATTERNS =' in line and 'log_patterns' in data:
+                        old_value = old_config.get('log_patterns', AIConfig.AI_LOG_PATTERNS)
+                        if log_ai_config_change('log_patterns', old_value, data['log_patterns']):
+                            changes_count += 1
+                        line = f"    AI_LOG_PATTERNS = {data['log_patterns']}\n"
                 
                 updated_lines.append(line)
             

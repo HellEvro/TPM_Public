@@ -13,18 +13,31 @@ import threading
 
 logger = logging.getLogger('BotsService')
 
-# Глобальные переменные (импортируются из главного файла)
-bots_data_lock = threading.Lock()
-bots_data = {}
-rsi_data_lock = threading.Lock()
-coins_rsi_data = {}
-BOT_STATUS = {
-    'IDLE': 'idle',
-    'RUNNING': 'running',
-    'IN_POSITION_LONG': 'in_position_long',
-    'IN_POSITION_SHORT': 'in_position_short',
-    'PAUSED': 'paused'
-}
+# Импортируем глобальные переменные
+try:
+    from bots_modules.imports_and_globals import (
+        bots_data_lock, bots_data, rsi_data_lock, coins_rsi_data,
+        BOT_STATUS, get_exchange, system_initialized
+    )
+except ImportError:
+    # Fallback если импорт не удался
+    bots_data_lock = threading.Lock()
+    bots_data = {}
+    rsi_data_lock = threading.Lock()
+    coins_rsi_data = {}
+    BOT_STATUS = {
+        'IDLE': 'idle',
+        'RUNNING': 'running',
+        'IN_POSITION_LONG': 'in_position_long',
+        'IN_POSITION_SHORT': 'in_position_short',
+        'WAITING': 'waiting',
+        'STOPPED': 'stopped',
+        'ERROR': 'error',
+        'PAUSED': 'paused'
+    }
+    def get_exchange():
+        return None
+    system_initialized = False
 
 # Импорт функций фильтров (будут доступны после импорта)
 try:
@@ -235,7 +248,27 @@ class NewTradingBot:
             current_trend = external_trend
             
             # Получаем RSI данные
-            with rsi_data_lock:
+            try:
+                # Проверяем, определен ли rsi_data_lock
+                if 'rsi_data_lock' in globals():
+                    with rsi_data_lock:
+                        coin_data = coins_rsi_data['coins'].get(self.symbol)
+                        if coin_data:
+                            current_rsi = coin_data.get('rsi6h')
+                            current_price = coin_data.get('price')
+                            if not current_trend:
+                                current_trend = coin_data.get('trend6h', 'NEUTRAL')
+                else:
+                    # Fallback если lock не определен
+                    coin_data = coins_rsi_data['coins'].get(self.symbol)
+                    if coin_data:
+                        current_rsi = coin_data.get('rsi6h')
+                        current_price = coin_data.get('price')
+                        if not current_trend:
+                            current_trend = coin_data.get('trend6h', 'NEUTRAL')
+            except Exception as e:
+                logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка получения RSI данных: {e}")
+                # Fallback если lock не определен
                 coin_data = coins_rsi_data['coins'].get(self.symbol)
                 if coin_data:
                     current_rsi = coin_data.get('rsi6h')
@@ -456,6 +489,43 @@ class NewTradingBot:
         except Exception as e:
             logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка синхронизации с биржей: {e}")
     
+    def enter_position(self, direction):
+        """
+        Публичный метод для входа в позицию
+        
+        Args:
+            direction (str): Направление сделки ('LONG' или 'SHORT')
+            
+        Returns:
+            bool: True если вход успешен, False иначе
+        """
+        try:
+            # Получаем текущую цену
+            ticker = self.exchange.get_ticker(self.symbol) if self.exchange else None
+            price = ticker['last'] if ticker and 'last' in ticker else 0
+            
+            logger.info(f"[NEW_BOT_{self.symbol}] 📈 Входим в {direction} позицию @ {price}")
+            
+            # Открываем позицию
+            if self._open_position_on_exchange(direction, price):
+                # Обновляем статус
+                status_key = 'IN_POSITION_LONG' if direction == 'LONG' else 'IN_POSITION_SHORT'
+                self.update_status(BOT_STATUS[status_key], price, direction)
+                
+                # Сохраняем состояние
+                with bots_data_lock:
+                    bots_data['bots'][self.symbol] = self.to_dict()
+                
+                logger.info(f"[NEW_BOT_{self.symbol}] ✅ Вход в {direction} позицию успешен")
+                return True
+            else:
+                logger.error(f"[NEW_BOT_{self.symbol}] ❌ Не удалось войти в {direction} позицию")
+                return False
+                
+        except Exception as e:
+            logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка входа в позицию: {e}")
+            return False
+    
     def _open_position_on_exchange(self, side, price):
         """Открывает позицию на бирже"""
         try:
@@ -466,11 +536,34 @@ class NewTradingBot:
             logger.info(f"[NEW_BOT_{self.symbol}] 🚀 Открываем позицию {side} @ {price}")
             
             # Открываем позицию на бирже
-            order_result = self.exchange.place_market_order(
+            # Рассчитываем количество монет на основе volume_value в USDT
+            qty_in_coins = self.volume_value / price if price > 0 else 0
+            
+            # 🎯 Рассчитываем Take Profit на основе RSI
+            take_profit_price = None
+            try:
+                # Получаем текущий RSI
+                if 'rsi_data_lock' in globals():
+                    with rsi_data_lock:
+                        coin_data = coins_rsi_data['coins'].get(self.symbol)
+                        current_rsi = coin_data.get('rsi6h') if coin_data else None
+                else:
+                    coin_data = coins_rsi_data['coins'].get(self.symbol)
+                    current_rsi = coin_data.get('rsi6h') if coin_data else None
+                
+                if current_rsi:
+                    take_profit_price = self.calculate_dynamic_take_profit(side, price, current_rsi)
+                    if take_profit_price:
+                        logger.info(f"[NEW_BOT_{self.symbol}] 🎯 TP рассчитан: {price:.6f} → {take_profit_price:.6f}")
+            except Exception as tp_error:
+                logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось рассчитать TP: {tp_error}")
+            
+            order_result = self.exchange.place_order(
                 symbol=self.symbol,
                 side=side,
-                qty=None,  # Будет рассчитано по volume_value
-                qty_in_usdt=self.volume_value
+                quantity=qty_in_coins,  # Количество в монетах
+                order_type='market',
+                take_profit=take_profit_price  # ✅ Передаем TP
             )
             
             if order_result and order_result.get('success'):
@@ -513,6 +606,140 @@ class NewTradingBot:
                 
         except Exception as e:
             logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка закрытия позиции: {e}")
+            return False
+    
+    def calculate_dynamic_take_profit(self, direction, current_price, current_rsi):
+        """
+        Рассчитывает динамический Take Profit на основе RSI настроек
+        
+        Args:
+            direction (str): Направление позиции ('LONG' или 'SHORT')
+            current_price (float): Текущая цена
+            current_rsi (float): Текущий RSI
+            
+        Returns:
+            float: Цена Take Profit или None если не нужен
+        """
+        try:
+            # Получаем настройки RSI из конфигурации
+            rsi_exit_long = self.config.get('rsi_exit_long', 55)
+            rsi_exit_short = self.config.get('rsi_exit_short', 45)
+            
+            if direction == 'LONG':
+                # Для LONG: TP когда RSI достигнет rsi_exit_long
+                if current_rsi >= rsi_exit_long:
+                    return None  # Основное условие уже сработало
+                
+                # Рассчитываем примерную цену для достижения целевого RSI
+                # RSI растет при росте цены, используем коэффициент
+                rsi_ratio = rsi_exit_long / current_rsi
+                # Консервативный коэффициент роста цены
+                price_multiplier = 1 + (rsi_ratio - 1) * 0.6
+                tp_price = current_price * price_multiplier
+                
+                logger.info(f"[NEW_BOT_{self.symbol}] 📈 TP для LONG: RSI {current_rsi}→{rsi_exit_long}, цена {current_price:.6f}→{tp_price:.6f}")
+                return tp_price
+                
+            elif direction == 'SHORT':
+                # Для SHORT: TP когда RSI достигнет rsi_exit_short
+                if current_rsi <= rsi_exit_short:
+                    return None  # Основное условие уже сработало
+                
+                # Рассчитываем примерную цену для достижения целевого RSI
+                rsi_ratio = current_rsi / rsi_exit_short
+                # Консервативный коэффициент падения цены
+                price_multiplier = 1 - (rsi_ratio - 1) * 0.6
+                tp_price = current_price * price_multiplier
+                
+                logger.info(f"[NEW_BOT_{self.symbol}] 📉 TP для SHORT: RSI {current_rsi}→{rsi_exit_short}, цена {current_price:.6f}→{tp_price:.6f}")
+                return tp_price
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка расчета TP: {e}")
+            return None
+    
+    def update_trailing_take_profit(self, current_price, current_rsi):
+        """
+        Обновляет трейлинг Take Profit пока не сработало основное RSI условие
+        
+        Args:
+            current_price (float): Текущая цена
+            current_rsi (float): Текущий RSI
+            
+        Returns:
+            bool: True если TP обновлен, False если основное условие сработало
+        """
+        try:
+            if not self.position_side:
+                return False
+            
+            direction = self.position_side.upper()
+            
+            # Проверяем основное RSI условие
+            rsi_exit_long = self.config.get('rsi_exit_long', 55)
+            rsi_exit_short = self.config.get('rsi_exit_short', 45)
+            
+            if direction == 'LONG' and current_rsi >= rsi_exit_long:
+                logger.info(f"[NEW_BOT_{self.symbol}] 🎯 Основное RSI условие сработало (RSI={current_rsi} >= {rsi_exit_long}) - закрываем позицию")
+                return False  # Основное условие сработало
+            
+            if direction == 'SHORT' and current_rsi <= rsi_exit_short:
+                logger.info(f"[NEW_BOT_{self.symbol}] 🎯 Основное RSI условие сработало (RSI={current_rsi} <= {rsi_exit_short}) - закрываем позицию")
+                return False  # Основное условие сработало
+            
+            # Основное условие НЕ сработало - обновляем TP
+            new_tp = self.calculate_dynamic_take_profit(direction, current_price, current_rsi)
+            
+            # Проверяем, нужно ли обновлять TP (для LONG - выше цены, для SHORT - ниже)
+            should_update_tp = False
+            if direction == 'LONG' and new_tp and new_tp > current_price:
+                should_update_tp = True
+            elif direction == 'SHORT' and new_tp and new_tp < current_price:
+                should_update_tp = True
+            
+            if should_update_tp:
+                # Обновляем TP на бирже
+                success = self._update_take_profit_on_exchange(new_tp)
+                if success:
+                    logger.info(f"[NEW_BOT_{self.symbol}] 📈 TP обновлен: {current_price:.6f} → {new_tp:.6f}")
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка обновления трейлинг TP: {e}")
+            return False
+    
+    def _update_take_profit_on_exchange(self, tp_price):
+        """
+        Обновляет Take Profit на бирже
+        
+        Args:
+            tp_price (float): Новая цена Take Profit
+            
+        Returns:
+            bool: True если успешно обновлен
+        """
+        try:
+            if not self.exchange:
+                logger.error(f"[NEW_BOT_{self.symbol}] ❌ Биржа не инициализирована")
+                return False
+            
+            # Обновляем TP через биржу
+            result = self.exchange.update_take_profit(self.symbol, tp_price)
+            
+            if result and result.get('success'):
+                logger.info(f"[NEW_BOT_{self.symbol}] ✅ TP обновлен на бирже: {tp_price:.6f}")
+                return True
+            else:
+                error = result.get('message', 'Unknown error') if result else 'No response'
+                logger.error(f"[NEW_BOT_{self.symbol}] ❌ Не удалось обновить TP: {error}")
+                return False
+            
+        except Exception as e:
+            logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка обновления TP на бирже: {e}")
             return False
             
     def to_dict(self):
