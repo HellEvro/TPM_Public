@@ -1269,26 +1269,35 @@ class BybitExchange(BaseExchange):
             }
     
     @with_timeout(15)  # 15 секунд таймаут для обновления TP
-    def update_take_profit(self, symbol, take_profit_price):
+    def update_take_profit(self, symbol, take_profit_price, position_side=None):
         """
         Обновляет Take Profit для существующей позиции
         
         Args:
             symbol (str): Символ торговой пары (например, 'BTC')
             take_profit_price (float): Новая цена Take Profit
+            position_side (str, optional): Направление позиции ('LONG' или 'SHORT')
             
         Returns:
             dict: Результат обновления TP
         """
         try:
-            print(f"[BYBIT_BOT] Обновление Take Profit: {symbol} → {take_profit_price:.6f}")
+            print(f"[BYBIT_BOT] Обновление Take Profit: {symbol} → {take_profit_price:.6f} (side: {position_side})")
+            
+            # Определяем positionIdx в зависимости от режима и направления позиции
+            # В Hedge Mode: 1 = LONG (Buy), 2 = SHORT (Sell)
+            # В One-Way Mode: 0 = обе стороны
+            if position_side:
+                position_idx = 1 if position_side.upper() == 'LONG' else 2
+            else:
+                position_idx = 0  # One-way mode fallback
             
             # Параметры для обновления TP (используем Trading Stop API)
             tp_params = {
                 "category": "linear",
                 "symbol": f"{symbol}USDT",
                 "takeProfit": str(round(take_profit_price, 6)),
-                "positionIdx": 0  # One-way mode, используем 0 для обновления обеих позиций
+                "positionIdx": position_idx
             }
             
             print(f"[BYBIT_BOT] Параметры TP: {tp_params}")
@@ -1309,6 +1318,25 @@ class BybitExchange(BaseExchange):
                         'success': False,
                         'message': f"Ошибка обновления TP: {response['retMsg']}"
                     }
+            except Exception as e:
+                # Проверяем код ошибки 34040 (not modified) - это нормально, TP уже установлен
+                error_str = str(e)
+                if "34040" in error_str or "not modified" in error_str:
+                    print(f"[BYBIT_BOT] ✅ TP уже установлен на {take_profit_price:.6f}")
+                    return {
+                        'success': True,
+                        'message': f'Take Profit уже установлен: {take_profit_price:.6f}',
+                        'take_profit': take_profit_price
+                    }
+                
+                # Для других ошибок - логируем и возвращаем ошибку
+                print(f"[BYBIT_BOT] Ошибка обновления Take Profit: {e}")
+                import traceback
+                print(f"[BYBIT_BOT] Трейсбек: {traceback.format_exc()}")
+                return {
+                    'success': False,
+                    'message': f"Ошибка обновления TP: {error_str}"
+                }
             except AttributeError:
                 # Если метод set_trading_stop не существует, пробуем альтернативный способ
                 print(f"[BYBIT_BOT] ⚠️ Метод set_trading_stop не найден, используем альтернативный способ")
