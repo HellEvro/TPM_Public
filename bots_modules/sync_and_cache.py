@@ -672,6 +672,26 @@ def update_bots_cache_data():
                 logger.error(f"[BOTS_CACHE] Ошибка получения RSI для {symbol}: {e}")
                 bot_data['rsi_data'] = {'rsi': 'N/A', 'signal': 'N/A'}
             
+            # 🎯 КРИТИЧНО: Обновляем трейлинг Take Profit для ботов в позиции
+            if (bot_data.get('status') in ['in_position_long', 'in_position_short'] and 
+                bot_data.get('rsi_data', {}).get('rsi6h') and 
+                bot_data.get('current_price')):
+                try:
+                    # Создаем объект бота для вызова метода
+                    from bots_modules.bot_class import NewTradingBot
+                    bot_instance = NewTradingBot(symbol, bot_data, get_exchange())
+                    
+                    # Обновляем трейлинг TP
+                    current_price = bot_data.get('current_price')
+                    current_rsi = bot_data.get('rsi_data', {}).get('rsi6h')
+                    
+                    if current_price and current_rsi:
+                        tp_updated = bot_instance.update_trailing_take_profit(current_price, current_rsi)
+                        if tp_updated:
+                            logger.info(f"[BOTS_CACHE] 🎯 TP обновлен для {symbol}")
+                except Exception as tp_error:
+                    logger.error(f"[BOTS_CACHE] ❌ Ошибка обновления TP для {symbol}: {tp_error}")
+            
             # Добавляем информацию о позиции с биржи (будет добавлено позже для всех ботов сразу)
             # Стоп-лоссы будут получены вместе с позициями
             
@@ -747,9 +767,12 @@ def update_bots_cache_data():
                             except Exception as e:
                                 logger.error(f"[BOTS_CACHE] ❌ {symbol} - Ошибка получения цены с биржи: {e}")
                         
-                        if exchange_unrealized_pnl != 0:
-                            bot_data['unrealized_pnl'] = exchange_unrealized_pnl
-                            bot_data['unrealized_pnl_usdt'] = exchange_unrealized_pnl  # Точное значение в USDT
+                        # ✅ КРИТИЧНО: Обновляем PnL ВСЕГДА, даже если он равен 0
+                        bot_data['unrealized_pnl'] = exchange_unrealized_pnl
+                        bot_data['unrealized_pnl_usdt'] = exchange_unrealized_pnl  # Точное значение в USDT
+                        
+                        # Отладочный лог для проверки PnL
+                        logger.debug(f"[POSITION_SYNC] {symbol}: PnL с биржи = {exchange_unrealized_pnl}, обновлен в bot_data")
                         
                         # ✅ Обновляем ROI
                         if exchange_roi != 0:
@@ -802,6 +825,9 @@ def update_bots_cache_data():
         # ✅ КРИТИЧНО: Обновляем last_update в bots_data для UI
         # ⚡ БЕЗ БЛОКИРОВКИ: GIL делает запись атомарной
         bots_data['last_update'] = current_time
+        
+        # Отладочный лог для проверки частоты обновлений
+        logger.debug(f"[BOTS_CACHE] 🔄 Обновление завершено: {current_time}")
         
         logger.info(f"[BOTS_CACHE] ✅ Кэш обновлен: {len(bots_list)} ботов (last_update: {current_time})")
         return True

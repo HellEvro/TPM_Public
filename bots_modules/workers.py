@@ -215,7 +215,14 @@ def auto_bot_worker():
                 logger.info(f"[WORKER] 🔄 [1/3] НАЧАЛО: update_bots_cache_data()")
                 worker_t_start = time.time()  # time уже импортирован в начале файла
                 update_bots_cache_data()
-                logger.info(f"[WORKER] ✅ [1/3] КОНЕЦ: update_bots_cache_data() за {time.time()-worker_t_start:.1f}с")
+                worker_t_end = time.time()
+                execution_time = worker_t_end - worker_t_start
+                logger.info(f"[WORKER] ✅ [1/3] КОНЕЦ: update_bots_cache_data() за {execution_time:.1f}с")
+                
+                # Предупреждение если обновление занимает слишком много времени
+                if execution_time > 0.8:  # Если больше 0.8 секунды
+                    logger.warning(f"[WORKER] ⚠️ МЕДЛЕННОЕ ОБНОВЛЕНИЕ: {execution_time:.1f}с (может нарушить интервал в 1с)")
+                
                 last_position_update = current_time
             
             # Устанавливаем недостающие стоп-лоссы каждые SystemConfig.STOP_LOSS_SETUP_INTERVAL секунд

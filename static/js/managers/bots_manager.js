@@ -719,7 +719,7 @@ class BotsManager {
         
         const coinsHtml = this.coinsRsiData.map(coin => {
             const rsiClass = this.getRsiZoneClass(coin.rsi6h);
-            const trendClass = coin.trend6h ? `trend-${coin.trend6h.toLowerCase()}` : '';
+            const trendClass = coin.trend6h ? `trend-${coin.trend6h.toLowerCase()}` : 'trend-none';
             
             // Используем универсальную функцию для определения сигнала
             const effectiveSignal = this.getEffectiveSignal(coin);
@@ -896,23 +896,23 @@ class BotsManager {
         
         // Enhanced RSI данные - только если включен
         if (enhancedRsi && enhancedRsi.enabled) {
-            const extremeDuration = enhancedRsi.extreme_duration;
-            const confirmations = enhancedRsi.confirmations || {};
-            
-            // Показываем продолжительность в экстремальной зоне
-            if (extremeDuration > 0) {
-                infoElements.push(`<span class="extreme-duration" title="Время в экстремальной зоне">${extremeDuration}🕐</span>`);
-            }
-            
-            // Показываем подтверждения
-            if (confirmations.volume) {
-                infoElements.push(`<span class="confirmation-volume" title="Подтверждение объемом">📊</span>`);
-            }
-            
-            if (confirmations.divergence) {
-                const divIcon = confirmations.divergence === 'BULLISH_DIVERGENCE' ? '📈' : '📉';
-                infoElements.push(`<span class="confirmation-divergence" title="Дивергенция: ${confirmations.divergence}">${divIcon}</span>`);
-            }
+        const extremeDuration = enhancedRsi.extreme_duration;
+        const confirmations = enhancedRsi.confirmations || {};
+        
+        // Показываем продолжительность в экстремальной зоне
+        if (extremeDuration > 0) {
+            infoElements.push(`<span class="extreme-duration" title="Время в экстремальной зоне">${extremeDuration}🕐</span>`);
+        }
+        
+        // Показываем подтверждения
+        if (confirmations.volume) {
+            infoElements.push(`<span class="confirmation-volume" title="Подтверждение объемом">📊</span>`);
+        }
+        
+        if (confirmations.divergence) {
+            const divIcon = confirmations.divergence === 'BULLISH_DIVERGENCE' ? '📈' : '📉';
+            infoElements.push(`<span class="confirmation-divergence" title="Дивергенция: ${confirmations.divergence}">${divIcon}</span>`);
+        }
         }
         
         if (infoElements.length > 0) {
@@ -1100,6 +1100,8 @@ class BotsManager {
         const sellZoneCount = this.coinsRsiData.filter(coin => coin.rsi6h && coin.rsi6h >= 71).length;
         const trendUpCount = this.coinsRsiData.filter(coin => coin.trend6h === 'UP').length;
         const trendDownCount = this.coinsRsiData.filter(coin => coin.trend6h === 'DOWN').length;
+        const trendNeutralCount = this.coinsRsiData.filter(coin => coin.trend6h === 'NEUTRAL').length;
+        const trendNoneCount = this.coinsRsiData.filter(coin => !coin.trend6h || coin.trend6h === null || coin.trend6h === undefined).length;
         const manualPositionCount = this.coinsRsiData.filter(coin => coin.manual_position === true).length;
         
         // Обновляем счетчики в HTML (фильтры)
@@ -1130,6 +1132,8 @@ class BotsManager {
         
         const trendUpCountEl = document.getElementById('filterTrendUpCount');
         const trendDownCountEl = document.getElementById('filterTrendDownCount');
+        const trendNeutralCountEl = document.getElementById('filterTrendNeutralCount');
+        const trendNoneCountEl = document.getElementById('filterTrendNoneCount');
         const longCountEl = document.getElementById('filterLongCount');
         const shortCountEl = document.getElementById('filterShortCount');
         const manualCountEl = document.getElementById('manualCount');
@@ -1142,11 +1146,13 @@ class BotsManager {
         if (sellZoneCountEl) sellZoneCountEl.textContent = ` (${sellZoneCount})`;
         if (trendUpCountEl) trendUpCountEl.textContent = trendUpCount;
         if (trendDownCountEl) trendDownCountEl.textContent = trendDownCount;
+        if (trendNeutralCountEl) trendNeutralCountEl.textContent = trendNeutralCount;
+        if (trendNoneCountEl) trendNoneCountEl.textContent = trendNoneCount;
         if (longCountEl) longCountEl.textContent = longCount;
         if (shortCountEl) shortCountEl.textContent = shortCount;
         if (manualCountEl) manualCountEl.textContent = `(${manualPositionCount})`;
         
-        this.logDebug(`[BotsManager] 📊 Счетчики фильтров: ALL=${allCount}, BUY=${buyZoneCount}, SELL=${sellZoneCount}, UP=${trendUpCount}, DOWN=${trendDownCount}, LONG=${longCount}, SHORT=${shortCount}, MANUAL=${manualPositionCount}`);
+        this.logDebug(`[BotsManager] 📊 Счетчики фильтров: ALL=${allCount}, BUY=${buyZoneCount}, SELL=${sellZoneCount}, UP=${trendUpCount}, DOWN=${trendDownCount}, NEUTRAL=${trendNeutralCount}, None=${trendNoneCount}, LONG=${longCount}, SHORT=${shortCount}, MANUAL=${manualPositionCount}`);
     }
 
     selectCoin(symbol) {
@@ -1941,6 +1947,12 @@ class BotsManager {
                     break;
                 case 'trend-down':
                     visible = item.classList.contains('trend-down');
+                    break;
+                case 'trend-neutral':
+                    visible = item.classList.contains('trend-neutral');
+                    break;
+                case 'trend-none':
+                    visible = item.classList.contains('trend-none');
                     break;
                 case 'enter-long':
                     visible = item.classList.contains('enter-long');
@@ -3823,7 +3835,9 @@ class BotsManager {
             const configData = await configResponse.json();
             
             if (botsData.success) {
+                console.log(`[DEBUG] loadActiveBotsData: получены данные ботов:`, botsData.bots);
                 this.activeBots = botsData.bots;
+                console.log(`[DEBUG] loadActiveBotsData: this.activeBots установлен:`, this.activeBots);
                 this.renderActiveBotsDetails();
                 
                 // Обновляем индикаторы активных ботов в списке монет
@@ -3831,6 +3845,8 @@ class BotsManager {
                 
                 // Обновляем видимость массовых операций
                 this.updateBulkControlsVisibility(botsData.bots);
+            } else {
+                console.log(`[DEBUG] loadActiveBotsData: ошибка загрузки ботов:`, botsData);
             }
             
             // КРИТИЧЕСКИ ВАЖНО: Синхронизируем состояние автобота ТОЛЬКО если переключатель не был изменен пользователем
@@ -3921,37 +3937,49 @@ class BotsManager {
                     const statusText = isActive ? 'Активен' : (bot.status === 'paused' ? 'Приостановлен' : (bot.status === 'idle' ? 'Ожидание' : 'Остановлен'));
                     
                     // Определяем информацию о позиции
+                    console.log(`[DEBUG] renderActiveBotsDetails для ${bot.symbol}:`, {
+                        position_side: bot.position_side,
+                        entry_price: bot.entry_price,
+                        current_price: bot.current_price,
+                        rsi_data: bot.rsi_data
+                    });
+                    
                     const positionInfo = this.getBotPositionInfo(bot);
                     const timeInfo = this.getBotTimeInfo(bot);
                     
-                    return `
-                        <div class="active-bot-item clickable-bot-item" data-symbol="${bot.symbol}" style="border: 1px solid #333; border-radius: 8px; padding: 14px; margin: 8px 0; background: #252525; cursor: pointer; transition: all 0.2s ease;" onmouseover="this.style.backgroundColor='#333'; this.style.borderColor='#555'" onmouseout="this.style.backgroundColor='#252525'; this.style.borderColor='#333'">
-                            <div class="bot-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                <span style="color: #fff; font-weight: bold; font-size: 14px;">${bot.symbol}</span>
-                                <span style="background: ${statusColor}; color: white; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 500;">${statusText}</span>
-                            </div>
-                            
-                            <div class="bot-details" style="font-size: 12px; color: #ccc; margin-bottom: 10px;">
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                                    <span>💰 Объем:</span>
-                                    <span style="color: #fff; font-weight: 500;">${bot.position_size || bot.volume_value} ${(bot.volume_mode || 'USDT').toUpperCase()}</span>
+                    console.log(`[DEBUG] positionInfo для ${bot.symbol}:`, positionInfo);
+                    console.log(`[DEBUG] timeInfo для ${bot.symbol}:`, timeInfo);
+                    
+                    const htmlResult = `
+                        <div class="active-bot-item clickable-bot-item" data-symbol="${bot.symbol}" style="border: 1px solid #444; border-radius: 8px; padding: 12px; margin: 8px 0; background: #2a2a2a; cursor: pointer;" onmouseover="this.style.backgroundColor='#333'" onmouseout="this.style.backgroundColor='#2a2a2a'">
+                            <div class="bot-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="color: #fff; font-weight: bold; font-size: 16px;">${bot.symbol}</span>
+                                    <span style="background: ${statusColor}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 10px;">${statusText}</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="color: ${(bot.unrealized_pnl || bot.unrealized_pnl_usdt || 0) >= 0 ? '#4caf50' : '#f44336'}; font-weight: bold; font-size: 14px;">$${(bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0).toFixed(3)}</div>
+                                </div>
                                 </div>
                                 
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                                    <span>📊 PnL:</span>
-                                    <span style="color: ${(bot.unrealized_pnl || bot.unrealized_pnl_usdt || 0) >= 0 ? '#4caf50' : '#f44336'}; font-weight: 500;">$${(bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0).toFixed(3)}</span>
-                                </div>
-                                
+                            <div class="bot-details" style="font-size: 12px; color: #ccc; margin-bottom: 8px;">
+                                <div style="margin-bottom: 4px;">💰 Объем: ${parseFloat(((bot.position_size || 0) * (bot.entry_price || 0)).toFixed(2))} USDT</div>
                                 ${positionInfo}
                                 ${timeInfo}
                             </div>
                             
-                            <div class="bot-controls" style="display: flex; gap: 6px; justify-content: center;">
+                            <div class="bot-controls" style="display: flex; gap: 8px; justify-content: center;">
                                 ${this.getBotControlButtonsHtml(bot)}
                             </div>
                         </div>
                     `;
+                    
+                    console.log(`[DEBUG] Финальный HTML для ${bot.symbol}:`, htmlResult);
+                    return htmlResult;
                 }).join('');
+                
+                console.log(`[DEBUG] Вставляем HTML в DOM:`, rightPanelHtml);
+                console.log(`[DEBUG] Элемент для вставки:`, scrollListElement);
                 
                 scrollListElement.innerHTML = rightPanelHtml;
                 
@@ -3989,8 +4017,11 @@ class BotsManager {
                     </div>
                 `;
             } else {
-                // Отображаем детальный список для вкладки "Боты в работе"
-                const detailsHtml = this.activeBots.map(bot => {
+                // Отображаем ПОЛНЫЙ детальный список для вкладки "Боты в работе"
+                // Используем тот же HTML что генерируется в renderActiveBotsDetails
+                console.log(`[DEBUG] Используем полный HTML для detailsElement`);
+                
+                const rightPanelHtml = this.activeBots.map(bot => {
                     // Определяем статус бота (активен если running, idle, или в позиции)
                     const isActive = bot.status === 'running' || bot.status === 'idle' || 
                                     bot.status === 'in_position_long' || bot.status === 'in_position_short' ||
@@ -3999,26 +4030,55 @@ class BotsManager {
                     const statusColor = isActive ? '#4caf50' : '#ff5722';
                     const statusText = isActive ? 'Активен' : (bot.status === 'paused' ? 'Приостановлен' : (bot.status === 'idle' ? 'Ожидание' : 'Остановлен'));
                     
-                    return `
-                        <div class="active-bot-detail" style="border: 1px solid #333; border-radius: 8px; padding: 15px; margin: 10px 0; background: #2a2a2a;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                <h4 style="margin: 0; color: #fff; font-size: 18px;">${bot.symbol}</h4>
-                                <span style="background: ${statusColor}; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px;">${statusText}</span>
+                    // Определяем информацию о позиции
+                    console.log(`[DEBUG] renderActiveBotsDetails для ${bot.symbol}:`, {
+                        position_side: bot.position_side,
+                        entry_price: bot.entry_price,
+                        current_price: bot.current_price,
+                        rsi_data: bot.rsi_data
+                    });
+                    
+                    const positionInfo = this.getBotPositionInfo(bot);
+                    const timeInfo = this.getBotTimeInfo(bot);
+                    
+                    console.log(`[DEBUG] positionInfo для ${bot.symbol}:`, positionInfo);
+                    console.log(`[DEBUG] timeInfo для ${bot.symbol}:`, timeInfo);
+                    
+                    const htmlResult = `
+                        <div class="active-bot-item clickable-bot-item" data-symbol="${bot.symbol}" style="border: 1px solid #333; border-radius: 12px; padding: 16px; margin: 12px 0; background: linear-gradient(135deg, #252525 0%, #2a2a2a 100%); cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.3);" onmouseover="this.style.backgroundColor='#2a2a2a'; this.style.borderColor='#555'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.4)'" onmouseout="this.style.backgroundColor='#252525'; this.style.borderColor='#333'; this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.3)'">
+                            <div class="bot-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #333;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="color: #fff; font-weight: bold; font-size: 18px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">${bot.symbol}</span>
+                                    <span style="background: ${statusColor}; color: white; padding: 4px 10px; border-radius: 16px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">${statusText}</span>
                             </div>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px; color: #ccc;">
-                                <div>📊 PnL: <span style="color: ${bot.unrealized_pnl >= 0 ? '#4caf50' : '#f44336'};">$${(bot.unrealized_pnl || 0).toFixed(2)}</span></div>
-                                <div>💰 Объем: ${bot.volume_value} ${(bot.volume_mode || 'USDT').toUpperCase()}</div>
-                                <div>📅 Создан: ${new Date(bot.created_at).toLocaleString('ru-RU')}</div>
-                                <div>🎯 RSI: ${bot.rsi_data ? bot.rsi_data.rsi6h?.toFixed(1) : 'загрузка...'}</div>
+                                <div style="text-align: right;">
+                                    <div style="color: ${(bot.unrealized_pnl || bot.unrealized_pnl_usdt || 0) >= 0 ? '#4caf50' : '#f44336'}; font-weight: bold; font-size: 16px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">$${(bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0).toFixed(3)}</div>
+                                    <div style="color: #888; font-size: 10px; margin-top: 2px;">PnL</div>
                             </div>
-                            <div style="margin-top: 10px; display: flex; gap: 5px;">
-                                ${this.getBotDetailButtonsHtml(bot)}
+                            </div>
+                            
+                            <div class="bot-details" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13px; color: #ccc; margin-bottom: 16px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                                    <span style="color: #888;">💰 Объем</span>
+                                    <span style="color: #fff; font-weight: 600;">${bot.position_size || bot.volume_value} ${(bot.volume_mode || 'USDT').toUpperCase()}</span>
+                                </div>
+                                
+                                ${positionInfo}
+                                ${timeInfo}
+                            </div>
+                            
+                            <div class="bot-controls" style="display: flex; gap: 8px; justify-content: center; padding-top: 12px; border-top: 1px solid #333;">
+                                ${this.getBotControlButtonsHtml(bot)}
                             </div>
                         </div>
                     `;
+                    
+                    console.log(`[DEBUG] Финальный HTML для ${bot.symbol}:`, htmlResult);
+                    return htmlResult;
                 }).join('');
 
-                detailsElement.innerHTML = detailsHtml;
+                console.log(`[DEBUG] Вставляем ПОЛНЫЙ HTML в detailsElement:`, rightPanelHtml);
+                detailsElement.innerHTML = rightPanelHtml;
             }
         }
         
@@ -6381,6 +6441,16 @@ class BotsManager {
     }
     
     getBotPositionInfo(bot) {
+        // ОТЛАДКА: Проверяем данные бота
+        console.log(`[DEBUG] getBotPositionInfo для ${bot.symbol}:`, {
+            position_side: bot.position_side,
+            entry_price: bot.entry_price,
+            status: bot.status,
+            current_price: bot.current_price,
+            stop_loss_price: bot.stop_loss_price,
+            exchange_position: bot.exchange_position
+        });
+        
         // Проверяем, есть ли активная позиция
         if (!bot.position_side || !bot.entry_price) {
             // Если нет активной позиции, показываем информацию о статусе бота
@@ -6413,13 +6483,13 @@ class BotsManager {
         const sideIcon = bot.position_side === 'LONG' ? '📈' : '📉';
         
         let positionHtml = `
-            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                <span>${sideIcon} Позиция:</span>
-                <span style="color: ${sideColor}; font-weight: 500;">${bot.position_side}</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                <span style="color: #888;">${sideIcon} Позиция</span>
+                <span style="color: ${sideColor}; font-weight: 600;">${bot.position_side}</span>
             </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                <span>💵 Вход:</span>
-                <span style="color: #fff; font-weight: 500;">$${bot.entry_price.toFixed(6)}</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                <span style="color: #888;">💵 Вход</span>
+                <span style="color: #fff; font-weight: 600;">$${bot.entry_price.toFixed(6)}</span>
             </div>
         `;
         
@@ -6432,15 +6502,89 @@ class BotsManager {
             const priceChangeIcon = priceChange >= 0 ? '↗️' : '↘️';
             
             positionHtml += `
-                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                    <span>📊 Текущая:</span>
-                    <span style="color: ${priceChangeColor}; font-weight: 500;">$${currentPrice.toFixed(6)} ${priceChangeIcon}</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                    <span style="color: #888;">📊 Текущая</span>
+                    <span style="color: ${priceChangeColor}; font-weight: 600;">$${currentPrice.toFixed(6)} ${priceChangeIcon}</span>
                 </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                    <span>📊 PnL:</span>
-                    <span style="color: ${(bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0) >= 0 ? '#4caf50' : '#f44336'}; font-weight: 500;">$${(bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0).toFixed(3)}</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                    <span style="color: #888;">📈 Изменение</span>
+                    <span style="color: ${priceChangeColor}; font-weight: 600;">${priceChange.toFixed(2)}%</span>
                 </div>
             `;
+        }
+        
+        // Добавляем стоп-лосс и тейк-профит (используем данные с биржи)
+        let stopLoss = bot.exchange_position?.stop_loss || '';
+        let takeProfit = bot.exchange_position?.take_profit || '';
+        
+        // Если стоп-лосс не установлен на бирже, рассчитываем на основе настроек бота
+        if (!stopLoss && bot.entry_price) {
+            const stopLossPercent = bot.max_loss_percent || 15.0;
+            if (bot.position_side === 'LONG') {
+                stopLoss = bot.entry_price * (1 - stopLossPercent / 100);
+            } else if (bot.position_side === 'SHORT') {
+                stopLoss = bot.entry_price * (1 + stopLossPercent / 100);
+            }
+        }
+        
+        // Если тейк-профит не установлен, рассчитываем на основе RSI настроек бота
+        if (!takeProfit && bot.entry_price) {
+            const rsiExitLong = bot.rsi_exit_long || 55;
+            const rsiExitShort = bot.rsi_exit_short || 45;
+            const currentRsi = bot.rsi_data?.rsi6h || 50;
+            
+            if (bot.position_side === 'LONG' && currentRsi < rsiExitLong) {
+                const takeProfitPercent = (rsiExitLong - currentRsi) * 0.5;
+                takeProfit = bot.entry_price * (1 + takeProfitPercent / 100);
+            } else if (bot.position_side === 'SHORT' && currentRsi > rsiExitShort) {
+                const takeProfitPercent = (currentRsi - rsiExitShort) * 0.5;
+                takeProfit = bot.entry_price * (1 - takeProfitPercent / 100);
+            }
+        }
+        
+        positionHtml += `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                <span style="color: #888;">🛡️ Стоп-лосс</span>
+                <span style="color: ${stopLoss ? '#ff9800' : '#666'}; font-weight: 600;">${stopLoss ? `$${parseFloat(stopLoss).toFixed(6)}` : 'Не установлен'}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                <span style="color: #888;">🎯 Тейк-профит</span>
+                <span style="color: ${takeProfit ? '#4caf50' : '#666'}; font-weight: 600;">${takeProfit ? `$${parseFloat(takeProfit).toFixed(6)}` : 'Не установлен'}</span>
+            </div>
+        `;
+        
+        // Добавляем RSI данные если есть
+        if (bot.rsi_data) {
+            const rsi = bot.rsi_data.rsi6h;
+            const trend = bot.rsi_data.trend6h;
+            
+            if (rsi) {
+                let rsiColor = '#888';
+                if (rsi > 70) rsiColor = '#f44336'; // Перекупленность
+                else if (rsi < 30) rsiColor = '#4caf50'; // Перепроданность
+                
+                positionHtml += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                        <span style="color: #888;">📊 RSI</span>
+                        <span style="color: ${rsiColor}; font-weight: 600;">${rsi.toFixed(1)}</span>
+                    </div>
+                `;
+            }
+            
+            if (trend) {
+                let trendColor = '#888';
+                let trendIcon = '➡️';
+                if (trend === 'UP') { trendColor = '#4caf50'; trendIcon = '📈'; }
+                else if (trend === 'DOWN') { trendColor = '#f44336'; trendIcon = '📉'; }
+                else if (trend === 'NEUTRAL') { trendColor = '#ff9800'; trendIcon = '➡️'; }
+                
+                positionHtml += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                        <span style="color: #888;">${trendIcon} Тренд</span>
+                        <span style="color: ${trendColor}; font-weight: 600;">${trend}</span>
+                    </div>
+                `;
+            }
         }
         
         return positionHtml;
@@ -6451,25 +6595,25 @@ class BotsManager {
         
         // Время работы бота
         if (bot.created_at) {
-            const createdTime = new Date(bot.created_at);
-            const now = new Date();
-            const timeDiff = now - createdTime;
-            const hours = Math.floor(timeDiff / (1000 * 60 * 60));
-            const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
-            
-            let timeText = '';
-            if (hours > 0) {
-                timeText = `${hours}ч ${minutes}м`;
-            } else {
-                timeText = `${minutes}м`;
-            }
-            
+        const createdTime = new Date(bot.created_at);
+        const now = new Date();
+        const timeDiff = now - createdTime;
+        const hours = Math.floor(timeDiff / (1000 * 60 * 60));
+        const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+        
+        let timeText = '';
+        if (hours > 0) {
+            timeText = `${hours}ч ${minutes}м`;
+        } else {
+            timeText = `${minutes}м`;
+        }
+        
             timeInfoHtml += `
-                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                    <span>⏱️ Время:</span>
-                    <span style="color: #888; font-weight: 500;">${timeText}</span>
-                </div>
-            `;
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                <span>⏱️ Время:</span>
+                <span style="color: #888; font-weight: 500;">${timeText}</span>
+            </div>
+        `;
         }
         
         // Время обновления данных позиции (если бот в позиции)
@@ -6508,17 +6652,24 @@ class BotsManager {
     }
     
     renderTradesInfo(coinSymbol) {
+        console.log(`[DEBUG] renderTradesInfo для ${coinSymbol}`);
+        console.log(`[DEBUG] this.activeBots:`, this.activeBots);
+        
         const tradesSection = document.getElementById('tradesInfoSection');
         const tradesContainer = document.getElementById('tradesContainer');
         
         if (!tradesSection || !tradesContainer) {
+            console.log(`[DEBUG] Не найдены элементы tradesSection или tradesContainer`);
             return;
         }
         
         // Находим бота для этой монеты
         const bot = this.activeBots.find(b => b.symbol === coinSymbol);
         
+        console.log(`[DEBUG] Найденный бот для ${coinSymbol}:`, bot);
+        
         if (!bot) {
+            console.log(`[DEBUG] Бот не найден для ${coinSymbol}`);
             tradesSection.style.display = 'none';
             return;
         }
@@ -6529,56 +6680,142 @@ class BotsManager {
         // Получаем информацию о сделках
         const trades = this.getBotTrades(bot);
         
+        console.log(`[DEBUG] Полученные сделки для ${coinSymbol}:`, trades);
+        
         if (trades.length === 0) {
+            console.log(`[DEBUG] Нет активных сделок для ${coinSymbol}`);
             tradesContainer.innerHTML = '<div class="no-trades">Нет активных сделок</div>';
             return;
         }
         
         // Рендерим сделки
         const tradesHtml = trades.map(trade => this.renderTradeItem(trade)).join('');
+        console.log(`[DEBUG] HTML для сделок ${coinSymbol}:`, tradesHtml);
         tradesContainer.innerHTML = tradesHtml;
     }
     
     getBotTrades(bot) {
+        console.log(`[DEBUG] getBotTrades для ${bot.symbol}:`, {
+            position_side: bot.position_side,
+            entry_price: bot.entry_price,
+            position_size: bot.position_size,
+            exchange_position: bot.exchange_position
+        });
+        
         const trades = [];
+        
+        // Определяем currentRsi в начале функции для использования во всех блоках
+        const currentRsi = bot.rsi_data?.rsi6h || 50;
         
         // Проверяем, есть ли позиция LONG
         if (bot.position_side === 'LONG' && bot.entry_price) {
-            // Рассчитываем цену стоп-лосса (15% по умолчанию)
-            const stopLossPercent = 15.0; // Можно получить из конфига
-            const stopLossPrice = bot.entry_price * (1 - stopLossPercent / 100);
+            console.log(`[DEBUG] Создаем LONG позицию для ${bot.symbol}`);
+            
+            // Используем данные с биржи для стоп-лосса и тейк-профита
+            const stopLossPrice = bot.exchange_position?.stop_loss || bot.entry_price * 0.95; // Используем данные с биржи или 5% от входа
+            const takeProfitPrice = bot.exchange_position?.take_profit || null; // Используем данные с биржи
+            
+            // Если нет данных с биржи, рассчитываем на основе настроек бота
+            let calculatedStopLoss = stopLossPrice;
+            let calculatedTakeProfit = takeProfitPrice;
+            
+            if (!bot.exchange_position?.stop_loss) {
+                const stopLossPercent = bot.max_loss_percent || 15.0;
+                calculatedStopLoss = bot.entry_price * (1 - stopLossPercent / 100);
+            }
+            
+            if (!bot.exchange_position?.take_profit) {
+                const rsiExitLong = bot.rsi_exit_long || 55;
+                
+                if (currentRsi < rsiExitLong) {
+                    // Рассчитываем тейк-профит как процент от входа
+                    const takeProfitPercent = (rsiExitLong - currentRsi) * 0.5; // Примерная формула
+                    calculatedTakeProfit = bot.entry_price * (1 + takeProfitPercent / 100);
+                }
+            }
+            
+            // Рассчитываем объем в USDT точно
+            const volumeInTokens = bot.position_size || 0; // Количество токенов (70 AWE)
+            const volumeInUsdt = parseFloat((volumeInTokens * bot.entry_price).toFixed(2)); // Точный объем в USDT (70 * 0.074190 = 5.19 USDT)
+            
+            console.log(`[DEBUG] Расчеты для ${bot.symbol}:`, {
+                volumeInTokens,
+                volumeInUsdt,
+                calculatedStopLoss,
+                calculatedTakeProfit
+            });
             
             trades.push({
                 side: 'LONG',
                 entryPrice: bot.entry_price,
                 currentPrice: bot.current_price || bot.mark_price || bot.entry_price,
-                stopLossPrice: stopLossPrice,
-                stopLossPercent: stopLossPercent,
+                stopLossPrice: calculatedStopLoss,
+                stopLossPercent: bot.max_loss_percent || 15.0,
+                takeProfitPrice: calculatedTakeProfit,
                 pnl: bot.unrealized_pnl || 0,
                 status: 'active',
-                volume: bot.volume_value,
-                volumeMode: bot.volume_mode,
-                startTime: bot.created_at
+                volume: volumeInUsdt, // Объем в USDT
+                volumeInTokens: volumeInTokens, // Количество токенов
+                volumeMode: 'USDT',
+                startTime: bot.created_at,
+                rsi: currentRsi,
+                trend: bot.trend6h || 'NEUTRAL',
+                workTime: bot.work_time || '0м',
+                lastUpdate: bot.last_update || 'Неизвестно'
+            });
+        } else {
+            console.log(`[DEBUG] Нет LONG позиции для ${bot.symbol}:`, {
+                position_side: bot.position_side,
+                entry_price: bot.entry_price
             });
         }
         
         // Проверяем, есть ли позиция SHORT (для кросс-сделок)
         if (bot.position_side === 'SHORT' && bot.entry_price) {
-            // Рассчитываем цену стоп-лосса (15% по умолчанию)
-            const stopLossPercent = 15.0; // Можно получить из конфига
-            const stopLossPrice = bot.entry_price * (1 + stopLossPercent / 100);
+            // Используем данные с биржи для стоп-лосса и тейк-профита
+            const stopLossPrice = bot.exchange_position?.stop_loss || bot.entry_price * 1.05; // Используем данные с биржи или 5% от входа
+            const takeProfitPrice = bot.exchange_position?.take_profit || null; // Используем данные с биржи
+            
+            // Если нет данных с биржи, рассчитываем на основе настроек бота
+            let calculatedStopLoss = stopLossPrice;
+            let calculatedTakeProfit = takeProfitPrice;
+            
+            if (!bot.exchange_position?.stop_loss) {
+                const stopLossPercent = bot.max_loss_percent || 15.0;
+                calculatedStopLoss = bot.entry_price * (1 + stopLossPercent / 100);
+            }
+            
+            if (!bot.exchange_position?.take_profit) {
+                const rsiExitShort = bot.rsi_exit_short || 45;
+                
+                if (currentRsi > rsiExitShort) {
+                    // Рассчитываем тейк-профит как процент от входа
+                    const takeProfitPercent = (currentRsi - rsiExitShort) * 0.5; // Примерная формула
+                    calculatedTakeProfit = bot.entry_price * (1 - takeProfitPercent / 100);
+                }
+            }
+            
+            // Рассчитываем объем в USDT точно
+            const volumeInTokens = bot.position_size || 0; // Количество токенов
+            const volumeInUsdt = parseFloat((volumeInTokens * bot.entry_price).toFixed(2)); // Точный объем в USDT
             
             trades.push({
                 side: 'SHORT',
                 entryPrice: bot.entry_price,
                 currentPrice: bot.current_price || bot.mark_price || bot.entry_price,
-                stopLossPrice: stopLossPrice,
-                stopLossPercent: stopLossPercent,
+                stopLossPrice: calculatedStopLoss,
+                stopLossPercent: bot.max_loss_percent || 15.0,
+                takeProfitPrice: calculatedTakeProfit,
                 pnl: bot.unrealized_pnl || 0,
                 status: 'active',
-                volume: bot.volume_value,
-                volumeMode: bot.volume_mode,
-                startTime: bot.created_at
+                volume: volumeInUsdt, // Объем в USDT
+                volumeInTokens: volumeInTokens, // Количество токенов
+                volumeMode: 'USDT',
+                startTime: bot.created_at,
+                rsi: currentRsi,
+                trend: bot.trend6h || 'NEUTRAL',
+                workTime: bot.work_time || '0м',
+                lastUpdate: bot.last_update || 'Неизвестно'
             });
         }
         
@@ -6599,40 +6836,68 @@ class BotsManager {
         const priceChangeClass = priceChange >= 0 ? 'positive' : 'negative';
         
         return `
-            <div class="trade-item">
-                <div class="trade-header">
-                    <div class="trade-side ${sideClass}">
-                        ${sideIcon} ${trade.side}
+            <div class="trade-item" style="border: 1px solid #444; border-radius: 8px; padding: 12px; margin: 8px 0; background: #2a2a2a; transition: all 0.3s ease;" onmouseover="this.style.backgroundColor='#333'" onmouseout="this.style.backgroundColor='#2a2a2a'">
+                <div class="trade-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #444;">
+                    <div class="trade-side ${sideClass}" style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 16px;">${sideIcon}</span>
+                        <span style="color: ${trade.side === 'LONG' ? '#4caf50' : '#f44336'}; font-weight: bold;">${trade.side}</span>
                     </div>
-                    <div class="trade-status ${trade.status}">
+                    <div class="trade-status ${trade.status}" style="background: ${trade.status === 'active' ? '#4caf50' : '#ff5722'}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 10px;">
                         ${trade.status === 'active' ? 'Активна' : 'Закрыта'}
                     </div>
                 </div>
                 
-                <div class="trade-details">
-                    <div class="trade-detail-item">
-                        <span class="trade-detail-label">💵 Вход:</span>
-                        <span class="trade-detail-value">$${trade.entryPrice.toFixed(6)}</span>
+                <div class="trade-details" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; color: #ccc;">
+                    <div class="trade-detail-item" style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                        <span class="trade-detail-label" style="color: #888;">💵 Вход:</span>
+                        <span class="trade-detail-value" style="color: #fff; font-weight: 600;">$${trade.entryPrice.toFixed(6)}</span>
                     </div>
                     
-                    <div class="trade-detail-item">
-                        <span class="trade-detail-label">📊 Текущая:</span>
-                        <span class="trade-detail-value">$${trade.currentPrice.toFixed(6)}</span>
+                    <div class="trade-detail-item" style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                        <span class="trade-detail-label" style="color: #888;">📊 Текущая:</span>
+                        <span class="trade-detail-value" style="color: #fff; font-weight: 600;">$${trade.currentPrice.toFixed(6)}</span>
                     </div>
                     
-                    <div class="trade-detail-item">
-                        <span class="trade-detail-label">📈 Изменение:</span>
-                        <span class="trade-detail-value ${priceChangeClass}">${priceChange.toFixed(2)}%</span>
+                    <div class="trade-detail-item" style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                        <span class="trade-detail-label" style="color: #888;">📈 Изменение:</span>
+                        <span class="trade-detail-value ${priceChangeClass}" style="color: ${priceChange >= 0 ? '#4caf50' : '#f44336'}; font-weight: 600;">${priceChange.toFixed(2)}%</span>
                     </div>
                     
-                    <div class="trade-detail-item">
-                        <span class="trade-detail-label">💰 Объем:</span>
-                        <span class="trade-detail-value">${trade.volume} ${trade.volumeMode.toUpperCase()}</span>
+                    <div class="trade-detail-item" style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                        <span class="trade-detail-label" style="color: #888;">💰 Объем:</span>
+                        <span class="trade-detail-value" style="color: #fff; font-weight: 600;">${trade.volume.toFixed(2)} ${trade.volumeMode.toUpperCase()}</span>
                     </div>
                     
-                    <div class="trade-detail-item">
-                        <span class="trade-detail-label">🛡️ Стоп-лосс:</span>
-                        <span class="trade-detail-value">$${trade.stopLossPrice.toFixed(6)} (${trade.stopLossPercent}%)</span>
+                    <div class="trade-detail-item" style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                        <span class="trade-detail-label" style="color: #888;">🛡️ Стоп-лосс:</span>
+                        <span class="trade-detail-value" style="color: #ff9800; font-weight: 600;">$${trade.stopLossPrice.toFixed(6)} (${trade.stopLossPercent}%)</span>
+                    </div>
+                    
+                    ${trade.takeProfitPrice ? `
+                    <div class="trade-detail-item" style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                        <span class="trade-detail-label" style="color: #888;">🎯 Тейк-профит:</span>
+                        <span class="trade-detail-value" style="color: #4caf50; font-weight: 600;">$${trade.takeProfitPrice.toFixed(6)}</span>
+                    </div>
+                    ` : ''}
+                    
+                    <div class="trade-detail-item" style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                        <span class="trade-detail-label" style="color: #888;">📊 RSI:</span>
+                        <span class="trade-detail-value" style="color: #fff; font-weight: 600;">${trade.rsi ? trade.rsi.toFixed(1) : 'N/A'}</span>
+                    </div>
+                    
+                    <div class="trade-detail-item" style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                        <span class="trade-detail-label" style="color: #888;">➡️ Тренд:</span>
+                        <span class="trade-detail-value" style="color: ${trade.trend === 'UP' ? '#4caf50' : trade.trend === 'DOWN' ? '#f44336' : '#ff9800'}; font-weight: 600;">${trade.trend || 'NEUTRAL'}</span>
+                    </div>
+                    
+                    <div class="trade-detail-item" style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                        <span class="trade-detail-label" style="color: #888;">⏱️ Время:</span>
+                        <span class="trade-detail-value" style="color: #fff; font-weight: 600;">${trade.workTime || '0м'}</span>
+                    </div>
+                    
+                    <div class="trade-detail-item" style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                        <span class="trade-detail-label" style="color: #888;">🔄 Обновлено:</span>
+                        <span class="trade-detail-value" style="color: #fff; font-weight: 600;">${trade.lastUpdate || 'Неизвестно'}</span>
                     </div>
                 </div>
                 
@@ -7254,3 +7519,4 @@ class BotsManager {
 window.BotsManager = BotsManager;
 
 // BotsManager инициализируется в app.js, не здесь
+// Version: 2025-10-21 03:47:29
