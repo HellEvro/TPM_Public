@@ -659,6 +659,17 @@ def get_bots_list():
                     bot['last_update'] = 'Ошибка'
             else:
                 bot['last_update'] = 'Никогда'
+            
+            # Добавляем статус бота для UI
+            bot_status = bot.get('status', 'unknown')
+            if bot_status in ['in_position_long', 'in_position_short']:
+                bot['bot_status'] = 'Активен'
+            elif bot_status == 'idle':
+                bot['bot_status'] = 'Ожидает'
+            elif bot_status == 'paused':
+                bot['bot_status'] = 'Приостановлен'
+            else:
+                bot['bot_status'] = 'Неизвестно'
         
         # Подсчитываем статистику (idle боты считаются активными для UI)
         active_bots = sum(1 for bot in bots_list if bot.get('status') not in ['paused'])

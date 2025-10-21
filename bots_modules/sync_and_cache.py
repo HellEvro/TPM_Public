@@ -729,11 +729,11 @@ def update_bots_cache_data():
                             'size': pos.get('size', 0),
                             'side': pos.get('side', ''),
                             'unrealized_pnl': float(pos.get('pnl', 0)),  # ✅ Используем правильное поле 'pnl'
-                            'mark_price': float(pos.get('markPrice', 0)),  # ❌ НЕТ в данных биржи
-                            'entry_price': float(pos.get('avgPrice', 0)),   # ❌ НЕТ в данных биржи
+                            'mark_price': float(pos.get('mark_price', 0)),  # ✅ Используем правильное поле 'mark_price'
+                            'entry_price': float(pos.get('avg_price', 0)),   # ✅ Используем правильное поле 'avg_price'
                             'leverage': pos.get('leverage', 1),
-                            'stop_loss': pos.get('stopLoss', ''),  # Стоп-лосс с биржи
-                            'take_profit': pos.get('takeProfit', ''),  # Тейк-профит с биржи
+                            'stop_loss': pos.get('stop_loss', ''),  # Стоп-лосс с биржи
+                            'take_profit': pos.get('take_profit', ''),  # Тейк-профит с биржи
                             'roi': float(pos.get('roi', 0))  # ✅ ROI есть в данных
                         }
                         

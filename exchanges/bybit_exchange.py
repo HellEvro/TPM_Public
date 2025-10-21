@@ -210,7 +210,11 @@ class BybitExchange(BaseExchange):
                             'high_roi': roi > HIGH_ROI_THRESHOLD,
                             'high_loss': current_pnl < HIGH_LOSS_THRESHOLD,
                             'side': 'Long' if position['side'] == 'Buy' else 'Short',
-                            'size': position_size
+                            'size': position_size,
+                            'take_profit': position.get('takeProfit', ''),
+                            'stop_loss': position.get('stopLoss', ''),
+                            'mark_price': position.get('markPrice', ''),
+                            'avg_price': position.get('avgPrice', '')
                         }
                         
                         processed_positions.append(position_info)
