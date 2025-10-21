@@ -619,8 +619,7 @@ def update_bots_cache_data():
         timeout_thread = threading.Thread(target=timeout_worker, daemon=True)
         timeout_thread.start()
         
-        # Получаем актуальные данные ботов
-        # ⚡ БЕЗ БЛОКИРОВКИ: GIL делает чтение атомарным
+        # ⚡ ОПТИМИЗАЦИЯ: Получаем данные ботов быстро без лишних операций
         bots_list = []
         for symbol, bot_data in bots_data['bots'].items():
             # Проверяем таймаут
@@ -628,40 +627,8 @@ def update_bots_cache_data():
                 logger.warning("[BOTS_CACHE] ⚠️ Таймаут достигнут, прерываем обновление")
                 break
             
-            # Обновляем данные бота в реальном времени
-            if bot_data.get('status') in ['in_position_long', 'in_position_short']:
-                try:
-                    # Получаем текущую цену
-                    current_exchange = get_exchange()
-                    if not current_exchange:
-                        continue
-                    ticker_data = current_exchange.get_ticker(symbol)
-                    if ticker_data and 'last_price' in ticker_data:
-                        current_price = float(ticker_data['last_price'])
-                        entry_price = bot_data.get('entry_price')
-                        position_side = bot_data.get('position_side')
-                        
-                        if entry_price and position_side:
-                            # Рассчитываем PnL
-                            if position_side == 'LONG':
-                                pnl_percent = ((current_price - entry_price) / entry_price) * 100
-                            else:  # SHORT
-                                pnl_percent = ((entry_price - current_price) / entry_price) * 100
-                            
-                            # Обновляем данные бота
-                            bot_data['unrealized_pnl'] = pnl_percent
-                            bot_data['position_details'] = {
-                                'current_price': current_price,
-                                'pnl_percent': pnl_percent,
-                                'price_change': pnl_percent
-                            }
-                            bot_data['last_update'] = datetime.now().isoformat()
-                except Exception as e:
-                    logger.error(f"[BOTS_CACHE] Ошибка обновления данных для {symbol}: {e}")
-            
             # Добавляем RSI данные к боту (используем кэшированные данные)
             try:
-                # Используем кэшированные RSI данные вместо повторного вычисления
                 rsi_cache = get_rsi_cache()
                 if symbol in rsi_cache:
                     rsi_data = rsi_cache[symbol]
@@ -671,29 +638,6 @@ def update_bots_cache_data():
             except Exception as e:
                 logger.error(f"[BOTS_CACHE] Ошибка получения RSI для {symbol}: {e}")
                 bot_data['rsi_data'] = {'rsi': 'N/A', 'signal': 'N/A'}
-            
-            # 🎯 КРИТИЧНО: Обновляем трейлинг Take Profit для ботов в позиции
-            if (bot_data.get('status') in ['in_position_long', 'in_position_short'] and 
-                bot_data.get('rsi_data', {}).get('rsi6h') and 
-                bot_data.get('current_price')):
-                try:
-                    # Создаем объект бота для вызова метода
-                    from bots_modules.bot_class import NewTradingBot
-                    bot_instance = NewTradingBot(symbol, bot_data, get_exchange())
-                    
-                    # Обновляем трейлинг TP
-                    current_price = bot_data.get('current_price')
-                    current_rsi = bot_data.get('rsi_data', {}).get('rsi6h')
-                    
-                    if current_price and current_rsi:
-                        tp_updated = bot_instance.update_trailing_take_profit(current_price, current_rsi)
-                        if tp_updated:
-                            logger.info(f"[BOTS_CACHE] 🎯 TP обновлен для {symbol}")
-                except Exception as tp_error:
-                    logger.error(f"[BOTS_CACHE] ❌ Ошибка обновления TP для {symbol}: {tp_error}")
-            
-            # Добавляем информацию о позиции с биржи (будет добавлено позже для всех ботов сразу)
-            # Стоп-лоссы будут получены вместе с позициями
             
             # Добавляем бота в список
             bots_list.append(bot_data)

@@ -1304,7 +1304,7 @@ class BybitExchange(BaseExchange):
                 "positionIdx": position_idx
             }
             
-            print(f"[BYBIT_BOT] Параметры TP: {tp_params}")
+            logger.info(f"[BYBIT_BOT] Параметры TP: {tp_params}")
             
             # Обновляем TP через API - используем метод set_trading_stop
             try:

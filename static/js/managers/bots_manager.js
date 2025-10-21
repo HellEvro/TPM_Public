@@ -787,6 +787,11 @@ class BotsManager {
         // Восстанавливаем текущий фильтр и состояние кнопок
         this.restoreFilterState();
         
+        // Обновляем информацию о сделках для выбранной монеты
+        if (this.selectedCoin && this.selectedCoin.symbol) {
+            this.renderTradesInfo(this.selectedCoin.symbol);
+        }
+        
         // Обновляем индикаторы активных ботов в списке
         this.updateCoinsListWithBotStatus();
     }
@@ -1369,18 +1374,23 @@ class BotsManager {
         
         // 2. Статус бота - проверяем активные боты
         let botStatus = 'Нет бота';
-        if (this.activeBots && this.activeBots[coin.symbol]) {
-            const bot = this.activeBots[coin.symbol];
-            if (bot.status === 'running') {
-                botStatus = 'Активен';
-            } else if (bot.status === 'waiting') {
-                botStatus = 'Ожидание сигнала';
-            } else if (bot.status === 'in_position_long') {
-                botStatus = 'В позиции LONG';
-            } else if (bot.status === 'in_position_short') {
-                botStatus = 'В позиции SHORT';
-            } else {
-                botStatus = bot.status || 'Нет бота';
+        if (this.activeBots && this.activeBots.length > 0) {
+            const bot = this.activeBots.find(bot => bot.symbol === coin.symbol);
+            if (bot) {
+                // Используем bot_status из API, если есть
+                if (bot.bot_status) {
+                    botStatus = bot.bot_status;
+                } else if (bot.status === 'running') {
+                    botStatus = 'Активен';
+                } else if (bot.status === 'waiting') {
+                    botStatus = 'Ожидание сигнала';
+                } else if (bot.status === 'in_position_long') {
+                    botStatus = 'Активен';
+                } else if (bot.status === 'in_position_short') {
+                    botStatus = 'Активен';
+                } else {
+                    botStatus = bot.status || 'Нет бота';
+                }
             }
         }
         activeStatusData.bot = botStatus;
@@ -2875,6 +2885,12 @@ class BotsManager {
                     case 'running':
                         statusText.textContent = 'Бот активен';
                         break;
+                    case 'in_position_long':
+                        statusText.textContent = 'Бот активен (LONG)';
+                        break;
+                    case 'in_position_short':
+                        statusText.textContent = 'Бот активен (SHORT)';
+                        break;
                     case 'stopped':
                         statusText.textContent = 'Бот остановлен';
                         break;
@@ -2891,7 +2907,9 @@ class BotsManager {
         
         if (statusIndicator) {
             if (selectedBot) {
-                const color = selectedBot.status === 'running' ? '#4caf50' : 
+                const color = selectedBot.status === 'running' || 
+                             selectedBot.status === 'in_position_long' || 
+                             selectedBot.status === 'in_position_short' ? '#4caf50' : 
                              selectedBot.status === 'idle' ? '#ffd700' : '#ff5722';
                 statusIndicator.style.color = color;
             } else {
@@ -6705,9 +6723,13 @@ class BotsManager {
     renderTradesInfo(coinSymbol) {
         console.log(`[DEBUG] renderTradesInfo для ${coinSymbol}`);
         console.log(`[DEBUG] this.activeBots:`, this.activeBots);
+        console.log(`[DEBUG] this.selectedCoin:`, this.selectedCoin);
         
         const tradesSection = document.getElementById('tradesInfoSection');
         const tradesContainer = document.getElementById('tradesContainer');
+        
+        console.log(`[DEBUG] tradesSection:`, tradesSection);
+        console.log(`[DEBUG] tradesContainer:`, tradesContainer);
         
         if (!tradesSection || !tradesContainer) {
             console.log(`[DEBUG] Не найдены элементы tradesSection или tradesContainer`);
@@ -6726,6 +6748,7 @@ class BotsManager {
         }
         
         // Показываем секцию сделок
+        console.log(`[DEBUG] Показываем секцию сделок для ${coinSymbol}`);
         tradesSection.style.display = 'block';
         
         // Получаем информацию о сделках
@@ -6921,13 +6944,13 @@ class BotsManager {
                     
                     <div class="trade-detail-item" style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
                         <span class="trade-detail-label" style="color: #888;">🛡️ Стоп-лосс:</span>
-                        <span class="trade-detail-value" style="color: #ff9800; font-weight: 600;">$${trade.stopLossPrice.toFixed(6)} (${trade.stopLossPercent}%)</span>
+                        <span class="trade-detail-value" style="color: #ff9800; font-weight: 600;">$${parseFloat(trade.stopLossPrice).toFixed(6)} (${trade.stopLossPercent}%)</span>
                     </div>
                     
                     ${trade.takeProfitPrice ? `
                     <div class="trade-detail-item" style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
                         <span class="trade-detail-label" style="color: #888;">🎯 Тейк-профит:</span>
-                        <span class="trade-detail-value" style="color: #4caf50; font-weight: 600;">$${trade.takeProfitPrice.toFixed(6)}</span>
+                        <span class="trade-detail-value" style="color: #4caf50; font-weight: 600;">$${parseFloat(trade.takeProfitPrice).toFixed(6)}</span>
                     </div>
                     ` : ''}
                     

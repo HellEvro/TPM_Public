@@ -90,27 +90,26 @@ class ContinuousDataLoader:
                 cycle_start = time.time()
                 self.update_count += 1
                 
-                # ✅ КРИТИЧНО: ПОЛНАЯ БЛОКИРОВКА UI ОБНОВЛЕНИЙ с самого начала цикла
+                # ✅ ОПТИМИЗАЦИЯ: НЕ блокируем UI обновления - загрузка свечей и RSI теперь неблокирующие
                 from bots_modules.imports_and_globals import coins_rsi_data
-                coins_rsi_data['ui_update_paused'] = True
-                coins_rsi_data['processing_cycle'] = True  # ✅ Дополнительный флаг для полной блокировки
-                logger.info("[CONTINUOUS] 🎨 UI обновления ПОЛНОСТЬЮ заблокированы - начинаем обработку данных")
+                coins_rsi_data['processing_cycle'] = True  # Только флаг обработки
+                logger.info("[CONTINUOUS] 🔄 Начинаем обработку данных (неблокирующий режим)")
                 
                 logger.info("=" * 80)
                 logger.info(f"[CONTINUOUS] 🔄 РАУНД #{self.update_count} НАЧАТ")
                 logger.info(f"[CONTINUOUS] 🕐 Время: {datetime.now().strftime('%H:%M:%S')}")
                 logger.info("=" * 80)
                 
-                # ✅ Этап 1: Загружаем свечи всех монет (15-20 сек)
-                success = self._load_candles()
+                # ✅ Этап 1: Загружаем свечи всех монет (15-20 сек) - НЕБЛОКИРУЮЩИЙ
+                success = self._load_candles_non_blocking()
                 if not success:
                     logger.error("[CONTINUOUS] ❌ Не удалось загрузить свечи, пропускаем раунд")
                     self.error_count += 1
                     time.sleep(30)  # Пауза перед следующей попыткой
                     continue
                 
-                # ✅ Этап 2: Рассчитываем RSI для всех монет (30-40 сек)
-                success = self._calculate_rsi()
+                # ✅ Этап 2: Рассчитываем RSI для всех монет (30-40 сек) - НЕБЛОКИРУЮЩИЙ
+                success = self._calculate_rsi_non_blocking()
                 if not success:
                     logger.error("[CONTINUOUS] ❌ Не удалось рассчитать RSI, пропускаем раунд")
                     self.error_count += 1
@@ -139,13 +138,11 @@ class ContinuousDataLoader:
                 logger.info(f"[CONTINUOUS] 🎯 Отфильтровано монет: {len(filtered_coins)}")
                 logger.info("=" * 80)
                 
-                # ✅ ПОЛНОСТЬЮ СНИМАЕМ БЛОКИРОВКУ UI И УВЕЛИЧИВАЕМ ВЕРСИЮ ДАННЫХ - все этапы завершены!
-                # Теперь UI может безопасно обновляться с финальными данными
+                # ✅ ЗАВЕРШАЕМ ОБРАБОТКУ - увеличиваем версию данных
                 from bots_modules.imports_and_globals import coins_rsi_data
-                coins_rsi_data['ui_update_paused'] = False
-                coins_rsi_data['processing_cycle'] = False  # ✅ Снимаем дополнительный флаг
-                coins_rsi_data['data_version'] += 1  # ✅ Увеличиваем версию данных
-                logger.info(f"[CONTINUOUS] 🎨 UI обновления ПОЛНОСТЬЮ разблокированы - все этапы завершены (версия данных: {coins_rsi_data['data_version']})")
+                coins_rsi_data['processing_cycle'] = False  # Снимаем флаг обработки
+                coins_rsi_data['data_version'] += 1  # Увеличиваем версию данных
+                logger.info(f"[CONTINUOUS] ✅ Обработка завершена (версия данных: {coins_rsi_data['data_version']})")
                 
                 # 🚀 БЕЗ ПАУЗ: Раунды идут максимально быстро один за другим!
                 # Чем быстрее железо - тем быстрее обновляются данные
@@ -159,12 +156,11 @@ class ContinuousDataLoader:
                 logger.error(f"[CONTINUOUS] ❌ Ошибка в цикле обновления: {e}")
                 self.error_count += 1
                 
-                # ✅ ПОЛНОСТЬЮ СНИМАЕМ БЛОКИРОВКУ UI даже при ошибке - чтобы UI не завис
+                # ✅ ЗАВЕРШАЕМ ОБРАБОТКУ даже при ошибке
                 from bots_modules.imports_and_globals import coins_rsi_data
-                coins_rsi_data['ui_update_paused'] = False
-                coins_rsi_data['processing_cycle'] = False  # ✅ Снимаем дополнительный флаг даже при ошибке
-                coins_rsi_data['data_version'] += 1  # ✅ Увеличиваем версию даже при ошибке
-                logger.info(f"[CONTINUOUS] 🎨 UI обновления ПОЛНОСТЬЮ разблокированы (после ошибки, версия данных: {coins_rsi_data['data_version']})")
+                coins_rsi_data['processing_cycle'] = False  # Снимаем флаг обработки даже при ошибке
+                coins_rsi_data['data_version'] += 1  # Увеличиваем версию даже при ошибке
+                logger.info(f"[CONTINUOUS] ✅ Обработка завершена (после ошибки, версия данных: {coins_rsi_data['data_version']})")
                 
                 time.sleep(30)  # Пауза перед следующей попыткой
                 
@@ -191,6 +187,55 @@ class ContinuousDataLoader:
                 
         except Exception as e:
             logger.error(f"[CONTINUOUS] ❌ Ошибка загрузки свечей: {e}")
+            import traceback
+            logger.error(f"[CONTINUOUS] ❌ Traceback: {traceback.format_exc()}")
+            return False
+    
+    def _load_candles_non_blocking(self):
+        """📦 Загружает свечи всех монет в отдельном потоке (НЕБЛОКИРУЮЩИЙ)"""
+        try:
+            logger.info("[CONTINUOUS] 📦 Этап 1/6: Загружаем свечи (неблокирующий)...")
+            start = time.time()
+            
+            # Проверяем, есть ли уже свечи в кэше
+            from bots_modules.imports_and_globals import coins_rsi_data
+            if 'candles_cache' in coins_rsi_data and coins_rsi_data['candles_cache']:
+                last_update = coins_rsi_data.get('last_candles_update', '')
+                if last_update:
+                    from datetime import datetime, timedelta
+                    try:
+                        last_update_time = datetime.fromisoformat(last_update.replace('Z', '+00:00'))
+                        time_diff = datetime.now() - last_update_time.replace(tzinfo=None)
+                        if time_diff.total_seconds() < 300:  # Если свечи обновлялись менее 5 минут назад
+                            logger.info("[CONTINUOUS] ✅ Используем свежие свечи из кэша")
+                            return True
+                    except:
+                        pass
+            
+            # Запускаем загрузку в отдельном потоке
+            import threading
+            def load_candles_thread():
+                try:
+                    logger.info("[CONTINUOUS] 🔄 Запускаем load_all_coins_candles_fast() в отдельном потоке...")
+                    from bots_modules.filters import load_all_coins_candles_fast
+                    success = load_all_coins_candles_fast()
+                    logger.info(f"[CONTINUOUS] 📊 load_all_coins_candles_fast() завершена: {success}")
+                except Exception as e:
+                    logger.error(f"[CONTINUOUS] ❌ Ошибка в потоке загрузки свечей: {e}")
+            
+            # Запускаем поток
+            candles_thread = threading.Thread(target=load_candles_thread, daemon=True)
+            candles_thread.start()
+            
+            # Ждем максимум 2 секунды для инициализации
+            candles_thread.join(timeout=2)
+            
+            duration = time.time() - start
+            logger.info(f"[CONTINUOUS] ✅ Загрузка свечей запущена в фоне за {duration:.1f}с")
+            return True
+                
+        except Exception as e:
+            logger.error(f"[CONTINUOUS] ❌ Ошибка запуска загрузки свечей: {e}")
             import traceback
             logger.error(f"[CONTINUOUS] ❌ Traceback: {traceback.format_exc()}")
             return False
@@ -226,6 +271,55 @@ class ContinuousDataLoader:
                 
         except Exception as e:
             logger.error(f"[CONTINUOUS] ❌ Ошибка расчета RSI: {e}")
+            import traceback
+            logger.error(f"[CONTINUOUS] ❌ Traceback: {traceback.format_exc()}")
+            return False
+    
+    def _calculate_rsi_non_blocking(self):
+        """📊 Рассчитывает RSI для всех монет в отдельном потоке (НЕБЛОКИРУЮЩИЙ)"""
+        try:
+            logger.info("[CONTINUOUS] 📊 Этап 2/6: Рассчитываем RSI (неблокирующий)...")
+            start = time.time()
+            
+            # Проверяем, есть ли уже RSI данные в кэше
+            from bots_modules.imports_and_globals import coins_rsi_data
+            if 'rsi_data' in coins_rsi_data and coins_rsi_data['rsi_data']:
+                last_update = coins_rsi_data.get('last_rsi_update', '')
+                if last_update:
+                    from datetime import datetime
+                    try:
+                        last_update_time = datetime.fromisoformat(last_update.replace('Z', '+00:00'))
+                        time_diff = datetime.now() - last_update_time.replace(tzinfo=None)
+                        if time_diff.total_seconds() < 600:  # Если RSI обновлялся менее 10 минут назад
+                            logger.info("[CONTINUOUS] ✅ Используем свежие RSI данные из кэша")
+                            return True
+                    except:
+                        pass
+            
+            # Запускаем расчет в отдельном потоке
+            import threading
+            def calculate_rsi_thread():
+                try:
+                    logger.info("[CONTINUOUS] 🔄 Запускаем load_all_coins_rsi() в отдельном потоке...")
+                    from bots_modules.filters import load_all_coins_rsi
+                    success = load_all_coins_rsi()
+                    logger.info(f"[CONTINUOUS] 📊 load_all_coins_rsi() завершена: {success}")
+                except Exception as e:
+                    logger.error(f"[CONTINUOUS] ❌ Ошибка в потоке расчета RSI: {e}")
+            
+            # Запускаем поток
+            rsi_thread = threading.Thread(target=calculate_rsi_thread, daemon=True)
+            rsi_thread.start()
+            
+            # Ждем максимум 3 секунды для инициализации
+            rsi_thread.join(timeout=3)
+            
+            duration = time.time() - start
+            logger.info(f"[CONTINUOUS] ✅ Расчет RSI запущен в фоне за {duration:.1f}с")
+            return True
+                
+        except Exception as e:
+            logger.error(f"[CONTINUOUS] ❌ Ошибка запуска расчета RSI: {e}")
             import traceback
             logger.error(f"[CONTINUOUS] ❌ Traceback: {traceback.format_exc()}")
             return False

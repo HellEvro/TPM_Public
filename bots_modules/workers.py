@@ -220,7 +220,7 @@ def auto_bot_worker():
                 logger.info(f"[WORKER] ✅ [1/3] КОНЕЦ: update_bots_cache_data() за {execution_time:.1f}с")
                 
                 # Предупреждение если обновление занимает слишком много времени
-                if execution_time > 0.8:  # Если больше 0.8 секунды
+                if execution_time > 0.9:  # Если больше 0.9 секунды
                     logger.warning(f"[WORKER] ⚠️ МЕДЛЕННОЕ ОБНОВЛЕНИЕ: {execution_time:.1f}с (может нарушить интервал в 1с)")
                 
                 last_position_update = current_time
