@@ -589,6 +589,80 @@ def load_bots_state():
         logger.error(f"[LOAD_STATE] ❌ Ошибка загрузки состояния: {e}")
         return False
 
+def check_delisting_emergency_close():
+    """Проверяет делистинг и выполняет экстренное закрытие позиций (раз в 10 минут)"""
+    try:
+        # Импорты для экстренного закрытия позиций
+        from bots_modules.bot_class import NewTradingBot
+        from bots_modules.imports_and_globals import get_exchange
+        
+        logger.info(f"[DELISTING_CHECK] 🔍 Проверка делистинга для активных ботов...")
+        
+        with bots_data_lock:
+            bots_in_position = [
+                (symbol, bot_data) for symbol, bot_data in bots_data['bots'].items()
+                if bot_data.get('status') in ['in_position_long', 'in_position_short']
+            ]
+        
+        if not bots_in_position:
+            logger.debug(f"[DELISTING_CHECK] ℹ️ Нет активных ботов для проверки делистинга")
+            return True
+        
+        logger.info(f"[DELISTING_CHECK] 📊 Проверяем {len(bots_in_position)} активных ботов")
+        
+        delisting_closed_count = 0
+        exchange_obj = get_exchange()
+        
+        if not exchange_obj:
+            logger.error(f"[DELISTING_CHECK] ❌ Exchange не инициализирован")
+            return False
+        
+        for symbol, bot_data in bots_in_position:
+            try:
+                # Проверяем делистинг через RSI данные
+                rsi_cache = get_rsi_cache()
+                if symbol in rsi_cache:
+                    rsi_data = rsi_cache[symbol]
+                    is_delisting = rsi_data.get('is_delisting', False) or rsi_data.get('trading_status') in ['Closed', 'Delivering']
+                    
+                    if is_delisting:
+                        logger.warning(f"[DELISTING_CHECK] 🚨 ДЕЛИСТИНГ ОБНАРУЖЕН для {symbol}! Инициируем экстренное закрытие")
+                        
+                        bot_instance = NewTradingBot(symbol, bot_data, exchange_obj)
+                        
+                        # Выполняем экстренное закрытие
+                        emergency_result = bot_instance.emergency_close_delisting()
+                        
+                        if emergency_result:
+                            logger.warning(f"[DELISTING_CHECK] ✅ ЭКСТРЕННОЕ ЗАКРЫТИЕ {symbol} УСПЕШНО")
+                            # Обновляем статус бота
+                            with bots_data_lock:
+                                if symbol in bots_data['bots']:
+                                    bots_data['bots'][symbol]['status'] = 'idle'
+                                    bots_data['bots'][symbol]['position_side'] = None
+                                    bots_data['bots'][symbol]['entry_price'] = None
+                                    bots_data['bots'][symbol]['unrealized_pnl'] = 0
+                                    bots_data['bots'][symbol]['last_update'] = datetime.now().isoformat()
+                            
+                            delisting_closed_count += 1
+                        else:
+                            logger.error(f"[DELISTING_CHECK] ❌ ЭКСТРЕННОЕ ЗАКРЫТИЕ {symbol} НЕУДАЧНО")
+                            
+            except Exception as e:
+                logger.error(f"[DELISTING_CHECK] ❌ Ошибка проверки делистинга для {symbol}: {e}")
+        
+        if delisting_closed_count > 0:
+            logger.warning(f"[DELISTING_CHECK] 🚨 ЭКСТРЕННО ЗАКРЫТО {delisting_closed_count} позиций из-за делистинга!")
+            # Сохраняем состояние после экстренного закрытия
+            save_bots_state()
+        
+        logger.info(f"[DELISTING_CHECK] ✅ Проверка делистинга завершена")
+        return True
+        
+    except Exception as e:
+        logger.error(f"[DELISTING_CHECK] ❌ Ошибка проверки делистинга: {e}")
+        return False
+
 def update_bots_cache_data():
     """Обновляет кэшированные данные ботов (как background_update в app.py)"""
     global bots_cache_data
@@ -765,6 +839,14 @@ def update_bots_cache_data():
                 'bots': bots_list,
                 'last_update': current_time
             })
+        
+        # ✅ СИНХРОНИЗАЦИЯ: Проверяем закрытые позиции на бирже
+        try:
+            logger.info(f"[BOTS_CACHE] 🔄 Запускаем синхронизацию с биржей...")
+            sync_bots_with_exchange()
+            logger.info(f"[BOTS_CACHE] ✅ Синхронизация с биржей завершена")
+        except Exception as e:
+            logger.error(f"[BOTS_CACHE] ❌ Ошибка синхронизации с биржей: {e}")
         
         # ✅ КРИТИЧНО: Обновляем last_update в bots_data для UI
         # ⚡ БЕЗ БЛОКИРОВКИ: GIL делает запись атомарной
@@ -1910,16 +1992,34 @@ def sync_bots_with_exchange():
                             # logger.info(f"[SYNC_EXCHANGE] 📊 {symbol}: Вход=${entry_price:.4f} | Текущая=${current_price:.4f} | Размер={position_size}")
                             
                         else:
-                            # Нет позиции на бирже - если бот думает что в позиции, сбрасываем
-                            if bot_data.get('status') in [BOT_STATUS['IN_POSITION_LONG'], BOT_STATUS['IN_POSITION_SHORT']]:
-                                old_status = bot_data['status']
-                                bot_data['status'] = BOT_STATUS['IDLE']
-                                bot_data['entry_price'] = None
-                                bot_data['position_side'] = None
-                                bot_data['unrealized_pnl'] = 0.0
-                                
-                                synchronized_bots += 1
-                                # logger.info(f"[SYNC_EXCHANGE] 🔄 {symbol}: {old_status}→IDLE (позиция закрыта на бирже)")
+                            # Нет позиции на бирже - проверяем статус инструмента
+                            old_status = bot_data.get('status', 'UNKNOWN')
+                            old_position_size = bot_data.get('position_size', 0)
+                            
+                            # ✅ ПРОВЕРЯЕМ ДЕЛИСТИНГ: Получаем статус инструмента
+                            try:
+                                from bots_modules.imports_and_globals import get_exchange
+                                exchange_obj = get_exchange()
+                                if exchange_obj and hasattr(exchange_obj, 'get_instrument_status'):
+                                    status_info = exchange_obj.get_instrument_status(f"{symbol}USDT")
+                                    if status_info and status_info.get('is_delisting'):
+                                        logger.warning(f"[SYNC_EXCHANGE] ⚠️ {symbol}: ДЕЛИСТИНГ обнаружен! Статус: {status_info.get('status')}")
+                                        logger.info(f"[SYNC_EXCHANGE] 🗑️ {symbol}: Удаляем бота (делистинг: {status_info.get('status')})")
+                                    else:
+                                        logger.info(f"[SYNC_EXCHANGE] 🗑️ {symbol}: Удаляем бота (позиция закрыта на бирже, статус: {old_status})")
+                                else:
+                                    logger.info(f"[SYNC_EXCHANGE] 🗑️ {symbol}: Удаляем бота (позиция закрыта на бирже, статус: {old_status})")
+                            except Exception as e:
+                                logger.error(f"[SYNC_EXCHANGE] ❌ Ошибка проверки статуса {symbol}: {e}")
+                                logger.info(f"[SYNC_EXCHANGE] 🗑️ {symbol}: Удаляем бота (позиция закрыта на бирже)")
+                            
+                            # Удаляем бота из системы
+                            del bots_data['bots'][symbol]
+                            
+                            # Сохраняем состояние после удаления
+                            save_bots_state()
+                            
+                            synchronized_bots += 1
                         
                     except Exception as e:
                         logger.error(f"[SYNC_EXCHANGE] ❌ Ошибка синхронизации бота {symbol}: {e}")

@@ -555,6 +555,7 @@ def get_coins_with_rsi():
             'total': len(cleaned_coins),
             'last_update': coins_rsi_data['last_update'],
             'update_in_progress': coins_rsi_data['update_in_progress'],
+            'data_version': coins_rsi_data.get('data_version', 0),  # ✅ Версия данных для оптимизации UI
             'manual_positions': manual_positions,  # Добавляем список ручных позиций
             'cache_info': {
                 'cache_exists': os.path.exists(RSI_CACHE_FILE),

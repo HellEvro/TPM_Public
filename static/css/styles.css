@@ -187,3 +187,149 @@
     font-size: 12px;
     font-weight: 500;
 }
+
+/* === Unavailable Coin Styles === */
+.unavailable-coin {
+    opacity: 0.8;
+    background-color: #2d2d2d !important;  /* Темный фон вместо светлого */
+    border-left: 3px solid #666 !important;
+    border-radius: 4px;
+}
+
+.unavailable-coin .coin-symbol {
+    color: var(--text-color) !important;  /* Белый текст на темном фоне */
+    font-weight: bold;
+}
+
+.unavailable-coin .coin-trend,
+.unavailable-coin .coin-signal,
+.unavailable-coin .coin-price {
+    color: var(--text-color) !important;  /* Белый текст для всех элементов */
+}
+
+.delisting-indicator {
+    color: var(--red-bright);
+    font-size: 14px;
+    margin-left: 4px;
+    cursor: help;
+    font-weight: bold;
+}
+
+.new-coin-indicator {
+    color: var(--blue-color);
+    font-size: 14px;
+    margin-left: 4px;
+    cursor: help;
+    font-weight: bold;
+}
+
+/* Специальные стили для делистинговых монет */
+.unavailable-coin.delisting-coin {
+    background-color: #3d1a1a !important;  /* Темно-красный фон */
+    border-left-color: var(--red-bright) !important;
+    border: 1px solid var(--red-bright);
+}
+
+.unavailable-coin.delisting-coin .coin-symbol {
+    text-decoration: line-through;
+    color: var(--red-bright) !important;  /* Ярко-красный текст */
+    font-weight: bold;
+}
+
+.unavailable-coin.delisting-coin .coin-trend,
+.unavailable-coin.delisting-coin .coin-signal,
+.unavailable-coin.delisting-coin .coin-price {
+    color: var(--red-text) !important;  /* Красный текст для читаемости */
+}
+
+/* Специальные стили для новых монет */
+.unavailable-coin.new-coin {
+    background-color: #1a2a3d !important;  /* Темно-синий фон */
+    border-left-color: var(--blue-color) !important;
+    border: 1px solid var(--blue-color);
+}
+
+.unavailable-coin.new-coin .coin-symbol {
+    color: var(--blue-color) !important;
+    font-weight: bold;
+}
+
+.unavailable-coin.new-coin .coin-trend,
+.unavailable-coin.new-coin .coin-signal,
+.unavailable-coin.new-coin .coin-price {
+    color: var(--text-color) !important;  /* Белый текст на темно-синем фоне */
+}
+
+/* === Улучшенные стили для сообщений === */
+.message-text {
+    line-height: 1.4;
+    margin: 4px 0;
+}
+
+.message-success {
+    color: var(--green-text) !important;
+    font-weight: 500;
+}
+
+.message-error {
+    color: var(--red-text) !important;
+    font-weight: 500;
+}
+
+.message-warning {
+    color: var(--warning-bright) !important;
+    font-weight: 500;
+}
+
+.message-info {
+    color: var(--blue-color) !important;
+    font-weight: 500;
+}
+
+/* Стили для индикатора DELISTED на странице монеты */
+.delisted-status {
+    background: linear-gradient(135deg, var(--red-bright), #d32f2f);
+    color: white !important;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 16px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    box-shadow: 0 2px 8px rgba(244, 67, 54, 0.3);
+    border: 2px solid var(--red-bright);
+    animation: pulse-warning 2s infinite;
+}
+
+@keyframes pulse-warning {
+    0% { box-shadow: 0 2px 8px rgba(244, 67, 54, 0.3); }
+    50% { box-shadow: 0 4px 16px rgba(244, 67, 54, 0.6); }
+    100% { box-shadow: 0 2px 8px rgba(244, 67, 54, 0.3); }
+}
+
+/* Улучшенные стили для стохастических сообщений */
+.stochastic-message {
+    padding: 8px 12px;
+    margin: 4px 0;
+    border-radius: 4px;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.stochastic-message.oversold {
+    background: rgba(129, 199, 132, 0.1);
+    border-left: 3px solid var(--green-text);
+    color: var(--green-text) !important;
+}
+
+.stochastic-message.bearish {
+    background: rgba(255, 138, 128, 0.1);
+    border-left: 3px solid var(--red-text);
+    color: var(--red-text) !important;
+}
+
+.stochastic-message.neutral {
+    background: rgba(33, 150, 243, 0.1);
+    border-left: 3px solid var(--blue-color);
+    color: var(--blue-color) !important;
+}

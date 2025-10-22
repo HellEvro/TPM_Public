@@ -250,6 +250,16 @@ def init_bot_service():
                     logger.info("[STARTUP_SYNC] 🔄 Запуск стартовой синхронизации в фоне...")
                     sync_bots_with_exchange()
                     check_startup_position_conflicts()
+                    
+                    # ✅ ПРОВЕРКА ДЕЛИСТИНГА ПРИ ЗАПУСКЕ: После загрузки всех монет
+                    logger.info("[STARTUP_SYNC] 🚨 Проверка делистинга при запуске...")
+                    try:
+                        from bots_modules.sync_and_cache import check_delisting_emergency_close
+                        check_delisting_emergency_close()
+                        logger.info("[STARTUP_SYNC] ✅ Проверка делистинга при запуске завершена")
+                    except Exception as delisting_error:
+                        logger.error(f"[STARTUP_SYNC] ❌ Ошибка проверки делистинга при запуске: {delisting_error}")
+                    
                     logger.info("[STARTUP_SYNC] ✅ Стартовая синхронизация завершена")
                 except Exception as e:
                     logger.error(f"[STARTUP_SYNC] ❌ Ошибка стартовой синхронизации: {e}")

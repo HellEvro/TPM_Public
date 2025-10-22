@@ -352,8 +352,33 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
     # print(f"[{time.strftime('%H:%M:%S')}] >>> НАЧАЛО get_coin_rsi_data({symbol})", flush=True)  # Отключено для скорости
     
     try:
-        # ✅ ФИЛЬТР 1: Whitelist/Blacklist/Scope - САМЫЙ ПЕРВЫЙ!
-        # Проверяем ДО загрузки данных с биржи (экономим API запросы)
+        # ✅ ФИЛЬТР 0: ДЕЛИСТИНГОВЫЕ МОНЕТЫ - САМЫЙ ПЕРВЫЙ!
+        # Исключаем делистинговые монеты ДО всех остальных проверок
+        DELISTING_BLACKLIST = {
+            'DOGS': {'status': 'Closed', 'reason': 'Delisting announced 2025-10-24'},
+            'FTT': {'status': 'Closed', 'reason': 'FTX bankruptcy'},
+            'LUNA': {'status': 'Closed', 'reason': 'Terra collapse'},
+        }
+        
+        if symbol in DELISTING_BLACKLIST:
+            logger.info(f"[DELISTING_BLACKLIST] {symbol}: Исключаем из всех проверок - {DELISTING_BLACKLIST[symbol]['reason']}")
+            # Возвращаем минимальные данные для делистинговых монет
+            return {
+                'symbol': symbol,
+                'rsi6h': 0,
+                'trend6h': 'NEUTRAL',
+                'rsi_zone': 'NEUTRAL',
+                'signal': 'WAIT',
+                'price': 0,
+                'change24h': 0,
+                'last_update': datetime.now().isoformat(),
+                'trading_status': 'Closed',
+                'is_delisting': True,
+                'delisting_reason': DELISTING_BLACKLIST[symbol]['reason'],
+                'blocked_by_delisting': True
+            }
+        
+        # ✅ ФИЛЬТР 1: Whitelist/Blacklist/Scope - Проверяем ДО загрузки данных с биржи
         # ⚡ БЕЗ БЛОКИРОВКИ: конфиг не меняется во время выполнения, безопасно читать
         auto_config = bots_data.get('auto_bot_config', {})
         scope = auto_config.get('scope', 'all')
@@ -642,6 +667,46 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
             signal = 'WAIT'
             rsi_zone = 'NEUTRAL'
         
+        # ✅ ПРОВЕРЯЕМ СТАТУС ТОРГОВЛИ: Получаем информацию о делистинге/новых монетах
+        # ОПТИМИЗИРОВАННАЯ ВЕРСИЯ: Проверяем только известные делистинговые монеты
+        trading_status = 'Trading'  # По умолчанию
+        is_delisting = False
+        
+        # ✅ ЧЕРНЫЙ СПИСОК ДЕЛИСТИНГОВЫХ МОНЕТ - исключаем из всех проверок
+        DELISTING_BLACKLIST = {
+            'DOGS': {'status': 'Closed', 'reason': 'Delisting announced 2025-10-24'},
+            'FTT': {'status': 'Closed', 'reason': 'FTX bankruptcy'},
+            'LUNA': {'status': 'Closed', 'reason': 'Terra collapse'},
+            # Добавляйте сюда новые делистинговые монеты
+        }
+        
+        known_delisting_coins = list(DELISTING_BLACKLIST.keys())
+        known_new_coins = []  # Можно добавить новые монеты
+        
+        if symbol in known_delisting_coins:
+            trading_status = 'Closed'
+            is_delisting = True
+            logger.info(f"[TRADING_STATUS] {symbol}: Известная делистинговая монета")
+        elif symbol in known_new_coins:
+            trading_status = 'Delivering'
+            is_delisting = True
+            logger.info(f"[TRADING_STATUS] {symbol}: Известная новая монета")
+        
+        # TODO: Включить полную проверку статуса торговли после оптимизации API запросов
+        # try:
+        #     if exchange_obj and hasattr(exchange_obj, 'get_instrument_status'):
+        #         status_info = exchange_obj.get_instrument_status(f"{symbol}USDT")
+        #         if status_info:
+        #             trading_status = status_info.get('status', 'Trading')
+        #             is_delisting = status_info.get('is_delisting', False)
+        #             
+        #             # Логируем только делистинговые и новые монеты
+        #             if trading_status != 'Trading':
+        #                 logger.info(f"[TRADING_STATUS] {symbol}: Статус {trading_status} (делистинг: {is_delisting})")
+        # except Exception as e:
+        #     # Если не удалось получить статус, используем значения по умолчанию
+        #     logger.debug(f"[TRADING_STATUS] {symbol}: Не удалось получить статус торговли: {e}")
+        
         result = {
             'symbol': symbol,
             'rsi6h': round(rsi, 1),
@@ -667,7 +732,10 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
             'is_mature': is_mature if enable_maturity_check else True,
             # ✅ КРИТИЧНО: Флаги блокировки для get_effective_signal
             'blocked_by_exit_scam': exit_scam_info.get('blocked', False) if exit_scam_info else False,
-            'blocked_by_rsi_time': time_filter_info.get('blocked', False) if time_filter_info else False
+            'blocked_by_rsi_time': time_filter_info.get('blocked', False) if time_filter_info else False,
+            # ✅ ИНФОРМАЦИЯ О СТАТУСЕ ТОРГОВЛИ: Для визуальных эффектов делистинга
+            'trading_status': trading_status,
+            'is_delisting': is_delisting
         }
         
         # Логируем торговые сигналы и блокировки тренда
@@ -752,9 +820,11 @@ def load_all_coins_candles_fast():
         # ⚡ ИСПРАВЛЕНИЕ DEADLOCK: Сохраняем в глобальный кэш БЕЗ блокировки
         # rsi_data_lock может быть захвачен ContinuousDataLoader в другом потоке
         try:
+            logger.info(f"[CANDLES_FAST] 💾 Сохраняем кэш в глобальное хранилище...")
             coins_rsi_data['candles_cache'] = candles_cache
             coins_rsi_data['last_candles_update'] = datetime.now().isoformat()
             logger.info(f"[CANDLES_FAST] ✅ Кэш сохранен: {len(candles_cache)} монет")
+            logger.info(f"[CANDLES_FAST] ✅ Проверка: в глобальном кэше сейчас {len(coins_rsi_data.get('candles_cache', {}))} монет")
         except Exception as cache_error:
             logger.warning(f"[CANDLES_FAST] ⚠️ Ошибка сохранения кэша: {cache_error}")
         
@@ -783,6 +853,10 @@ def load_all_coins_rsi():
         temp_coins_data = {}
         
         logger.info("[RSI] 🔄 Начинаем загрузку RSI 6H для всех монет...")
+        
+        # Проверяем кэш свечей перед началом
+        candles_cache_size = len(coins_rsi_data.get('candles_cache', {}))
+        logger.info(f"[RSI] 📦 Размер кэша свечей на старте: {candles_cache_size} монет")
         
         # Получаем актуальную ссылку на биржу
         try:
@@ -814,7 +888,7 @@ def load_all_coins_rsi():
         coins_rsi_data['failed_coins'] = 0
         
         # Получаем RSI данные для всех пар пакетно с инкрементальным обновлением (УСКОРЕННАЯ ВЕРСИЯ)
-        batch_size = 50  # ⚡ Увеличили обратно после исправления deadlock
+        batch_size = 100  # ⚡ Увеличили до 100 для ускорения первой загрузки
         
         for i in range(0, len(pairs), batch_size):
             batch = pairs[i:i + batch_size]
@@ -834,7 +908,7 @@ def load_all_coins_rsi():
             logger.info(f"[BATCH] 🚀 Параллельная обработка с ThreadPoolExecutor")
             
             # Используем ThreadPoolExecutor для параллельной обработки
-            with ThreadPoolExecutor(max_workers=5) as executor:
+            with ThreadPoolExecutor(max_workers=50) as executor:  # Увеличили до 50 для максимального ускорения
                 # Отправляем все задачи
                 future_to_symbol = {
                     executor.submit(get_coin_rsi_data, symbol, current_exchange): symbol 

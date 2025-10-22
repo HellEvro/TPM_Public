@@ -368,6 +368,9 @@ class BybitExchange(BaseExchange):
     def get_ticker(self, symbol):
         """Получение текущих данных тикера"""
         try:
+            # Добавляем задержку для предотвращения rate limiting
+            time.sleep(0.1)  # 100ms задержка для тикеров
+            
             # Получаем данные тикера
             response = self.client.get_tickers(
                 category="linear",
@@ -403,7 +406,8 @@ class BybitExchange(BaseExchange):
                 return {
                     'minOrderQty': instrument['lotSizeFilter']['minOrderQty'],
                     'qtyStep': instrument['lotSizeFilter']['qtyStep'],
-                    'tickSize': instrument['priceFilter']['tickSize']
+                    'tickSize': instrument['priceFilter']['tickSize'],
+                    'status': instrument.get('status', 'Unknown')  # ✅ Добавляем статус инструмента
                 }
             else:
                 print(f"[BYBIT] ❌ Не удалось получить информацию об инструменте {symbol}")
@@ -412,6 +416,57 @@ class BybitExchange(BaseExchange):
         except Exception as e:
             print(f"[BYBIT] ❌ Ошибка получения информации об инструменте {symbol}: {e}")
             return {}
+    
+    def get_instrument_status(self, symbol):
+        """
+        Получает статус торговли для символа
+        
+        Возможные статусы Bybit:
+        - Trading: Активная торговля
+        - PreLaunch: Предварительный запуск (торговля невозможна)
+        - Delivering: В процессе поставки
+        - Closed: Закрыто (делистинг)
+        
+        Returns:
+            dict: {'status': str, 'is_tradeable': bool, 'is_delisting': bool}
+        """
+        try:
+            # Добавляем небольшую задержку для предотвращения rate limiting
+            time.sleep(0.02)  # 20ms задержка для проверки статуса инструмента
+            
+            response = self.client.get_instruments_info(
+                category="linear",
+                symbol=symbol
+            )
+            
+            if response['retCode'] == 0 and response['result']['list']:
+                instrument = response['result']['list'][0]
+                status = instrument.get('status', 'Unknown')
+                
+                return {
+                    'status': status,
+                    'is_tradeable': status == 'Trading',
+                    'is_delisting': status in ['Closed', 'Delivering'],
+                    'symbol': symbol
+                }
+            else:
+                logger.warning(f"[BYBIT] ⚠️ Не удалось получить статус инструмента {symbol}")
+                return {
+                    'status': 'Unknown',
+                    'is_tradeable': False,
+                    'is_delisting': False,
+                    'symbol': symbol
+                }
+                
+        except Exception as e:
+            logger.error(f"[BYBIT] ❌ Ошибка получения статуса инструмента {symbol}: {e}")
+            return {
+                'status': 'Error',
+                'is_tradeable': False,
+                'is_delisting': False,
+                'symbol': symbol,
+                'error': str(e)
+            }
 
     def close_position(self, symbol, size, side, order_type="Limit"):
         try:
@@ -573,7 +628,7 @@ class BybitExchange(BaseExchange):
             dict: Данные для построения графика
         """
         # Добавляем задержку для предотвращения rate limiting
-        time.sleep(0.01)  # 10ms задержка между запросами для ускорения
+        time.sleep(0.2)  # 200ms задержка между запросами для предотвращения превышения лимита
         
         try:
             # Специальная обработка для таймфрейма "all"

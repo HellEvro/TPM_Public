@@ -519,7 +519,9 @@ coins_rsi_data = {
     'successful_coins': 0,
     'failed_coins': 0,
     'data_version': 0,  # ✅ Версия данных для предотвращения "гуляющих" данных
-    'ui_update_paused': False  # ✅ Флаг паузы UI обновлений
+    'ui_update_paused': False,  # ✅ Флаг паузы UI обновлений
+    'candles_cache': {},  # ✅ Кэш свечей для быстрого доступа при расчете RSI
+    'last_candles_update': None  # ✅ Время последнего обновления свечей
 }
 
 # Модель данных для ботов

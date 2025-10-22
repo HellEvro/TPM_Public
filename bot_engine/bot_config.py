@@ -241,7 +241,7 @@ class AIConfig:
     
     # LSTM Predictor - предсказание движения цены
     AI_LSTM_ENABLED = True  # Включено для увеличения прибыли
-    AI_LSTM_MODEL_PATH = 'data/ai/models/lstm_predictor.h5'
+    AI_LSTM_MODEL_PATH = 'data/ai/models/lstm_predictor.keras'  # ✅ Keras 3 формат
     AI_LSTM_SCALER_PATH = 'data/ai/models/lstm_scaler.pkl'
     AI_LSTM_WEIGHT = 1.5  # Вес в голосовании (если уверенность > 0.7)
     AI_LSTM_MIN_CONFIDENCE = 0.6  # Минимальная уверенность для применения

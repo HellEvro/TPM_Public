@@ -90,6 +90,17 @@ class BaseExchange(ABC):
     def get_all_pairs(self):
         """Получение списка всех доступных бессрочных фьючерсов"""
         pass
+    
+    def get_instrument_status(self, symbol):
+        """
+        Получает статус торговли для символа (опциональный метод)
+        
+        Returns:
+            dict: {'status': str, 'is_tradeable': bool, 'is_delisting': bool}
+            Или None если метод не реализован на конкретной бирже
+        """
+        # По умолчанию возвращаем None - каждая биржа может переопределить
+        return None
 
     def get_chart_data(self, symbol, timeframe='1h', period='1w'):
         """Получение данных для графика"""

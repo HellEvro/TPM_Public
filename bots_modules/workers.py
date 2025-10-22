@@ -40,7 +40,8 @@ try:
     from bots_modules.sync_and_cache import (
         save_bots_state, update_process_state, save_auto_bot_config,
         update_bots_cache_data, check_missing_stop_losses,
-        cleanup_inactive_bots, check_trading_rules_activation
+        cleanup_inactive_bots, check_trading_rules_activation,
+        check_delisting_emergency_close
     )
     from bots_modules.maturity import save_mature_coins_storage
     from bots_modules.filters import process_auto_bot_signals
@@ -126,6 +127,7 @@ def auto_bot_worker():
     last_position_sync = time.time() - SystemConfig.POSITION_SYNC_INTERVAL
     last_inactive_cleanup = time.time() - SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL
     last_auto_bot_check = time.time()  # Время последней проверки сигналов автобота
+    last_delisting_check = time.time() - 600  # Время последней проверки делистинга (10 минут назад для первого запуска)
     
     logger.info("[AUTO_BOT] 🔄 Входим в основной цикл (автобот выключен, ждем ручного включения)...")
     
@@ -258,6 +260,18 @@ def auto_bot_worker():
                 logger.info(f"[WORKER] ✅ [3b/3] КОНЕЦ: check_trading_rules_activation() за {time.time()-t_start:.1f}с")
                 
                 last_inactive_cleanup = current_time
+            
+            # ✅ ПРОВЕРКА ДЕЛИСТИНГА: Каждые 10 минут проверяем делистинг и закрываем позиции
+            current_time = time.time()
+            time_since_delisting_check = current_time - last_delisting_check
+            
+            if time_since_delisting_check >= 600:  # 10 минут = 600 секунд
+                logger.info(f"[WORKER] 🚨 [DELISTING] НАЧАЛО: check_delisting_emergency_close()")
+                t_start = time.time()
+                check_delisting_emergency_close()
+                logger.info(f"[WORKER] ✅ [DELISTING] КОНЕЦ: check_delisting_emergency_close() за {time.time()-t_start:.1f}с")
+                
+                last_delisting_check = current_time
             
         except Exception as e:
             logger.error(f"[AUTO_BOT] ❌ Ошибка Auto Bot Worker: {e}")

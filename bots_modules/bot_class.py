@@ -618,6 +618,52 @@ class NewTradingBot:
             logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка закрытия позиции: {e}")
             return False
     
+    def emergency_close_delisting(self):
+        """Экстренное закрытие позиции при делистинге - рыночным ордером по любой цене"""
+        try:
+            if not self.exchange:
+                logger.error(f"[NEW_BOT_{self.symbol}] ❌ Биржа не инициализирована для экстренного закрытия")
+                return False
+            
+            if self.status not in [BOT_STATUS['IN_POSITION_LONG'], BOT_STATUS['IN_POSITION_SHORT']]:
+                logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Бот не в позиции, экстренное закрытие не требуется")
+                return True
+            
+            logger.warning(f"[NEW_BOT_{self.symbol}] 🚨 ЭКСТРЕННОЕ ЗАКРЫТИЕ: ДЕЛИСТИНГ ОБНАРУЖЕН! Закрываем {self.position_side} рыночным ордером")
+            
+            # Определяем сторону для закрытия (противоположную позиции)
+            close_side = 'Sell' if self.position_side == 'Long' else 'Buy'
+            
+            # Экстренное закрытие рыночным ордером
+            emergency_result = self.exchange.close_position(
+                symbol=self.symbol,
+                side=self.position_side,
+                order_type='Market',  # Принудительно рыночный ордер
+                emergency=True  # Флаг экстренного закрытия
+            )
+            
+            if emergency_result and emergency_result.get('success'):
+                logger.warning(f"[NEW_BOT_{self.symbol}] ✅ ЭКСТРЕННОЕ ЗАКРЫТИЕ УСПЕШНО: Позиция закрыта рыночным ордером")
+                self.update_status(BOT_STATUS['IDLE'])
+                
+                # Дополнительно обнуляем все данные позиции
+                self.position_side = None
+                self.entry_price = None
+                self.unrealized_pnl = 0.0
+                self.max_profit_achieved = 0.0
+                self.trailing_stop_price = None
+                self.break_even_activated = False
+                
+                return True
+            else:
+                error = emergency_result.get('error', 'Unknown error') if emergency_result else 'No response'
+                logger.error(f"[NEW_BOT_{self.symbol}] ❌ ЭКСТРЕННОЕ ЗАКРЫТИЕ НЕУДАЧНО: {error}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"[NEW_BOT_{self.symbol}] ❌ КРИТИЧЕСКАЯ ОШИБКА ЭКСТРЕННОГО ЗАКРЫТИЯ: {e}")
+            return False
+    
     def calculate_dynamic_take_profit(self, direction, current_price, current_rsi):
         """
         Рассчитывает динамический Take Profit на основе RSI настроек
