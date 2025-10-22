@@ -1343,6 +1343,60 @@ if __name__ == '__main__':
     # Открываем браузер с задержкой
     Timer(1.5, open_browser).start()
     
+    # ✅ ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ positions_data при запуске
+    print("[APP] 🔄 Принудительное обновление positions_data при запуске...")
+    try:
+        positions, rapid_growth = current_exchange.get_positions()
+        if positions:
+            # Обновляем positions_data с актуальными данными
+            positions_data['total_trades'] = len(positions)
+            positions_data['rapid_growth'] = rapid_growth
+            
+            high_profitable = []
+            profitable = []
+            losing = []
+            
+            for position in positions:
+                pnl = position['pnl']
+                if pnl > 0:
+                    if pnl >= 100:  # Используем стандартный порог
+                        high_profitable.append(position)
+                    else:
+                        profitable.append(position)
+                elif pnl < 0:
+                    losing.append(position)
+            
+            positions_data.update({
+                'high_profitable': high_profitable,
+                'profitable': profitable,
+                'losing': losing,
+                'stats': {
+                    'total_trades': len(positions),
+                    'high_profitable_count': len(high_profitable),
+                    'profitable_count': len(profitable),
+                    'losing_count': len(losing)
+                }
+            })
+            print(f"[APP] ✅ positions_data обновлен: {len(positions)} позиций")
+        else:
+            # Очищаем positions_data если позиций нет
+            positions_data.update({
+                'high_profitable': [],
+                'profitable': [],
+                'losing': [],
+                'total_trades': 0,
+                'rapid_growth': [],
+                'stats': {
+                    'total_trades': 0,
+                    'high_profitable_count': 0,
+                    'profitable_count': 0,
+                    'losing_count': 0
+                }
+            })
+            print("[APP] ✅ positions_data очищен (нет позиций)")
+    except Exception as e:
+        print(f"[APP] ❌ Ошибка принудительного обновления positions_data: {e}")
+    
     # Запускаем фоновые процессы (теперь всегда, так как reloader отключен)
     update_thread = threading.Thread(target=background_update)
     update_thread.daemon = True
