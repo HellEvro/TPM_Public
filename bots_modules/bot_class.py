@@ -112,6 +112,16 @@ class NewTradingBot:
     def should_open_long(self, rsi, trend, candles):
         """Проверяет, нужно ли открывать LONG позицию"""
         try:
+            # ✅ ПРОВЕРКА ДЕЛИСТИНГА: Проверяем ДО всех остальных проверок
+            from bots_modules.sync_and_cache import load_delisted_coins
+            delisted_data = load_delisted_coins()
+            delisted_coins = delisted_data.get('delisted_coins', {})
+            
+            if self.symbol in delisted_coins:
+                delisting_info = delisted_coins[self.symbol]
+                logger.warning(f"[NEW_BOT_{self.symbol}] 🚨 ДЕЛИСТИНГ! Не открываем LONG - {delisting_info.get('reason', 'Delisting detected')}")
+                return False
+            
             # Получаем настройки из конфига
             with bots_data_lock:
                 auto_config = bots_data.get('auto_bot_config', {})
@@ -148,6 +158,16 @@ class NewTradingBot:
     def should_open_short(self, rsi, trend, candles):
         """Проверяет, нужно ли открывать SHORT позицию"""
         try:
+            # ✅ ПРОВЕРКА ДЕЛИСТИНГА: Проверяем ДО всех остальных проверок
+            from bots_modules.sync_and_cache import load_delisted_coins
+            delisted_data = load_delisted_coins()
+            delisted_coins = delisted_data.get('delisted_coins', {})
+            
+            if self.symbol in delisted_coins:
+                delisting_info = delisted_coins[self.symbol]
+                logger.warning(f"[NEW_BOT_{self.symbol}] 🚨 ДЕЛИСТИНГ! Не открываем SHORT - {delisting_info.get('reason', 'Delisting detected')}")
+                return False
+            
             # Получаем настройки из конфига
             with bots_data_lock:
                 auto_config = bots_data.get('auto_bot_config', {})

@@ -29,6 +29,9 @@ class BotsManager {
         // Debounce для поиска
         this.searchDebounceTimer = null;
         
+        // Список делистинговых монет
+        this.delistedCoins = [];
+        
         // URL сервиса ботов - используем тот же хост что и у приложения
         this.BOTS_SERVICE_URL = `${window.location.protocol}//${window.location.hostname}:5001`;
         this.apiUrl = `${window.location.protocol}//${window.location.hostname}:5001/api/bots`; // Для совместимости
@@ -76,6 +79,10 @@ class BotsManager {
             // Синхронизируем позиции при инициализации
             if (this.serviceOnline) {
                 console.log('[BotsManager] 🔄 Синхронизация позиций при инициализации...');
+                
+                // Загружаем делистинговые монеты при инициализации
+                await this.loadDelistedCoins();
+                
                 try {
                     const syncResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/sync-positions`, {
                         method: 'POST',
@@ -710,6 +717,42 @@ class BotsManager {
         }
     }
 
+    async loadDelistedCoins() {
+        if (!this.serviceOnline) {
+            console.warn('[BotsManager] ⚠️ Сервис не онлайн, пропускаем загрузку делистинговых монет');
+            return;
+        }
+
+        this.logDebug('[BotsManager] 🚨 Загрузка списка делистинговых монет...');
+        
+        try {
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/delisted-coins`);
+            
+            if (response.ok) {
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Обновляем список делистинговых монет
+                    this.delistedCoins = Object.keys(data.delisted_coins || {});
+                    
+                    this.logDebug(`[BotsManager] ✅ Загружено ${this.delistedCoins.length} делистинговых монет: ${this.delistedCoins.join(', ')}`);
+                    
+                    // Обновляем время последнего сканирования
+                    if (data.last_scan) {
+                        console.log(`[BotsManager] 📅 Последнее сканирование делистинга: ${new Date(data.last_scan).toLocaleString()}`);
+                    }
+                } else {
+                    console.warn('[BotsManager] ⚠️ Ошибка загрузки делистинговых монет:', data.error);
+                }
+            } else {
+                console.warn(`[BotsManager] ⚠️ HTTP ${response.status} при загрузке делистинговых монет`);
+            }
+            
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка загрузки делистинговых монет:', error);
+        }
+    }
+
     renderCoinsList() {
         const coinsListElement = document.getElementById('coinsRsiList');
         if (!coinsListElement) {
@@ -1113,8 +1156,8 @@ class BotsManager {
         }
         
         // ✅ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: Исключаем известные делистинговые монеты
-        const delistingBlacklist = ['DOGS', 'FTT', 'LUNA'];
-        if (delistingBlacklist.includes(coin.symbol)) {
+        // Получаем список делистинговых монет с сервера
+        if (this.delistedCoins && this.delistedCoins.includes(coin.symbol)) {
             return 'UNAVAILABLE';
         }
         
@@ -4258,6 +4301,7 @@ class BotsManager {
                 
                 // Обновляем основные данные
                 this.loadCoinsRsiData();
+                this.loadDelistedCoins(); // Загружаем делистинговые монеты
                 this.loadAccountInfo();
                 
                 // КРИТИЧЕСКИ ВАЖНО: Всегда обновляем состояние автобота и ботов

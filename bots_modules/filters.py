@@ -57,6 +57,14 @@ except ImportError as e:
     def is_coin_mature_stored(symbol):
         return True  # ВРЕМЕННО: разрешаем все монеты
 
+# Импорт функций для работы с делистинговыми монетами
+try:
+    from bots_modules.sync_and_cache import load_delisted_coins
+except ImportError as e:
+    print(f"Warning: Could not import delisting functions in filters: {e}")
+    def load_delisted_coins(): 
+        return {"delisted_coins": {}}
+
 # Импорт функции optimal_ema из модуля
 try:
     from bots_modules.optimal_ema import get_optimal_ema_periods
@@ -354,14 +362,13 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
     try:
         # ✅ ФИЛЬТР 0: ДЕЛИСТИНГОВЫЕ МОНЕТЫ - САМЫЙ ПЕРВЫЙ!
         # Исключаем делистинговые монеты ДО всех остальных проверок
-        DELISTING_BLACKLIST = {
-            'DOGS': {'status': 'Closed', 'reason': 'Delisting announced 2025-10-24'},
-            'FTT': {'status': 'Closed', 'reason': 'FTX bankruptcy'},
-            'LUNA': {'status': 'Closed', 'reason': 'Terra collapse'},
-        }
+        # Загружаем делистинговые монеты из файла
+        delisted_data = load_delisted_coins()
+        delisted_coins = delisted_data.get('delisted_coins', {})
         
-        if symbol in DELISTING_BLACKLIST:
-            logger.info(f"[DELISTING_BLACKLIST] {symbol}: Исключаем из всех проверок - {DELISTING_BLACKLIST[symbol]['reason']}")
+        if symbol in delisted_coins:
+            delisting_info = delisted_coins[symbol]
+            logger.info(f"[DELISTING_BLACKLIST] {symbol}: Исключаем из всех проверок - {delisting_info.get('reason', 'Delisting detected')}")
             # Возвращаем минимальные данные для делистинговых монет
             return {
                 'symbol': symbol,
@@ -374,7 +381,7 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                 'last_update': datetime.now().isoformat(),
                 'trading_status': 'Closed',
                 'is_delisting': True,
-                'delisting_reason': DELISTING_BLACKLIST[symbol]['reason'],
+                'delisting_reason': delisting_info.get('reason', 'Delisting detected'),
                 'blocked_by_delisting': True
             }
         
@@ -673,14 +680,11 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
         is_delisting = False
         
         # ✅ ЧЕРНЫЙ СПИСОК ДЕЛИСТИНГОВЫХ МОНЕТ - исключаем из всех проверок
-        DELISTING_BLACKLIST = {
-            'DOGS': {'status': 'Closed', 'reason': 'Delisting announced 2025-10-24'},
-            'FTT': {'status': 'Closed', 'reason': 'FTX bankruptcy'},
-            'LUNA': {'status': 'Closed', 'reason': 'Terra collapse'},
-            # Добавляйте сюда новые делистинговые монеты
-        }
+        # Загружаем делистинговые монеты из файла
+        delisted_data = load_delisted_coins()
+        delisted_coins = delisted_data.get('delisted_coins', {})
         
-        known_delisting_coins = list(DELISTING_BLACKLIST.keys())
+        known_delisting_coins = list(delisted_coins.keys())
         known_new_coins = []  # Можно добавить новые монеты
         
         if symbol in known_delisting_coins:

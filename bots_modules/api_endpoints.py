@@ -2671,6 +2671,57 @@ def reload_modules():
             'error': str(e)
         }), 500
 
+@bots_app.route('/api/bots/delisted-coins', methods=['GET'])
+def get_delisted_coins_api():
+    """API для получения списка делистинговых монет"""
+    try:
+        from bots_modules.sync_and_cache import load_delisted_coins
+        
+        delisted_data = load_delisted_coins()
+        
+        return jsonify({
+            'success': True,
+            'delisted_coins': delisted_data.get('delisted_coins', {}),
+            'last_scan': delisted_data.get('last_scan'),
+            'scan_enabled': delisted_data.get('scan_enabled', True),
+            'total_count': len(delisted_data.get('delisted_coins', {}))
+        })
+        
+    except Exception as e:
+        logger.error(f"[API_DELISTED_COINS] ❌ Ошибка получения делистинговых монет: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@bots_app.route('/api/bots/delisted-coins/force-scan', methods=['POST'])
+def force_delisting_scan_api():
+    """API для принудительного сканирования делистинговых монет"""
+    try:
+        from bots_modules.sync_and_cache import scan_all_coins_for_delisting
+        
+        logger.info("[API_DELISTING_SCAN] 🔍 Принудительное сканирование делистинговых монет...")
+        scan_all_coins_for_delisting()
+        
+        # Получаем обновленные данные
+        from bots_modules.sync_and_cache import load_delisted_coins
+        delisted_data = load_delisted_coins()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Сканирование делистинговых монет завершено',
+            'delisted_coins': delisted_data.get('delisted_coins', {}),
+            'last_scan': delisted_data.get('last_scan'),
+            'total_count': len(delisted_data.get('delisted_coins', {}))
+        })
+        
+    except Exception as e:
+        logger.error(f"[API_DELISTING_SCAN] ❌ Ошибка принудительного сканирования: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 def cleanup_bot_service():
     """Очистка ресурсов при завершении сервиса"""
     global smart_rsi_manager, system_initialized
