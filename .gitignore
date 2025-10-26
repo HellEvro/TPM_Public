@@ -411,5 +411,7 @@ data/telegram_states.json
 # User-specific files
 *.lic
 license_generator/generated_licenses/
-license_generator/
+
+# ВАЖНО: НЕ исключаем license_generator/ полностью - там нужные файлы генерации!
+# license_generator/  # УДАЛЕНО - нужно копировать generate_license.py, license_manager.py и т.д.
 
