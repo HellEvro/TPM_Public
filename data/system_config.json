@@ -1,0 +1,21 @@
+{
+  "bot_status_update_interval": 30,
+  "position_sync_interval": 30,
+  "inactive_bot_cleanup_interval": 600,
+  "inactive_bot_timeout": 600,
+  "stop_loss_setup_interval": 300,
+  "rsi_update_interval": 300,
+  "auto_save_interval": 30,
+  "debug_mode": false,
+  "auto_refresh_ui": true,
+  "refresh_interval": 3,
+  "enhanced_rsi_enabled": true,
+  "enhanced_rsi_require_volume_confirmation": true,
+  "enhanced_rsi_require_divergence_confirmation": false,
+  "enhanced_rsi_use_stoch_rsi": true,
+  "rsi_extreme_zone_timeout": 3,
+  "rsi_extreme_oversold": 20,
+  "rsi_extreme_overbought": 80,
+  "rsi_volume_confirmation_multiplier": 1.2,
+  "rsi_divergence_lookback": 10
+}

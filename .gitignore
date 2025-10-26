@@ -376,8 +376,40 @@ infobot_ai_premium.so
 # Encrypted models
 *.encrypted
 
-# Premium build artifacts
-InfoBot_AI_Premium/dist/
-InfoBot_AI_Premium/build/
-InfoBot_AI_Premium/*.pyd
-InfoBot_AI_Premium/*.so
+# Premium build artifacts (УДАЛЕНО)
+# InfoBot_AI_Premium/ больше не используется
+
+# Dev scripts and tests (не нужны в публичной версии)
+scripts/fix/
+scripts/check/
+scripts/test_*.py
+scripts/verify_ai_ready.py
+scripts/quick_import_test.py
+
+# Old premium loader (не используется, заменен на ai_manager.pyc)
+bot_engine/ai/_premium_loader.py
+
+# Build artifacts
+scripts/hardware_id.build/
+
+# Source files should not be in public (keep only compiled .pyc)
+license_generator/source/
+
+# Config files with secrets (user must configure)
+app/keys.py
+app/config.py
+app/current_language.txt
+app/telegram_states.json
+
+# System-generated files
+data/async_state.json
+data/bot_history.json
+data/process_state.json
+data/bots_state.json
+data/telegram_states.json
+
+# User-specific files
+*.lic
+license_generator/generated_licenses/
+license_generator/
+

@@ -1,0 +1,16 @@
+{
+  "sequence_length": 60,
+  "features": [
+    "close",
+    "volume",
+    "high",
+    "low",
+    "rsi",
+    "ema_fast",
+    "ema_slow"
+  ],
+  "prediction_horizon": 6,
+  "model_version": "1.0",
+  "trained_at": "2025-10-18T07:13:25.590658",
+  "training_samples": 1043933
+}
