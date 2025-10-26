@@ -601,20 +601,20 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                     rsi_zone = 'NEUTRAL'
         
         # ✅ ФИЛЬТР 5: Зрелость монеты (проверяем ПОСЛЕ Enhanced RSI)
-        # ⚡ ОПТИМИЗАЦИЯ: Проверяем ТОЛЬКО если есть сигнал входа (экономим 95% проверок!)
+        # 🔧 ИСПРАВЛЕНИЕ: Проверяем зрелость для ВСЕХ монет (для UI фильтра "Зрелые монеты")
         enable_maturity_check = bots_data.get('auto_bot_config', {}).get('enable_maturity_check', True)
         is_mature = True  # По умолчанию считаем зрелой (если проверка отключена)
         
-        if signal in ['ENTER_LONG', 'ENTER_SHORT']:
-            if enable_maturity_check:
-                # ✅ ИСПОЛЬЗУЕМ хранилище зрелых монет для быстрой проверки
-                is_mature = check_coin_maturity_stored_or_verify(symbol)
-                
-                if not is_mature:
-                    logger.debug(f"[MATURITY] {symbol}: Монета незрелая - сигнал {signal} заблокирован")
-                    # Меняем сигнал на WAIT, но не исключаем монету из списка
-                    signal = 'WAIT'
-                    rsi_zone = 'NEUTRAL'
+        if enable_maturity_check:
+            # ✅ ИСПОЛЬЗУЕМ хранилище зрелых монет для быстрой проверки
+            is_mature = check_coin_maturity_stored_or_verify(symbol)
+            
+            # Если есть сигнал входа И монета незрелая - блокируем сигнал
+            if signal in ['ENTER_LONG', 'ENTER_SHORT'] and not is_mature:
+                logger.debug(f"[MATURITY] {symbol}: Монета незрелая - сигнал {signal} заблокирован")
+                # Меняем сигнал на WAIT, но не исключаем монету из списка
+                signal = 'WAIT'
+                rsi_zone = 'NEUTRAL'
         
         # ✅ EMA периоды уже получены выше - ДО определения сигнала!
         
@@ -983,6 +983,13 @@ def load_all_coins_rsi():
         
         if failed_count > 0:
             logger.warning(f"[RSI] ⚠️ Ошибок: {failed_count} монет")
+        
+        # 🔧 ОБНОВЛЯЕМ ФЛАГИ is_mature в RSI данных на основе хранилища
+        try:
+            update_is_mature_flags_in_rsi_data()
+            logger.info(f"[RSI] ✅ Флаги is_mature обновлены в UI данных")
+        except Exception as update_error:
+            logger.warning(f"[RSI] ⚠️ Не удалось обновить флаги is_mature: {update_error}")
         
         # ⚡ ОТКЛЮЧЕНО: Сохранение и обработка сигналов выполняются в ContinuousDataLoader
         # save_rsi_cache()  # Будет вызвано позже
@@ -1566,6 +1573,29 @@ def check_coin_maturity_stored_or_verify(symbol):
     except Exception as e:
         logger.error(f"[MATURITY_CHECK] {symbol}: Ошибка проверки зрелости: {e}")
         return False
+
+def update_is_mature_flags_in_rsi_data():
+    """Обновляет флаги is_mature в кэшированных данных RSI на основе хранилища зрелых монет"""
+    try:
+        from bots_modules.imports_and_globals import is_coin_mature_stored
+        
+        updated_count = 0
+        total_count = len(coins_rsi_data['coins'])
+        
+        # Обновляем флаги is_mature для всех монет в RSI данных
+        for symbol, coin_data in coins_rsi_data['coins'].items():
+            # Обновляем флаг is_mature на основе хранилища
+            old_status = coin_data.get('is_mature', False)
+            coin_data['is_mature'] = is_coin_mature_stored(symbol)
+            
+            # Подсчитываем обновленные
+            if coin_data['is_mature']:
+                updated_count += 1
+        
+        logger.info(f"[MATURITY_FLAGS] ✅ Обновлено флагов: {updated_count} зрелых из {total_count} монет")
+        
+    except Exception as e:
+        logger.error(f"[MATURITY_FLAGS] ❌ Ошибка обновления флагов: {e}")
 
 def check_exit_scam_filter(symbol, coin_data):
     """

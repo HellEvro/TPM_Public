@@ -352,9 +352,9 @@ def check_coin_maturity_with_storage(symbol, candles):
     # Если не в хранилище, выполняем полную проверку
     maturity_result = check_coin_maturity(symbol, candles)
     
-    # Если монета зрелая, добавляем в постоянное хранилище (без автосохранения)
+    # Если монета зрелая, добавляем в постоянное хранилище (с автосохранением)
     if maturity_result['is_mature']:
-        add_mature_coin_to_storage(symbol, maturity_result, auto_save=False)
+        add_mature_coin_to_storage(symbol, maturity_result, auto_save=True)
     
     return maturity_result
 
@@ -580,6 +580,14 @@ def calculate_all_coins_maturity():
         last_maturity_check['config_hash'] = current_config_hash
         save_maturity_check_cache()  # 💾 Сохраняем в файл!
         logger.info(f"[MATURITY_BATCH] 💾 Кэш обновлен и сохранен: {current_coins_count} монет")
+        
+        # 🔧 ОБНОВЛЯЕМ ФЛАГИ is_mature в кэшированных RSI данных
+        try:
+            from bots_modules.filters import update_is_mature_flags_in_rsi_data
+            update_is_mature_flags_in_rsi_data()
+            logger.info(f"[MATURITY_BATCH] ✅ Флаги is_mature обновлены в UI данных")
+        except Exception as update_error:
+            logger.warning(f"[MATURITY_BATCH] ⚠️ Не удалось обновить флаги is_mature: {update_error}")
         
         return True
         

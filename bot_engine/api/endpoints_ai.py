@@ -123,15 +123,15 @@ def register_ai_endpoints(app):
             ai_manager = get_ai_manager()
             
             # Проверяем доступность AI (лицензия)
-            license_info = ai_manager.premium_loader.get_license_info()
+            license_status = ai_manager.get_status()
             
             return jsonify({
                 'success': True,
                 'license': {
-                    'valid': ai_manager.premium_loader.license_valid,
-                    'type': license_info.get('type'),
-                    'expires_at': license_info.get('expires_at'),
-                    'features': license_info.get('features', {})
+                    'valid': ai_manager.is_available(),
+                    'type': license_status.get('license_type'),
+                    'expires_at': license_status.get('expires_at'),
+                    'features': license_status.get('features', {})
                 },
                 'config': {
                     # Основные настройки
@@ -189,7 +189,7 @@ def register_ai_endpoints(app):
             ai_manager = get_ai_manager()
             
             # Проверяем лицензию
-            if not ai_manager.premium_loader.license_valid:
+            if not ai_manager.is_available():
                 return jsonify({
                     'success': False,
                     'error': 'Недействительная лицензия'
