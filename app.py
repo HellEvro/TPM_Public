@@ -1323,7 +1323,84 @@ def get_sma200_position(symbol):
         return jsonify({'error': str(e)}), 500
 
 
+def open_firewall_ports():
+    """Открывает порты в брандмауэре при запуске (Windows/macOS/Linux)"""
+    try:
+        import subprocess
+        import platform
+        
+        print("[APP] 🔥 Проверка открытия портов в брандмауэре...")
+        
+        system = platform.system()
+        
+        if system == 'Windows':
+            # Windows Firewall
+            for port in [5000, 5001]:
+                service_name = "InfoBot Web UI" if port == 5000 else "InfoBot Bot Service"
+                
+                # Проверяем существует ли правило
+                result = subprocess.run(
+                    ['netsh', 'advfirewall', 'firewall', 'show', 'rule', f'name={service_name}'],
+                    capture_output=True,
+                    text=True
+                )
+                
+                if service_name not in result.stdout:
+                    print(f"[APP] 🔥 Открываем порт {port}...")
+                    subprocess.run([
+                        'netsh', 'advfirewall', 'firewall', 'add', 'rule',
+                        f'name={service_name}',
+                        'dir=in',
+                        'action=allow',
+                        'protocol=TCP',
+                        f'localport={port}'
+                    ], check=True)
+                    print(f"[APP] ✅ Порт {port} открыт")
+                else:
+                    print(f"[APP] ✅ Порт {port} уже открыт")
+        
+        elif system == 'Darwin':  # macOS
+            # macOS Application Firewall через pfctl
+            print("[APP] 💡 На macOS откройте порты вручную через System Preferences → Security & Privacy → Firewall")
+            print("[APP] 💡 Или используйте: sudo pfctl -a pflog -f /etc/pf.conf")
+        
+        elif system == 'Linux':
+            # Linux через iptables или ufw
+            print("[APP] 🔥 Открываем порты в Linux...")
+            try:
+                # Проверяем наличие ufw (Ubuntu/Debian)
+                subprocess.run(['which', 'ufw'], check=True)
+                print("[APP] Найден ufw, открываем порты...")
+                
+                for port in [5000, 5001]:
+                    # Проверяем, не открыт ли уже порт
+                    result = subprocess.run(['ufw', 'status'], capture_output=True, text=True)
+                    if f'{port}/tcp' not in result.stdout:
+                        subprocess.run(['sudo', 'ufw', 'allow', str(port), '/tcp'], check=True)
+                        print(f"[APP] ✅ Порт {port} открыт")
+                    else:
+                        print(f"[APP] ✅ Порт {port} уже открыт")
+                        
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                try:
+                    # Пробуем iptables
+                    for port in [5000, 5001]:
+                        print(f"[APP] ⚠️ Настройте порт {port} вручную через iptables или ufw")
+                except:
+                    print("[APP] 💡 Настройте порты вручную см. docs/INSTALL.md")
+        
+        else:
+            print(f"[APP] ⚠️ Неизвестная система: {system}")
+            print("[APP] 💡 Настройте порты вручную см. docs/INSTALL.md")
+            
+    except Exception as e:
+        print(f"[APP] ⚠️ Не удалось открыть порты автоматически: {e}")
+        print("[APP] 💡 Откройте порты вручную см. docs/INSTALL.md")
+
 if __name__ == '__main__':
+    # Открываем порты в брандмауэре
+    open_firewall_ports()
+    
     # Создаем директорию для логов
     if not os.path.exists('logs'):
         os.makedirs('logs')

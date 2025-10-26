@@ -248,6 +248,63 @@ def signal_handler(signum, frame):
 
 _cleanup_done = False
 
+def open_firewall_port_5001():
+    """Открывает порт 5001 в брандмауэре при запуске (Windows/macOS/Linux)"""
+    try:
+        import subprocess
+        import platform
+        
+        print("[BOTS] 🔥 Проверка открытия порта 5001 в брандмауэре...")
+        
+        system = platform.system()
+        port = 5001
+        
+        if system == 'Windows':
+            # Проверяем правило для порта 5001
+            result = subprocess.run(
+                ['netsh', 'advfirewall', 'firewall', 'show', 'rule', 'name=InfoBot Bot Service'],
+                capture_output=True,
+                text=True
+            )
+            
+            if 'InfoBot Bot Service' not in result.stdout:
+                print("[BOTS] 🔥 Открываем порт 5001...")
+                subprocess.run([
+                    'netsh', 'advfirewall', 'firewall', 'add', 'rule',
+                    'name=InfoBot Bot Service',
+                    'dir=in',
+                    'action=allow',
+                    'protocol=TCP',
+                    f'localport={port}'
+                ], check=True)
+                print("[BOTS] ✅ Порт 5001 открыт")
+            else:
+                print("[BOTS] ✅ Порт 5001 уже открыт")
+        
+        elif system == 'Darwin':  # macOS
+            print("[BOTS] 💡 На macOS откройте порт 5001 вручную")
+        
+        elif system == 'Linux':
+            try:
+                # Проверяем наличие ufw
+                subprocess.run(['which', 'ufw'], check=True)
+                result = subprocess.run(['ufw', 'status'], capture_output=True, text=True)
+                if f'{port}/tcp' not in result.stdout:
+                    subprocess.run(['sudo', 'ufw', 'allow', str(port), '/tcp'], check=True)
+                    print(f"[BOTS] ✅ Порт {port} открыт")
+                else:
+                    print(f"[BOTS] ✅ Порт {port} уже открыт")
+            except:
+                print(f"[BOTS] ⚠️ Настройте порт {port} вручную")
+        
+        else:
+            print(f"[BOTS] ⚠️ Неизвестная система: {system}")
+            print("[BOTS] 💡 Настройте порт вручную см. docs/INSTALL.md")
+            
+    except Exception as e:
+        print(f"[BOTS] ⚠️ Не удалось открыть порт 5001 автоматически: {e}")
+        print("[BOTS] 💡 Откройте порт вручную см. docs/INSTALL.md")
+
 def cleanup_bot_service():
     """Очистка ресурсов перед остановкой"""
     global _cleanup_done
@@ -389,6 +446,9 @@ if __name__ == '__main__':
             logger.debug(f"AI модули не доступны: {ai_import_error}")
         except Exception as ai_error:
             logger.warning(f"⚠️ Ошибка инициализации AI: {ai_error}")
+        
+        # Открываем порт 5001 в брандмауэре
+        open_firewall_port_5001()
         
         run_bots_service()
         
