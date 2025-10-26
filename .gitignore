@@ -3,6 +3,9 @@
 # ===========================================
 __pycache__/
 *.py[cod]
+# ВАЖНО: Скомпилированные .pyc файлы для лицензирования НУЖНЫ
+!scripts/hardware_id.pyc
+!bot_engine/ai/ai_manager.pyc
 *$py.class
 *.so
 .Python
@@ -411,7 +414,5 @@ data/telegram_states.json
 # User-specific files
 *.lic
 license_generator/generated_licenses/
-
-# ВАЖНО: НЕ исключаем license_generator/ полностью - там нужные файлы генерации!
-# license_generator/  # УДАЛЕНО - нужно копировать generate_license.py, license_manager.py и т.д.
+license_generator/
 
