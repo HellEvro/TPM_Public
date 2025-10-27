@@ -758,43 +758,71 @@ def create_bot_endpoint():
         # Создаем бота
         bot_config = create_bot(symbol, config, exchange_obj=get_exchange())
         
-        # ✅ КРИТИЧНО: Немедленно входим в позицию если есть сигнал!
+        # ✅ Проверяем: есть ли уже позиция на бирже для этой монеты?
+        has_existing_position = False
         try:
-            # Получаем текущий сигнал для монеты
-            with rsi_data_lock:
-                coin_data = coins_rsi_data['coins'].get(symbol)
-                if coin_data and coin_data.get('signal') in ['ENTER_LONG', 'ENTER_SHORT']:
-                    signal = coin_data.get('signal')
-                    direction = 'LONG' if signal == 'ENTER_LONG' else 'SHORT'
-                    
-                    logger.info(f"[BOT_CREATE] 🚀 НЕМЕДЛЕННО входим в {direction} позицию для {symbol}")
-                    
-                    # ✅ ПРЯМОЙ ВЫЗОВ: Создаем объект бота и сразу входим в позицию
-                    from bots_modules.bot_class import NewTradingBot
-                    bot_instance = NewTradingBot(symbol, bot_config, get_exchange())
-                    
-                    # НЕМЕДЛЕННО входим в позицию
-                    result = bot_instance.enter_position(direction)
-                    if result:
-                        logger.info(f"[BOT_CREATE] ✅ Успешно вошли в {direction} позицию для {symbol}")
-                        # Обновляем bots_data с новым состоянием
-                        with bots_data_lock:
-                            bots_data['bots'][symbol] = bot_instance.to_dict()
-                    else:
-                        logger.error(f"[BOT_CREATE] ❌ НЕ УДАЛОСЬ войти в {direction} позицию для {symbol}")
-                else:
-                    logger.info(f"[BOT_CREATE] ℹ️ Нет активного сигнала для {symbol}, бот будет ждать")
+            from bots_modules.imports_and_globals import positions_cache
+            if symbol in positions_cache.get('symbols_with_positions', []):
+                has_existing_position = True
+                logger.info(f"[BOT_CREATE] 🔍 {symbol}: Обнаружена существующая позиция на бирже - просто синхронизируем")
         except Exception as e:
-            logger.error(f"[BOT_CREATE] ❌ Ошибка немедленного входа в позицию: {e}")
+            logger.debug(f"[BOT_CREATE] Не удалось проверить существующую позицию: {e}")
         
-        logger.info(f"[BOT_CREATE] ✅ Бот для {symbol} создан и запущен")
-        logger.info(f"[BOT_CREATE] Статус: {bot_config.get('status', 'UNKNOWN')}")
-        logger.info(f"[BOT_CREATE] ID бота: {bot_config.get('id', 'UNKNOWN')}")
+        # ✅ Возвращаем ответ БЫСТРО
+        logger.info(f"[BOT_CREATE] ✅ Бот для {symbol} создан")
+        
+        # ✅ Запускаем вход в позицию АСИНХРОННО (только если НЕТ существующей позиции!)
+        if not has_existing_position:
+            def enter_position_async():
+                try:
+                    with rsi_data_lock:
+                        coin_data = coins_rsi_data['coins'].get(symbol)
+                        if coin_data and coin_data.get('signal') in ['ENTER_LONG', 'ENTER_SHORT']:
+                            signal = coin_data.get('signal')
+                            direction = 'LONG' if signal == 'ENTER_LONG' else 'SHORT'
+                            
+                            logger.info(f"[BOT_CREATE_ASYNC] 🚀 Входим в {direction} позицию для {symbol}")
+                            
+                            from bots_modules.bot_class import NewTradingBot
+                            bot_instance = NewTradingBot(symbol, bot_config, get_exchange())
+                            
+                            result = bot_instance.enter_position(direction)
+                            if result:
+                                logger.info(f"[BOT_CREATE_ASYNC] ✅ Успешно вошли в {direction} позицию для {symbol}")
+                                with bots_data_lock:
+                                    bots_data['bots'][symbol] = bot_instance.to_dict()
+                            else:
+                                logger.error(f"[BOT_CREATE_ASYNC] ❌ НЕ УДАЛОСЬ войти в {direction} позицию для {symbol}")
+                        else:
+                            logger.info(f"[BOT_CREATE_ASYNC] ℹ️ Нет активного сигнала для {symbol}, бот будет ждать")
+                except Exception as e:
+                    logger.error(f"[BOT_CREATE_ASYNC] ❌ Ошибка входа в позицию: {e}")
+            
+            # Запускаем асинхронно
+            thread = threading.Thread(target=enter_position_async)
+            thread.daemon = True
+            thread.start()
+        else:
+            # ✅ Для существующей позиции - просто запускаем синхронизацию
+            logger.info(f"[BOT_CREATE] 🔄 {symbol}: Запускаем синхронизацию существующей позиции...")
+            
+            def sync_existing_position():
+                try:
+                    from bots_modules.sync_and_cache import sync_bots_with_exchange
+                    sync_bots_with_exchange()
+                    logger.info(f"[BOT_CREATE_ASYNC] ✅ Синхронизация позиции {symbol} завершена")
+                except Exception as e:
+                    logger.error(f"[BOT_CREATE_ASYNC] ❌ Ошибка синхронизации: {e}")
+            
+            thread = threading.Thread(target=sync_existing_position)
+            thread.daemon = True
+            thread.start()
         
         return jsonify({
             'success': True,
             'message': f'Бот для {symbol} создан успешно',
-            'bot': bot_config
+            'bot': bot_config,
+            'existing_position': has_existing_position
         })
         
     except Exception as e:

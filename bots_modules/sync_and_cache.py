@@ -1991,7 +1991,10 @@ def sync_bots_with_exchange():
                             'side': position.get("side"),
                             'avg_price': float(position.get("avgPrice", 0)),
                             'unrealized_pnl': float(position.get("unrealisedPnl", 0)),
-                            'position_value': float(position.get("positionValue", 0))
+                            'position_value': float(position.get("positionValue", 0)),
+                            'stop_loss': position.get("stopLoss", ''),
+                            'take_profit': position.get("takeProfit", ''),
+                            'mark_price': position.get("markPrice", 0)
                         }
                         total_positions += 1
                 
@@ -2040,6 +2043,14 @@ def sync_bots_with_exchange():
                             bot_data['entry_price'] = exchange_pos['avg_price']
                             bot_data['unrealized_pnl'] = exchange_pos['unrealized_pnl']
                             bot_data['position_side'] = 'LONG' if exchange_pos['side'] == 'Buy' else 'SHORT'
+                            
+                            # Сохраняем стопы и тейки из биржи
+                            if exchange_pos.get('stop_loss'):
+                                bot_data['stop_loss'] = exchange_pos['stop_loss']
+                            if exchange_pos.get('take_profit'):
+                                bot_data['take_profit'] = exchange_pos['take_profit']
+                            if exchange_pos.get('mark_price'):
+                                bot_data['current_price'] = exchange_pos['mark_price']
                             
                             # Определяем статус на основе наличия позиции (НЕ ИЗМЕНЯЕМ если бот на паузе!)
                             if not is_paused:
