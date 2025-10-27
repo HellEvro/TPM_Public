@@ -112,7 +112,7 @@ from functools import partial
 # from bot_engine.bot_manager import BotManager  # Убираем - теперь в отдельном сервисе
 
 # Добавим константы
-BOTS_SERVICE_URL = 'http://127.0.0.1:5001'
+# BOTS_SERVICE_URL теперь определяется динамически на клиенте через JavaScript
 class DEFAULTS:
     PNL_THRESHOLD = 100
 
@@ -1036,7 +1036,9 @@ def background_cache_cleanup():
 def call_bots_service(endpoint, method='GET', data=None, timeout=10):
     """Универсальная функция для вызова API сервиса ботов"""
     try:
-        url = f"{BOTS_SERVICE_URL}{endpoint}"
+        # Определяем URL сервиса ботов динамически
+        bots_service_url = request.headers.get('X-Bots-Service-URL', 'http://127.0.0.1:5001')
+        url = f"{bots_service_url}{endpoint}"
         
         if method == 'GET':
             response = requests.get(url, timeout=timeout)

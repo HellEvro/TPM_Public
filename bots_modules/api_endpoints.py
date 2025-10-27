@@ -1228,7 +1228,9 @@ def log_config_change(key, old_value, new_value, description=""):
         arrow = '→'
         # Используем понятное название из словаря или техническое название
         display_name = description or CONFIG_NAMES.get(key, key)
-        # Используем print напрямую для ANSI кодов, чтобы обойти логгер
+        # КРИТИЧЕСКИ ВАЖНО: Используем logger для записи в файл
+        logger.info(f"[CONFIG] ✓ {display_name}: {old_value} {arrow} {new_value}")
+        # Дополнительно выводим на экран с ANSI кодами
         print(f"\033[92m[CONFIG] ✓ {display_name}: {old_value} {arrow} {new_value}\033[0m")
         return True
     return False
@@ -2041,8 +2043,16 @@ def auto_bot_config():
                 })
         
         elif request.method == 'POST':
-            data = request.get_json()
+            # Добавляем логирование для отладки
+            try:
+                data = request.get_json()
+                logger.debug(f"[CONFIG_API] 📦 Получены данные: {data}")
+            except Exception as json_error:
+                logger.error(f"[CONFIG_API] ❌ Ошибка парсинга JSON: {json_error}")
+                return jsonify({'success': False, 'error': f'Invalid JSON: {str(json_error)}'}), 400
+            
             if not data:
+                logger.error("[CONFIG_API] ❌ Пустые данные!")
                 return jsonify({'success': False, 'error': 'No data provided'}), 400
             
             # Проверяем изменение критериев зрелости

@@ -401,13 +401,23 @@ def save_bots_state():
             'version': '1.0'
         }
         
-        # Сохраняем состояние всех ботов
-        with bots_data_lock:
+        # ✅ ИСПРАВЛЕНИЕ: Используем таймаут для блокировки чтобы не висеть при остановке
+        import threading
+        
+        # Пытаемся захватить блокировку с таймаутом
+        acquired = bots_data_lock.acquire(timeout=2.0)
+        if not acquired:
+            logger.warning("[SAVE_STATE] ⚠️ Не удалось получить блокировку за 2 секунды - пропускаем сохранение")
+            return False
+        
+        try:
             for symbol, bot_data in bots_data['bots'].items():
                 state_data['bots'][symbol] = bot_data
             
             # Сохраняем конфигурацию Auto Bot
             state_data['auto_bot_config'] = bots_data['auto_bot_config'].copy()
+        finally:
+            bots_data_lock.release()
         
         # Записываем в файл
         with open(BOTS_STATE_FILE, 'w', encoding='utf-8') as f:

@@ -101,6 +101,8 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'exit_scam_single_candle_percent': 15,  # Максимальный % изменения одной свечи (15% = блокировка)
     'exit_scam_multi_candle_count': 4,        # Количество свечей для суммарного анализа
     'exit_scam_multi_candle_percent': 50,   # Максимальный суммарный % за N свечей (50% = блокировка)
+    # 🤖 ИИ настройки (премиум функции)
+    'ai_optimal_entry_enabled': False,  # ИИ определение оптимальной точки входа (выкл. по умолчанию)
 }
 
 # Настройки по умолчанию для отдельного бота
@@ -206,7 +208,7 @@ class RiskConfig:
     STOP_ANALYSIS_ENABLED = True       # Анализ стопов для обучения ИИ
     BACKTEST_ENABLED = True            # Бэктестинг перед входом
     SMART_RISK_MANAGEMENT = True       # Умный риск-менеджмент с бэктестом
-    AI_OPTIMAL_ENTRY_ENABLED = False   # 🤖 ИИ определение оптимальной точки входа (выкл. по умолчанию)
+    AI_OPTIMAL_ENTRY_ENABLED = True
 
 # Настройки фильтров
 class FilterConfig:
@@ -250,18 +252,18 @@ class AIConfig:
     AI_ANOMALY_BLOCK_THRESHOLD = 0.7
     
     # LSTM Predictor - предсказание движения цены
-    AI_LSTM_ENABLED = True  # Включено для увеличения прибыли
+    AI_LSTM_ENABLED = True
     AI_LSTM_MODEL_PATH = 'data/ai/models/lstm_predictor.keras'  # ✅ Keras 3 формат
     AI_LSTM_SCALER_PATH = 'data/ai/models/lstm_scaler.pkl'
-    AI_LSTM_WEIGHT = 1.5  # Вес в голосовании (если уверенность > 0.7)
-    AI_LSTM_MIN_CONFIDENCE = 0.6  # Минимальная уверенность для применения
+    AI_LSTM_WEIGHT = 1.5
+    AI_LSTM_MIN_CONFIDENCE = 0.6
     
     # Pattern Recognition - распознавание графических паттернов
-    AI_PATTERN_ENABLED = True  # Включено для увеличения прибыли
+    AI_PATTERN_ENABLED = True
     AI_PATTERN_MODEL_PATH = 'data/ai/models/pattern_detector.pkl'
     AI_PATTERN_SCALER_PATH = 'data/ai/models/pattern_scaler.pkl'
-    AI_PATTERN_WEIGHT = 1.2  # Вес в голосовании
-    AI_PATTERN_MIN_CONFIDENCE = 0.6  # Минимальная уверенность для применения
+    AI_PATTERN_WEIGHT = 1.2
+    AI_PATTERN_MIN_CONFIDENCE = 0.6
     
     # Dynamic Risk Management - умный SL/TP
     AI_RISK_MANAGEMENT_ENABLED = True

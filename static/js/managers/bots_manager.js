@@ -275,17 +275,11 @@ class BotsManager {
                 console.log('[BotsManager] 🎛️ Переключение на вкладку КОНФИГУРАЦИЯ');
                 // Применяем стили при открытии конфигурации
                 setTimeout(() => this.applyReadabilityStyles(), 100);
-                // Показываем индикатор загрузки
-                this.showConfigurationLoading(true);
-                console.log('[BotsManager] ⏳ Индикатор загрузки включен');
-                // Загружаем текущую конфигурацию с задержкой для DOM
-                setTimeout(() => {
-                    console.log('[BotsManager] 📋 Загружаем конфигурацию для вкладки config...');
-                    this.loadConfigurationData().finally(() => {
-                        console.log('[BotsManager] ✅ Загрузка конфигурации завершена, скрываем индикатор');
-                        this.showConfigurationLoading(false);
-                    });
-                }, 200);
+                // БЕЗ БЛОКИРОВКИ: Загружаем конфигурацию асинхронно
+                console.log('[BotsManager] 📋 Загружаем конфигурацию для вкладки config...');
+                this.loadConfigurationData();
+                // ✅ КРИТИЧЕСКИ ВАЖНО: Сразу разблокируем элементы
+                this.showConfigurationLoading(false);
                 break;
             case 'active-bots':
             case 'activeBotsTab':
@@ -5041,33 +5035,28 @@ class BotsManager {
     // ==========================================
     
     showConfigurationLoading(show) {
+        // ✅ БЕЗ БЛОКИРОВКИ: Просто логируем, но не блокируем элементы
         const configContainer = document.getElementById('configTab');
         if (!configContainer) return;
         
         if (show) {
-            // Добавляем класс загрузки
+            // Добавляем класс загрузки для визуального индикатора
             configContainer.classList.add('loading');
-            
-            // Отключаем все поля ввода
-            const inputs = configContainer.querySelectorAll('input, select, button:not(.scope-btn)');
-            inputs.forEach(input => {
-                input.disabled = true;
-                input.style.opacity = '0.6';
-            });
-            
             console.log('[BotsManager] ⏳ Конфигурация загружается...');
         } else {
             // Убираем класс загрузки
             configContainer.classList.remove('loading');
-            
-            // Включаем все поля ввода
-            const inputs = configContainer.querySelectorAll('input, select, button');
-            inputs.forEach(input => {
-                input.disabled = false;
-                input.style.opacity = '1';
-            });
-            
             console.log('[BotsManager] ✅ Конфигурация загружена');
+            
+            // ✅ КРИТИЧЕСКИ ВАЖНО: Убеждаемся что все элементы разблокированы
+            const allInputs = configContainer.querySelectorAll('input, select, textarea, button');
+            allInputs.forEach(el => {
+                el.removeAttribute('disabled');
+                el.disabled = false;
+                el.style.pointerEvents = 'auto';
+                el.style.opacity = '1';
+                el.style.cursor = 'pointer';
+            });
         }
     }
     
@@ -5523,7 +5512,7 @@ class BotsManager {
     
     // ✅ ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ОТПРАВКИ КОНФИГУРАЦИИ
     async sendConfigUpdate(endpoint, data, sectionName) {
-        this.showConfigurationLoading(true);
+        // БЕЗ БЛОКИРОВКИ - элементы остаются активными!
         
         try {
             const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/${endpoint}`, {
@@ -5538,8 +5527,9 @@ class BotsManager {
             } else {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-        } finally {
-            this.showConfigurationLoading(false);
+        } catch (error) {
+            console.error(`[BotsManager] ❌ Ошибка сохранения ${sectionName}:`, error);
+            this.showNotification(`❌ Ошибка: ${error.message}`, 'error');
         }
     }
 
@@ -5556,8 +5546,7 @@ class BotsManager {
             console.log('  enhanced_rsi_require_divergence_confirmation:', config.autoBot.enhanced_rsi_require_divergence_confirmation);
             console.log('  enhanced_rsi_use_stoch_rsi:', config.autoBot.enhanced_rsi_use_stoch_rsi);
             
-            // Показываем индикатор загрузки
-            this.showConfigurationLoading(true);
+            // БЕЗ БЛОКИРОВКИ - элементы остаются активными!
             
             // Сохраняем Auto Bot настройки
             const autoBotResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/auto-bot`, {
@@ -5607,8 +5596,6 @@ class BotsManager {
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка сохранения конфигурации:', error);
             this.showNotification('❌ Ошибка сохранения конфигурации: ' + error.message, 'error');
-        } finally {
-            this.showConfigurationLoading(false);
         }
     }
     

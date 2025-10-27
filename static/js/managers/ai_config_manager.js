@@ -4,11 +4,13 @@
 
 class AIConfigManager {
     constructor() {
-        this.BOTS_SERVICE_URL = window.CONFIG?.BOTS_SERVICE_URL || 'http://localhost:5001';
+        // Используем тот же способ определения URL что и в bots_manager.js
+        this.BOTS_SERVICE_URL = `${window.location.protocol}//${window.location.hostname}:5001`;
         this.aiConfig = null;
         this.licenseInfo = null;
         
         console.log('[AIConfigManager] Инициализация...');
+        console.log('[AIConfigManager] BOTS_SERVICE_URL:', this.BOTS_SERVICE_URL);
     }
     
     /**
@@ -22,11 +24,13 @@ class AIConfigManager {
             await this.loadAIConfig();
             
             // Если лицензия валидна, показываем блок AI
+            console.log('[AIConfigManager] 📊 Проверка лицензии:', this.licenseInfo);
             if (this.licenseInfo && this.licenseInfo.valid) {
+                console.log('[AIConfigManager] ✅ Лицензия валидна - показываем AI блок');
                 this.showAIConfigSection();
                 this.bindEvents();
             } else {
-                console.log('[AIConfigManager] AI недоступен (нет лицензии)');
+                console.log('[AIConfigManager] ❌ AI недоступен (нет лицензии или невалидная лицензия)');
                 this.hideAIConfigSection();
             }
         } catch (error) {

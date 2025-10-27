@@ -393,12 +393,18 @@ if __name__ == '__main__':
         
         load_auto_bot_config()
         
-        try:
-            init_bot_service()
-        except Exception as init_error:
-            logger.error(f"Ошибка инициализации (продолжаем запуск): {init_error}")
-            import traceback
-            traceback.print_exc()
+        # Инициализируем ботов в отдельном потоке, чтобы не блокировать запуск сервера
+        def init_bots_async():
+            try:
+                init_bot_service()
+            except Exception as init_error:
+                logger.error(f"Ошибка инициализации (продолжаем запуск): {init_error}")
+                import traceback
+                traceback.print_exc()
+        
+        init_thread = threading.Thread(target=init_bots_async, daemon=True)
+        init_thread.start()
+        logger.info("🔧 Инициализация ботов начата в фоне...")
         
         # ✅ Optimal EMA Worker - расчет оптимальных EMA в фоне
         from bot_engine.optimal_ema_worker import start_optimal_ema_worker

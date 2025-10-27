@@ -7318,5 +7318,29 @@
     "last_updated": "2025-10-26T16:38:11.319171",
     "candles_analyzed": 2211,
     "analysis_method": "trend_confirmation"
+  },
+  "RIVER": {
+    "ema_short_period": 13,
+    "ema_long_period": 150,
+    "accuracy": 100.0,
+    "total_signals": 19,
+    "correct_signals": 19,
+    "long_signals": 0,
+    "short_signals": 19,
+    "last_updated": "2025-10-28T01:53:49.679139",
+    "candles_analyzed": 253,
+    "analysis_method": "trend_confirmation"
+  },
+  "TURTLE": {
+    "ema_short_period": 91,
+    "ema_long_period": 100,
+    "accuracy": 100.0,
+    "total_signals": 43,
+    "correct_signals": 43,
+    "long_signals": 43,
+    "short_signals": 0,
+    "last_updated": "2025-10-28T01:53:57.080073",
+    "candles_analyzed": 253,
+    "analysis_method": "trend_confirmation"
   }
 }
