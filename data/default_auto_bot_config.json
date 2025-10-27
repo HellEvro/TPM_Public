@@ -16,7 +16,6 @@
   "use_test_server": false,
   "max_risk_per_trade": 2,
   "max_loss_percent": 15,
-  "take_profit_percent": 100,
   "trailing_stop_activation": 50,
   "trailing_stop_distance": 15,
   "max_position_hours": 0,

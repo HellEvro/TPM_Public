@@ -68,6 +68,46 @@ except ImportError as e:
     def process_auto_bot_signals(exchange_obj=None):
         pass
 
+def log_system_status(cycle_count, auto_bot_enabled, check_interval_seconds):
+    """Логирует компактный статус системы с ключевой информацией"""
+    try:
+        from bots_modules.imports_and_globals import mature_coins_storage, bots_data_lock
+        
+        with bots_data_lock:
+            # Подсчитываем ботов
+            total_bots = len(bots_data.get('bots', {}))
+            active_bots = sum(1 for bot in bots_data['bots'].values() 
+                            if bot.get('status') not in ['paused', 'idle'])
+            in_position = sum(1 for bot in bots_data['bots'].values() 
+                            if bot.get('status') in ['in_position_long', 'in_position_short'])
+            
+            # Зрелые монеты
+            mature_count = len(mature_coins_storage)
+            
+            # AI Status
+            try:
+                from bot_engine.ai.risk_manager import DynamicRiskManager
+                ai_status = "✅ AI доступен"
+            except:
+                ai_status = "❌ AI недоступен"
+            
+            # Exchange
+            exchange_status = "✅ Подключена" if exchange else "❌ Не подключена"
+            
+            # Компактный статус
+            logger.info("=" * 80)
+            logger.info("📊 СТАТУС СИСТЕМЫ")
+            logger.info("=" * 80)
+            logger.info(f"🤖 Боты: {total_bots} всего | {active_bots} активных | {in_position} в позиции")
+            logger.info(f"💰 Зрелые монеты: {mature_count}")
+            logger.info(f"{'🎯' if auto_bot_enabled else '⏹️'}  AutoBot: {'ON' if auto_bot_enabled else 'OFF'} (интервал: {check_interval_seconds}s)")
+            logger.info(f"💡 AI: {ai_status}")
+            logger.info(f"🌐 Биржа: {exchange_status}")
+            logger.info("=" * 80)
+            
+    except Exception as e:
+        logger.debug(f"[STATUS] Ошибка формирования статуса: {e}")
+
 def auto_save_worker():
     """Воркер для автоматического сохранения состояния согласно конфигурации"""
     interval = SystemConfig.AUTO_SAVE_INTERVAL
@@ -137,20 +177,15 @@ def auto_bot_worker():
     while not shutdown_flag.is_set():
         try:
             cycle_count += 1
-            logger.info(f"[AUTO_BOT] 🔄 ЦИКЛ #{cycle_count} НАЧАТ")
             
             # Получаем интервал проверки из конфигурации (в секундах)
             # ⚡ БЕЗ БЛОКИРОВКИ: GIL делает чтение атомарным
             check_interval_seconds = bots_data['auto_bot_config']['check_interval']
             auto_bot_enabled = bots_data['auto_bot_config']['enabled']
             
-            # 🔍 ОТЛАДКА: логируем текущее значение enabled
-            if cycle_count % 60 == 1:  # Каждые 60 циклов (раз в минуту)
-                logger.info(f"[AUTO_BOT] 🔍 DEBUG: auto_bot_enabled = {auto_bot_enabled}, check_interval = {check_interval_seconds}s")
-            
-            # ✅ КРИТИЧНО: Обновляем позиции каждую секунду независимо от check_interval!
-            # Не ждем check_interval_seconds - это только для проверки сигналов автобота
-            logger.info(f"[AUTO_BOT] ⏳ Обновляем позиции каждую секунду...")
+            # Логируем статус раз в 5 минут с важной информацией
+            if cycle_count % 300 == 1:
+                log_system_status(cycle_count, auto_bot_enabled, check_interval_seconds)
             
             # Ждем только 1 секунду для обновления позиций
             if shutdown_flag.wait(1):
@@ -161,21 +196,9 @@ def auto_bot_worker():
             time_since_auto_bot_check = current_time - last_auto_bot_check
             
             if auto_bot_enabled and time_since_auto_bot_check >= check_interval_seconds:
-                # Подавляем частые сообщения о проверке сигналов
-                should_log, log_message = should_log_message(
-                    'auto_bot_signals', 
-                    f"🔍 Регулярная проверка Auto Bot сигналов (каждые {check_interval_seconds} сек)",
-                    interval_seconds=300  # Логируем раз в 5 минут
-                )
-                if should_log:
-                    logger.info(f"[AUTO_BOT] {log_message}")
-                
-                # 💡 ДАННЫЕ ОБНОВЛЯЮТСЯ НЕПРЕРЫВНЫМ ЗАГРУЗЧИКОМ
-                # Автобот просто использует актуальные данные из глобального хранилища
-                logger.info(f"[AUTO_BOT] 🚀 Проверяем сигналы на актуальных данных из хранилища...")
+                logger.debug(f"[AUTO_BOT] Проверяем сигналы...")
                 from bots_modules.imports_and_globals import get_exchange
                 process_auto_bot_signals(exchange_obj=get_exchange())
-                logger.info(f"[AUTO_BOT] ✅ process_auto_bot_signals завершена")
                 
                 # Обновляем время последней проверки сигналов
                 last_auto_bot_check = current_time
@@ -189,7 +212,7 @@ def auto_bot_worker():
                     'enabled': True
                 })
             else:
-                logger.info(f"[AUTO_BOT] ⏹️ Auto Bot выключен, пропускаем проверку (следующая через {check_interval_seconds} сек)")
+                logger.debug(f"[AUTO_BOT] Выключен, пропускаем проверку")
                 update_process_state('auto_bot_worker', {
                     'last_check': datetime.now().isoformat(),
                     'enabled': False,
@@ -199,70 +222,30 @@ def auto_bot_worker():
             # Обновляем статус позиций каждые BOT_STATUS_UPDATE_INTERVAL секунд (независимо от Auto Bot)
             current_time = time.time()
             time_since_last_update = current_time - last_position_update
-            # Подавляем частые сообщения о времени обновления
-            should_log_time, log_time_message = should_log_message(
-                'position_update_time', 
-                f"Время с последнего обновления: {time_since_last_update:.1f}с (нужно {SystemConfig.BOT_STATUS_UPDATE_INTERVAL}с)",
-                interval_seconds=300  # Логируем раз в 5 минут
-            )
-            if should_log_time:
-                logger.info(f"[POSITION_UPDATE] {log_time_message}")
             
             if time_since_last_update >= SystemConfig.BOT_STATUS_UPDATE_INTERVAL:
-                # Подавляем частые сообщения об обновлении кэша
-                should_log, log_message = should_log_message(
-                    'position_update', 
-                    f"🔄 Обновление кэшированных данных ботов (каждые {SystemConfig.BOT_STATUS_UPDATE_INTERVAL} сек)",
-                    interval_seconds=300  # Логируем раз в 5 минут
-                )
-                if should_log:
-                    logger.info(f"[BOTS_CACHE] {log_message}")
-                
-                logger.info(f"[WORKER] 🔄 [1/3] НАЧАЛО: update_bots_cache_data()")
-                worker_t_start = time.time()  # time уже импортирован в начале файла
+                # Логируем только при медленном обновлении (проблема!)
+                worker_t_start = time.time()
                 update_bots_cache_data()
-                worker_t_end = time.time()
-                execution_time = worker_t_end - worker_t_start
-                logger.info(f"[WORKER] ✅ [1/3] КОНЕЦ: update_bots_cache_data() за {execution_time:.1f}с")
+                execution_time = time.time() - worker_t_start
                 
-                # Предупреждение если обновление занимает слишком много времени
-                if execution_time > 0.9:  # Если больше 0.9 секунды
-                    logger.warning(f"[WORKER] ⚠️ МЕДЛЕННОЕ ОБНОВЛЕНИЕ: {execution_time:.1f}с (может нарушить интервал в 1с)")
+                # Предупреждение только если ОЧЕНЬ медленно
+                if execution_time > 2.0:  # Если больше 2 секунд
+                    logger.warning(f"[WORKER] ⚠️ Очень медленное обновление: {execution_time:.1f}с")
                 
                 last_position_update = current_time
             
             # Устанавливаем недостающие стоп-лоссы каждые SystemConfig.STOP_LOSS_SETUP_INTERVAL секунд
             time_since_stop_setup = current_time - last_stop_loss_setup
             if time_since_stop_setup >= SystemConfig.STOP_LOSS_SETUP_INTERVAL:
-                logger.info(f"[WORKER] 🔧 [2/3] НАЧАЛО: check_missing_stop_losses()")
-                worker_t_start2 = time.time()
                 check_missing_stop_losses()
-                logger.info(f"[WORKER] ✅ [2/3] КОНЕЦ: check_missing_stop_losses() за {time.time()-worker_t_start2:.1f}с")
                 last_stop_loss_setup = current_time
-            
-            # Умная синхронизация позиций с биржей каждые SystemConfig.POSITION_SYNC_INTERVAL секунд - ВРЕМЕННО ОТКЛЮЧЕНА
-            # time_since_sync = current_time - last_position_sync
-            # if time_since_sync >= SystemConfig.POSITION_SYNC_INTERVAL:
-            #     logger.info(f"[POSITION_SYNC] 🔄 Синхронизация позиций с биржей (каждые {SystemConfig.POSITION_SYNC_INTERVAL//60} мин)")
-            #     sync_positions_with_exchange()
-            #     last_position_sync = current_time
             
             # Очищаем неактивные боты каждые SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL секунд
             time_since_cleanup = current_time - last_inactive_cleanup
             if time_since_cleanup >= SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL:
-                logger.info(f"[WORKER] 🧹 [3a/3] НАЧАЛО: cleanup_inactive_bots()")
-                t_start = time.time()
                 cleanup_inactive_bots()
-                logger.info(f"[WORKER] ✅ [3a/3] КОНЕЦ: cleanup_inactive_bots() за {time.time()-t_start:.1f}с")
-                
-                # УДАЛЕНО: Очистка зрелых монет - зрелость необратима!
-                
-                # Активируем правила торговли для зрелых монет
-                logger.info(f"[WORKER] 🎯 [3b/3] НАЧАЛО: check_trading_rules_activation()")
-                t_start = time.time()
                 check_trading_rules_activation()
-                logger.info(f"[WORKER] ✅ [3b/3] КОНЕЦ: check_trading_rules_activation() за {time.time()-t_start:.1f}с")
-                
                 last_inactive_cleanup = current_time
             
             # ✅ ПРОВЕРКА ДЕЛИСТИНГА: Каждые 10 минут проверяем делистинг и закрываем позиции
@@ -270,11 +253,8 @@ def auto_bot_worker():
             time_since_delisting_check = current_time - last_delisting_check
             
             if time_since_delisting_check >= 600:  # 10 минут = 600 секунд
-                logger.info(f"[WORKER] 🚨 [DELISTING] НАЧАЛО: check_delisting_emergency_close()")
-                t_start = time.time()
+                logger.debug("[DELISTING] Проверка делистинга...")
                 check_delisting_emergency_close()
-                logger.info(f"[WORKER] ✅ [DELISTING] КОНЕЦ: check_delisting_emergency_close() за {time.time()-t_start:.1f}с")
-                
                 last_delisting_check = current_time
             
         except Exception as e:

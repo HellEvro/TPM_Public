@@ -280,7 +280,7 @@ def save_system_config(config_data):
         with open(SYSTEM_CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(config_data, f, indent=2, ensure_ascii=False)
         
-        logger.info(f"[SYSTEM_CONFIG] ✅ Системные настройки сохранены в {SYSTEM_CONFIG_FILE}")
+        logger.debug(f"[SYSTEM_CONFIG] Сохранены настройки")
         return True
         
     except Exception as e:
@@ -290,25 +290,14 @@ def save_system_config(config_data):
 def load_system_config():
     """Загружает системные настройки из файла"""
     try:
-        logger.info(f"[SYSTEM_CONFIG] 🔄 Начинаем загрузку конфигурации из {SYSTEM_CONFIG_FILE}")
+        logger.debug(f"[SYSTEM_CONFIG] Загрузка конфигурации из {SYSTEM_CONFIG_FILE}")
         if os.path.exists(SYSTEM_CONFIG_FILE):
             with open(SYSTEM_CONFIG_FILE, 'r', encoding='utf-8') as f:
                 config_data = json.load(f)
                 
-                logger.info(f"[SYSTEM_CONFIG] 📁 Загружен файл: {SYSTEM_CONFIG_FILE}")
-                logger.info(f"[SYSTEM_CONFIG] 📊 Содержимое: {config_data}")
-                
                 # Применяем загруженные настройки к SystemConfig
                 if 'rsi_update_interval' in config_data:
-                    old_value = SystemConfig.RSI_UPDATE_INTERVAL
-                    new_value = int(config_data['rsi_update_interval'])
-                    if old_value != new_value:
-                        SystemConfig.RSI_UPDATE_INTERVAL = new_value
-                        logger.info(f"[SYSTEM_CONFIG] 🔄 RSI интервал изменен: {old_value} → {new_value}")
-                    else:
-                        SystemConfig.RSI_UPDATE_INTERVAL = new_value
-                else:
-                    logger.info(f"[SYSTEM_CONFIG] 📝 rsi_update_interval не найден в конфигурации, используется значение по умолчанию: {SystemConfig.RSI_UPDATE_INTERVAL}")
+                    SystemConfig.RSI_UPDATE_INTERVAL = int(config_data['rsi_update_interval'])
                 
                 if 'auto_save_interval' in config_data:
                     SystemConfig.AUTO_SAVE_INTERVAL = int(config_data['auto_save_interval'])
@@ -326,40 +315,16 @@ def load_system_config():
                 # ✅ INACTIVE_BOT_TIMEOUT теперь в SystemConfig
                 
                 if 'stop_loss_setup_interval' in config_data:
-                    old_value = SystemConfig.STOP_LOSS_SETUP_INTERVAL
-                    new_value = int(config_data['stop_loss_setup_interval'])
-                    if old_value != new_value:
-                        SystemConfig.STOP_LOSS_SETUP_INTERVAL = new_value
-                        logger.info(f"[SYSTEM_CONFIG] 🔄 Stop Loss интервал изменен: {old_value} → {new_value}")
-                    else:
-                        SystemConfig.STOP_LOSS_SETUP_INTERVAL = new_value
+                    SystemConfig.STOP_LOSS_SETUP_INTERVAL = int(config_data['stop_loss_setup_interval'])
                 
                 if 'position_sync_interval' in config_data:
-                    old_value = SystemConfig.POSITION_SYNC_INTERVAL
-                    new_value = int(config_data['position_sync_interval'])
-                    if old_value != new_value:
-                        SystemConfig.POSITION_SYNC_INTERVAL = new_value
-                        logger.info(f"[SYSTEM_CONFIG] 🔄 Position Sync интервал изменен: {old_value} → {new_value}")
-                    else:
-                        SystemConfig.POSITION_SYNC_INTERVAL = new_value
+                    SystemConfig.POSITION_SYNC_INTERVAL = int(config_data['position_sync_interval'])
                 
                 if 'inactive_bot_cleanup_interval' in config_data:
-                    old_value = SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL
-                    new_value = int(config_data['inactive_bot_cleanup_interval'])
-                    if old_value != new_value:
-                        SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL = new_value
-                        logger.info(f"[SYSTEM_CONFIG] 🔄 Inactive Bot Cleanup интервал изменен: {old_value} → {new_value}")
-                    else:
-                        SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL = new_value
+                    SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL = int(config_data['inactive_bot_cleanup_interval'])
                 
                 if 'inactive_bot_timeout' in config_data:
-                    old_value = SystemConfig.INACTIVE_BOT_TIMEOUT
-                    new_value = int(config_data['inactive_bot_timeout'])
-                    if old_value != new_value:
-                        SystemConfig.INACTIVE_BOT_TIMEOUT = new_value
-                        logger.info(f"[SYSTEM_CONFIG] 🔄 Inactive Bot Timeout изменен: {old_value} → {new_value}")
-                    else:
-                        SystemConfig.INACTIVE_BOT_TIMEOUT = new_value
+                    SystemConfig.INACTIVE_BOT_TIMEOUT = int(config_data['inactive_bot_timeout'])
                 
                 # Настройки улучшенного RSI
                 if 'enhanced_rsi_enabled' in config_data:
@@ -405,13 +370,9 @@ def load_system_config():
                 if 'trend_require_candles' in config_data:
                     SystemConfig.TREND_REQUIRE_CANDLES = bool(config_data['trend_require_candles'])
                 
-                logger.info(f"[SYSTEM_CONFIG] ✅ Системные настройки загружены из {SYSTEM_CONFIG_FILE}")
-                logger.info(f"[SYSTEM_CONFIG] RSI интервал: {SystemConfig.RSI_UPDATE_INTERVAL} сек")
-                
                 # Обновляем интервал в SmartRSIManager если он уже инициализирован
                 if 'smart_rsi_manager' in globals() and smart_rsi_manager:
                     smart_rsi_manager.update_monitoring_interval(SystemConfig.RSI_UPDATE_INTERVAL)
-                    logger.info(f"[SYSTEM_CONFIG] ✅ SmartRSIManager обновлен с загруженным интервалом")
                 
                 return True
         else:
@@ -424,7 +385,7 @@ def load_system_config():
                 'refresh_interval': SystemConfig.UI_REFRESH_INTERVAL
             }
             save_system_config(default_config)
-            logger.info(f"[SYSTEM_CONFIG] 📁 Создан новый файл системных настроек с дефолтными значениями")
+            logger.debug(f"[SYSTEM_CONFIG] Создан новый файл с дефолтными значениями")
             return True
     except Exception as e:
         logger.error(f"[SYSTEM_CONFIG] ❌ Ошибка загрузки системных настроек: {e}")
@@ -453,7 +414,7 @@ def save_bots_state():
             json.dump(state_data, f, indent=2, ensure_ascii=False)
         
         total_bots = len(state_data['bots'])
-        logger.info(f"[SAVE_STATE] ✅ Состояние {total_bots} ботов сохранено в {BOTS_STATE_FILE}")
+        logger.debug(f"[SAVE_STATE] Состояние {total_bots} ботов сохранено")
         
         return True
         
@@ -838,7 +799,7 @@ def update_bots_cache_data():
         # ✅ КРИТИЧНО: Используем тот же способ что и positions_monitor_worker!
         try:
             # Получаем позиции тем же способом что и positions_monitor_worker
-            logger.info(f"[BOTS_CACHE] Получаем позиции с биржи...")
+            logger.debug(f"[BOTS_CACHE] Получаем позиции с биржи...")
             exchange_obj = get_exchange()
             if exchange_obj:
                 exchange_positions = exchange_obj.get_positions()
@@ -846,7 +807,7 @@ def update_bots_cache_data():
                     positions_list = exchange_positions[0] if exchange_positions else []
                 else:
                     positions_list = exchange_positions if exchange_positions else []
-                logger.info(f"[BOTS_CACHE] Получено {len(positions_list)} позиций с биржи")
+                logger.debug(f"[BOTS_CACHE] Получено {len(positions_list)} позиций с биржи")
             else:
                 positions_list = []
                 logger.warning(f"[BOTS_CACHE] Exchange не инициализирован")
@@ -968,9 +929,9 @@ def update_bots_cache_data():
         
         # ✅ СИНХРОНИЗАЦИЯ: Проверяем закрытые позиции на бирже
         try:
-            logger.info(f"[BOTS_CACHE] 🔄 Запускаем синхронизацию с биржей...")
+            logger.debug(f"[BOTS_CACHE] Синхронизация...")
             sync_bots_with_exchange()
-            logger.info(f"[BOTS_CACHE] ✅ Синхронизация с биржей завершена")
+            logger.debug(f"[BOTS_CACHE] Синхронизация завершена")
         except Exception as e:
             logger.error(f"[BOTS_CACHE] ❌ Ошибка синхронизации с биржей: {e}")
         
@@ -981,7 +942,7 @@ def update_bots_cache_data():
         # Отладочный лог для проверки частоты обновлений
         logger.debug(f"[BOTS_CACHE] 🔄 Обновление завершено: {current_time}")
         
-        logger.info(f"[BOTS_CACHE] ✅ Кэш обновлен: {len(bots_list)} ботов (last_update: {current_time})")
+        logger.debug(f"[BOTS_CACHE] Кэш обновлен: {len(bots_list)} ботов")
         return True
         
     except Exception as e:
@@ -1945,13 +1906,10 @@ def sync_bots_with_exchange():
     start_time = time.time()
     
     try:
-        logger.info(f"[SYNC_EXCHANGE] 🔄 [0.0с] Начало синхронизации")
-        
+        # Убираем лишние логи - оставляем только итог
         if not ensure_exchange_initialized():
             logger.warning("[SYNC_EXCHANGE] ⚠️ Биржа не инициализирована, пропускаем синхронизацию")
             return False
-        
-        logger.info(f"[SYNC_EXCHANGE] ✅ [{time.time()-start_time:.1f}с] Биржа инициализирована")
         
         # Получаем ВСЕ открытые позиции с биржи (с пагинацией)
         try:
@@ -1959,8 +1917,6 @@ def sync_bots_with_exchange():
             cursor = ""
             total_positions = 0
             iteration = 0
-            
-            logger.info(f"[SYNC_EXCHANGE] 📋 [{time.time()-start_time:.1f}с] Начало пагинации позиций")
             
             while True:
                 iteration += 1
@@ -1975,26 +1931,18 @@ def sync_bots_with_exchange():
                 if cursor:
                     params["cursor"] = cursor
                 
-                logger.info(f"[SYNC_EXCHANGE] 🔄 [{time.time()-start_time:.1f}с] Итерация {iteration}: формирование параметров")
-                
                 from bots_modules.imports_and_globals import get_exchange
                 current_exchange = get_exchange() or exchange
-                
-                logger.info(f"[SYNC_EXCHANGE] 🔗 [{time.time()-start_time:.1f}с] Получен exchange объект")
                 
                 # Проверяем что биржа инициализирована
                 if not current_exchange or not hasattr(current_exchange, 'client'):
                     logger.error(f"[SYNC_EXCHANGE] ❌ Биржа не инициализирована")
                     return False
                 
-                logger.info(f"[SYNC_EXCHANGE] 📡 [{time.time()-start_time:.1f}с] СТАРТ API вызова get_positions()")
-                
                 # 🔥 УПРОЩЕННЫЙ ПОДХОД: быстрый таймаут на уровне SDK
                 positions_response = None
                 timeout_seconds = 8  # Короткий таймаут
                 max_retries = 2
-                
-                logger.info(f"[SYNC_EXCHANGE] 🔧 [{time.time()-start_time:.1f}с] Попытка получить позиции (таймаут {timeout_seconds}с)")
                 
                 for retry in range(max_retries):
                     retry_start = time.time()
@@ -2003,40 +1951,33 @@ def sync_bots_with_exchange():
                         old_timeout = getattr(current_exchange.client, 'timeout', None)
                         current_exchange.client.timeout = timeout_seconds
                         
-                        logger.info(f"[SYNC_EXCHANGE] 🌐 [{time.time()-start_time:.1f}с] Попытка {retry + 1}/{max_retries}: вызов get_positions")
                         positions_response = current_exchange.client.get_positions(**params)
                         
                         # Восстанавливаем таймаут
                         if old_timeout is not None:
                             current_exchange.client.timeout = old_timeout
                         
-                        logger.info(f"[SYNC_EXCHANGE] ✅ [{time.time()-start_time:.1f}с] get_positions завершен за {time.time()-retry_start:.1f}с")
                         break  # Успех!
                         
                     except Exception as e:
-                        logger.warning(f"[SYNC_EXCHANGE] ⚠️ [{time.time()-start_time:.1f}с] Ошибка попытки {retry + 1}: {e}")
-                        
+                        logger.debug(f"[SYNC_EXCHANGE] Повтор {retry + 1}/{max_retries}: {e}")
                         if retry < max_retries - 1:
-                            logger.info(f"[SYNC_EXCHANGE] 🔁 Повтор через 2с...")
                             time.sleep(2)
                         else:
-                            logger.error(f"[SYNC_EXCHANGE] ❌ Все {max_retries} попытки провалились, пропускаем синхронизацию")
+                            logger.error(f"[SYNC_EXCHANGE] ❌ Все попытки провалились")
                             return False
                 
                 # Проверяем что получили ответ
                 if positions_response is None:
-                    logger.error(f"[SYNC_EXCHANGE] ❌ [{time.time()-start_time:.1f}с] Пустой ответ")
+                    logger.error(f"[SYNC_EXCHANGE] ❌ Пустой ответ")
                     return False
                 
-                logger.info(f"[SYNC_EXCHANGE] 🔍 [{time.time()-start_time:.1f}с] Проверка retCode")
                 if positions_response["retCode"] != 0:
-                    logger.error(f"[SYNC_EXCHANGE] ❌ [{time.time()-start_time:.1f}с] Ошибка: {positions_response['retMsg']}")
+                    logger.error(f"[SYNC_EXCHANGE] ❌ Ошибка: {positions_response['retMsg']}")
                     return False
                 
-                logger.info(f"[SYNC_EXCHANGE] 📊 [{time.time()-start_time:.1f}с] Начало обработки позиций")
                 # Обрабатываем позиции на текущей странице
                 positions_count = len(positions_response["result"]["list"])
-                logger.info(f"[SYNC_EXCHANGE] 📋 [{time.time()-start_time:.1f}с] Получено {positions_count} позиций для обработки")
                 
                 for idx, position in enumerate(positions_response["result"]["list"]):
                     symbol = position.get("symbol")
@@ -2054,13 +1995,9 @@ def sync_bots_with_exchange():
                         }
                         total_positions += 1
                 
-                logger.info(f"[SYNC_EXCHANGE] ✅ [{time.time()-start_time:.1f}с] Обработано {positions_count} позиций, найдено активных: {total_positions}")
-                
                 # Проверяем есть ли еще страницы
                 next_page_cursor = positions_response["result"].get("nextPageCursor", "")
-                logger.info(f"[SYNC_EXCHANGE] 📄 [{time.time()-start_time:.1f}с] Следующий cursor: {'ДА' if next_page_cursor else 'НЕТ'}")
                 if not next_page_cursor:
-                    logger.info(f"[SYNC_EXCHANGE] 🏁 [{time.time()-start_time:.1f}с] Пагинация завершена после {iteration} итераций")
                     break
                 cursor = next_page_cursor
             
@@ -2081,13 +2018,7 @@ def sync_bots_with_exchange():
                 else:
                     positions_without_bots[symbol] = pos_data
             
-            # ✅ Одна информативная строка вместо двух
-            if positions_without_bots:
-                logger.info(f"[SYNC_EXCHANGE] 🚫 Игнорируем {len(positions_without_bots)} позиций без ботов (всего на бирже: {len(exchange_positions)})")
-            
-            # ✅ Логируем только если есть позиции С ботами
-            if positions_with_bots:
-                logger.info(f"[SYNC_EXCHANGE] ✅ Обрабатываем {len(positions_with_bots)} позиций с ботами")
+            # Логируем только итоговый результат
             
             # Синхронизируем только с позициями, для которых есть боты
             synchronized_bots = 0
@@ -2162,7 +2093,9 @@ def sync_bots_with_exchange():
                     except Exception as e:
                         logger.error(f"[SYNC_EXCHANGE] ❌ Ошибка синхронизации бота {symbol}: {e}")
             
-            logger.info(f"[SYNC_EXCHANGE] ✅ Синхронизировано {synchronized_bots} ботов")
+            if synchronized_bots > 0:
+                elapsed = time.time() - start_time
+                logger.debug(f"[SYNC_EXCHANGE] Синхронизировано {synchronized_bots} ботов за {elapsed:.1f}с")
             
             # Сохраняем обновленное состояние
             save_bots_state()

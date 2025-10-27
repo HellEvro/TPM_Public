@@ -771,7 +771,7 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
 def load_all_coins_candles_fast():
     """⚡ БЫСТРАЯ загрузка ТОЛЬКО свечей для всех монет БЕЗ расчетов"""
     try:
-        logger.info("[CANDLES_FAST] 🚀 Быстрая загрузка свечей для всех монет...")
+        logger.debug("[CANDLES_FAST] Загрузка свечей...")
         
         from bots_modules.imports_and_globals import get_exchange
         current_exchange = get_exchange()
@@ -786,8 +786,6 @@ def load_all_coins_candles_fast():
             logger.error("[CANDLES_FAST] ❌ Не удалось получить список пар")
             return False
         
-        logger.info(f"[CANDLES_FAST] 📊 Найдено {len(pairs)} пар для загрузки")
-        
         # Загружаем ТОЛЬКО свечи пакетами (УСКОРЕННАЯ ВЕРСИЯ)
         batch_size = 100  # Увеличили с 50 до 100
         candles_cache = {}
@@ -798,22 +796,20 @@ def load_all_coins_candles_fast():
             batch_num = i//batch_size + 1
             total_batches = (len(pairs) + batch_size - 1)//batch_size
             
-            logger.info(f"[CANDLES_FAST] 📦 Пакет {batch_num}/{total_batches}: загрузка {len(batch)} монет...")
+            logger.debug(f"[CANDLES_FAST] Пакет {batch_num}/{total_batches}: загрузка {len(batch)} монет...")
             
-            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:  # Увеличили с 10 до 20
+            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
                 future_to_symbol = {executor.submit(get_coin_candles_only, symbol, current_exchange): symbol for symbol in batch}
                 
                 completed = 0
-                for future in concurrent.futures.as_completed(future_to_symbol, timeout=90):  # Увеличили timeout
+                for future in concurrent.futures.as_completed(future_to_symbol, timeout=90):
                     try:
-                        result = future.result(timeout=30)  # Увеличили timeout
+                        result = future.result(timeout=30)
                         if result:
                             candles_cache[result['symbol']] = result
                             completed += 1
                     except Exception as e:
                         pass
-                
-                logger.info(f"[CANDLES_FAST] ✅ Пакет {batch_num}: загружено {completed}/{len(batch)} монет")
                 
                 # Уменьшили паузу между пакетами
                 import time
@@ -856,11 +852,11 @@ def load_all_coins_rsi():
         # Обновляем coins_rsi_data ТОЛЬКО после завершения всех проверок!
         temp_coins_data = {}
         
-        logger.info("[RSI] 🔄 Начинаем загрузку RSI 6H для всех монет...")
+        logger.debug("[RSI] Загрузка RSI для всех монет...")
         
         # Проверяем кэш свечей перед началом
         candles_cache_size = len(coins_rsi_data.get('candles_cache', {}))
-        logger.info(f"[RSI] 📦 Размер кэша свечей на старте: {candles_cache_size} монет")
+        logger.debug(f"[RSI] Кэш свечей: {candles_cache_size} монет")
         
         # Получаем актуальную ссылку на биржу
         try:
@@ -876,127 +872,77 @@ def load_all_coins_rsi():
             coins_rsi_data['update_in_progress'] = False
             return False
             
-        logger.info("[RSI] 🔍 Получаем список пар с биржи...")
         pairs = current_exchange.get_all_pairs()
-        logger.info(f"[RSI] 🔍 Получено пар с биржи: {len(pairs) if pairs else 0}")
+        logger.debug(f"[RSI] Получено {len(pairs) if pairs else 0} пар")
         
         if not pairs or not isinstance(pairs, list):
             logger.error("[RSI] ❌ Не удалось получить список пар с биржи")
             return False
         
-        logger.info(f"[RSI] 📊 Найдено {len(pairs)} торговых пар для анализа")
+        logger.debug(f"[RSI] Найдено {len(pairs)} пар для анализа")
         
         # ⚡ БЕЗ БЛОКИРОВКИ: обновляем счетчики напрямую
         coins_rsi_data['total_coins'] = len(pairs)
         coins_rsi_data['successful_coins'] = 0
         coins_rsi_data['failed_coins'] = 0
         
-        # Получаем RSI данные для всех пар пакетно с инкрементальным обновлением (УСКОРЕННАЯ ВЕРСИЯ)
-        batch_size = 100  # ⚡ Увеличили до 100 для ускорения первой загрузки
+        # ✅ ПАРАЛЛЕЛЬНАЯ загрузка с текстовым прогрессом (работает в лог-файле)
+        batch_size = 100
+        total_batches = (len(pairs) + batch_size - 1) // batch_size
         
         for i in range(0, len(pairs), batch_size):
             batch = pairs[i:i + batch_size]
-            batch_num = i//batch_size + 1
-            total_batches = (len(pairs) + batch_size - 1)//batch_size
+            batch_num = i // batch_size + 1
             
-            logger.info(f"[BATCH] 🔄 Обработка пакета {batch_num}/{total_batches} ({len(batch)} монет)")
-            # logger.info(f"[BATCH] 📋 Монеты в пакете: {', '.join(batch[:10])}{'...' if len(batch) > 10 else ''}") # Отключено - может вызывать проблемы
-            
-            # Параллельная загрузка RSI для пакета (10 воркеров - максимальная скорость!)
-            batch_coins_data = {}
-            import time
-            batch_start = time.time()
-            logger.info(f"[BATCH] 🚀 НАЧАЛО пакета {batch_num}")
-            
-            # ✅ ВОЗВРАЩАЕМ ПАРАЛЛЕЛЬНУЮ обработку для скорости
-            logger.info(f"[BATCH] 🚀 Параллельная обработка с ThreadPoolExecutor")
-            
-            # Используем ThreadPoolExecutor для параллельной обработки
-            with ThreadPoolExecutor(max_workers=50) as executor:  # Увеличили до 50 для максимального ускорения
-                # Отправляем все задачи
+            # Параллельная обработка пакета
+            with ThreadPoolExecutor(max_workers=50) as executor:
                 future_to_symbol = {
                     executor.submit(get_coin_rsi_data, symbol, current_exchange): symbol 
                     for symbol in batch
                 }
                 
-                # Собираем результаты
-                completed_count = 0
                 for future in concurrent.futures.as_completed(future_to_symbol, timeout=60):
                     symbol = future_to_symbol[future]
-                    completed_count += 1
                     try:
                         result = future.result(timeout=20)
                         if result:
-                            batch_coins_data[result['symbol']] = result
+                            temp_coins_data[result['symbol']] = result
                             coins_rsi_data['successful_coins'] += 1
                         else:
                             coins_rsi_data['failed_coins'] += 1
-                        
-                        if completed_count % 10 == 0:
-                            logger.info(f"[BATCH] 📊 Обработано {completed_count}/{len(batch)} монет из пакета {batch_num}")
                     except Exception as e:
-                        logger.error(f"[BATCH] ❌ Ошибка обработки {symbol}: {e}")
+                        logger.error(f"[RSI] ❌ {symbol}: {e}")
                         coins_rsi_data['failed_coins'] += 1
             
-            # ✅ КРИТИЧНО: Сохраняем во ВРЕМЕННОЕ хранилище вместо прямого обновления!
-            # НЕ обновляем coins_rsi_data['coins'] до завершения ВСЕХ пакетов!
-            temp_coins_data.update(batch_coins_data)
-            logger.info(f"[BATCH] ✅ Сохранено {len(batch_coins_data)} монет во временное хранилище (всего: {len(temp_coins_data)})")
-            
-            # Пауза между пакетами для предотвращения rate limiting (УСКОРЕННАЯ ВЕРСИЯ)
-            time.sleep(0.1)  # ⚡ МАКСИМАЛЬНОЕ УСКОРЕНИЕ: 0.1 сек между пакетами
-            
-            # Логируем прогресс каждые 5 пакетов (чаще для инкрементального обновления)
-            if batch_num % 5 == 0:
-                # ⚡ БЕЗ БЛОКИРОВКИ: читаем счетчики напрямую
-                success_count = coins_rsi_data['successful_coins']
-                failed_count = coins_rsi_data['failed_coins']
-                total_processed = success_count + failed_count
-                progress_percent = round((total_processed / len(pairs)) * 100, 1)
-                coins_count = len(coins_rsi_data['coins'])
-                logger.info(f"[RSI] ⏳ Прогресс: {progress_percent}% ({total_processed}/{len(pairs)}) - В UI доступно {coins_count} монет")
+            # ✅ Выводим прогресс в лог
+            processed = coins_rsi_data['successful_coins'] + coins_rsi_data['failed_coins']
+            if batch_num <= total_batches:
+                logger.info(f"[RSI] 📊 Прогресс: {processed}/{len(pairs)} ({processed*100//len(pairs)}%)")
         
         # ✅ КРИТИЧНО: АТОМАРНОЕ обновление всех данных ОДНИМ МАХОМ!
-        # Только СЕЙЧАС обновляем coins_rsi_data['coins'] всеми собранными данными
-        logger.info(f"[RSI] 🎯 Атомарное обновление {len(temp_coins_data)} монет...")
-        coins_rsi_data['coins'] = temp_coins_data  # ✅ Полная замена - атомарная операция
+        coins_rsi_data['coins'] = temp_coins_data
         coins_rsi_data['last_update'] = datetime.now().isoformat()
-        logger.info(f"[RSI] ✅ Атомарное обновление завершено - UI теперь видит финальные данные!")
-        
-        # Финальное обновление флага
-        # ⚡ БЕЗ БЛОКИРОВКИ: атомарная операция
         coins_rsi_data['update_in_progress'] = False
         
-        logger.info(f"[RSI] ✅ Обновление завершено, флаг update_in_progress сброшен")
-        
         # Финальный отчет
-        # ⚡ БЕЗ БЛОКИРОВКИ: читаем счетчики напрямую
         success_count = coins_rsi_data['successful_coins']
         failed_count = coins_rsi_data['failed_coins']
             
         # Подсчитываем сигналы
-        # ⚡ БЕЗ БЛОКИРОВКИ: чтение словаря
         enter_long_count = sum(1 for coin in coins_rsi_data['coins'].values() if coin.get('signal') == 'ENTER_LONG')
         enter_short_count = sum(1 for coin in coins_rsi_data['coins'].values() if coin.get('signal') == 'ENTER_SHORT')
         
-        logger.info(f"[RSI] ✅ Загрузка завершена: {success_count}/{len(pairs)} монет | Сигналы: {enter_long_count} LONG + {enter_short_count} SHORT")
+        logger.info(f"[RSI] ✅ {success_count} монет | Сигналы: {enter_long_count} LONG + {enter_short_count} SHORT")
         
         if failed_count > 0:
             logger.warning(f"[RSI] ⚠️ Ошибок: {failed_count} монет")
         
-        # 🔧 ОБНОВЛЯЕМ ФЛАГИ is_mature в RSI данных на основе хранилища
+        # Обновляем флаги is_mature
         try:
             update_is_mature_flags_in_rsi_data()
-            logger.info(f"[RSI] ✅ Флаги is_mature обновлены в UI данных")
+            logger.debug(f"[RSI] Флаги is_mature обновлены")
         except Exception as update_error:
-            logger.warning(f"[RSI] ⚠️ Не удалось обновить флаги is_mature: {update_error}")
-        
-        # ⚡ ОТКЛЮЧЕНО: Сохранение и обработка сигналов выполняются в ContinuousDataLoader
-        # save_rsi_cache()  # Будет вызвано позже
-        # process_trading_signals_for_all_bots(exchange_obj=current_exchange)  # Будет вызвано позже
-        # process_auto_bot_signals(exchange_obj=current_exchange)  # Будет вызвано позже
-        
-        logger.info(f"[RSI] ✅ load_all_coins_rsi() завершен успешно")
+            logger.warning(f"[RSI] ⚠️ Не удалось обновить is_mature: {update_error}")
         return True
         
     except Exception as e:
@@ -1389,12 +1335,8 @@ def analyze_trends_for_signal_coins():
         
         for i, symbol in enumerate(signal_coins, 1):
             try:
-                logger.info(f"[TREND_ANALYSIS] 🔍 {i}/{len(signal_coins)} Анализируем тренд {symbol}...")
-                
                 # Анализируем тренд
-                logger.debug(f"[TREND_ANALYSIS] 🌐 {symbol}: Вызываем analyze_trend_6h()...")
                 trend_analysis = analyze_trend_6h(symbol, exchange_obj=exchange)
-                logger.debug(f"[TREND_ANALYSIS] 🌐 {symbol}: analyze_trend_6h() вернула: {trend_analysis is not None}")
                 
                 if trend_analysis:
                     # ✅ СОБИРАЕМ обновления во временном хранилище
@@ -1411,13 +1353,9 @@ def analyze_trends_for_signal_coins():
                         blocked_by_rsi_time = coin_data.get('blocked_by_rsi_time', False)
                         
                         if blocked_by_exit_scam or blocked_by_rsi_time:
-                            logger.info(f"[TREND_ANALYSIS] 🚫 {symbol}: Сигнал заблокирован фильтрами - пропускаем пересчет")
                             new_signal = 'WAIT'  # Оставляем WAIT
                         else:
                             new_signal = _recalculate_signal_with_trend(rsi, new_trend, symbol)
-                        
-                        # ✅ ВСЕГДА логируем пересчет сигнала для отладки
-                        logger.info(f"[TREND_ANALYSIS] 🔄 {symbol}: Пересчет сигнала: RSI={rsi:.1f}, тренд={new_trend}, старый={old_signal} → новый={new_signal}")
                         
                         # Сохраняем обновления во временном хранилище
                         temp_updates[symbol] = {
@@ -1426,37 +1364,29 @@ def analyze_trends_for_signal_coins():
                             'signal': new_signal,
                             'old_signal': old_signal
                         }
-                        
-                        if new_signal != old_signal:
-                            logger.info(f"[TREND_ANALYSIS] 🔄 {symbol}: Сигнал будет обновлен {old_signal} → {new_signal} (тренд: {new_trend})")
-                        else:
-                            logger.info(f"[TREND_ANALYSIS] ✅ {symbol}: Сигнал не изменится ({old_signal}) - тренд не влияет")
                     
                     analyzed_count += 1
-                    logger.info(f"[TREND_ANALYSIS] ✅ {symbol}: Тренд {trend_analysis['trend']}")
                 else:
                     failed_count += 1
-                    logger.warning(f"[TREND_ANALYSIS] ⚠️ {symbol}: Не удалось определить тренд")
+                
+                # Выводим прогресс каждые 5 монет
+                if i % 5 == 0 or i == len(signal_coins):
+                    logger.info(f"[TREND_ANALYSIS] 📊 Прогресс: {i}/{len(signal_coins)} ({i*100//len(signal_coins)}%)")
                 
                 # Небольшая пауза между запросами
                 time.sleep(0.1)
                 
             except Exception as e:
-                logger.error(f"[TREND_ANALYSIS] ❌ {symbol}: Ошибка анализа тренда: {e}")
+                logger.error(f"[TREND_ANALYSIS] ❌ {symbol}: {e}")
                 failed_count += 1
         
         # ✅ АТОМАРНО применяем ВСЕ обновления одним махом!
-        logger.info(f"[TREND_ANALYSIS] 🎯 Применяем {len(temp_updates)} обновлений атомарно...")
         for symbol, updates in temp_updates.items():
             coins_rsi_data['coins'][symbol]['trend6h'] = updates['trend6h']
             coins_rsi_data['coins'][symbol]['trend_analysis'] = updates['trend_analysis']
             coins_rsi_data['coins'][symbol]['signal'] = updates['signal']
         
-        logger.info(f"[TREND_ANALYSIS] ✅ Анализ трендов завершен:")
-        logger.info(f"[TREND_ANALYSIS] 📊 Проанализировано: {analyzed_count}")
-        logger.info(f"[TREND_ANALYSIS] 📊 Ошибок: {failed_count}")
-        logger.info(f"[TREND_ANALYSIS] 📊 Всего обработано: {analyzed_count + failed_count}")
-        logger.info(f"[TREND_ANALYSIS] 🎯 Применено обновлений: {len(temp_updates)}")
+        logger.info(f"[TREND_ANALYSIS] ✅ {analyzed_count} проанализировано | {len(temp_updates)} обновлений")
         
         return True
         
@@ -1644,8 +1574,7 @@ def check_exit_scam_filter(symbol, coin_data):
         # Проверяем последние N свечей (из конфига)
         recent_candles = candles[-exit_scam_candles:]
         
-        logger.info(f"[EXIT_SCAM] {symbol}: Анализ последних {exit_scam_candles} свечей")
-        logger.info(f"[EXIT_SCAM] {symbol}: Настройки - одна свеча: {single_candle_percent}%, {multi_candle_count} свечей: {multi_candle_percent}%")
+        logger.debug(f"[EXIT_SCAM] {symbol}: Анализ последних {exit_scam_candles} свечей")
         
         # 1. ПРОВЕРКА: Одна свеча превысила максимальный % изменения
         for i, candle in enumerate(recent_candles):
@@ -1657,7 +1586,7 @@ def check_exit_scam_filter(symbol, coin_data):
             
             if price_change > single_candle_percent:
                 logger.warning(f"[EXIT_SCAM] {symbol}: ❌ БЛОКИРОВКА: Свеча #{i+1} превысила лимит {single_candle_percent}% (было {price_change:.1f}%)")
-                logger.info(f"[EXIT_SCAM] {symbol}: Свеча: O={open_price:.4f} C={close_price:.4f} H={candle['high']:.4f} L={candle['low']:.4f}")
+                logger.debug(f"[EXIT_SCAM] {symbol}: Свеча: O={open_price:.4f} C={close_price:.4f} H={candle['high']:.4f} L={candle['low']:.4f}")
                 return False
         
         # 2. ПРОВЕРКА: N свечей суммарно превысили максимальный % изменения
@@ -1673,10 +1602,10 @@ def check_exit_scam_filter(symbol, coin_data):
             
             if total_change > multi_candle_percent:
                 logger.warning(f"[EXIT_SCAM] {symbol}: ❌ БЛОКИРОВКА: {multi_candle_count} свечей превысили суммарный лимит {multi_candle_percent}% (было {total_change:.1f}%)")
-                logger.info(f"[EXIT_SCAM] {symbol}: Первая свеча: {first_open:.4f}, Последняя свеча: {last_close:.4f}")
+                logger.debug(f"[EXIT_SCAM] {symbol}: Первая свеча: {first_open:.4f}, Последняя свеча: {last_close:.4f}")
                 return False
         
-        logger.info(f"[EXIT_SCAM] {symbol}: ✅ Базовые проверки пройдены")
+        logger.debug(f"[EXIT_SCAM] {symbol}: ✅ Базовые проверки пройдены")
         
         # 3. ПРОВЕРКА: AI Anomaly Detection (если включен)
         ai_check_enabled = True  # Включаем обратно - проблема была не в AI!
@@ -1730,7 +1659,7 @@ def check_exit_scam_filter(symbol, coin_data):
             except ImportError:
                 pass  # AIConfig не доступен - пропускаем AI проверку
         
-        logger.info(f"[EXIT_SCAM] {symbol}: ✅ РЕЗУЛЬТАТ: ПРОЙДЕН (включая AI)")
+                logger.debug(f"[EXIT_SCAM] {symbol}: ✅ ПРОЙДЕН")
         return True
         
     except Exception as e:
