@@ -187,8 +187,22 @@ class BotHistoryManager:
         logger.info(f"[BOT_HISTORY] 📈 {entry['details']}")
     
     def log_position_closed(self, bot_id: str, symbol: str, direction: str, exit_price: float, 
-                           pnl: float, roi: float, reason: str = None):
-        """Логирование закрытия позиции"""
+                           pnl: float, roi: float, reason: str = None, entry_data: Dict = None,
+                           market_data: Dict = None):
+        """
+        Логирование закрытия позиции с дополнительными данными для обучения ИИ
+        
+        Args:
+            bot_id: ID бота
+            symbol: Символ монеты
+            direction: Направление (LONG/SHORT)
+            exit_price: Цена выхода
+            pnl: PnL в USDT
+            roi: ROI в %
+            reason: Причина закрытия (STOP_LOSS, TAKE_PROFIT, TRAILING_STOP и т.д.)
+            entry_data: Данные при входе (entry_price, rsi, volume, candles_before)
+            market_data: Данные рынка при выходе (volatility, trend_strength, support_resistance)
+        """
         entry = {
             'id': f"close_{bot_id}_{datetime.now().timestamp()}",
             'timestamp': datetime.now().isoformat(),
@@ -203,6 +217,31 @@ class BotHistoryManager:
             'reason': reason or 'Ручное закрытие',
             'details': f"Закрыта позиция {direction} для {symbol}: цена выхода {exit_price:.4f}, PnL: {pnl:.2f} USDT ({roi:.2f}%)"
         }
+        
+        # Добавляем данные для обучения ИИ
+        if entry_data:
+            entry['entry_data'] = entry_data
+            entry['entry_price'] = entry_data.get('entry_price')
+            entry['entry_rsi'] = entry_data.get('rsi')
+            entry['entry_volatility'] = entry_data.get('volatility')
+            entry['entry_trend'] = entry_data.get('trend')
+        
+        if market_data:
+            entry['market_data'] = market_data
+            entry['exit_volatility'] = market_data.get('volatility')
+            entry['exit_trend'] = market_data.get('trend')
+            entry['price_movement'] = market_data.get('price_movement')  # % изменения за период
+        
+        # Маркируем стопы для обучения
+        if reason and 'STOP' in reason.upper():
+            entry['is_stop'] = True
+            entry['stop_analysis'] = {
+                'initial_rsi': entry_data.get('rsi') if entry_data else None,
+                'max_drawdown': entry_data.get('max_profit_achieved') if entry_data else None,
+                'volatility_at_entry': entry_data.get('volatility') if entry_data else None,
+                'days_in_position': entry_data.get('duration_hours', 0) / 24 if entry_data else 0
+            }
+        
         self._add_history_entry(entry)
         
         # Обновляем сделку
@@ -215,6 +254,10 @@ class BotHistoryManager:
                     trade['status'] = 'CLOSED'
                     trade['close_timestamp'] = datetime.now().isoformat()
                     trade['close_reason'] = reason
+                    if entry_data:
+                        trade['entry_data'] = entry_data
+                    if market_data:
+                        trade['exit_market_data'] = market_data
                     break
         self._save_history()
         
@@ -251,6 +294,28 @@ class BotHistoryManager:
             
             # Ограничиваем количество
             return filtered[:limit]
+    
+    def get_stopped_trades(self, limit: int = 100) -> List[Dict]:
+        """
+        Получает все сделки, закрытые по стопу (для обучения ИИ)
+        
+        Returns:
+            Список сделок с детальным анализом стопов
+        """
+        with self.lock:
+            stopped_trades = []
+            
+            # Ищем сделки, закрытые по стоп-лоссу
+            for trade in self.trades:
+                if trade.get('status') == 'CLOSED':
+                    reason = trade.get('close_reason', '')
+                    if 'STOP' in reason.upper():
+                        stopped_trades.append(trade)
+            
+            # Сортируем от новых к старым
+            stopped_trades.sort(key=lambda x: x.get('close_timestamp', x.get('timestamp', '')), reverse=True)
+            
+            return stopped_trades[:limit]
     
     def get_bot_trades(self, symbol: Optional[str] = None, trade_type: Optional[str] = None,
                       limit: int = 100) -> List[Dict]:

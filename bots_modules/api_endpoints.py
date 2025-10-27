@@ -2994,6 +2994,52 @@ def get_bot_trades():
         logger.error(f"[API] Ошибка получения сделок ботов: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@bots_app.route('/api/bots/stops', methods=['GET'])
+def get_stopped_trades():
+    """Получает все сделки, закрытые по стопу (ПРЕМИУМ ФУНКЦИЯ!)"""
+    try:
+        # Проверяем лицензию
+        try:
+            from bot_engine.ai import check_premium_license
+            is_premium = check_premium_license()
+        except Exception as e:
+            logger.warning(f"[API] Не удалось проверить лицензию: {e}")
+            is_premium = False
+        
+        if not is_premium:
+            return jsonify({
+                'success': False,
+                'error': 'Premium license required',
+                'license_required': True,
+                'message': 'Этот функционал доступен только с премиум лицензией'
+            }), 403
+        
+        limit = int(request.args.get('limit', 100))
+        
+        stopped_trades = bot_history_manager.get_stopped_trades(limit)
+        
+        # Анализируем стопы через SmartRiskManager
+        try:
+            from bot_engine.ai.smart_risk_manager import SmartRiskManager
+            smart_risk = SmartRiskManager()
+            analysis = smart_risk.analyze_stopped_trades(limit)
+        except ImportError:
+            # SmartRiskManager недоступен (нет лицензии или ошибка)
+            analysis = None
+        
+        return jsonify({
+            'success': True,
+            'trades': stopped_trades,
+            'count': len(stopped_trades),
+            'analysis': analysis,
+            'premium': True,
+            'message': 'Данные о стоп-сделках получены (Премиум)'
+        })
+        
+    except Exception as e:
+        logger.error(f"[API] Ошибка получения стопов: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @bots_app.route('/api/bots/statistics', methods=['GET'])
 def get_bot_statistics():
     """Получает статистику по ботам"""

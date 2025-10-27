@@ -234,6 +234,7 @@ def register_ai_endpoints(app):
                 'pattern_weight': AIConfig.AI_PATTERN_WEIGHT,
                 'risk_management_enabled': AIConfig.AI_RISK_MANAGEMENT_ENABLED,
                 'risk_update_interval': AIConfig.AI_RISK_UPDATE_INTERVAL,
+                'optimal_entry_enabled': getattr(AIConfig, 'AI_OPTIMAL_ENTRY_ENABLED', False),
                 'auto_train_enabled': AIConfig.AI_AUTO_TRAIN_ENABLED,
                 'auto_update_data': AIConfig.AI_AUTO_UPDATE_DATA,
                 'auto_retrain': AIConfig.AI_AUTO_RETRAIN,
@@ -290,6 +291,10 @@ def register_ai_endpoints(app):
                         if log_ai_config_change('risk_management_enabled', old_config['risk_management_enabled'], data['risk_management_enabled']):
                             changes_count += 1
                         line = f"    AI_RISK_MANAGEMENT_ENABLED = {data['risk_management_enabled']}\n"
+                    elif 'AI_OPTIMAL_ENTRY_ENABLED =' in line and 'optimal_entry_enabled' in data:
+                        if log_ai_config_change('optimal_entry_enabled', old_config['optimal_entry_enabled'], data['optimal_entry_enabled']):
+                            changes_count += 1
+                        line = f"    AI_OPTIMAL_ENTRY_ENABLED = {data['optimal_entry_enabled']}\n"
                     elif 'AI_RISK_UPDATE_INTERVAL =' in line and 'risk_update_interval' in data:
                         if log_ai_config_change('risk_update_interval', old_config['risk_update_interval'], data['risk_update_interval']):
                             changes_count += 1

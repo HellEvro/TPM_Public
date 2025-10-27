@@ -64,3 +64,18 @@ try:
 except ImportError:
     # Модули еще не созданы - это нормально на этапе разработки
     __all__ = []
+
+
+def check_premium_license() -> bool:
+    """
+    Проверяет наличие валидной премиум лицензии
+    
+    Returns:
+        True если лицензия валидна и премиум функции доступны
+    """
+    try:
+        from .ai_manager import get_ai_manager
+        ai_manager = get_ai_manager()
+        return ai_manager.is_available() and ai_manager._license_valid
+    except Exception as e:
+        return False

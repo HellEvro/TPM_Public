@@ -616,6 +616,69 @@ class NewTradingBot:
             
             logger.info(f"[NEW_BOT_{self.symbol}] 📈 Входим в {direction} позицию @ {price}")
             
+            # 🤖 Сбор данных для ИИ и проверка оптимальной точки входа (если включено)
+            try:
+                from bot_engine.bot_config import RiskConfig
+                from bot_engine.ai.smart_risk_manager import SmartRiskManager
+                from bots_modules.imports_and_globals import get_auto_bot_config, coins_rsi_data, rsi_data_lock
+                
+                auto_config = get_auto_bot_config()
+                ai_optimal_entry_enabled = auto_config.get('ai_optimal_entry_enabled', False)
+                
+                # Получаем RSI
+                rsi = 0
+                with rsi_data_lock:
+                    coin_data = coins_rsi_data['coins'].get(self.symbol)
+                    if coin_data:
+                        rsi = coin_data.get('rsi6h', 50)
+                
+                # Получаем свечи для анализа
+                chart_response = self.exchange.get_chart_data(self.symbol, '6h', limit=30) if self.exchange else None
+                candles = []
+                if chart_response and chart_response.get('success'):
+                    candles_data = chart_response.get('data', {}).get('candles', [])
+                    candles = [{'open': float(c.get('open', 0)), 'high': float(c.get('high', 0)),
+                                'low': float(c.get('low', 0)), 'close': float(c.get('close', 0)),
+                                'volume': float(c.get('volume', 0))} for c in candles_data[-10:]] if candles_data else []
+                
+                # 📊 ВСЕГДА собираем данные для обучения ИИ (если есть лицензия)
+                try:
+                    smart_risk = SmartRiskManager()
+                    smart_risk.collect_entry_data(
+                        symbol=self.symbol,
+                        current_price=price,
+                        side=direction,
+                        rsi=rsi,
+                        candles=candles
+                    )
+                except Exception as collect_error:
+                    logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось собрать данные ИИ: {collect_error}")
+                
+                # 🔍 Проверяем оптимальную точку входа (только если включено в конфиге)
+                if ai_optimal_entry_enabled:
+                    # Проверяем, стоит ли входить сейчас
+                    smart_risk = SmartRiskManager()
+                    decision = smart_risk.should_enter_now(
+                        symbol=self.symbol,
+                        current_price=price,
+                        side=direction,
+                        rsi=rsi,
+                        candles=candles
+                    )
+                    
+                    if not decision.get('should_enter', True):
+                        logger.info(f"[NEW_BOT_{self.symbol}] ⏳ ИИ рекомендует подождать: {decision.get('reason', 'Неизвестная причина')}")
+                        return False
+                    else:
+                        logger.info(f"[NEW_BOT_{self.symbol}] ✅ ИИ рекомендует вход: {decision.get('reason', 'Всё ок')}")
+                
+            except ImportError:
+                # ИИ функция недоступна (нет лицензии) - продолжаем как обычно
+                pass
+            except Exception as ai_error:
+                logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка проверки ИИ входа: {ai_error}")
+                # Продолжаем обычный вход при ошибке ИИ
+            
             # Открываем позицию
             if self._open_position_on_exchange(direction, price):
                 # Обновляем статус
@@ -729,12 +792,116 @@ class NewTradingBot:
                 if not actual_leverage:
                     actual_leverage = 10.0  # Дефолт
                 
-                # ШАГ 3: Рассчитываем Stop Loss с учетом реального плеча
+                # 🔄 ШАГ 2.5: PREMIUM - Бэктest перед расчетом SL/TP
+                backtest_result = None
+                try:
+                    from bot_engine.ai import check_premium_license
+                    is_premium = check_premium_license()
+                    
+                    if is_premium:
+                        from bot_engine.ai.smart_risk_manager import SmartRiskManager
+                        smart_risk = SmartRiskManager()
+                        
+                        # Получаем свечи для бэктеста
+                        chart_response = self.exchange.get_chart_data(self.symbol, '6h', limit=50)
+                        candles_for_backtest = []
+                        
+                        if chart_response and chart_response.get('success'):
+                            candles_data = chart_response.get('data', {}).get('candles', [])
+                            if candles_data and len(candles_data) >= 20:
+                                for c in candles_data:
+                                    candles_for_backtest.append({
+                                        'open': float(c.get('open', 0)),
+                                        'high': float(c.get('high', 0)),
+                                        'low': float(c.get('low', 0)),
+                                        'close': float(c.get('close', 0)),
+                                        'volume': float(c.get('volume', 0))
+                                    })
+                                
+                                # Запускаем бэктест
+                                backtest_result = smart_risk.backtest_coin(
+                                    self.symbol, 
+                                    candles_for_backtest, 
+                                    side,
+                                    actual_entry_price
+                                )
+                                
+                                logger.info(f"[NEW_BOT_{self.symbol}] 🤖 Бэктест завершен: SL={backtest_result.get('optimal_sl_percent')}%, TP={backtest_result.get('optimal_tp_percent')}%, confidence={backtest_result.get('confidence', 0):.1%}")
+                                
+                                # Сохраняем для обратной связи
+                                self._last_backtest_result = backtest_result
+                except Exception as ai_error:
+                    logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Premium бэктест недоступен: {ai_error}")
+                    self._last_backtest_result = None
+                
+                # ШАГ 3: Рассчитываем Stop Loss
                 stop_loss_price = None
                 sl_percent_from_config = max_loss_percent
                 
+                # 🤖 Если есть результат бэктеста - используем его значения
+                if backtest_result and backtest_result.get('confidence', 0) > 0.7:
+                    optimal_sl_pct = backtest_result.get('optimal_sl_percent', max_loss_percent)
+                    sl_percent_from_config = optimal_sl_pct
+                    logger.info(f"[NEW_BOT_{self.symbol}] 🤖 Используем SL из бэктеста: {optimal_sl_pct}%")
+                
                 if max_loss_percent:
-                    # 🤖 Пытаемся использовать AI для адаптивного SL
+                    # 🤖 Пытаемся использовать AI для адаптивного SL (если бэктест не дал результат)
+                    if not backtest_result:
+                        try:
+                            if AI_RISK_MANAGER_AVAILABLE and DynamicRiskManager:
+                                # Получаем свечи для AI анализа
+                                chart_response = self.exchange.get_chart_data(self.symbol, '6h', limit=50)
+                                candles_for_ai = []
+                                
+                                if chart_response and chart_response.get('success'):
+                                    candles_data = chart_response.get('data', {}).get('candles', [])
+                                    if candles_data and len(candles_data) >= 20:
+                                        # Конвертируем свечи в формат для AI
+                                        for c in candles_data[-30:]:  # Последние 30 свечей
+                                            candles_for_ai.append({
+                                                'open': float(c.get('open', 0)),
+                                                'high': float(c.get('high', 0)),
+                                                'low': float(c.get('low', 0)),
+                                                'close': float(c.get('close', 0)),
+                                                'volume': float(c.get('volume', 0))
+                                            })
+                                        
+                                        # Используем AI Risk Manager
+                                        risk_manager = DynamicRiskManager()
+                                        ai_sl_result = risk_manager.calculate_dynamic_sl(
+                                            self.symbol, candles_for_ai, side
+                                        )
+                                        
+                                        # Берем AI адаптированный SL
+                                        sl_percent_from_config = ai_sl_result['sl_percent']
+                                        logger.info(f"[NEW_BOT_{self.symbol}] 🤖 AI адаптировал SL: {max_loss_percent}% → {sl_percent_from_config}% ({ai_sl_result['reason']})")
+                        except Exception as ai_error:
+                            logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ AI SL недоступен: {ai_error}, используем базовый расчет")
+                    
+                    # Рассчитываем стоп на основе реальных данных
+                    position_value = abs(actual_qty) * actual_entry_price if actual_qty else (self.volume_value)
+                    margin = position_value / actual_leverage
+                    max_loss_usdt = margin * (sl_percent_from_config / 100)
+                    loss_per_coin = max_loss_usdt / abs(actual_qty) if actual_qty and abs(actual_qty) > 0 else (max_loss_usdt / (self.volume_value / actual_entry_price))
+                    
+                    if side == 'LONG':
+                        stop_loss_price = actual_entry_price - loss_per_coin
+                    else:
+                        stop_loss_price = actual_entry_price + loss_per_coin
+                    
+                    logger.info(f"[NEW_BOT_{self.symbol}] 🛑 SL рассчитан: {stop_loss_price:.6f} (entry={actual_entry_price}, leverage={actual_leverage}x, убыток {max_loss_usdt:.4f} USDT = {sl_percent_from_config}%)")
+                
+                # ШАГ 4: Рассчитываем Take Profit от маржи
+                take_profit_price = None
+                tp_percent_from_config = None
+                
+                # 🤖 Если есть результат бэктеста - используем его значения для TP
+                if backtest_result and backtest_result.get('confidence', 0) > 0.7:
+                    optimal_tp_pct = backtest_result.get('optimal_tp_percent', 100.0)
+                    tp_percent_from_config = optimal_tp_pct
+                    logger.info(f"[NEW_BOT_{self.symbol}] 🤖 Используем TP из бэктеста: {optimal_tp_pct}%")
+                else:
+                    # 🤖 Пытаемся использовать AI для расчета TP (если бэктест не дал результат)
                     try:
                         if AI_RISK_MANAGER_AVAILABLE and DynamicRiskManager:
                             # Получаем свечи для AI анализа
@@ -754,66 +921,17 @@ class NewTradingBot:
                                             'volume': float(c.get('volume', 0))
                                         })
                                     
-                                    # Используем AI Risk Manager
+                                    # Используем AI Risk Manager для TP
                                     risk_manager = DynamicRiskManager()
-                                    ai_sl_result = risk_manager.calculate_dynamic_sl(
+                                    ai_tp_result = risk_manager.calculate_dynamic_tp(
                                         self.symbol, candles_for_ai, side
                                     )
                                     
-                                    # Берем AI адаптированный SL
-                                    sl_percent_from_config = ai_sl_result['sl_percent']
-                                    logger.info(f"[NEW_BOT_{self.symbol}] 🤖 AI адаптировал SL: {max_loss_percent}% → {sl_percent_from_config}% ({ai_sl_result['reason']})")
+                                    # Берем AI адаптированный TP процент
+                                    tp_percent_from_config = ai_tp_result['tp_percent']
+                                    logger.info(f"[NEW_BOT_{self.symbol}] 🤖 AI адаптировал TP: → {tp_percent_from_config}% ({ai_tp_result['reason']})")
                     except Exception as ai_error:
-                        logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ AI SL недоступен: {ai_error}, используем базовый расчет")
-                    
-                    # Рассчитываем стоп на основе реальных данных
-                    position_value = abs(actual_qty) * actual_entry_price if actual_qty else (self.volume_value)
-                    margin = position_value / actual_leverage
-                    max_loss_usdt = margin * (sl_percent_from_config / 100)
-                    loss_per_coin = max_loss_usdt / abs(actual_qty) if actual_qty and abs(actual_qty) > 0 else (max_loss_usdt / (self.volume_value / actual_entry_price))
-                    
-                    if side == 'LONG':
-                        stop_loss_price = actual_entry_price - loss_per_coin
-                    else:
-                        stop_loss_price = actual_entry_price + loss_per_coin
-                    
-                    logger.info(f"[NEW_BOT_{self.symbol}] 🛑 SL рассчитан: {stop_loss_price:.6f} (entry={actual_entry_price}, leverage={actual_leverage}x, убыток {max_loss_usdt:.4f} USDT = {sl_percent_from_config}%)")
-                
-                # ШАГ 4: Рассчитываем Take Profit от маржи
-                take_profit_price = None
-                tp_percent_from_config = None
-                
-                # 🤖 Пытаемся использовать AI для расчета TP
-                try:
-                    if AI_RISK_MANAGER_AVAILABLE and DynamicRiskManager:
-                        # Получаем свечи для AI анализа
-                        chart_response = self.exchange.get_chart_data(self.symbol, '6h', limit=50)
-                        candles_for_ai = []
-                        
-                        if chart_response and chart_response.get('success'):
-                            candles_data = chart_response.get('data', {}).get('candles', [])
-                            if candles_data and len(candles_data) >= 20:
-                                # Конвертируем свечи в формат для AI
-                                for c in candles_data[-30:]:  # Последние 30 свечей
-                                    candles_for_ai.append({
-                                        'open': float(c.get('open', 0)),
-                                        'high': float(c.get('high', 0)),
-                                        'low': float(c.get('low', 0)),
-                                        'close': float(c.get('close', 0)),
-                                        'volume': float(c.get('volume', 0))
-                                    })
-                                
-                                # Используем AI Risk Manager для TP
-                                risk_manager = DynamicRiskManager()
-                                ai_tp_result = risk_manager.calculate_dynamic_tp(
-                                    self.symbol, candles_for_ai, side
-                                )
-                                
-                                # Берем AI адаптированный TP процент
-                                tp_percent_from_config = ai_tp_result['tp_percent']
-                                logger.info(f"[NEW_BOT_{self.symbol}] 🤖 AI адаптировал TP: → {tp_percent_from_config}% ({ai_tp_result['reason']})")
-                except Exception as ai_error:
-                    logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ AI TP недоступен: {ai_error}, используем базовый расчет")
+                        logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ AI TP недоступен: {ai_error}, используем базовый расчет")
                 
                 # Рассчитываем TP от маржи
                 if tp_percent_from_config:
@@ -870,6 +988,14 @@ class NewTradingBot:
             
             if close_result and close_result.get('success'):
                 logger.info(f"[NEW_BOT_{self.symbol}] ✅ Позиция закрыта успешно")
+                
+                # Сохраняем историю закрытия позиции (для обучения ИИ)
+                self._log_position_closed(reason, close_result)
+                
+                # 🎓 Обратная связь для обучения ИИ (если есть backtest_result)
+                if hasattr(self, '_last_backtest_result') and self._last_backtest_result:
+                    self._evaluate_ai_prediction(reason, close_result)
+                
                 self.update_status(BOT_STATUS['IDLE'])
                 return True
             else:
@@ -974,6 +1100,96 @@ class NewTradingBot:
         except Exception as e:
             logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка расчета TP: {e}")
             return None
+    
+    def _log_position_closed(self, reason, close_result):
+        """Сохраняет детальные данные о закрытии позиции (для обучения ИИ)"""
+        try:
+            from bot_engine.bot_history import bot_history_manager
+            from bot_engine.ai import check_premium_license
+            
+            # Получаем данные о закрытии
+            exit_price = close_result.get('price', self.entry_price) if close_result else self.entry_price
+            pnl = close_result.get('realized_pnl', self.unrealized_pnl) if close_result else self.unrealized_pnl
+            pnl_pct = close_result.get('roi', 0) if close_result else 0
+            
+            # Подготавливаем данные для обучения ИИ (только если стоп И есть лицензия)
+            entry_data = None
+            market_data = None
+            
+            if 'STOP' in reason.upper():
+                try:
+                    is_premium = check_premium_license()
+                    
+                    if is_premium:
+                        # Получаем входные данные для обучения ИИ
+                        entry_data = {
+                            'entry_price': self.entry_price,
+                            'volatility': getattr(self, 'entry_volatility', None),
+                            'trend': getattr(self, 'entry_trend', None),
+                            'duration_hours': (self.position_start_time and 
+                                             (datetime.now() - self.position_start_time).total_seconds() / 3600) if self.position_start_time else 0,
+                            'max_profit_achieved': self.max_profit_achieved
+                        }
+                        
+                        # Получаем рыночные данные при выходе
+                        market_data = {
+                            'exit_price': exit_price,
+                            'volatility': None,  # TODO: Получить текущую волатильность
+                            'trend': None,  # TODO: Получить текущий тренд
+                            'price_movement': ((exit_price - self.entry_price) / self.entry_price * 100) if self.entry_price else 0
+                        }
+                except Exception as e:
+                    logger.debug(f"[NEW_BOT_{self.symbol}] Лицензия проверка не удалась: {e}")
+                    entry_data = None
+                    market_data = None
+            
+            # Сохраняем в историю
+            bot_history_manager.log_position_closed(
+                bot_id=self.symbol,
+                symbol=self.symbol,
+                direction=self.position_side,
+                exit_price=exit_price,
+                pnl=pnl,
+                roi=pnl_pct,
+                reason=reason,
+                entry_data=entry_data,
+                market_data=market_data
+            )
+            
+        except Exception as e:
+            logger.debug(f"[NEW_BOT_{self.symbol}] Не удалось сохранить историю: {e}")
+    
+    def _evaluate_ai_prediction(self, reason, close_result):
+        """Оценивает предсказание ИИ и сохраняет для обучения"""
+        try:
+            from bot_engine.ai.smart_risk_manager import SmartRiskManager
+            from bot_engine.bot_history import bot_history_manager
+            
+            # Получаем данные о реальном результате
+            exit_price = close_result.get('price', self.entry_price) if close_result else self.entry_price
+            pnl = close_result.get('realized_pnl', self.unrealized_pnl) if close_result else self.unrealized_pnl
+            pnl_pct = close_result.get('roi', 0) if close_result else 0
+            
+            actual_outcome = {
+                'entry_price': self.entry_price,
+                'exit_price': exit_price,
+                'pnl': pnl,
+                'roi': pnl_pct,
+                'reason': reason
+            }
+            
+            # Оцениваем предсказание
+            smart_risk = SmartRiskManager()
+            evaluation = smart_risk.evaluate_prediction(
+                self.symbol,
+                self._last_backtest_result,
+                actual_outcome
+            )
+            
+            logger.info(f"[NEW_BOT_{self.symbol}] 🎓 ИИ оценен: score={evaluation.get('score', 0):.2f}")
+            
+        except Exception as e:
+            logger.debug(f"[NEW_BOT_{self.symbol}] Не удалось оценить ИИ: {e}")
     
     def to_dict(self):
         """Преобразует бота в словарь для сохранения"""

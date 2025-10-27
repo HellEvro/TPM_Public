@@ -99,6 +99,9 @@ class AIConfigManager {
         this.setCheckbox('riskManagementEnabled', config.risk_management_enabled);
         this.setValue('riskUpdateInterval', config.risk_update_interval);
         
+        // Optimal Entry Detection
+        this.setCheckbox('optimalEntryEnabled', config.optimal_entry_enabled);
+        
         // Auto Training
         this.setCheckbox('autoTrainEnabled', config.auto_train_enabled);
         this.setCheckbox('autoUpdateData', config.auto_update_data);
@@ -145,6 +148,9 @@ class AIConfigManager {
                 // Risk Management
                 risk_management_enabled: this.getCheckbox('riskManagementEnabled'),
                 risk_update_interval: parseInt(this.getValue('riskUpdateInterval')),
+                
+                // Optimal Entry Detection
+                optimal_entry_enabled: this.getCheckbox('optimalEntryEnabled'),
                 
                 // Auto Training
                 auto_train_enabled: this.getCheckbox('autoTrainEnabled'),
