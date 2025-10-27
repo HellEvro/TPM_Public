@@ -729,7 +729,19 @@ const TRANSLATIONS = {
         'trend_require_price_help': 'Цена должна быть выше/ниже EMA_long (рекомендуется включить)',
         'trend_require_candles_label': 'Требовать подтверждение свечами:',
         'trend_require_candles_help': 'N свечей подряд должны быть выше/ниже EMA_long (рекомендуется включить)',
-        'save_trend_section_btn': '💾 Сохранить параметры тренда'
+        'save_trend_section_btn': '💾 Сохранить параметры тренда',
+        
+        // Active bots detailed labels
+        'position_volume': 'Объем:',
+        'position_label': 'Позиция',
+        'entry_label': 'Вход',
+        'current_label': 'Текущая',
+        'change_label': 'Изменение',
+        'stop_loss_label_detailed': 'Стоп-лосс',
+        'take_profit_label_detailed': 'Тейк-профит',
+        'time_label': 'Время:',
+        'updated_label': 'Обновлено:',
+        'not_set': 'Не установлен'
     },
     en: {
         theme: '🌓 Toggle Theme',
@@ -1459,7 +1471,19 @@ const TRANSLATIONS = {
         'trend_require_price_help': 'Price must be above/below EMA_long (recommended to enable)',
         'trend_require_candles_label': 'Require candle confirmation:',
         'trend_require_candles_help': 'N candles in a row must be above/below EMA_long (recommended to enable)',
-        'save_trend_section_btn': '💾 Save Trend Parameters'
+        'save_trend_section_btn': '💾 Save Trend Parameters',
+        
+        // Active bots detailed labels
+        'position_volume': 'Volume:',
+        'position_label': 'Position',
+        'entry_label': 'Entry',
+        'current_label': 'Current',
+        'change_label': 'Change',
+        'stop_loss_label_detailed': 'Stop-loss',
+        'take_profit_label_detailed': 'Take-profit',
+        'time_label': 'Time:',
+        'updated_label': 'Updated:',
+        'not_set': 'Not set'
     }
 };
 

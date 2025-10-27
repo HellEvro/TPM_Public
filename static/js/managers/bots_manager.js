@@ -60,6 +60,12 @@ class BotsManager {
         console.error(...args);
     }
 
+    // Метод для получения перевода
+    getTranslation(key) {
+        const currentLang = document.documentElement.lang || 'ru';
+        return TRANSLATIONS && TRANSLATIONS[currentLang] && TRANSLATIONS[currentLang][key] || key;
+    }
+
     async init() {
         console.log('[BotsManager] 🚀 Инициализация менеджера ботов...');
         console.log('[BotsManager] 💡 Для включения debug логов: window.botsManager.logLevel = "debug"');
@@ -4074,7 +4080,7 @@ class BotsManager {
                             </div>
                                 
                             <div class="bot-details" style="font-size: 12px; color: #ccc; margin-bottom: 8px; display: none;">
-                                <div style="margin-bottom: 4px;">💰 Объем: ${parseFloat(((bot.position_size || 0) * (bot.entry_price || 0)).toFixed(2))} USDT</div>
+                                <div style="margin-bottom: 4px;">💰 ${this.getTranslation('position_volume')} ${parseFloat(((bot.position_size || 0) * (bot.entry_price || 0)).toFixed(2))} USDT</div>
                                 ${positionInfo}
                                 ${timeInfo}
                             </div>
@@ -4448,10 +4454,10 @@ class BotsManager {
         const timeElement = botElement.querySelector('.bot-time-left');
         if (timeElement && bot.position_start_time && bot.max_position_hours > 0) {
             const timeLeft = this.calculateTimeLeft(bot.position_start_time, bot.max_position_hours);
-            timeElement.textContent = `Время: ${timeLeft}`;
+            timeElement.textContent = `${this.getTranslation('time_label')} ${timeLeft}`;
             timeElement.style.color = timeLeft.includes('0:00') ? 'var(--red-color)' : 'var(--blue-color)';
         } else if (timeElement) {
-            timeElement.textContent = 'Время: ∞';
+            timeElement.textContent = `${this.getTranslation('time_label')} ∞`;
             timeElement.style.color = 'var(--gray-color)';
         }
     }
@@ -6657,7 +6663,7 @@ class BotsManager {
                 statusIcon = '📍';
             }
             
-            return `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>${statusIcon} Позиция:</span><span style="color: ${statusColor};">${statusText}</span></div>`;
+            return `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span>${statusIcon} ${this.getTranslation('position_label')}:</span><span style="color: ${statusColor};">${statusText}</span></div>`;
         }
         
         const sideColor = bot.position_side === 'LONG' ? '#4caf50' : '#f44336';
@@ -6665,11 +6671,11 @@ class BotsManager {
         
         let positionHtml = `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">
-                <span style="color: #888;">${sideIcon} Позиция</span>
+                <span style="color: #888;">${sideIcon} ${this.getTranslation('position_label')}</span>
                 <span style="color: ${sideColor}; font-weight: 600;">${bot.position_side}</span>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">
-                <span style="color: #888;">💵 Вход</span>
+                <span style="color: #888;">💵 ${this.getTranslation('entry_label')}</span>
                 <span style="color: #fff; font-weight: 600;">$${bot.entry_price.toFixed(6)}</span>
             </div>
         `;
@@ -6684,11 +6690,11 @@ class BotsManager {
             
             positionHtml += `
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">
-                    <span style="color: #888;">📊 Текущая</span>
+                    <span style="color: #888;">📊 ${this.getTranslation('current_label')}</span>
                     <span style="color: ${priceChangeColor}; font-weight: 600;">$${currentPrice.toFixed(6)} ${priceChangeIcon}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">
-                    <span style="color: #888;">📈 Изменение</span>
+                    <span style="color: #888;">📈 ${this.getTranslation('change_label')}</span>
                     <span style="color: ${priceChangeColor}; font-weight: 600;">${priceChange.toFixed(2)}%</span>
                 </div>
             `;
@@ -6725,12 +6731,12 @@ class BotsManager {
         
         positionHtml += `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">
-                <span style="color: #888;">🛡️ Стоп-лосс</span>
-                <span style="color: ${stopLoss ? '#ff9800' : '#666'}; font-weight: 600;">${stopLoss ? `$${parseFloat(stopLoss).toFixed(6)}` : 'Не установлен'}</span>
+                <span style="color: #888;">🛡️ ${this.getTranslation('stop_loss_label_detailed')}</span>
+                <span style="color: ${stopLoss ? '#ff9800' : '#666'}; font-weight: 600;">${stopLoss ? `$${parseFloat(stopLoss).toFixed(6)}` : this.getTranslation('not_set')}</span>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">
-                <span style="color: #888;">🎯 Тейк-профит</span>
-                <span style="color: ${takeProfit ? '#4caf50' : '#666'}; font-weight: 600;">${takeProfit ? `$${parseFloat(takeProfit).toFixed(6)}` : 'Не установлен'}</span>
+                <span style="color: #888;">🎯 ${this.getTranslation('take_profit_label_detailed')}</span>
+                <span style="color: ${takeProfit ? '#4caf50' : '#666'}; font-weight: 600;">${takeProfit ? `$${parseFloat(takeProfit).toFixed(6)}` : this.getTranslation('not_set')}</span>
             </div>
         `;
         
@@ -6823,7 +6829,7 @@ class BotsManager {
             
             timeInfoHtml += `
                 <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                    <span>🔄 Обновлено:</span>
+                    <span>🔄 ${this.getTranslation('updated_label')}</span>
                     <span style="color: ${updateColor}; font-weight: 500;">${updateTimeText}</span>
                 </div>
             `;
