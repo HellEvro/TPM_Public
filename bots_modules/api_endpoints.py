@@ -761,10 +761,22 @@ def create_bot_endpoint():
         # ✅ Проверяем: есть ли уже позиция на бирже для этой монеты?
         has_existing_position = False
         try:
-            from bots_modules.imports_and_globals import positions_cache
-            if symbol in positions_cache.get('symbols_with_positions', []):
-                has_existing_position = True
-                logger.info(f"[BOT_CREATE] 🔍 {symbol}: Обнаружена существующая позиция на бирже - просто синхронизируем")
+            # Проверяем через exchange напрямую (более надежно)
+            current_exchange = get_exchange()
+            if current_exchange:
+                positions_response = current_exchange.get_positions()
+                if isinstance(positions_response, tuple):
+                    positions_list = positions_response[0] if positions_response else []
+                else:
+                    positions_list = positions_response if positions_response else []
+                
+                # Ищем позицию для этой монеты
+                for pos in positions_list:
+                    pos_symbol = pos.get('symbol', '').replace('USDT', '')
+                    if pos_symbol == symbol and abs(float(pos.get('size', 0))) > 0:
+                        has_existing_position = True
+                        logger.info(f"[BOT_CREATE] 🔍 {symbol}: Обнаружена существующая позиция на бирже (размер: {pos.get('size')})")
+                        break
         except Exception as e:
             logger.debug(f"[BOT_CREATE] Не удалось проверить существующую позицию: {e}")
         

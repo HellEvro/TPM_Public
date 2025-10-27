@@ -96,6 +96,11 @@ class NewTradingBot:
         self.entry_timestamp = self.config.get('entry_timestamp', None)
         self.opened_by_autobot = self.config.get('opened_by_autobot', False)
         
+        # Дополнительные поля для сохранения
+        self.stop_loss = self.config.get('stop_loss', None)
+        self.take_profit = self.config.get('take_profit', None)
+        self.current_price = self.config.get('current_price', None)
+        
         logger.info(f"[NEW_BOT_{symbol}] ✅ Бот инициализирован (статус: {self.status})")
         
     def update_status(self, new_status, entry_price=None, position_side=None):
@@ -1193,20 +1198,38 @@ class NewTradingBot:
     
     def to_dict(self):
         """Преобразует бота в словарь для сохранения"""
+        # Получаем дополнительные данные из конфига если есть
+        bot_id = self.config.get('id', f"{self.symbol}_{int(datetime.now().timestamp())}")
+        
         return {
+            'id': bot_id,
             'symbol': self.symbol,
             'status': self.status,
+            'auto_managed': self.config.get('auto_managed', False),
+            'volume_mode': self.volume_mode,
+            'volume_value': self.volume_value,
+            'position': None,  # Для совместимости
             'entry_price': self.entry_price,
+            'entry_time': self.position_start_time.isoformat() if self.position_start_time else None,
             'position_side': self.position_side,
             'unrealized_pnl': self.unrealized_pnl,
             'created_at': self.created_at,
             'last_signal_time': self.last_signal_time,
+            'last_bar_timestamp': None,  # Для совместимости
             'max_profit_achieved': self.max_profit_achieved,
             'trailing_stop_price': self.trailing_stop_price,
             'break_even_activated': self.break_even_activated,
             'position_start_time': self.position_start_time.isoformat() if self.position_start_time else None,
             'order_id': self.order_id,
             'entry_timestamp': self.entry_timestamp,
-            'opened_by_autobot': self.opened_by_autobot
+            'opened_by_autobot': self.opened_by_autobot,
+            'scaling_enabled': False,  # Для совместимости
+            'scaling_levels': [],  # Для совместимости
+            'scaling_current_level': 0,  # Для совместимости
+            'scaling_group_id': None,  # Для совместимости
+            # Добавляем стопы и тейки если они есть
+            'stop_loss': getattr(self, 'stop_loss', None) or self.config.get('stop_loss'),
+            'take_profit': getattr(self, 'take_profit', None) or self.config.get('take_profit'),
+            'current_price': getattr(self, 'current_price', None) or self.config.get('current_price')
         }
 
