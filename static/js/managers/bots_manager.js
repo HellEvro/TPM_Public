@@ -2711,14 +2711,14 @@ class BotsManager {
             const data = await response.json();
             if (data.success) {
                 this.showNotification(`✅ Бот ${targetSymbol} остановлен`, 'success');
-                // Обновляем UI после успешной остановки
-                this.updateBotStatusInUI(targetSymbol, 'stopped');
+                // Обновляем UI после успешной остановки - используем 'paused' вместо 'stopped'
+                this.updateBotStatusInUI(targetSymbol, 'paused');
                 
                 // Обновляем локальные данные бота
                 if (this.activeBots) {
                     const botIndex = this.activeBots.findIndex(bot => bot.symbol === targetSymbol);
                     if (botIndex >= 0) {
-                        this.activeBots[botIndex].status = 'paused'; // или 'stopped'
+                        this.activeBots[botIndex].status = 'paused';
                     }
                 }
                 
@@ -2848,6 +2848,12 @@ class BotsManager {
                 case 'stopped':
                     statusElement.textContent = 'Остановлен';
                     statusElement.className = 'bot-status status-stopped';
+                    if (startButton) startButton.disabled = false;
+                    if (stopButton) stopButton.disabled = true;
+                    break;
+                case 'paused':
+                    statusElement.textContent = 'На паузе';
+                    statusElement.className = 'bot-status status-paused';
                     if (startButton) startButton.disabled = false;
                     if (stopButton) stopButton.disabled = true;
                     break;
@@ -3913,25 +3919,11 @@ class BotsManager {
         if (!this.serviceOnline) return;
         
         try {
-            // Синхронизация позиций с биржей каждые 3 секунды
-            try {
-                const syncResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/sync-positions`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-                const syncData = await syncResponse.json();
-                if (syncData.success) {
-                    this.logDebug('[BotsManager] ✅ Позиции синхронизированы успешно');
-                } else {
-                    console.warn('[BotsManager] ⚠️ Ошибка синхронизации позиций:', syncData.message);
-                }
-            } catch (syncError) {
-                console.warn('[BotsManager] ⚠️ Ошибка синхронизации позиций:', syncError);
-            }
+            // ⚡ УБРАНО: Синхронизация позиций теперь выполняется только автоматически воркерами
+            // Вызов sync-positions здесь вызывал race condition с остановкой бота
+            // и перезаписывал статус PAUSED обратно на in_position_long/short
             
-            // Затем загружаем и ботов, и конфигурацию автобота параллельно
+            // Загружаем и ботов, и конфигурацию автобота параллельно
             const [botsResponse, configResponse] = await Promise.all([
                 fetch(`${this.BOTS_SERVICE_URL}/api/bots/list`),
                 fetch(`${this.BOTS_SERVICE_URL}/api/bots/auto-bot`)
@@ -4124,6 +4116,25 @@ class BotsManager {
                     this.activeBots.forEach(bot => {
                         const botItem = scrollListElement.querySelector(`.active-bot-item[data-symbol="${bot.symbol}"]`);
                         if (botItem) {
+                            // Обновляем статус бота
+                            const statusElement = botItem.querySelector('.bot-header .bot-status');
+                            const statusBadge = botItem.querySelector('.bot-header span[style*="background"]');
+                            if (statusBadge) {
+                                const isActive = bot.status === 'running' || bot.status === 'idle' || 
+                                                bot.status === 'in_position_long' || bot.status === 'in_position_short' ||
+                                                bot.status === 'armed_up' || bot.status === 'armed_down';
+                                const statusColor = isActive ? '#4caf50' : '#ff5722';
+                                const statusText = isActive ? 'Активен' : (bot.status === 'paused' ? 'Приостановлен' : (bot.status === 'idle' ? 'Ожидание' : 'Остановлен'));
+                                statusBadge.style.background = statusColor;
+                                statusBadge.textContent = statusText;
+                            }
+                            
+                            // Обновляем кнопки управления
+                            const controlsDiv = botItem.querySelector('.bot-controls');
+                            if (controlsDiv) {
+                                controlsDiv.innerHTML = this.getBotControlButtonsHtml(bot);
+                            }
+                            
                             // Обновляем PnL
                             const pnlElement = botItem.querySelector('.bot-header > div:last-child > div > div:first-child');
                             if (pnlElement) {

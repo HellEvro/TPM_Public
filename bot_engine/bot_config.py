@@ -65,8 +65,8 @@ DEFAULT_AUTO_BOT_CONFIG = {
     # RSI параметры согласно ТЗ
     'rsi_long_threshold': 29,   # Вход в LONG при RSI <= 29
     'rsi_short_threshold': 71,  # Вход в SHORT при RSI >= 71
-    'rsi_exit_long': 55,        # Выход из LONG при RSI >= 65
-    'rsi_exit_short': 45,       # Выход из SHORT при RSI <= 35
+    'rsi_exit_long': 60,        # Выход из LONG при RSI >= 65
+    'rsi_exit_short': 40,       # Выход из SHORT при RSI <= 35
     'default_position_size': 5,  # Размер позиции в USDT
     'check_interval': 180,      # Интервал проверки в секундах (3 мин = 180 сек)
     'monitoring_interval': 10,  # Интервал мониторинга активных ботов в секундах
@@ -76,12 +76,13 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'max_risk_per_trade': 2,  # Максимальный риск на сделку в %
     # Защитные механизмы
     'max_loss_percent': 15,   # Максимальный убыток в % от входа (стоп-лосс)
-    'trailing_stop_activation': 300,  # Активация trailing stop при прибыли в % (x3 = 300%)
-    'trailing_stop_distance': 150,    # Расстояние trailing stop в % (x1.5 = 150%)
+    'trailing_stop_activation': 50,  # Активация trailing stop при прибыли в % (x3 = 300%)
+    'trailing_stop_distance': 15,    # Расстояние trailing stop в % (x1.5 = 150%)
     'max_position_hours': 0,     # Максимальное время удержания позиции в часах (0 = отключено)
     'break_even_protection': True,      # Защита безубыточности
     'break_even_trigger': 100,        # Триггер для break even в % (x1 = 100%)
     # Фильтры по тренду
+    'trend_detection_enabled': True,    # Включить определение тренда (выключить = пропускает анализ трендов)
     'avoid_down_trend': True,          # Не входить в LONG при нисходящем тренде (КРИТИЧЕСКИ ВАЖНО!)
     'avoid_up_trend': True,            # Не входить в SHORT при восходящем тренде (КРИТИЧЕСКИ ВАЖНО!)
     # Настройки зрелости монет
@@ -193,6 +194,9 @@ class RiskConfig:
     MAX_POSITION_TIME_HOURS = 48
     SECURITY_PROTECTION = True
     SECURITY_TRIGGER_PERCENT = 100.0
+    
+    # Автоматические корректировки
+    PRICE_SLIPPAGE_BUFFER = 5.0  # Процент проскальзывания для страховки (5% по умолчанию)
     
     # Auto Bot ограничения
     MAX_CONCURRENT_POSITIONS = 10

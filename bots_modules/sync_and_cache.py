@@ -885,8 +885,18 @@ def update_bots_cache_data():
                         # ✅ КРИТИЧНО: Обновляем данные бота актуальными данными с биржи
                         if exchange_entry_price > 0:
                             bot_data['entry_price'] = exchange_entry_price
+                        
+                        # ⚡ КРИТИЧНО: position_size должен быть в USDT, а не в монетах!
+                        # Получаем volume_value из bot_data (это USDT)
                         if exchange_size > 0:
-                            bot_data['position_size'] = exchange_size
+                            # Сохраняем volume_value как position_size (в USDT)
+                            volume_value = bot_data.get('volume_value', 0)
+                            if volume_value > 0:
+                                bot_data['position_size'] = volume_value  # USDT
+                                bot_data['position_size_coins'] = exchange_size  # Монеты для справки
+                            else:
+                                # Fallback: если volume_value нет, используем размер в монетах
+                                bot_data['position_size'] = exchange_size
                         if exchange_mark_price > 0:
                             bot_data['current_price'] = exchange_mark_price
                             bot_data['mark_price'] = exchange_mark_price  # Дублируем для UI
@@ -941,9 +951,7 @@ def update_bots_cache_data():
                                 bot_data['entry_price'] = exchange_entry_price
                                 logger.debug(f"[POSITION_SYNC] Обновлена цена входа для {symbol}: {exchange_entry_price}")
                         
-                        # Синхронизируем размер позиции
-                        if exchange_size > 0:
-                            bot_data['position_size'] = exchange_size
+                        # ⚡ Размер позиции уже синхронизирован выше (в USDT)
                         
                         # Обновляем время последнего обновления
                         bot_data['last_update'] = datetime.now().isoformat()
@@ -990,8 +998,14 @@ def update_bot_positions_status():
             updated_count = 0
             
             for symbol, bot_data in bots_data['bots'].items():
-                # Обновляем только ботов в позиции
-                if bot_data.get('status') not in ['in_position_long', 'in_position_short']:
+                # Обновляем только ботов в позиции (НО НЕ остановленных!)
+                bot_status = bot_data.get('status')
+                if bot_status not in ['in_position_long', 'in_position_short']:
+                    continue
+                
+                # ⚡ КРИТИЧНО: Не обновляем ботов на паузе!
+                if bot_status == BOT_STATUS['PAUSED']:
+                    logger.debug(f"[POSITION_UPDATE] ⏸️ {symbol}: Бот на паузе - пропускаем обновление")
                     continue
                 
                 try:
@@ -2089,15 +2103,21 @@ def sync_bots_with_exchange():
                             old_status = bot_data.get('status', 'UNKNOWN')
                             old_pnl = bot_data.get('unrealized_pnl', 0)
                             
+                            # ⚡ КРИТИЧНО: Не изменяем статус если бот был остановлен вручную!
+                            is_paused = old_status == BOT_STATUS['PAUSED']
+                            
                             bot_data['entry_price'] = exchange_pos['avg_price']
                             bot_data['unrealized_pnl'] = exchange_pos['unrealized_pnl']
                             bot_data['position_side'] = 'LONG' if exchange_pos['side'] == 'Buy' else 'SHORT'
                             
-                            # Определяем статус на основе наличия позиции
-                            if exchange_pos['side'] == 'Buy':
-                                bot_data['status'] = BOT_STATUS['IN_POSITION_LONG']
+                            # Определяем статус на основе наличия позиции (НЕ ИЗМЕНЯЕМ если бот на паузе!)
+                            if not is_paused:
+                                if exchange_pos['side'] == 'Buy':
+                                    bot_data['status'] = BOT_STATUS['IN_POSITION_LONG']
+                                else:
+                                    bot_data['status'] = BOT_STATUS['IN_POSITION_SHORT']
                             else:
-                                bot_data['status'] = BOT_STATUS['IN_POSITION_SHORT']
+                                logger.info(f"[SYNC_EXCHANGE] ⏸️ {symbol}: Бот на паузе - сохраняем статус PAUSED")
                             
                             synchronized_bots += 1
                             

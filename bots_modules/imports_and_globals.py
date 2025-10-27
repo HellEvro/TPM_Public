@@ -540,7 +540,7 @@ rsi_data_lock = threading.Lock()
 bots_data_lock = threading.Lock()
 
 # Загружаем сохраненную конфигурацию Auto Bot
-def load_auto_bot_config(force_disable=False):
+def load_auto_bot_config():
     """Загружает конфигурацию Auto Bot из bot_config.py
     
     ✅ ЕДИНСТВЕННЫЙ источник истины: bot_engine/bot_config.py
@@ -554,16 +554,20 @@ def load_auto_bot_config(force_disable=False):
         with bots_data_lock:
             # Загружаем конфигурацию напрямую из bot_config.py
             bots_data['auto_bot_config'] = DEFAULT_AUTO_BOT_CONFIG.copy()
-            
-            # Отключаем автобот только при принудительном вызове (при запуске сервера)
-            if force_disable:
-                bots_data['auto_bot_config']['enabled'] = False
-                logger.info(f"[CONFIG] 🔒 Auto Bot принудительно выключен при запуске")
         
         logger.info(f"[CONFIG] ✅ Загружена конфигурация Auto Bot из bot_config.py")
             
     except Exception as e:
         logger.error(f"[CONFIG] ❌ Ошибка загрузки конфигурации: {e}")
+
+def get_auto_bot_config():
+    """Получает текущую конфигурацию Auto Bot из bots_data"""
+    try:
+        with bots_data_lock:
+            return bots_data.get('auto_bot_config', DEFAULT_AUTO_BOT_CONFIG.copy())
+    except Exception as e:
+        logger.error(f"[CONFIG] ❌ Ошибка получения конфигурации: {e}")
+        return DEFAULT_AUTO_BOT_CONFIG.copy()
 
 # ВАЖНО: load_auto_bot_config() теперь вызывается в if __name__ == '__main__'
 # чтобы check_and_stop_existing_bots_processes() мог вывести свои сообщения первым
@@ -764,4 +768,97 @@ try:
     logger.info(f"[IMPORTS] ✅ Загружено {len(mature_coins_storage)} зрелых монет при импорте")
 except Exception as e:
     logger.error(f"[IMPORTS] ❌ Ошибка загрузки зрелых монет: {e}")
+
+
+def open_position_for_bot(symbol, side, volume_value, current_price, take_profit_price=None):
+    """
+    Открывает позицию для бота с правильным расчетом количества в USDT
+    
+    Args:
+        symbol (str): Символ монеты (например, 'OG')
+        side (str): Сторона ('LONG' или 'SHORT')
+        volume_value (float): Объем сделки в USDT
+        current_price (float): Текущая цена
+        take_profit_price (float, optional): Цена Take Profit
+        
+    Returns:
+        dict: Результат открытия позиции с success, order_id, message
+    """
+    try:
+        exch = get_exchange()
+        if not exch:
+            logger.error(f"[OPEN_POSITION] {symbol}: ❌ Биржа не инициализирована")
+            return {'success': False, 'error': 'Exchange not initialized'}
+        
+        logger.info(f"[OPEN_POSITION] {symbol}: Открываем {side} позицию на {volume_value} USDT @ {current_price}")
+        
+        # Вызываем place_order с правильными параметрами
+        # quantity передаем в USDT (не в монетах!)
+        result = exch.place_order(
+            symbol=symbol,
+            side=side,
+            quantity=volume_value,  # ⚡ Количество в USDT!
+            order_type='market',
+            take_profit=take_profit_price
+        )
+        
+        if result and result.get('success'):
+            order_id = result.get('order_id')
+            logger.info(f"[OPEN_POSITION] {symbol}: ✅ Позиция {side} открыта успешно, order_id={order_id}")
+            
+            # Регистрируем позицию в реестре
+            register_bot_position(symbol, order_id, side, current_price, volume_value)
+            
+            return result
+        else:
+            error_msg = result.get('message', 'Unknown error') if result else 'No response'
+            logger.error(f"[OPEN_POSITION] {symbol}: ❌ Ошибка открытия позиции: {error_msg}")
+            return {'success': False, 'error': error_msg}
+            
+    except Exception as e:
+        logger.error(f"[OPEN_POSITION] {symbol}: ❌ Ошибка открытия позиции: {e}")
+        import traceback
+        traceback.print_exc()
+        return {'success': False, 'error': str(e)}
+
+
+def close_position_for_bot(symbol, position_side, reason='Manual close'):
+    """
+    Закрывает позицию для бота
+    
+    Args:
+        symbol (str): Символ монеты (например, 'OG')
+        position_side (str): Сторона позиции ('LONG' или 'SHORT')
+        reason (str): Причина закрытия
+        
+    Returns:
+        dict: Результат закрытия позиции с success, message
+    """
+    try:
+        exch = get_exchange()
+        if not exch:
+            logger.error(f"[CLOSE_POSITION] {symbol}: ❌ Биржа не инициализирована")
+            return {'success': False, 'error': 'Exchange not initialized'}
+        
+        logger.info(f"[CLOSE_POSITION] {symbol}: Закрываем {position_side} позицию (причина: {reason})")
+        
+        # Вызываем close_position
+        result = exch.close_position(
+            symbol=symbol,
+            side=position_side
+        )
+        
+        if result and result.get('success'):
+            logger.info(f"[CLOSE_POSITION] {symbol}: ✅ Позиция {position_side} закрыта успешно")
+            return result
+        else:
+            error_msg = result.get('message', 'Unknown error') if result else 'No response'
+            logger.error(f"[CLOSE_POSITION] {symbol}: ❌ Ошибка закрытия позиции: {error_msg}")
+            return {'success': False, 'error': error_msg}
+            
+    except Exception as e:
+        logger.error(f"[CLOSE_POSITION] {symbol}: ❌ Ошибка закрытия позиции: {e}")
+        import traceback
+        traceback.print_exc()
+        return {'success': False, 'error': str(e)}
 

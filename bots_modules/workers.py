@@ -144,6 +144,10 @@ def auto_bot_worker():
             check_interval_seconds = bots_data['auto_bot_config']['check_interval']
             auto_bot_enabled = bots_data['auto_bot_config']['enabled']
             
+            # 🔍 ОТЛАДКА: логируем текущее значение enabled
+            if cycle_count % 60 == 1:  # Каждые 60 циклов (раз в минуту)
+                logger.info(f"[AUTO_BOT] 🔍 DEBUG: auto_bot_enabled = {auto_bot_enabled}, check_interval = {check_interval_seconds}s")
+            
             # ✅ КРИТИЧНО: Обновляем позиции каждую секунду независимо от check_interval!
             # Не ждем check_interval_seconds - это только для проверки сигналов автобота
             logger.info(f"[AUTO_BOT] ⏳ Обновляем позиции каждую секунду...")

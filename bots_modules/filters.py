@@ -1347,9 +1347,17 @@ def check_new_autobot_filters(symbol, signal, coin_data):
 def analyze_trends_for_signal_coins():
     """🎯 Определяет тренд для монет с сигналами (RSI ≤29 или ≥71)"""
     try:
-        logger.info("[TREND_ANALYSIS] 🎯 Начинаем анализ трендов для сигнальных монет...")
+        from bots_modules.imports_and_globals import rsi_data_lock, coins_rsi_data, get_exchange, get_auto_bot_config
         
-        from bots_modules.imports_and_globals import rsi_data_lock, coins_rsi_data, get_exchange
+        # Проверяем флаг trend_detection_enabled
+        config = get_auto_bot_config()
+        trend_detection_enabled = config.get('trend_detection_enabled', True)
+        
+        if not trend_detection_enabled:
+            logger.info("[TREND_ANALYSIS] ⏸️ Анализ трендов отключен (trend_detection_enabled=False)")
+            return False
+        
+        logger.info("[TREND_ANALYSIS] 🎯 Начинаем анализ трендов для сигнальных монет...")
         from bots_modules.calculations import analyze_trend_6h
         
         exchange = get_exchange()
