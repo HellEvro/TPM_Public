@@ -1,34 +1,24 @@
 from abc import ABC, abstractmethod
 import time
-import signal
 from functools import wraps
-
-def timeout_handler(signum, frame):
-    raise TimeoutError("API call timed out")
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 def with_timeout(timeout_seconds=30):
     """Декоратор для добавления таймаута к методам"""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            # Устанавливаем таймаут только для Unix систем
-            if hasattr(signal, 'SIGALRM'):
-                old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(timeout_seconds)
+            # Потокобезопасный и кроссплатформенный таймаут через ThreadPoolExecutor
+            start_time = time.time()
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(func, *args, **kwargs)
                 try:
-                    result = func(*args, **kwargs)
-                    return result
-                finally:
-                    signal.alarm(0)
-                    signal.signal(signal.SIGALRM, old_handler)
-            else:
-                # Для Windows используем простую проверку времени
-                start_time = time.time()
-                result = func(*args, **kwargs)
-                elapsed = time.time() - start_time
-                if elapsed > timeout_seconds:
-                    raise TimeoutError(f"API call took {elapsed:.2f}s, exceeded timeout of {timeout_seconds}s")
-                return result
+                    return future.result(timeout=timeout_seconds)
+                except FuturesTimeoutError:
+                    elapsed = time.time() - start_time
+                    raise TimeoutError(
+                        f"API call took {elapsed:.2f}s, exceeded timeout of {timeout_seconds}s"
+                    )
         return wrapper
     return decorator
 
