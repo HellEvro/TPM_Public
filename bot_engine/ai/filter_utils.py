@@ -24,6 +24,26 @@ def _normalize_candle(candle: Dict[str, Any]) -> Dict[str, float]:
     }
 
 
+def _get_bool(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+    return bool(value)
+
+
+def _check_global_switches(config: Dict[str, Any]) -> Tuple[bool, str]:
+    trading_enabled = _get_bool(config.get('trading_enabled', True), True)
+    if not trading_enabled:
+        return False, 'Торговля отключена'
+
+    use_test_server = _get_bool(config.get('use_test_server', False), False)
+    if use_test_server:
+        return False, 'Режим тестового сервера'
+
+    return True, 'Торговля включена'
+
+
 def _check_scope(symbol: str, config: Dict[str, Any]) -> Tuple[bool, str]:
     scope = config.get('scope', 'all')
     whitelist = config.get('whitelist', []) or []
@@ -134,6 +154,11 @@ def apply_entry_filters(
     trend: Optional[str] = None,
 ) -> Tuple[bool, str]:
     reason_parts: List[str] = []
+
+    switches_allowed, switches_reason = _check_global_switches(config)
+    reason_parts.append(switches_reason)
+    if not switches_allowed:
+        return False, f"{symbol}: {switches_reason}"
 
     scope_allowed, scope_reason = _check_scope(symbol, config)
     reason_parts.append(scope_reason)

@@ -9,11 +9,30 @@
 import os
 import json
 import logging
-from typing import Dict, List, Optional, Any
+from copy import deepcopy
+from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 import numpy as np
 
 logger = logging.getLogger('AI.StrategyOptimizer')
+
+
+DEFAULT_PARAMETER_GENOMES: Dict[str, Dict[str, Any]] = {
+    'rsi_long_threshold': {'min': 20, 'max': 35, 'step': 1, 'type': 'int'},
+    'rsi_short_threshold': {'min': 65, 'max': 80, 'step': 1, 'type': 'int'},
+    'rsi_exit_long_with_trend': {'min': 55, 'max': 75, 'step': 2, 'type': 'int'},
+    'rsi_exit_short_with_trend': {'min': 25, 'max': 45, 'step': 2, 'type': 'int'},
+    'max_loss_percent': {'min': 8.0, 'max': 25.0, 'step': 1.0, 'precision': 1},
+    'take_profit_percent': {'min': 10.0, 'max': 40.0, 'step': 2.5, 'precision': 1},
+    'trailing_stop_activation': {'min': 10.0, 'max': 70.0, 'step': 5.0, 'precision': 1},
+    'trailing_stop_distance': {'min': 5.0, 'max': 40.0, 'step': 2.5, 'precision': 1},
+    'trailing_take_distance': {'min': 0.2, 'max': 2.0, 'step': 0.1, 'precision': 2},
+    'trailing_update_interval': {'min': 1.0, 'max': 8.0, 'step': 0.5, 'precision': 1},
+    'break_even_trigger': {'min': 30.0, 'max': 250.0, 'step': 10.0, 'precision': 1},
+    'max_position_hours': {'min': 12, 'max': 336, 'step': 12, 'type': 'int'},
+}
+
+DEFAULT_MAX_TESTS = 200
 
 
 class AIStrategyOptimizer:
@@ -29,8 +48,93 @@ class AIStrategyOptimizer:
         # Создаем директории
         os.makedirs(self.results_dir, exist_ok=True)
         os.makedirs(self.data_dir, exist_ok=True)
+
+        self.parameter_genomes, self.parameter_genomes_meta = self._load_parameter_genomes()
+        self.max_genome_tests = int(self.parameter_genomes_meta.get('max_tests', DEFAULT_MAX_TESTS))
         
         logger.info("✅ AIStrategyOptimizer инициализирован")
+
+    def _load_parameter_genomes(self) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Any]]:
+        """Загружает пользовательские геномы параметров, объединяя с дефолтами."""
+        path = os.path.join(self.data_dir, 'optimizer_genomes.json')
+        merged = deepcopy(DEFAULT_PARAMETER_GENOMES)
+        meta: Dict[str, Any] = {'version': 'default', 'source': 'defaults', 'max_tests': DEFAULT_MAX_TESTS}
+
+        if os.path.exists(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as fp:
+                    payload = json.load(fp)
+                file_params = payload.get('parameters') if isinstance(payload, dict) else payload
+                if isinstance(file_params, dict):
+                    for name, overrides in file_params.items():
+                        if isinstance(overrides, dict):
+                            merged[name] = {**merged.get(name, {}), **overrides}
+                meta.update({k: v for k, v in payload.items() if k != 'parameters'})
+                meta['source'] = os.path.relpath(path)
+            except Exception as genome_error:
+                logger.warning(f"⚠️ Не удалось загрузить optimizer_genomes.json: {genome_error}")
+
+        return merged, meta
+
+    def _build_range_from_genome(self, parameter_name: str) -> List[float]:
+        """Создает диапазон значений на основе описания генома."""
+        genome = self.parameter_genomes.get(parameter_name, {})
+
+        if 'values' in genome and genome['values']:
+            return list(genome['values'])
+
+        min_value = genome.get('min')
+        max_value = genome.get('max')
+        step = genome.get('step')
+
+        if min_value is None or max_value is None or step is None:
+            raise ValueError(f"В геноме {parameter_name} отсутствуют min/max/step")
+
+        values = list(np.arange(min_value, max_value + step * 0.5, step))
+        precision = genome.get('precision')
+        value_type = genome.get('type', 'float')
+
+        if precision is not None:
+            values = [round(v, precision) for v in values]
+
+        if value_type == 'int':
+            values = [int(round(v)) for v in values]
+
+        return values
+
+    def _log_parameter_ranges(self, ranges: Dict[str, List[Any]]):
+        logger.info("   🧬 Конфигурация геномов оптимизатора:")
+        logger.info(
+            f"      версия: {self.parameter_genomes_meta.get('version', 'default')}, "
+            f"источник: {self.parameter_genomes_meta.get('source', 'defaults')}, "
+            f"max_tests: {self.max_genome_tests}"
+        )
+        for key, values in ranges.items():
+            preview = values
+            if len(values) > 10:
+                preview = [values[0], values[1], '...', values[-2], values[-1]]
+            logger.info(f"      {key}: {preview} (всего {len(values)})")
+
+    def _log_param_changes(self, symbol: str, new_params: Dict[str, Any]):
+        try:
+            from bots_modules.imports_and_globals import get_individual_coin_settings  # noqa: WPS433,E402
+            previous = get_individual_coin_settings(symbol) or {}
+        except Exception:
+            previous = {}
+
+        changes = []
+        for key, value in new_params.items():
+            prev_value = previous.get(key)
+            if prev_value != value:
+                changes.append((key, prev_value, value))
+
+        if not changes:
+            logger.info(f"      📄 Изменения параметров для {symbol}: отсутствуют (значения совпадают)")
+            return
+
+        logger.info(f"      📄 Изменения параметров для {symbol}:")
+        for key, prev_value, next_value in changes:
+            logger.info(f"         - {key}: {prev_value} → {next_value}")
     
     def _load_history_data(self) -> List[Dict]:
         """Загрузить историю трейдов"""
@@ -402,38 +506,43 @@ class AIStrategyOptimizer:
                 base_stop_loss = 15
                 base_take_profit = 20
             
-            # Grid Search: варьируем параметры вокруг базовых значений
-            # RSI вход LONG: от 20 до 35 (шаг 3)
-            rsi_long_entry_range = list(range(20, 36, 3))
-            # RSI вход SHORT: от 65 до 80 (шаг 3)
-            rsi_short_entry_range = list(range(65, 81, 3))
-            # RSI выход LONG: от 55 до 70 (шаг 5)
-            rsi_long_exit_range = list(range(55, 71, 5))
-            # RSI выход SHORT: от 30 до 45 (шаг 5)
-            rsi_short_exit_range = list(range(30, 46, 5))
-            # Stop Loss: от 10% до 20% (шаг 2.5%)
-            stop_loss_range = [10, 12.5, 15, 17.5, 20]
-            # Take Profit: от 15% до 25% (шаг 2.5%)
-            take_profit_range = [15, 17.5, 20, 22.5, 25]
-            # Trailing Stop Activation: от 15% до 30% (шаг 5%)
-            trailing_activation_range = [15, 20, 25, 30]
-            # Trailing Stop Distance: от 10% до 20% (шаг 2.5%)
-            trailing_distance_range = [10, 12.5, 15, 17.5, 20]
-            # Break Even Trigger: от 50% до 150% (шаг 25%)
-            break_even_trigger_range = [50, 75, 100, 125, 150]
-            # Trailing Take Distance: от 0.3% до 1.0% (шаг 0.2%)
-            trailing_take_distance_range = [0.3, 0.5, 0.7, 1.0]
-            # Trailing Update Interval: от 2.0 до 5.0 секунд (шаг 1.0)
-            trailing_update_interval_range = [2.0, 3.0, 4.0, 5.0]
+            parameter_ranges = {
+                'rsi_long_entry': self._build_range_from_genome('rsi_long_threshold'),
+                'rsi_short_entry': self._build_range_from_genome('rsi_short_threshold'),
+                'rsi_long_exit': self._build_range_from_genome('rsi_exit_long_with_trend'),
+                'rsi_short_exit': self._build_range_from_genome('rsi_exit_short_with_trend'),
+                'stop_loss': self._build_range_from_genome('max_loss_percent'),
+                'take_profit': self._build_range_from_genome('take_profit_percent'),
+                'trailing_activation': self._build_range_from_genome('trailing_stop_activation'),
+                'trailing_distance': self._build_range_from_genome('trailing_stop_distance'),
+                'break_even_trigger': self._build_range_from_genome('break_even_trigger'),
+                'trailing_take_distance': self._build_range_from_genome('trailing_take_distance'),
+                'trailing_update_interval': self._build_range_from_genome('trailing_update_interval'),
+            }
+
+            self._log_parameter_ranges(parameter_ranges)
+
+            rsi_long_entry_range = parameter_ranges['rsi_long_entry']
+            rsi_short_entry_range = parameter_ranges['rsi_short_entry']
+            rsi_long_exit_range = parameter_ranges['rsi_long_exit']
+            rsi_short_exit_range = parameter_ranges['rsi_short_exit']
+            stop_loss_range = parameter_ranges['stop_loss']
+            take_profit_range = parameter_ranges['take_profit']
+            trailing_activation_range = parameter_ranges['trailing_activation']
+            trailing_distance_range = parameter_ranges['trailing_distance']
+            break_even_trigger_range = parameter_ranges['break_even_trigger']
+            trailing_take_distance_range = parameter_ranges['trailing_take_distance']
+            trailing_update_interval_range = parameter_ranges['trailing_update_interval']
             
-            total_combinations = (len(rsi_long_entry_range) * len(rsi_short_entry_range) * 
-                                len(rsi_long_exit_range) * len(rsi_short_exit_range) * 
-                                len(stop_loss_range) * len(take_profit_range) *
-                                len(trailing_activation_range) * len(trailing_distance_range) *
-                                len(break_even_trigger_range) * len(trailing_take_distance_range) *
-                                len(trailing_update_interval_range))
-            logger.info(f"   🔍 Тестируем до {total_combinations} комбинаций параметров:")
-            logger.info(f"      📊 RSI входы/выходы, SL/TP, Trailing Stop/Take, Break Even")
+            total_combinations = (
+                len(rsi_long_entry_range) * len(rsi_short_entry_range) *
+                len(rsi_long_exit_range) * len(rsi_short_exit_range) *
+                len(stop_loss_range) * len(take_profit_range) *
+                len(trailing_activation_range) * len(trailing_distance_range) *
+                len(break_even_trigger_range) * len(trailing_take_distance_range) *
+                len(trailing_update_interval_range)
+            )
+            logger.info(f"   🔍 Тестируем до {total_combinations} комбинаций параметров (ограничение {self.max_genome_tests})")
             
             best_params = None
             best_win_rate = 0.0
@@ -441,7 +550,7 @@ class AIStrategyOptimizer:
             best_trades_count = 0
             
             tested_count = 0
-            max_tests = 200  # Увеличиваем количество тестов для более тщательной оптимизации
+            max_tests = self.max_genome_tests  # Настраиваемое значение через optimizer_genomes.json
             
             # Импортируем функцию расчета RSI
             try:
@@ -690,6 +799,7 @@ class AIStrategyOptimizer:
                                                                     'optimization_total_pnl': total_pnl,
                                                                     'optimization_trades_count': len(simulated_trades)
                                                                 }
+                                                                best_params['parameter_genome_version'] = self.parameter_genomes_meta.get('version', 'default')
                                                                 
                                                                 # Анализ причин выхода для улучшения стратегии
                                                                 exit_reasons = {}
@@ -736,11 +846,22 @@ class AIStrategyOptimizer:
                 exit_reasons = best_params.get('exit_reasons_analysis', {})
                 if exit_reasons:
                     logger.info(f"      📊 Анализ выходов: {exit_reasons}")
+                try:
+                    formatted_params = json.dumps(
+                        {k: v for k, v in best_params.items() if k != 'exit_reasons_analysis'},
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        default=str
+                    )
+                    logger.info(f"      🧾 Полный набор параметров: {formatted_params}")
+                except Exception:
+                    logger.debug("      🧾 Не удалось сериализовать параметры для логов")
                 
                 # ВАЖНО: Сохраняем индивидуальные настройки ТОЛЬКО если win rate >= 80%
                 if best_win_rate >= 80.0:
                     logger.info(f"      🎯 Win Rate >= 80% - СОХРАНЯЕМ индивидуальные настройки для {symbol}")
                     logger.info(f"      💡 Эти параметры будут использоваться ботами вместо глобальных")
+                    self._log_param_changes(symbol, best_params)
                     
                     # Сохраняем оптимальные параметры для монеты через API bots.py
                     try:

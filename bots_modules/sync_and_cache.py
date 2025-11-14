@@ -1995,33 +1995,55 @@ def check_missing_stop_losses():
                         bot_data['trailing_stop_price'] = float(existing_trailing_stop)
                         logger.info(f" ✅ Синхронизирован трейлинг стоп для {symbol}: {existing_trailing_stop}")
                     
-                    # Логика установки стоп-лоссов
-                    if not existing_stop_loss:
-                        # Устанавливаем обычный стоп-лосс
+                    # Логика установки стоп-лоссов/тейк-профитов
+                    bot_sl_percent = float(bot_data.get('max_loss_percent', auto_config.get('max_loss_percent', 15.0)) or 0.0)
+                    bot_tp_percent = float(bot_data.get('take_profit_percent', auto_config.get('take_profit_percent', 20.0)) or 0.0)
+
+                    if bot_sl_percent > 0 and not existing_stop_loss:
                         if side == 'Buy':  # LONG
-                            stop_price = entry_price * 0.95  # 5% стоп-лосс
+                            stop_price = entry_price * (1 - bot_sl_percent / 100.0)
                         else:  # SHORT
-                            stop_price = entry_price * 1.05  # 5% стоп-лосс
-                        
+                            stop_price = entry_price * (1 + bot_sl_percent / 100.0)
+
                         try:
-                            # Используем уже полученный exchange объект
-                            stop_result = current_exchange.client.set_trading_stop(
-                                category="linear",
-                                symbol=pos.get('symbol'),
-                                positionIdx=position_idx,
-                                stopLoss=str(stop_price)
+                            sl_response = current_exchange.update_stop_loss(
+                                symbol=symbol,
+                                stop_loss_price=stop_price,
+                                position_side='LONG' if side == 'Buy' else 'SHORT'
                             )
-                            
-                            if stop_result and stop_result.get('retCode') == 0:
+                            if sl_response and sl_response.get('success'):
                                 bot_data['stop_loss_price'] = stop_price
                                 updated_count += 1
-                                logger.info(f" ✅ Установлен стоп-лосс для {symbol}: {stop_price}")
+                                logger.info(f" ✅ Установлен стоп-лосс для {symbol}: {stop_price:.6f} ({bot_sl_percent}%)")
                             else:
-                                logger.error(f" ❌ Ошибка установки стоп-лосса для {symbol}: {stop_result.get('retMsg')}")
                                 failed_count += 1
+                                logger.error(f" ❌ Ошибка установки стоп-лосса для {symbol}: {sl_response}")
                         except Exception as e:
-                            logger.error(f" ❌ Ошибка API для {symbol}: {e}")
                             failed_count += 1
+                            logger.error(f" ❌ Ошибка установки стоп-лосса для {symbol}: {e}")
+
+                    if bot_tp_percent > 0 and not exchange_pos.get('take_profit'):
+                        if side == 'Buy':  # LONG
+                            take_price = entry_price * (1 + bot_tp_percent / 100.0)
+                        else:  # SHORT
+                            take_price = entry_price * (1 - bot_tp_percent / 100.0)
+
+                        try:
+                            tp_response = current_exchange.update_take_profit(
+                                symbol=symbol,
+                                take_profit_price=take_price,
+                                position_side='LONG' if side == 'Buy' else 'SHORT'
+                            )
+                            if tp_response and tp_response.get('success'):
+                                bot_data['take_profit_price'] = take_price
+                                updated_count += 1
+                                logger.info(f" ✅ Установлен тейк-профит для {symbol}: {take_price:.6f} ({bot_tp_percent}%)")
+                            else:
+                                failed_count += 1
+                                logger.error(f" ❌ Ошибка установки тейк-профита для {symbol}: {tp_response}")
+                        except Exception as e:
+                            failed_count += 1
+                            logger.error(f" ❌ Ошибка установки тейк-профита для {symbol}: {e}")
                     
                     # Логика трейлинг стопа по марже
                     else:

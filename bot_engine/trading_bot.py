@@ -906,7 +906,7 @@ class TradingBot:
         except Exception as e:
             self.logger.error(f"Error getting wallet balance: {str(e)}")
             return None
-
+    
     def _get_available_balance(self) -> Optional[float]:
         """Получает доступный баланс в USDT"""
         balance_data = self._get_wallet_balance_data()
