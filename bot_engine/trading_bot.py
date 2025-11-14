@@ -1064,13 +1064,12 @@ class TradingBot:
             
             self.logger.info(f" {self.symbol}: Устанавливаем стоп-лосс: {side} @ {stop_price:.6f} (потеря: {loss_percent}%)")
             
-            # Размещаем стоп-лосс ордер
+            # Размещаем стоп-лосс ордер (делегируем бирже расчет финального ордера)
             stop_result = self.exchange.place_stop_loss(
                 symbol=self.symbol,
                 side=side,
-                quantity=self.position.get('quantity', 0) if self.position else 0,
-                stop_price=stop_price,
-                order_type='stop_market'
+                entry_price=entry_price,
+                loss_percent=loss_percent
             )
             
             if stop_result and stop_result.get('success'):
