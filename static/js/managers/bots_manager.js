@@ -2594,7 +2594,8 @@ class BotsManager {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     symbol: this.selectedCoin.symbol,
-                    config: config
+                    config: config,
+                    skip_maturity_check: true
                 })
             });
             
@@ -3515,7 +3516,8 @@ class BotsManager {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     symbol: this.selectedCoin.symbol,
-                    config: settings
+                    config: settings,
+                    skip_maturity_check: true
                 })
             });
             

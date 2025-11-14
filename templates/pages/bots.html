@@ -2778,7 +2778,8 @@ function enableBotForCurrentCoin() {
             },
             body: JSON.stringify({
                 symbol: coin.symbol,
-                signal: coin.signal || 'ENTER_LONG'
+                signal: coin.signal || 'ENTER_LONG',
+                skip_maturity_check: true
             })
         })
         .then(response => response.json())

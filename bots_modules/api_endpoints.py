@@ -746,6 +746,7 @@ def create_bot_endpoint():
         
         symbol = data['symbol']
         config = data.get('config', {})
+        skip_maturity_check = data.get('skip_maturity_check', False)
         
         logger.info(f" Запрос на создание бота для {symbol}")
         logger.info(f" Конфигурация: {config}")
@@ -775,6 +776,10 @@ def create_bot_endpoint():
         
         # Проверяем зрелость монеты (если включена проверка для этой монеты И нет ручной позиции)
         enable_maturity_check_coin = config.get('enable_maturity_check', True)
+        if skip_maturity_check:
+            logger.info(f" ✋ {symbol}: Принудительное создание бота - проверка зрелости отключена")
+            enable_maturity_check_coin = False
+        
         if enable_maturity_check_coin and not has_manual_position:
             # Получаем данные свечей для проверки зрелости
             current_exchange = get_exchange()
