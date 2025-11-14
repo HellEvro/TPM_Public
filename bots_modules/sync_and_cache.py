@@ -1977,6 +1977,7 @@ def check_missing_stop_losses():
                     position_idx = pos.get('positionIdx', 0)
                     existing_stop_loss = pos.get('stopLoss', '')
                     existing_trailing_stop = pos.get('trailingStop', '')
+                    existing_take_profit = pos.get('takeProfit', '')
                     
                     # Рассчитываем процент прибыли/убытка
                     if side == 'Buy':  # LONG позиция
@@ -2022,7 +2023,11 @@ def check_missing_stop_losses():
                             failed_count += 1
                             logger.error(f" ❌ Ошибка установки стоп-лосса для {symbol}: {e}")
 
-                    if bot_tp_percent > 0 and not exchange_pos.get('take_profit'):
+                    if existing_take_profit:
+                        bot_data['take_profit_price'] = float(existing_take_profit)
+                        logger.info(f" ✅ Синхронизирован тейк-профит для {symbol}: {existing_take_profit}")
+                    
+                    if bot_tp_percent > 0 and not existing_take_profit:
                         if side == 'Buy':  # LONG
                             take_price = entry_price * (1 + bot_tp_percent / 100.0)
                         else:  # SHORT
