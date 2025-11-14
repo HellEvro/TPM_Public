@@ -1,0 +1,2797 @@
+<!-- Страница управления ботами -->
+<div class="bots-page">
+    
+    <!-- Навигация по табам -->
+    <div class="bots-tabs">
+        <button class="bots-tab-btn active" data-tab="management">🎮 <span data-translate="management">Управление</span></button>
+        <button class="bots-tab-btn" data-tab="filters">🔧 <span data-translate="coin_filters">Фильтры монет</span></button>
+        <button class="bots-tab-btn" data-tab="config">⚙️ <span data-translate="configuration">Конфигурация</span></button>
+        <button class="bots-tab-btn" data-tab="active-bots">🚀 <span data-translate="active_bots">Боты в работе</span></button>
+        <button class="bots-tab-btn" data-tab="history">📊 <span data-translate="bot_history">История</span></button>
+    </div>
+
+    <!-- Таб 1: Управление -->
+    <div class="bots-tab-content active" id="managementTab">
+        <div class="management-layout">
+            <!-- МОБИЛЬНЫЙ БЛОК СТАТИСТИКИ (ТЕПЕРЬ ВСЕГДА ВИДЕН НА МОБИЛЬНЫХ) -->
+            <div class="mobile-stats-block">
+                <!-- БЛОК 1: БАЛАНС СЧЕТА -->
+                <div class="mobile-balance-block">
+                    <h4 data-translate="account_balance">💼 Баланс счета</h4>
+                    <div class="mobile-balance-stats">
+                        <div class="mobile-balance-item">
+                            <span class="label" data-translate="balance">Баланс:</span>
+                            <span class="value" id="mobileAccountBalance">$100.06</span>
+                        </div>
+                        <div class="mobile-balance-item">
+                            <span class="label" data-translate="remaining">Остаток:</span>
+                            <span class="value" id="mobileAccountRemaining">$100.06</span>
+                        </div>
+                        <div class="mobile-balance-item">
+                            <span class="label" data-translate="pnl">PnL:</span>
+                            <span class="value" id="mobileAccountPnL">$-56881.99</span>
+                        </div>
+                        <div class="mobile-balance-item">
+                            <span class="label" data-translate="open_positions">Открытых позиций:</span>
+                            <span class="value" id="mobileAccountPositions">0</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- БЛОК 2: AUTO BOT И АКТИВНЫЕ БОТЫ -->
+                <div class="mobile-autobot-block">
+                    <div class="mobile-autobot-toggle">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="mobileAutobotToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="mobile-autobot-label" data-translate="auto_bot">Auto Bot</span>
+                        <span class="mobile-autobot-status" id="mobileAutobotStatusText" data-translate="disabled">ВЫКЛ</span>
+                    </div>
+                    
+                    <!-- БЛОК АКТИВНЫХ БОТОВ -->
+                    <div class="mobile-active-bots">
+                        <div class="mobile-bots-header">
+                            <span class="bots-icon">🤖</span>
+                            <span class="bots-title" data-translate="active_bots">Активные боты</span>
+                        </div>
+                        <div class="mobile-bots-content" id="mobileActiveBotsContent">
+                            <div class="mobile-no-bots">
+                                <div class="no-bots-icon">🤖</div>
+                                <div class="no-bots-text">
+                                    <p data-translate="no_active_bots">Нет активных ботов</p>
+                                    <small data-translate="create_bots_for_trading">Создайте ботов для торговли</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Левая панель - список монет с RSI 6H -->
+        <div class="coins-panel">
+            <div class="panel-header">
+                <div class="title-row">
+                        <h3 data-translate="coins_rsi_6h">📊 Монеты (RSI 6H)</h3>
+                        <span class="status-dot" id="rsiStatusDot">●</span>
+                    </div>
+                    <div class="service-status" id="botsServiceStatus">
+                        <span class="status-indicator">⏳</span>
+                        <span class="status-text" data-translate="service_check">Проверка сервиса...</span>
+                    </div>
+                    
+                </div>
+                
+                <!-- Поиск монет -->
+                <div class="search-row">
+                    <div class="search-input-container">
+                        <input type="text" id="coinSearchInput" data-translate-placeholder="coin_search_placeholder" placeholder="🔍 Поиск монет (например: BTC, ETH или bitcoin)..." class="search-input" />
+                        <button type="button" id="clearSearchBtn" class="clear-search-btn" title="Очистить поиск">×</button>
+                    </div>
+                </div>
+                
+                
+                <style>
+                
+                /* Стили для ручных позиций */
+                .manual-position-indicator {
+                    color: #ffc107;
+                    font-size: 16px;
+                    margin-right: 8px;
+                    animation: pulse 2s infinite;
+                }
+                
+                .coin-item.manual-position {
+                    border-left: 4px solid #ffc107;
+                    background: linear-gradient(90deg, rgba(255, 193, 7, 0.1), transparent);
+                }
+                
+                .coin-item.manual-position .coin-symbol {
+                    color: #ffc107;
+                    font-weight: bold;
+                }
+                
+                @keyframes pulse {
+                    0% { opacity: 1; }
+                    50% { opacity: 0.5; }
+                    100% { opacity: 1; }
+                }
+                
+                /* Стили для счетчиков фильтров */
+                </style>
+                
+                <!-- Умные фильтры для найденных монет -->
+                <div class="smart-filter-controls" id="smartFilterControls" style="display: none;">
+                    <div class="smart-filter-header">
+                        <span class="found-count" id="foundCount">0 <span data-translate="found_coins">найдено</span></span>
+                        <div class="smart-filter-buttons">
+                            <button class="btn btn-sm btn-filter-white" id="addFoundToWhitelist">
+                                <span data-translate="all_to_white">🟢 Все в белый</span>
+                            </button>
+                            <button class="btn btn-sm btn-filter-black" id="addFoundToBlacklist">
+                                <span data-translate="all_to_black">🔴 Все в черный</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Фильтры RSI -->
+                <div class="rsi-filters-container">
+                    <button class="rsi-filter-btn active" data-filter="all">🌐 <span data-translate="all">Все</span> (<span id="filterAllCount">0</span>)</button>
+                    <button class="rsi-filter-btn buy-filter" data-filter="buy-zone">🟢 ≤29 (<span id="filterBuyZoneCount">0</span>)</button>
+                    <button class="rsi-filter-btn sell-filter" data-filter="sell-zone">🔴 ≥71 (<span id="filterSellZoneCount">0</span>)</button>
+                    <button class="rsi-filter-btn trend-up-filter" data-filter="trend-up">📈 UP (<span id="filterTrendUpCount">0</span>)</button>
+                    <button class="rsi-filter-btn trend-down-filter" data-filter="trend-down">📉 DOWN (<span id="filterTrendDownCount">0</span>)</button>
+                    <button class="rsi-filter-btn enter-long-filter" data-filter="enter-long">🚀 LONG (<span id="filterLongCount">0</span>)</button>
+                    <button class="rsi-filter-btn enter-short-filter" data-filter="enter-short">📉 SHORT (<span id="filterShortCount">0</span>)</button>
+                    <button class="rsi-filter-btn manual-position-filter" data-filter="manual-position">
+                        <span class="filter-icon">✋</span>
+                        <span class="filter-text" data-translate="manual_positions_filter">Ручные позиции</span>
+                        <span class="filter-count" id="manualCount">(0)</span>
+                    </button>
+                    <button class="btn btn-sm btn-info" id="refreshManualPositionsBtn" title="Обновить ручные позиции" data-translate-title="refresh_manual_positions">
+                        <span>🔄</span>
+                    </button>
+                    <button class="rsi-filter-btn mature-coins-filter" data-filter="mature-coins" title="Показать только зрелые монеты">
+                        <span class="filter-icon">💎</span>
+                        <span class="filter-text" data-translate="mature_coins">Зрелые монеты</span>
+                        <span class="filter-count" id="matureCoinsCount">(0)</span>
+                    </button>
+            </div>
+            
+                <!-- Список монет -->
+            <div class="coins-list-wrapper">
+                    <ul class="coins-list" id="coinsRsiList">
+                    <!-- Список монет будет загружен динамически -->
+                </ul>
+            </div>
+        </div>
+
+        <!-- Центральная панель - управление выбранным ботом -->
+        <div class="bot-control-panel">
+                <div class="select-coin-prompt" id="selectCoinPrompt">
+                    <div class="prompt-icon">🤖</div>
+                    <h3 data-translate="select_coin_title">Выберите монету</h3>
+                    <p data-translate="select_coin_from_left">Выберите монету из списка слева для создания или управления ботом</p>
+            </div>
+
+                <div class="bot-control" id="botControlInterface" style="display: none;">
+                    <!-- Информация о выбранной монете -->
+                <div class="coin-info">
+                        <h2 id="selectedCoinSymbol">🪙 BTC</h2>
+                        <div class="coin-data-grid">
+                        <div class="data-item">
+                                <span class="label" data-translate="coin_info_price">💰 Цена:</span>
+                                <span class="value" id="selectedCoinPrice">$0</span>
+                        </div>
+                        <div class="data-item">
+                                <span class="label" data-translate="coin_info_rsi">📊 RSI 6H:</span>
+                                <span class="value rsi-indicator" id="selectedCoinRSI">-</span>
+                                <span class="status-icon" id="rsiIcon" style="margin-left: 8px; font-size: 16px;"></span>
+                        </div>
+                        <div class="data-item">
+                                <span class="label" data-translate="coin_info_trend">📈 Тренд 6H:</span>
+                                <span class="value trend-indicator" id="selectedCoinTrend">-</span>
+                                <span class="status-icon" id="trendIcon" style="margin-left: 8px; font-size: 16px;"></span>
+                                <small id="trendHint" style="color: var(--text-muted); font-size: 10px; display: block; margin-top: 2px;"></small>
+                        </div>
+                        <div class="data-item">
+                                <span class="label" data-translate="coin_info_zone">🎯 Зона RSI:</span>
+                                <span class="value rsi-zone" id="selectedCoinZone">-</span>
+                                <span class="status-icon" id="zoneIcon" style="margin-left: 8px; font-size: 16px;"></span>
+                        </div>
+                        <div class="data-item">
+                                <span class="label" data-translate="coin_info_signal">⚡ Сигнал:</span>
+                                <span class="value signal-indicator" id="selectedCoinSignal">-</span>
+                                <span class="status-icon" id="signalIcon" style="margin-left: 8px; font-size: 16px;"></span>
+                        </div>
+                        <div class="data-item">
+                                <span class="label" data-translate="coin_info_change">📊 Изм. 24H:</span>
+                                <span class="value change-indicator" id="selectedCoinChange">-</span>
+                        </div>
+                        <!-- Дополнительные фильтры -->
+                        <div class="data-item" id="volumeConfirmationItem" style="display: none;">
+                                <span class="label">📊 Подтверждение объемом:</span>
+                                <span class="value" id="selectedCoinVolumeConfirmation">-</span>
+                                <span class="status-icon" id="volumeConfirmationIcon" style="margin-left: 8px; font-size: 16px;"></span>
+                        </div>
+                        <div class="data-item" id="stochasticItem" style="display: none;">
+                                <span class="label" data-translate="stochastic_label">📈 Стохастик:</span>
+                                <span class="value" id="selectedCoinStochastic">-</span>
+                                <span class="status-icon" id="stochasticIcon" style="margin-left: 8px; font-size: 16px;"></span>
+                        </div>
+                        <div class="data-item" id="exitScamItem" style="display: none;">
+                                <span class="label">🛡️ ExitScam защита:</span>
+                                <span class="value" id="selectedCoinExitScam">-</span>
+                                <span class="status-icon" id="exitScamIcon" style="margin-left: 8px; font-size: 16px;"></span>
+                        </div>
+                        <div class="data-item" id="rsiTimeFilterItem" style="display: none;">
+                                <span class="label">⏰ RSI Time Filter:</span>
+                                <span class="value" id="selectedCoinRsiTimeFilter">-</span>
+                                <span class="status-icon" id="rsiTimeFilterIcon" style="margin-left: 8px; font-size: 16px;"></span>
+                        </div>
+                        <div class="data-item" id="enhancedRsiItem" style="display: none;">
+                                <span class="label">🧠 Enhanced RSI:</span>
+                                <span class="value" id="selectedCoinEnhancedRsi">-</span>
+                                <span class="status-icon" id="enhancedRsiIcon" style="margin-left: 8px; font-size: 16px;"></span>
+                        </div>
+                        <div class="data-item" id="signalBlockReasonItem" style="display: none;">
+                                <span class="label">🚫 Причина блокировки:</span>
+                                <span class="value" id="selectedCoinSignalBlockReason">-</span>
+                                <span class="status-icon" id="signalBlockReasonIcon" style="margin-left: 8px; font-size: 16px;"></span>
+                        </div>
+                        <div class="data-item" id="maturityDiamondItem" style="display: none;">
+                                <span class="label" data-translate="coin_maturity_label">💎 Зрелость монеты:</span>
+                                <span class="value" id="selectedCoinMaturityDiamond">-</span>
+                                <span class="status-icon" id="maturityDiamondIcon" style="margin-left: 8px; font-size: 16px;">💎</span>
+                        </div>
+                        <div class="data-item" id="botStatusItem" style="display: none;">
+                                <span class="label" data-translate="bot_status_label">🤖 Статус бота:</span>
+                                <span class="value" id="selectedCoinBotStatus">-</span>
+                                <span class="status-icon" id="botStatusIcon" style="margin-left: 8px; font-size: 16px;"></span>
+                                <button id="enableBotBtn" class="btn btn-success btn-sm" style="margin-left: 10px; display: none;" onclick="enableBotForCurrentCoin()" data-translate="enable_bot_btn">Включить</button>
+                        </div>
+                    </div>
+                </div>
+
+
+                    <!-- Справочник статусов и иконок (свернутый по умолчанию) -->
+                    <div class="status-guide" style="margin-top: 20px;">
+                        <div class="status-guide-header" onclick="toggleStatusGuide()" style="cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 10px; background: var(--section-bg); border-radius: 8px; margin-bottom: 10px; border: 1px solid var(--border-color);">
+                            <span class="toggle-arrow">▼</span>
+                            <h3 style="color: var(--text-color); margin: 0; font-size: 16px;" data-translate="status_guide_title">📚 Справочник статусов и иконок</h3>
+                            <span style="color: var(--text-muted, var(--border-color)); font-size: 12px; margin-left: auto;" data-translate="status_guide_expand_hint">(кликните чтобы развернуть)</span>
+                        </div>
+                        <div class="status-guide-content" id="statusGuideContent" style="display: none; background: var(--section-bg); border-radius: 8px; padding: 15px; border: 1px solid var(--border-color);">
+                            <div class="status-categories">
+                                <!-- Статусы ботов -->
+                                <div class="status-category">
+                                    <h4 style="color: #4CAF50; margin-bottom: 10px;">Статусы ботов:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item"><span class="status-indicator running">🟢</span> <span class="status-text">running</span> - Бот активен и работает</div>
+                                        <div class="status-item"><span class="status-indicator waiting">🔵</span> <span class="status-text">waiting</span> - Ожидание сигнала</div>
+                                        <div class="status-item"><span class="status-indicator error">🔴</span> <span class="status-text">error</span> - Ошибка в работе</div>
+                                        <div class="status-item"><span class="status-indicator stopped">🔴</span> <span class="status-text">stopped</span> - Бот остановлен</div>
+                                        <div class="status-item"><span class="status-indicator in-position">🟣</span> <span class="status-text">in_position</span> - В позиции</div>
+                                        <div class="status-item"><span class="status-indicator paused">⚪</span> <span class="status-text">paused</span> - Приостановлен</div>
+                                    </div>
+                                </div>
+
+                                <!-- Иконки управления -->
+                                <div class="status-category">
+                                    <h4 style="color: #FF9800; margin-bottom: 10px;">Иконки управления:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">✅ - Бот активен (зеленая галочка)</div>
+                                        <div class="status-item">⏸️ - Приостановить (оранжевая пауза)</div>
+                                        <div class="status-item">🔄 - Перезапустить бота</div>
+                                        <div class="status-item">▶️ - Запустить бота (синий play)</div>
+                                        <div class="status-item">⏹️ - Остановить бота (красный стоп)</div>
+                                        <div class="status-item">⚙️ - Настройки бота</div>
+                                    </div>
+                                </div>
+
+                                <!-- Торговые сигналы -->
+                                <div class="status-category">
+                                    <h4 style="color: #2196F3; margin-bottom: 10px;">Торговые сигналы:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">📈 ENTER_LONG - Сигнал на покупку (RSI ≤ 29)</div>
+                                        <div class="status-item">📉 EXIT_LONG - Выход из LONG (RSI ≥ 55)</div>
+                                        <div class="status-item">➖ NEUTRAL - Нейтральная зона (29 < RSI < 71)</div>
+                                        <div class="status-item">📉 ENTER_SHORT - Сигнал на продажу (RSI ≥ 71)</div>
+                                        <div class="status-item">📈 EXIT_SHORT - Выход из SHORT (RSI ≤ 45)</div>
+                                        <div class="status-item">⏸️ HOLD - Удерживать позицию</div>
+                                    </div>
+                                </div>
+
+                                <!-- Статусы позиций -->
+                                <div class="status-category">
+                                    <h4 style="color: #9C27B0; margin-bottom: 10px;">Статусы позиций:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">📈 LONG - Длинная позиция (покупка)</div>
+                                        <div class="status-item">❌ None - Нет открытой позиции</div>
+                                        <div class="status-item">📉 SHORT - Короткая позиция (продажа)</div>
+                                        <div class="status-item">🔄 Closing - Закрытие позиции</div>
+                                    </div>
+                                </div>
+
+                                <!-- Stochastic RSI -->
+                                <div class="status-category">
+                                    <h4 style="color: #FF5722; margin-bottom: 10px;">📈 Stochastic RSI (Стохастический RSI):</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">Перепроданность: %K ниже 20 - возможен разворот цены вверх</div>
+                                        <div class="status-item">Перекупленность: %K выше 80 - возможен разворот цены вниз</div>
+                                        <div class="status-item">Нейтральная зона: %K между 20-80 - тренд продолжается</div>
+                                        <div class="status-item" style="color: var(--green-text);">%K выше %D - бычий сигнал пересечения (зеленый)</div>
+                                        <div class="status-item" style="color: var(--red-text);">%K ниже %D - медвежий сигнал пересечения (красный)</div>
+                                    </div>
+                                    <div style="margin-top: 10px; padding: 8px; background: rgba(255, 87, 34, 0.1); border-radius: 4px; font-size: 12px; color: #FF5722;">
+                                        <strong>Объяснение:</strong><br>
+                                        • <strong>%K</strong> - основной индикатор Stochastic RSI<br>
+                                        • <strong>%D</strong> - сглаженная линия %K<br>
+                                        • <strong>Пересечение %K и %D</strong> - сигнал на покупку/продажу<br>
+                                        • <strong>Экстремальные зоны</strong> (0-20, 80-100) - сигналы разворота
+                                    </div>
+                                </div>
+
+                                <!-- RSI Time Filter -->
+                                <div class="status-category">
+                                    <h4 style="color: #3F51B5; margin-bottom: 10px;">RSI Time Filter:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">✅ ALLOWED - RSI Time Filter разрешен</div>
+                                        <div class="status-item">❌ BLOCKED - RSI Time Filter заблокирован</div>
+                                        <div class="status-item">⏳ WAITING - RSI Time Filter ожидание</div>
+                                    </div>
+                                </div>
+
+                                <!-- ExitScam -->
+                                <div class="status-category">
+                                    <h4 style="color: #E91E63; margin-bottom: 10px;">ExitScam:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item" style="color: var(--red-text);">Блокирует: Обнаружены резкие движения цены (ExitScam фильтр) - красный</div>
+                                        <div class="status-item" style="color: var(--green-text);">Безопасно: Нет подозрительной активности - зеленый</div>
+                                    </div>
+                                </div>
+
+                                <!-- Зрелость монеты -->
+                                <div class="status-category">
+                                    <h4 style="color: #795548; margin-bottom: 10px;">💎 Зрелость монеты:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">Зрелая монета: X > 400 свечей - достаточно истории для торговли</div>
+                                        <div class="status-item">Незрелая монета, менее 400 свечей - недостаточно истории</div>
+                                    </div>
+                                </div>
+
+                                <!-- Уровни риска -->
+                                <div class="status-category">
+                                    <h4 style="color: #607D8B; margin-bottom: 10px;">Уровни риска:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">🟢 LOW - Низкий риск</div>
+                                        <div class="status-item">🟡 MEDIUM - Средний риск</div>
+                                        <div class="status-item">🔴 HIGH - Высокий риск</div>
+                                        <div class="status-item">🚨 EXTREME - Экстремальный риск</div>
+                                    </div>
+                                </div>
+
+                                <!-- Белый список -->
+                                <div class="status-category">
+                                    <h4 style="color: #4CAF50; margin-bottom: 10px;">Белый список:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">✅ ALLOWED - В белом списке</div>
+                                        <div class="status-item">❌ BLOCKED - Не в белом списке</div>
+                                    </div>
+                                </div>
+
+                                <!-- Черный список -->
+                                <div class="status-category">
+                                    <h4 style="color: #F44336; margin-bottom: 10px;">Черный список:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">✅ ALLOWED - Не в черном списке</div>
+                                        <div class="status-item">❌ BLOCKED - В черном списке</div>
+                                    </div>
+                                </div>
+
+                                <!-- Enhanced RSI Warning -->
+                                <div class="status-category">
+                                    <h4 style="color: #FFC107; margin-bottom: 10px;">Enhanced RSI Warning:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">⚠️ EXTREME_OVERSOLD_LONG - ВНИМАНИЕ: Экстремальная перепроданность</div>
+                                        <div class="status-item">⚠️ EXTREME_OVERBOUGHT_LONG - ВНИМАНИЕ: Экстремальная перекупленность</div>
+                                        <div class="status-item">🟢 OVERSOLD - Перепроданность</div>
+                                        <div class="status-item">🔴 OVERBOUGHT - Перекупленность</div>
+                                    </div>
+                                </div>
+
+                                <!-- Ручные позиции -->
+                                <div class="status-category">
+                                    <h4 style="color: #FF9800; margin-bottom: 10px;">Ручные позиции:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">MANUAL - Ручная позиция</div>
+                                    </div>
+                                </div>
+
+                                <!-- Подтверждение объемом -->
+                                <div class="status-category">
+                                    <h4 style="color: #00BCD4; margin-bottom: 10px;">Подтверждение объемом:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">Подтвержден объемом - объем подтверждает сигнал</div>
+                                        <div class="status-item">❌ NOT_CONFIRMED - Объем не подтвержден</div>
+                                        <div class="status-item">⚠️ LOW_VOLUME - Низкий объем</div>
+                                        <div class="status-item">📈 HIGH_VOLUME - Высокий объем</div>
+                                    </div>
+                                </div>
+
+                                <!-- Стохастик -->
+                                <div class="status-category">
+                                    <h4 style="color: #FF5722; margin-bottom: 10px;">📈 Стохастик:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">Перепроданность: %K ниже 20 - возможен разворот цены вверх</div>
+                                        <div class="status-item">Перекупленность: %K выше 80 - возможен разворот цены вниз</div>
+                                        <div class="status-item">Нейтральная зона: %K между 20-80 - тренд продолжается</div>
+                                        <div class="status-item" style="color: var(--green-text);">%K выше %D - бычий сигнал пересечения (зеленый)</div>
+                                        <div class="status-item" style="color: var(--red-text);">%K ниже %D - медвежий сигнал пересечения (красный)</div>
+                                    </div>
+                                </div>
+
+                                <!-- ExitScam защита -->
+                                <div class="status-category">
+                                    <h4 style="color: #E91E63; margin-bottom: 10px;">🛡️ ExitScam защита:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">🛡️ SAFE - ExitScam: Безопасно</div>
+                                        <div class="status-item">⚠️ RISK - ExitScam: Риск обнаружен</div>
+                                        <div class="status-item">🚨 SCAM - ExitScam: Возможный скам</div>
+                                        <div class="status-item">🔍 CHECKING - ExitScam: Проверка</div>
+                                    </div>
+                                </div>
+
+                                <!-- RSI Time Filter -->
+                                <div class="status-category">
+                                    <h4 style="color: #3F51B5; margin-bottom: 10px;">RSI Time Filter:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">✅ ALLOWED - RSI Time Filter разрешен</div>
+                                        <div class="status-item">❌ BLOCKED - RSI Time Filter заблокирован</div>
+                                        <div class="status-item">⏳ WAITING - RSI Time Filter ожидание</div>
+                                        <div class="status-item">⏰ TIMEOUT - RSI Time Filter таймаут</div>
+                                    </div>
+                                </div>
+
+                                <!-- Зрелость монеты -->
+                                <div class="status-category">
+                                    <h4 style="color: #795548; margin-bottom: 10px;">💎 Зрелость монеты:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">Зрелая монета: X > 400 свечей - достаточно истории для торговли</div>
+                                        <div class="status-item">Незрелая монета, менее 400 свечей - недостаточно истории</div>
+                                    </div>
+                                </div>
+
+                                <!-- Уровни риска -->
+                                <div class="status-category">
+                                    <h4 style="color: #607D8B; margin-bottom: 10px;">Уровни риска:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">🟢 LOW - Низкий риск</div>
+                                        <div class="status-item">🟡 MEDIUM - Средний риск</div>
+                                        <div class="status-item">🔴 HIGH - Высокий риск</div>
+                                        <div class="status-item">🚨 EXTREME - Экстремальный риск</div>
+                                    </div>
+                                </div>
+
+                                <!-- Белый список -->
+                                <div class="status-category">
+                                    <h4 style="color: #4CAF50; margin-bottom: 10px;">Белый список:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">✅ ALLOWED - В белом списке</div>
+                                        <div class="status-item">❌ BLOCKED - Не в белом списке</div>
+                                    </div>
+                                </div>
+
+                                <!-- Черный список -->
+                                <div class="status-category">
+                                    <h4 style="color: #F44336; margin-bottom: 10px;">Черный список:</h4>
+                                    <div class="status-items">
+                                        <div class="status-item">✅ ALLOWED - Не в черном списке</div>
+                                        <div class="status-item">❌ BLOCKED - В черном списке</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Объединенная секция: Активные сделки + Статус бота + Управление -->
+                    <div class="trades-info" id="tradesInfoSection" style="display: none;">
+                        <h3 style="color: var(--text-color); margin-bottom: 15px; font-size: 16px;" data-translate="active_trades">📊 Активные сделки</h3>
+                        <div class="trades-container" id="tradesContainer">
+                            <!-- Информация о сделках будет загружена динамически -->
+                        </div>
+                        
+                        <!-- Статус бота (встроен в секцию сделок) -->
+                        <div class="bot-status-inline" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #333;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h4 style="color: var(--text-color); margin: 0; font-size: 14px;" data-translate="bot_status_label_header">🤖 Статус бота</h4>
+                                <div class="bot-status-display" id="botStatusDisplay">
+                                    <span class="status-text" data-translate="bot_not_created" id="botStatusText">Бот не создан</span>
+                                    <span class="status-indicator" id="botStatusIndicator">●</span>
+                                </div>
+                            </div>
+                            
+                            <!-- Кнопки управления ботом (компактные) -->
+                            <div class="bot-controls-inline" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button class="btn btn-primary btn-sm" id="createBotBtn"><span data-translate="create_bot">🚀 Создать</span></button>
+                                <button class="btn btn-success btn-sm" id="startBotBtn" style="display: none;"><span data-translate="start_btn">▶️ Старт</span></button>
+                                <button class="btn btn-danger btn-sm" id="stopBotBtn" style="display: none;"><span data-translate="stop_btn">⏹️ Стоп</span></button>
+                                <button class="btn btn-warning btn-sm" id="pauseBotBtn" style="display: none;"><span data-translate="pause_btn">⏸️ Пауза</span></button>
+                                <button class="btn btn-info btn-sm" id="resumeBotBtn" style="display: none;"><span data-translate="resume_btn">⏯️ Возобновить</span></button>
+                                <button class="btn btn-orange btn-sm" id="closePositionBtn" style="display: none;"><span data-translate="close_position_btn">❌ Закрыть</span></button>
+                                
+                                <!-- Дополнительные кнопки для быстрого запуска -->
+                                <button class="btn btn-success btn-sm" id="quickStartLongBtn" style="display: none;" title="Быстрый запуск LONG позиции">
+                                    <span data-translate="quick_long">🚀 LONG</span>
+                                </button>
+                                <button class="btn btn-danger btn-sm" id="quickStartShortBtn" style="display: none;" title="Быстрый запуск SHORT позиции">
+                                    <span data-translate="quick_short">📉 SHORT</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Информация о блокировке монеты -->
+                    <div class="coin-blocking-info" id="coinBlockingInfo" style="display: none;">
+                        <h3><span data-translate="blocking_reasons">🚫 Причины блокировки</span></h3>
+                        <div class="blocking-reasons" id="blockingReasons">
+                            <!-- Причины блокировки будут загружены динамически -->
+                        </div>
+                    </div>
+
+                    <!-- Настройки бота -->
+                    <div class="bot-settings-section">
+                        <h3 data-translate="trading_settings">⚙️ Настройки торговли</h3>
+                        
+                        <div class="setting-item">
+                            <label data-translate="volume_mode_label">📏 Режим объёма:</label>
+                            <select id="volumeModeSelect">
+                                <option value="usdt" data-translate="usdt_option">💵 USDT</option>
+                                <option value="qty" data-translate="qty_option">🪙 Количество монет</option>
+                                <option value="percent" data-translate="percent_option">📊 % от депозита</option>
+                            </select>
+                        </div>
+                        
+                        <div class="setting-item">
+                            <label data-translate="volume_value_label">🔢 Значение:</label>
+                            <input type="number" id="volumeValueInput" value="10" min="0.1" step="0.1" />
+                        </div>
+
+                        <!-- Дублированные настройки Auto Bot -->
+                        <div class="auto-bot-settings-duplicate">
+                            <h4 data-translate="auto_bot_settings_header">🤖 Настройки Auto Bot</h4>
+                            
+                        <div class="setting-item">
+                                <label data-translate="rsi_long_entry_label">📉 RSI для входа в LONG:</label>
+                                <input type="number" id="rsiLongThresholdDup" value="29" min="1" max="50" />
+                        </div>
+                            
+                        <div class="setting-item">
+                                <label data-translate="rsi_short_entry_label">RSI для входа в SHORT:</label>
+                                <input type="number" id="rsiShortThresholdDup" value="71" min="50" max="99" />
+                        </div>
+                            
+                        <div class="setting-item">
+                                <label data-translate="rsi_long_exit_with_trend_label">🟢📈 RSI выход из LONG (по тренду):</label>
+                                <input type="number" id="rsiExitLongWithTrendDup" value="65" min="50" max="99" />
+                        </div>
+                        
+                        <div class="setting-item">
+                                <label data-translate="rsi_long_exit_against_trend_label">🟢📉 RSI выход из LONG (против тренда):</label>
+                                <input type="number" id="rsiExitLongAgainstTrendDup" value="60" min="50" max="99" />
+                        </div>
+                            
+                        <div class="setting-item">
+                                <label data-translate="rsi_short_exit_with_trend_label">🔴📉 RSI выход из SHORT (по тренду):</label>
+                                <input type="number" id="rsiExitShortWithTrendDup" value="35" min="1" max="50" />
+                        </div>
+                        
+                        <div class="setting-item">
+                                <label data-translate="rsi_short_exit_against_trend_label">🔴📈 RSI выход из SHORT (против тренда):</label>
+                                <input type="number" id="rsiExitShortAgainstTrendDup" value="40" min="1" max="50" />
+                        </div>
+                            
+                            <div class="setting-item">
+                                <label data-translate="stop_loss_label">💀 Стоп-лосс (% убытка):</label>
+                                <input type="number" id="maxLossPercentDup" value="15.0" min="1" max="50" step="0.5" />
+        </div>
+
+                            <div class="setting-item">
+                                <label data-translate="take_profit_label">🎯 Защитный Take Profit (% прибыли):</label>
+                                <input type="number" id="takeProfitPercentDup" value="20.0" min="1" max="100" step="0.5" />
+        </div>
+
+                            <div class="setting-item">
+                                <label data-translate="trailing_stop_activation_label">🚀 Trailing Stop активация (%):</label>
+                                <input type="number" id="trailingStopActivationDup" value="20.0" min="1" max="200" step="1" />
+            </div>
+            
+                            <div class="setting-item">
+                                <label data-translate="trailing_stop_distance_label">📏 Trailing Stop расстояние (%):</label>
+                                <input type="number" id="trailingStopDistanceDup" value="5.0" min="0.5" max="50" step="0.5" />
+            </div>
+
+                            <div class="setting-item">
+                                <label>🎯 Trailing Take (%):</label>
+                                <input type="number" id="trailingTakeDistanceDup" value="0.5" min="0" max="20" step="0.1" />
+            </div>
+
+                            <div class="setting-item">
+                                <label>⏱️ Интервал обновления (сек):</label>
+                                <input type="number" id="trailingUpdateIntervalDup" value="3" min="0" max="60" step="0.5" />
+            </div>
+
+                            <div class="setting-item">
+                                <label data-translate="max_position_time_label">⏰ Макс. время позиции (мин):</label>
+                                <input type="number" id="maxPositionHoursDup" min="0" max="10080" step="1" value="0" placeholder="0" />
+                            </div>
+                
+                <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="breakEvenProtectionDup" checked />
+                                    <span data-translate="break_even_protection_label">Защита безубыточности</span>
+                    </label>
+                </div>
+                
+                <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="avoidDownTrendDup" checked />
+                                    <span data-translate="avoid_down_trend_label">Избегать нисходящий тренд</span>
+                                </label>
+                </div>
+                
+                <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="avoidUpTrendDup" checked />
+                                    <span data-translate="avoid_up_trend_label">Избегать восходящий тренд</span>
+                                </label>
+                </div>
+                
+                <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="enableMaturityCheckDup" checked />
+                                    <span data-translate="enable_maturity_check_coin_label">Проверка зрелости для этой монеты</span>
+                                </label>
+                </div>
+                
+                <div class="setting-item">
+                                <label data-translate="break_even_trigger_label">Триггер безубыточности (%):</label>
+                                <input type="number" id="breakEvenTriggerDup" value="100.0" min="25" max="300" step="25" />
+                            </div>
+                            <div class="settings-divider"></div>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="rsiTimeFilterEnabledDup" />
+                                    <span data-translate="rsi_time_filter_enabled_label">Включить RSI временной фильтр</span>
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label data-translate="rsi_time_filter_candles_label">⏱️ Минимум свечей (6H):</label>
+                                <input type="number" id="rsiTimeFilterCandlesDup" value="6" min="0" max="48" step="1" />
+                            </div>
+                            <div class="setting-item">
+                                <label data-translate="rsi_time_filter_upper_label">🔺 Верхняя граница:</label>
+                                <input type="number" id="rsiTimeFilterUpperDup" value="65" min="50" max="90" step="1" />
+                            </div>
+                            <div class="setting-item">
+                                <label data-translate="rsi_time_filter_lower_label">🔻 Нижняя граница:</label>
+                                <input type="number" id="rsiTimeFilterLowerDup" value="35" min="10" max="50" step="1" />
+                            </div>
+                            <div class="settings-divider"></div>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="exitScamEnabledDup" />
+                                    <span data-translate="exit_scam_enabled_label">Включить ExitScam фильтр</span>
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label data-translate="exit_scam_candles_label">🕯️ Свечей для анализа:</label>
+                                <input type="number" id="exitScamCandlesDup" value="8" min="4" max="30" step="1" />
+                            </div>
+                            <div class="setting-item">
+                                <label data-translate="exit_scam_single_candle_label">📉 Лимит одной свечи (%):</label>
+                                <input type="number" id="exitScamSingleCandleDup" value="15" min="2" max="80" step="0.5" />
+                            </div>
+                            <div class="setting-item">
+                                <label data-translate="exit_scam_multi_count_label">📊 Свечей для суммарного анализа:</label>
+                                <input type="number" id="exitScamMultiCountDup" value="4" min="2" max="12" step="1" />
+                            </div>
+                            <div class="setting-item">
+                                <label data-translate="exit_scam_multi_percent_label">📈 Лимит суммарного изменения (%):</label>
+                                <input type="number" id="exitScamMultiPercentDup" value="50" min="10" max="200" step="1" />
+                            </div>
+                            <div class="settings-divider"></div>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="trendDetectionEnabledDup" />
+                                    <span data-translate="trend_detection_enabled_label">Включить анализ трендов</span>
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label data-translate="trend_analysis_period_label">📆 Период анализа тренда (дней):</label>
+                                <input type="number" id="trendAnalysisPeriodDup" value="30" min="5" max="120" step="1" />
+                            </div>
+                            <div class="setting-item">
+                                <label data-translate="trend_price_change_threshold_label">📉 Порог изменения цены (%):</label>
+                                <input type="number" id="trendPriceChangeThresholdDup" value="7" min="1" max="50" step="0.5" />
+                            </div>
+                            <div class="setting-item">
+                                <label data-translate="trend_candles_threshold_label">🕯️ Порог свечей (%):</label>
+                                <input type="number" id="trendCandlesThresholdDup" value="70" min="40" max="100" step="1" />
+                            </div>
+                            <div class="settings-divider"></div>
+                            <div class="setting-item">
+                                <label data-translate="min_candles_maturity_label">🧪 Мин. свечей для зрелости:</label>
+                                <input type="number" id="minCandlesForMaturityDup" value="400" min="50" max="1000" step="10" />
+                            </div>
+                            <div class="setting-item">
+                                <label data-translate="min_rsi_low_label">📉 Мин. достигнутый RSI:</label>
+                                <input type="number" id="minRsiLowDup" value="35" min="10" max="50" step="1" />
+                            </div>
+                            <div class="setting-item">
+                                <label data-translate="max_rsi_high_label">📈 Макс. достигнутый RSI:</label>
+                                <input type="number" id="maxRsiHighDup" value="65" min="55" max="90" step="1" />
+                            </div>
+                        </div>
+                        
+                        <!-- Кнопки сохранения индивидуальных настроек -->
+                        <div class="individual-settings-actions" style="margin-top: 20px; padding: 15px; background: var(--section-bg); border-radius: 8px; border: 1px solid var(--border-color);">
+                            <h4 data-translate="individual_settings_title" style="color: var(--text-color);">⚙️ Индивидуальные настройки монеты</h4>
+                            <p data-translate="individual_settings_description" style="color: var(--text-muted); font-size: 14px; margin-bottom: 15px;">
+                                Настройки применяются только к этой монете. Если настройка не задана, используется общая конфигурация.
+                            </p>
+                            <div class="settings-actions-buttons" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                <button class="btn btn-success btn-sm" id="saveIndividualSettingsBtn">
+                                    <span data-translate="save_individual_settings">💾 Сохранить настройки</span>
+                                </button>
+                                <button class="btn btn-warning btn-sm" id="loadIndividualSettingsBtn">
+                                    <span data-translate="load_individual_settings">📥 Загрузить настройки</span>
+                                </button>
+                                <button class="btn btn-secondary btn-sm" id="resetIndividualSettingsBtn">
+                                    <span data-translate="reset_individual_settings">🔄 Сбросить к общим</span>
+                                </button>
+                                <button class="btn btn-info btn-sm" id="copyToAllCoinsBtn">
+                                    <span data-translate="copy_to_all_coins">📋 Применить ко всем монетам</span>
+                                </button>
+                            </div>
+                            <div class="settings-status" id="individualSettingsStatus" style="margin-top: 10px; font-size: 12px; color: var(--text-muted);">
+                                <span data-translate="no_individual_settings">Нет индивидуальных настроек для этой монеты</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Элементы управления ботом -->
+                    <div class="bot-control-elements" id="botControlElements" style="display: none;">
+                        <h3><span data-translate="bot_control">🎮 Управление ботом</span></h3>
+                        
+                        <!-- Статус бота -->
+                        <div class="bot-status-info">
+                            <div class="status-item">
+                                <span class="status-label" data-translate="bot_status">Статус:</span>
+                                <span class="status-value" id="botStatusValue">Не создан</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label" data-translate="bot_created_at">Создан:</span>
+                                <span class="status-value" id="botCreatedAt">-</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label" data-translate="bot_last_signal">Последний сигнал:</span>
+                                <span class="status-value" id="botLastSignal">-</span>
+                            </div>
+                        </div>
+
+                        <!-- Кнопки управления -->
+                        <div class="bot-control-buttons">
+                            <button class="btn btn-primary" id="createBotBtnSettings">
+                                <span data-translate="create_bot">🚀 Создать бота</span>
+                            </button>
+                            <button class="btn btn-success" id="startBotBtnSettings" style="display: none;">
+                                <span data-translate="start_btn">▶️ Запустить</span>
+                            </button>
+                            <button class="btn btn-danger" id="stopBotBtnSettings" style="display: none;">
+                                <span data-translate="stop_btn">⏹️ Остановить</span>
+                            </button>
+                            <button class="btn btn-warning" id="pauseBotBtnSettings" style="display: none;">
+                                <span data-translate="pause_btn">⏸️ Пауза</span>
+                            </button>
+                            <button class="btn btn-info" id="resumeBotBtnSettings" style="display: none;">
+                                <span data-translate="resume_btn">⏯️ Возобновить</span>
+                            </button>
+                            <button class="btn btn-orange" id="closePositionBtnSettings" style="display: none;">
+                                <span data-translate="close_position_btn">❌ Закрыть позицию</span>
+                            </button>
+                            <button class="btn btn-danger" id="deleteBotBtnSettings" style="display: none;">
+                                <span data-translate="delete_bot">🗑️ Удалить бота</span>
+                            </button>
+                            
+                            <!-- Улучшенные кнопки управления -->
+                            <button class="btn btn-success" id="manualLaunchLongBtn" style="display: none;">
+                                <span data-translate="manual_launch_long">🚀 Ручной LONG</span>
+                            </button>
+                            <button class="btn btn-danger" id="manualLaunchShortBtn" style="display: none;">
+                                <span data-translate="manual_launch_short">📉 Ручной SHORT</span>
+                            </button>
+                            <button class="btn btn-warning" id="stopBotOnlyBtn" style="display: none;">
+                                <span data-translate="stop_bot_only">⏸️ Остановить бота</span>
+                            </button>
+                            <button class="btn btn-info" id="removeBotOnlyBtn" style="display: none;">
+                                <span data-translate="remove_bot_only">🗑️ Удалить бота</span>
+                            </button>
+                            <button class="btn btn-orange" id="closePositionOnlyBtn" style="display: none;">
+                                <span data-translate="close_position_only">❌ Закрыть позицию</span>
+                            </button>
+                        </div>
+
+                        <!-- Информация о позиции -->
+                        <div class="position-info" id="positionInfo" style="display: none;">
+                            <h4 data-translate="position_info">📊 Информация о позиции</h4>
+                            <div class="position-details" id="positionDetails">
+                                <!-- Детали позиции будут загружены динамически -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Кнопки добавления в фильтры (перемещены вниз) -->
+                    <div class="filter-controls-section" id="filterControlsSection" style="display: none;">
+                        <h4 data-translate="add_to_filters_header">🔧 Добавить в фильтры</h4>
+                        <div class="filter-controls-buttons">
+                            <button class="btn btn-filter-white" id="addToWhitelistBtnManagement">
+                                <span data-translate="to_white_list_btn">🟢 В белый список</span>
+                            </button>
+                            <button class="btn btn-filter-black" id="addToBlacklistBtnManagement">
+                                <span data-translate="to_black_list_btn">🔴 В черный список</span>
+                            </button>
+                            <button class="btn btn-filter-remove" id="removeFromFiltersBtnManagement">
+                                <span data-translate="remove_from_lists_btn">🗑️ Удалить из списков</span>
+                            </button>
+                        </div>
+                        <div class="filter-status" id="filterStatus">
+                            <span class="filter-status-text" data-translate="filter_status_not_in_filters" id="filterStatusText">Не в фильтрах</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ПРАВАЯ ПАНЕЛЬ - АКТИВНЫЕ БОТЫ -->
+            <div class="active-bots-sidebar">
+                <div class="active-bots-header">
+                    <h3 data-translate="active_bots_title">🤖 Активные боты</h3>
+                </div>
+                
+                <!-- Глобальный Auto Bot переключатель -->
+                <div class="auto-bot-toggle">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="globalAutoBotToggle" />
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label">🤖 Auto Bot</span>
+                </div>
+                
+                <!-- Массовые операции с ботами -->
+                <div class="bulk-bot-controls" id="bulkBotControls" style="display: none;">
+                    <div class="bulk-controls-header">
+                        <span class="bulk-controls-title" data-translate="mass_operations">📋 Массовые операции</span>
+                        <span class="bulk-controls-count" id="bulkControlsCount">0 ботов</span>
+                    </div>
+                    <div class="bulk-controls-buttons">
+                        <button class="btn btn-success btn-sm" id="startAllBotsBtn" title="Запустить всех остановленных ботов">
+                            ▶️ <span data-translate="start_all">Запустить всё</span>
+                        </button>
+                        <button class="btn btn-warning btn-sm" id="stopAllBotsBtn" title="Остановить всех активных ботов">
+                            ⏹️ <span data-translate="stop_all">Остановить всё</span>
+                        </button>
+                        <button class="btn btn-danger btn-sm" id="deleteAllBotsBtn" title="Удалить всех ботов">
+                            🗑️ <span data-translate="delete_all">Удалить всё</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Список активных ботов -->
+                <div class="active-bots-list-container">
+                    <div class="empty-active-bots" id="emptyActiveBotsState">
+                        <div class="empty-icon">🤖</div>
+                        <p data-translate="no_active_bots">Нет активных ботов</p>
+                        <small data-translate="create_bots_for_trading">Создайте ботов для торговли</small>
+                </div>
+                
+                    <div class="active-bots-scroll-list" id="activeBotsScrollList" style="display: none;">
+                        <!-- Активные боты будут загружены динамически -->
+                    </div>
+                </div>
+                
+                <!-- Общая статистика -->
+                <div class="active-bots-summary">
+                    <div class="summary-item">
+                        <span class="summary-label" data-translate="general_pnl">💰 Общий PnL:</span>
+                        <span class="summary-value" id="totalPnLValue">$0.00</span>
+                    </div>
+                </div>
+        </div>
+        </div>
+    </div>
+
+    <!-- Таб 2: Фильтры монет -->
+    <div class="bots-tab-content" id="filtersTab">
+        <div class="filters-layout">
+            <div class="filters-header">
+                <h2 data-translate="filter_settings_for_auto_bot">Настройки фильтров для Auto Bot</h2>
+                <p data-translate="manage_coin_lists_for_auto_trading">Управляйте списками монет для автоматической торговли</p>
+            </div>
+            
+            <div class="filters-content">
+                
+                <!-- Поиск и добавление монет -->
+                <div class="search-section">
+                    <div class="search-header">
+                        <h3 data-translate="coin_search_title">🔍 Поиск монет</h3>
+                        <div class="search-description">
+                            <span data-translate="find_coins_and_add_to_filters">Найдите монеты и добавьте их в фильтры</span>
+                        </div>
+                    </div>
+                    
+                    <div class="search-controls">
+                        <input type="text" id="filtersSearchInput" data-translate-placeholder="search_placeholder_filters" placeholder="🔍 Введите часть названия (например: bt, eth, doge)..." class="search-input-filters" />
+                    </div>
+                    
+                    <div class="search-results" id="filtersSearchResults">
+                        <div class="search-prompt">
+                            <p data-translate="enter_minimum_2_chars">💡 Введите минимум 2 символа для поиска</p>
+                            <small data-translate="all_coins_containing_text_shown">Будут показаны все монеты содержащие введенный текст</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Белый список -->
+                <div class="filter-section">
+                    <div class="filter-header">
+                        <h3 data-translate="white_list_title">🟢 Белый список</h3>
+                        <span class="filter-count" id="whitelistCount">0</span>
+                    </div>
+                    <div class="filter-description">
+                        <span data-translate="white_list_coins_priority">Монеты из белого списка будут приоритетными для Auto Bot</span>
+                    </div>
+                    <div class="filter-list" id="whitelistContainer">
+                        <div class="empty-filter-state">
+                            <p data-translate="white_list_empty_text">Белый список пуст</p>
+                            <small data-translate="find_coins_through_search">Найдите монеты через поиск выше</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Черный список -->
+                <div class="filter-section">
+                    <div class="filter-header">
+                        <h3 data-translate="black_list_title">🔴 Черный список</h3>
+                        <span class="filter-count" id="blacklistCount">0</span>
+                    </div>
+                    <div class="filter-description">
+                        <span data-translate="black_list_coins_excluded">Монеты из черного списка будут исключены из Auto Bot</span>
+                    </div>
+                    <div class="filter-list" id="blacklistContainer">
+                        <div class="empty-filter-state">
+                            <p data-translate="black_list_empty_text">Черный список пуст</p>
+                            <small data-translate="find_coins_through_search">Найдите монеты через поиск выше</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Здесь раньше была конфигурация Auto Bot - перенесена в отдельную вкладку -->
+        </div>
+    </div>
+
+    <!-- Таб 3: Конфигурация -->
+    <div class="bots-tab-content" id="configTab">
+        <div class="config-layout">
+            <div class="config-header">
+                <h2 data-translate="config_auto_bot_title">⚙️ Конфигурация Auto Bot</h2>
+                <p data-translate="configure_auto_trading_params">Настройте параметры автоматической торговли</p>
+            </div>
+            
+            <div class="config-sections">
+                
+                <!-- Основные настройки Auto Bot -->
+                <div class="config-section">
+                    <div class="section-header">
+                        <h3 data-translate="basic_settings_title">🤖 Основные настройки</h3>
+                        <div class="section-description" data-translate="basic_settings_desc">
+                            Базовые параметры работы автоматического бота
+                        </div>
+                    </div>
+                    
+                    <div class="config-grid">
+
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🔢</span>
+                                <span class="label-text" data-translate="max_concurrent_bots_label">Макс. одновременных ботов:</span>
+                            </label>
+                            <input type="number" id="autoBotMaxConcurrent" value="5" min="1" max="20" class="config-input" />
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📊</span>
+                                <span class="label-text" data-translate="risk_cap_percent_label">Риск-кап (% от депозита):</span>
+                            </label>
+                            <input type="number" id="autoBotRiskCap" value="10" min="1" max="50" step="0.1" class="config-input" />
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🎯</span>
+                                <span class="label-text" data-translate="action_scope_input">Область действия:</span>
+                            </label>
+                            <div class="config-scope-buttons">
+                                <button type="button" class="scope-btn active" data-value="all" data-translate="all_coins_select">
+                                    🌐 <span data-translate="all_coins">Все монеты</span>
+                                </button>
+                                <button type="button" class="scope-btn" data-value="whitelist" data-translate="whitelist_option">
+                                    ✅ Белый список
+                                </button>
+                                <button type="button" class="scope-btn" data-value="blacklist" data-translate="blacklist_option">
+                                    ❌ Черный список
+                                </button>
+                            </div>
+                            <input type="hidden" id="autoBotScope" value="all">
+                        </div>
+                    </div>
+                    
+                    <div class="config-section-actions">
+                        <button class="btn btn-success config-section-save-btn" data-section="basic">
+                            <span data-translate="save_basic_section_btn">💾 Сохранить основные настройки</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Системные настройки -->
+                <div class="config-section">
+                    <div class="section-header">
+                        <h3 data-translate="system_settings_title">⚙️ Системные настройки</h3>
+                        <div class="section-description" data-translate="system_settings_desc">
+                            Интервалы обновления и системные параметры
+                        </div>
+                        <button id="reloadModulesBtn" class="btn btn-warning" style="margin-left: auto;">
+                            <span>🔄 Hot Reload (без перезапуска)</span>
+                        </button>
+                    </div>
+                    
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🔄</span>
+                                <span class="label-text" data-translate="rsi_update_interval_label">Обновление RSI:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="rsiUpdateInterval" class="config-input" 
+                                       min="60" max="7200" step="60" 
+                                       placeholder="1800">
+                                <span class="input-unit" data-translate="seconds_unit">сек</span>
+                            </div>
+                            <small class="config-help" data-translate="rsi_interval_help">Рекомендуется: 1800 сек (30 мин). Минимум: 60 сек</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">💾</span>
+                                <span class="label-text" data-translate="auto_save_interval_label">Автосохранение:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="autoSaveInterval" class="config-input" 
+                                       min="5" max="300" step="5" 
+                                       placeholder="30">
+                                <span class="input-unit" data-translate="seconds_unit">сек</span>
+                            </div>
+                            <small class="config-help" data-translate="autosave_interval_help">Рекомендуется: 30 сек. Диапазон: 5-300 сек</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🔍</span>
+                                <span class="label-text" data-translate="debug_mode_label">Режим отладки:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="debugMode" />
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🔄</span>
+                                <span class="label-text" data-translate="auto_update_ui_label">Автообновление UI:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="autoRefreshUI" checked />
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        
+                        <!-- Новые интервалы синхронизации и очистки -->
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🔄</span>
+                                <span class="label-text" data-translate="position_sync_interval_label">Синхронизация позиций:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="positionSyncInterval" class="config-input" 
+                                       min="60" max="3600" step="60" 
+                                       placeholder="600">
+                                <span class="input-unit" data-translate="seconds_unit">сек</span>
+                            </div>
+                            <small class="config-help" data-translate="position_sync_interval_help">Рекомендуется: 600 сек (10 мин). Синхронизация позиций с биржей</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🧹</span>
+                                <span class="label-text" data-translate="inactive_bot_cleanup_interval_label">Очистка неактивных ботов:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="inactiveBotCleanupInterval" class="config-input" 
+                                       min="60" max="3600" step="60" 
+                                       placeholder="600">
+                                <span class="input-unit" data-translate="seconds_unit">сек</span>
+                            </div>
+                            <small class="config-help" data-translate="inactive_bot_cleanup_interval_help">Рекомендуется: 600 сек (10 мин). Проверка и удаление неактивных ботов</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">⏰</span>
+                                <span class="label-text" data-translate="inactive_bot_timeout_label">Таймаут неактивных ботов:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="inactiveBotTimeout" class="config-input" 
+                                       min="60" max="3600" step="60" 
+                                       placeholder="600">
+                                <span class="input-unit" data-translate="seconds_unit">сек</span>
+                            </div>
+                            <small class="config-help" data-translate="inactive_bot_timeout_help">Рекомендуется: 600 сек (10 мин). Время ожидания перед удалением бота</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🛡️</span>
+                                <span class="label-text" data-translate="stop_loss_setup_interval_label">Настройка стоп-лоссов:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="stopLossSetupInterval" class="config-input" 
+                                       min="60" max="1800" step="60" 
+                                       placeholder="300">
+                                <span class="input-unit" data-translate="seconds_unit">сек</span>
+                            </div>
+                            <small class="config-help" data-translate="stop_loss_setup_interval_help">Рекомендуется: 300 сек (5 мин). Установка недостающих стоп-лоссов</small>
+                        </div>
+                    </div>
+                    
+                    <div class="config-section-actions">
+                        <button class="btn btn-success config-section-save-btn" data-section="system">
+                            <span data-translate="save_system_section_btn">💾 Сохранить системные настройки</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Торговые параметры -->
+                <div class="config-section">
+                    <div class="section-header">
+                        <h3 data-translate="trading_params_title">📈 Торговые параметры</h3>
+                        <div class="section-description" data-translate="trading_params_desc">
+                            Настройки RSI и управления позициями
+                        </div>
+                    </div>
+                    
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📉</span>
+                                <span class="label-text" data-translate="rsi_long_buy_label">RSI для LONG (покупка):</span>
+                            </label>
+                            <input type="number" id="rsiLongThreshold" value="29" min="1" max="50" class="config-input" />
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📈</span>
+                                <span class="label-text" data-translate="rsi_short_sell_label">RSI для SHORT (продажа):</span>
+                            </label>
+                            <input type="number" id="rsiShortThreshold" value="71" min="50" max="99" class="config-input" />
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">💰</span>
+                                <span class="label-text" data-translate="position_size_label">Размер позиции (USDT):</span>
+                            </label>
+                            <input type="number" id="defaultPositionSize" value="10" min="1" step="0.1" class="config-input" />
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">⏱️</span>
+                                <span class="label-text" data-translate="check_interval_label">Интервал проверки:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="checkInterval" class="config-input" 
+                                       min="30" max="3600" step="30" 
+                                       placeholder="180">
+                                <span class="input-unit" data-translate="seconds_unit">сек</span>
+                            </div>
+                            <small class="config-help" data-translate="check_interval_help">Рекомендуется: 3 мин. Диапазон: 1-60 мин</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🔄</span>
+                                <span class="label-text" data-translate="refresh_interval_label">Интервал обновления UI:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="refreshInterval" class="config-input" 
+                                       min="3" max="300" step="1" 
+                                       placeholder="30">
+                                <span class="input-unit" data-translate="seconds_unit">сек</span>
+                            </div>
+                            <small class="config-help" data-translate="refresh_interval_help">Управляет обновлением блока с балансом, PnL, позициями и мониторингом ботов. Рекомендуется: 30 сек, минимум: 3 сек</small>
+                        </div>
+                    </div>
+                    
+                    <div class="config-section-actions">
+                        <button class="btn btn-success config-section-save-btn" data-section="trading">
+                            <span data-translate="save_trading_section_btn">💾 Сохранить торговые параметры</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- RSI выходы из позиций -->
+                <div class="config-section">
+                    <div class="section-header">
+                        <h3 data-translate="rsi_exits_title">🎯 RSI выходы из позиций</h3>
+                        <div class="section-description">
+                            <span data-translate="rsi_exits_description">Уровни RSI для автоматического выхода из позиций согласно ТЗ</span>
+                        </div>
+                    </div>
+                    
+                    <div class="config-grid">
+
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🟢📈</span>
+                                <span class="label-text" data-translate="rsi_exit_long_with_trend_label">RSI выход из LONG (по тренду):</span>
+                            </label>
+                            <input type="number" id="rsiExitLongWithTrendGlobal" value="65" min="50" max="99" class="config-input" />
+                            <small class="config-help" data-translate="rsi_exit_long_with_trend_help">Выход когда вход был ПО тренду (UP тренд) - можно ждать большего движения</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🟢📉</span>
+                                <span class="label-text" data-translate="rsi_exit_long_against_trend_label">RSI выход из LONG (против тренда):</span>
+                            </label>
+                            <input type="number" id="rsiExitLongAgainstTrendGlobal" value="60" min="50" max="99" class="config-input" />
+                            <small class="config-help" data-translate="rsi_exit_long_against_trend_help">Выход когда вход был ПРОТИВ тренда (DOWN тренд) - выходим раньше, безопаснее</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🔴📉</span>
+                                <span class="label-text" data-translate="rsi_exit_short_with_trend_label">RSI выход из SHORT (по тренду):</span>
+                            </label>
+                            <input type="number" id="rsiExitShortWithTrendGlobal" value="35" min="1" max="50" class="config-input" />
+                            <small class="config-help" data-translate="rsi_exit_short_with_trend_help">Выход когда вход был ПО тренду (DOWN тренд) - можно ждать большего движения</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🔴📈</span>
+                                <span class="label-text" data-translate="rsi_exit_short_against_trend_label">RSI выход из SHORT (против тренда):</span>
+                            </label>
+                            <input type="number" id="rsiExitShortAgainstTrendGlobal" value="40" min="1" max="50" class="config-input" />
+                            <small class="config-help" data-translate="rsi_exit_short_against_trend_help">Выход когда вход был ПРОТИВ тренда (UP тренд) - выходим раньше, безопаснее</small>
+                        </div>
+                        
+
+                    </div>
+                    
+                    <div class="config-section-actions">
+                        <button class="btn btn-success config-section-save-btn" data-section="rsi-exits">
+                            <span data-translate="save_rsi_exits_section_btn">💾 Сохранить RSI выходы</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- RSI временной фильтр -->
+                <div class="config-section">
+                    <div class="section-header">
+                        <h3 data-translate="rsi_time_filter_title">⏰ RSI временной фильтр</h3>
+                        <div class="section-description">
+                            <span data-translate="rsi_time_filter_description">Контроль времени с момента последнего экстремума RSI</span>
+                        </div>
+                    </div>
+                    
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">⏰</span>
+                                <span class="label-text" data-translate="rsi_time_filter_enabled_label">Включить временной фильтр:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="rsiTimeFilterEnabled" checked />
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <small class="config-help" data-translate="rsi_time_filter_enabled_help">Требует минимальное время с последнего экстремума RSI перед входом в сделку</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🕐</span>
+                                <span class="label-text" data-translate="rsi_time_filter_candles_label">Минимум свечей (6H):</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="rsiTimeFilterCandles" class="config-input" 
+                                       min="0" max="24" step="1" value="8"
+                                       placeholder="8">
+                                <span class="input-unit" data-translate="candles_unit">свечей</span>
+                            </div>
+                            <small class="config-help" data-translate="rsi_time_filter_candles_help">8 свечей = 2 суток на 6H таймфрейме. 0 = отключить фильтр. Диапазон: 0-24 свечей (0-6 суток)</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📈</span>
+                                <span class="label-text" data-translate="rsi_time_filter_upper_label">Верхняя граница фильтра:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="rsiTimeFilterUpper" class="config-input" 
+                                       min="50" max="100" step="1" value="65"
+                                       placeholder="65">
+                                <span class="input-unit">RSI</span>
+                            </div>
+                            <small class="config-help" data-translate="rsi_time_filter_upper_help">Проверяет что ВСЕ N свечей после экстремума были >= этого значения для разрешения SHORT</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📉</span>
+                                <span class="label-text" data-translate="rsi_time_filter_lower_label">Нижняя граница фильтра:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="rsiTimeFilterLower" class="config-input" 
+                                       min="0" max="50" step="1" value="35"
+                                       placeholder="35">
+                                <span class="input-unit">RSI</span>
+                            </div>
+                            <small class="config-help" data-translate="rsi_time_filter_lower_help">Проверяет что ВСЕ N свечей после экстремума были <= этого значения для разрешения LONG</small>
+                        </div>
+                    </div>
+                    
+                    <div class="config-section-actions">
+                        <button class="btn btn-success config-section-save-btn" data-section="rsi-time-filter">
+                            <span data-translate="save_rsi_time_filter_section_btn">💾 Сохранить RSI временной фильтр</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ExitScam фильтр -->
+                <div class="config-section">
+                    <div class="section-header">
+                        <h3 data-translate="exit_scam_filter_title">🛡️ ExitScam фильтр</h3>
+                        <div class="section-description">
+                            <span data-translate="exit_scam_filter_description">Защита от входа в сделки после резких скачков цены (памп/дамп/скам)</span>
+                        </div>
+                    </div>
+                    
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🛡️</span>
+                                <span class="label-text" data-translate="exit_scam_enabled_label">Включить ExitScam фильтр:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="exitScamEnabled" checked />
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <small class="config-help" data-translate="exit_scam_enabled_help">Блокирует вход в сделки после резких движений цены</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📊</span>
+                                <span class="label-text" data-translate="exit_scam_candles_label">Анализ свечей (6H):</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="exitScamCandles" class="config-input" 
+                                       min="1" max="50" step="1" value="10"
+                                       placeholder="10">
+                                <span class="input-unit" data-translate="candles_unit">свечей</span>
+                            </div>
+                            <small class="config-help" data-translate="exit_scam_candles_help">Количество свечей для анализа в истории. 10 свечей = 60 часов на 6H</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">⚡</span>
+                                <span class="label-text" data-translate="exit_scam_single_candle_label">Лимит одной свечи:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="exitScamSingleCandlePercent" class="config-input" 
+                                       min="1" max="100" step="0.1" value="15.0"
+                                       placeholder="15.0">
+                                <span class="input-unit">%</span>
+                            </div>
+                            <small class="config-help" data-translate="exit_scam_single_candle_help">Если одна свеча изменилась больше чем на этот % - блокировка входа</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📈</span>
+                                <span class="label-text" data-translate="exit_scam_multi_count_label">Свечей для суммарного анализа:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="exitScamMultiCandleCount" class="config-input" 
+                                       min="2" max="20" step="1" value="4"
+                                       placeholder="4">
+                                <span class="input-unit" data-translate="candles_unit">свечей</span>
+                            </div>
+                            <small class="config-help" data-translate="exit_scam_multi_count_help">Количество свечей для проверки суммарного изменения</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📊</span>
+                                <span class="label-text" data-translate="exit_scam_multi_percent_label">Лимит суммарного изменения:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="exitScamMultiCandlePercent" class="config-input" 
+                                       min="1" max="200" step="0.1" value="50.0"
+                                       placeholder="50.0">
+                                <span class="input-unit">%</span>
+                            </div>
+                            <small class="config-help" data-translate="exit_scam_multi_percent_help">Если N свечей суммарно изменились больше чем на этот % - блокировка входа</small>
+                        </div>
+                    </div>
+                    
+                    <div class="config-section-actions">
+                        <button class="btn btn-success config-section-save-btn" data-section="exit-scam">
+                            <span data-translate="save_exit_scam_section_btn">💾 Сохранить ExitScam фильтр</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Настройки улучшенного RSI -->
+                <div class="config-section">
+                    <div class="section-header">
+                        <h3 data-translate="enhanced_rsi_title">🧠 Улучшенная система RSI</h3>
+                        <div class="section-description" data-translate="enhanced_rsi_desc">
+                            Настройки интеллектуальной фильтрации RSI для сильных трендов
+                        </div>
+                    </div>
+                    
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🧠</span>
+                                <span class="label-text" data-translate="enhanced_rsi_enabled_label">Включить улучшенную систему:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="enhancedRsiEnabled" checked />
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <small class="config-help" data-translate="enhanced_rsi_enabled_help">Включает адаптивные уровни RSI и дополнительные фильтры для сильных трендов</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📊</span>
+                                <span class="label-text" data-translate="volume_confirmation_label">Подтверждение объемом:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="enhancedRsiVolumeConfirm" checked />
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <small class="config-help" data-translate="volume_confirmation_help">Требует повышенного объема для подтверждения сигналов входа</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🔄</span>
+                                <span class="label-text" data-translate="divergence_confirmation_label">Строгий режим (дивергенции):</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="enhancedRsiDivergenceConfirm" />
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <small class="config-help" data-translate="divergence_confirmation_help">Требует обнаружения дивергенции для входа (очень строгий режим)</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📈</span>
+                                <span class="label-text" data-translate="stoch_rsi_label">Использовать Stochastic RSI:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="enhancedRsiUseStochRsi" checked />
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <small class="config-help" data-translate="stoch_rsi_help">Дополнительное подтверждение через Stochastic RSI в экстремальных зонах</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">⏱️</span>
+                                <span class="label-text" data-translate="extreme_zone_timeout_label">Таймаут экстремальной зоны:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="rsiExtremeZoneTimeout" class="config-input" 
+                                       min="1" max="10" step="1" value="3"
+                                       placeholder="3">
+                                <span class="input-unit" data-translate="candles_unit">свечей</span>
+                            </div>
+                            <small class="config-help" data-translate="extreme_zone_timeout_help">Максимальное количество свечей в экстремальной зоне без дополнительных подтверждений</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🔻</span>
+                                <span class="label-text" data-translate="extreme_oversold_label">Экстремальная перепроданность:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="rsiExtremeOversold" class="config-input" 
+                                       min="10" max="30" step="1" value="20"
+                                       placeholder="20">
+                                <span class="input-unit">RSI</span>
+                            </div>
+                            <small class="config-help" data-translate="extreme_oversold_help">Уровень экстремальной перепроданности (требует дополнительных подтверждений)</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🔺</span>
+                                <span class="label-text" data-translate="extreme_overbought_label">Экстремальная перекупленность:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="rsiExtremeOverbought" class="config-input" 
+                                       min="70" max="90" step="1" value="80"
+                                       placeholder="80">
+                                <span class="input-unit">RSI</span>
+                            </div>
+                            <small class="config-help" data-translate="extreme_overbought_help">Уровень экстремальной перекупленности (требует дополнительных подтверждений)</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📊</span>
+                                <span class="label-text" data-translate="volume_multiplier_label">Множитель объема:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="rsiVolumeMultiplier" class="config-input" 
+                                       min="1.0" max="3.0" step="0.1" value="1.2"
+                                       placeholder="1.2">
+                                <span class="input-unit">x</span>
+                            </div>
+                            <small class="config-help" data-translate="volume_multiplier_help">Во сколько раз текущий объем должен превышать средний для подтверждения</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🔍</span>
+                                <span class="label-text" data-translate="divergence_lookback_label">Период поиска дивергенций:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="rsiDivergenceLookback" class="config-input" 
+                                       min="5" max="20" step="1" value="10"
+                                       placeholder="10">
+                                <span class="input-unit" data-translate="candles_unit">свечей</span>
+                            </div>
+                            <small class="config-help" data-translate="divergence_lookback_help">Количество свечей для анализа дивергенций между ценой и RSI</small>
+                        </div>
+                    </div>
+                    
+                    <div class="config-section-actions">
+                        <button class="btn btn-success config-section-save-btn" data-section="enhanced-rsi">
+                            <span data-translate="save_enhanced_rsi_section_btn">💾 Сохранить Enhanced RSI</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Торговые настройки -->
+                <div class="config-section">
+                    <div class="section-header">
+                        <h3 data-translate="trading_settings_title">💼 Торговые настройки</h3>
+                        <div class="section-description">
+                            <span data-translate="trading_settings_description">Настройки реальной торговли и управления рисками</span>
+                        </div>
+                    </div>
+                    
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🎛️</span>
+                                <span class="label-text" data-translate="real_trading_label">Реальная торговля:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="tradingEnabled" checked />
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🧪</span>
+                                <span class="label-text" data-translate="test_server_label">Тестовый сервер:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="useTestServer" />
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">⚠️</span>
+                                <span class="label-text" data-translate="max_risk_per_trade_label">Макс. риск на сделку (%):</span>
+                            </label>
+                            <input type="number" id="maxRiskPerTrade" value="2.0" min="0.1" max="10" step="0.1" class="config-input" />
+                        </div>
+                    </div>
+                    
+                    <div class="config-section-actions">
+                        <button class="btn btn-success config-section-save-btn" data-section="trading-settings">
+                            <span data-translate="save_trading_settings_section_btn">💾 Сохранить торговые настройки</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 🛡️ Защитные механизмы -->
+                <div class="config-section">
+                    <div class="section-header">
+                        <h3 data-translate="protective_mechanisms_title">🛡️ Защитные механизмы</h3>
+                        <div class="section-description">
+                            <span data-translate="protective_mechanisms_description">Настройки стоп-лоссов, trailing stop и защиты капитала</span>
+                        </div>
+                    </div>
+                    
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">💀</span>
+                                <span class="label-text" data-translate="stop_loss_percent_label">Стоп-лосс (% убытка):</span>
+                            </label>
+                            <input type="number" id="maxLossPercent" value="15.0" min="1" max="50" step="0.5" class="config-input" />
+                            <small class="config-help" data-translate="max_loss_description">Максимальный убыток от стоимости входа позиции (например: вход 5 USDT, стоп 15% = убыток 0.75 USDT)</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🎯</span>
+                                <span class="label-text" data-translate="take_profit_percent_label">Защитный Take Profit (% прибыли):</span>
+                            </label>
+                            <input type="number" id="takeProfitPercent" value="20.0" min="1" max="100" step="0.5" class="config-input" />
+                            <small class="config-help" data-translate="take_profit_description">Защитный TP рассчитывается как стоп-лосс: % от стоимости входа. Основной выход по RSI 6h (65 для LONG, 35 для SHORT)</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🚀</span>
+                                <span class="label-text" data-translate="trailing_stop_activation_percent">Активация Trailing Stop (% прибыли):</span>
+                            </label>
+                            <input type="number" id="trailingStopActivation" value="20.0" min="1" max="200" step="1" class="config-input" />
+                            <small class="config-help" data-translate="trailing_stop_activation_description">Процент прибыли от входа, после которого трейлинг начинает работать</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📏</span>
+                                <span class="label-text" data-translate="trailing_stop_distance_percent">Расстояние Trailing Stop (%):</span>
+                            </label>
+                            <input type="number" id="trailingStopDistance" value="5.0" min="0.5" max="50" step="0.5" class="config-input" />
+                            <small class="config-help">На сколько процентов ниже/выше максимальной цены будет выставлен стоп</small>
+                        </div>
+
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🎯</span>
+                                <span class="label-text">Резервный Trailing Take (%):</span>
+                            </label>
+                            <input type="number" id="trailingTakeDistance" value="0.5" min="0" max="20" step="0.1" class="config-input" />
+                            <small class="config-help">Лимит-ордер на фиксацию прибыли, который двигается вслед за ценой (на случай падения сервиса)</small>
+                        </div>
+
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">⏱️</span>
+                                <span class="label-text">Интервал обновления трейлинга (сек):</span>
+                            </label>
+                            <input type="number" id="trailingUpdateInterval" value="3" min="0" max="60" step="0.5" class="config-input" />
+                            <small class="config-help">Минимальное время между запросами на обновление стопов/тейков (0 = без ограничений)</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">⏰</span>
+                                <span class="label-text" data-translate="max_position_minutes_label">Макс. время позиции (мин):</span>
+                            </label>
+                            <input type="number" id="maxPositionHours" min="0" max="10080" step="1" class="config-input" value="0" placeholder="0" />
+                            <small class="config-help" data-translate="max_position_time_help">0 = отключено (бесконечно), принудительное закрытие через указанное время</small>
+                        </div>
+                        
+                        <div class="config-item break-even-config">
+                            <label class="config-label">
+                                <span class="label-text" data-translate="break_even_protection_toggle">Защита безубыточности:</span>
+                            </label>
+                            <div class="config-row">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="breakEvenProtection" checked />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <div class="break-even-trigger-group">
+                                    <label for="breakEvenTrigger" class="break-even-trigger-label" data-translate="break_even_trigger_percent">Триггер безубыточности (%):</label>
+                                    <input type="number" id="breakEvenTrigger" value="100.0" min="25" max="300" step="25" class="config-input" />
+                                </div>
+                            </div>
+                            <small class="config-help" data-translate="break_even_protection_help">Перенос стопа на уровень входа при прибыли</small>
+                            <small class="config-help" data-translate="break_even_trigger_description">При x1 прибыли (100%) активируется защита</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-text" data-translate="avoid_down_trend_label">Избегать нисходящий тренд:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="avoidDownTrend" checked />
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <small class="config-help" data-translate="avoid_down_trend_help">Не входить в LONG при DOWN тренде монеты</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-text" data-translate="avoid_up_trend_label">Избегать восходящий тренд:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="avoidUpTrend" checked />
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <small class="config-help" data-translate="avoid_up_trend_help">Не входить в SHORT при UP тренде монеты</small>
+                        </div>
+                        
+                        <div class="config-divider"></div>
+                        
+                        <h4 class="config-subsection-title">⚙️ Параметры анализа тренда</h4>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-text" data-translate="trend_detection_enabled_label">Включить анализ трендов:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="trendDetectionEnabled" checked />
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <small class="config-help" data-translate="trend_detection_enabled_help">Включить определение UP/DOWN/NEUTRAL трендов для монет. Выключить = входы без учета тренда</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📊</span>
+                                <span class="label-text" data-translate="trend_analysis_period_label">Период анализа (свечей 6h):</span>
+                            </label>
+                            <input type="number" id="trendAnalysisPeriod" value="30" min="20" max="50" step="5" class="config-input" />
+                            <small class="config-help" data-translate="trend_analysis_period_help">Количество свечей для анализа тренда (30 свечей = 7.5 дней)</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📈</span>
+                                <span class="label-text" data-translate="trend_price_change_threshold_label">Порог изменения цены (%):</span>
+                            </label>
+                            <input type="number" id="trendPriceChangeThreshold" value="7" min="3" max="15" step="1" class="config-input" />
+                            <small class="config-help" data-translate="trend_price_change_threshold_help">Процент изменения цены для определения тренда (7% = UP/DOWN, меньше = более чувствительный)</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🕯️</span>
+                                <span class="label-text" data-translate="trend_candles_threshold_label">Порог свечей (%):</span>
+                            </label>
+                            <input type="number" id="trendCandlesThreshold" value="70" min="50" max="80" step="5" class="config-input" />
+                            <small class="config-help" data-translate="trend_candles_threshold_help">Процент растущих/падающих свечей для тренда (70% = 21 из 30 свечей)</small>
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="config-section-actions">
+                        <button class="btn btn-success config-section-save-btn" data-section="protective">
+                            <span data-translate="save_protective_section_btn">💾 Сохранить защитные механизмы</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 🧪 Настройки зрелости монет -->
+                <div class="config-section">
+                    <div class="section-header">
+                        <h3 data-translate="coin_maturity_title">🧪 Настройки зрелости монет</h3>
+                        <div class="section-description">
+                            <span data-translate="coin_maturity_description">Фильтрация молодых и нестабильных монет для безопасной торговли</span>
+                        </div>
+                    </div>
+                    
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-text" data-translate="enable_maturity_check_label">Включить проверку зрелости:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="enableMaturityCheck" checked />
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <small class="config-help" data-translate="enable_maturity_check_help">Глобальная проверка зрелости монет перед торговлей</small>
+                        </div>
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📊</span>
+                                <span class="label-text" data-translate="min_candles_maturity_label">Мин. свечей для зрелости:</span>
+                            </label>
+                            <input type="number" id="minCandlesForMaturity" value="200" min="50" max="1000" step="10" class="config-input" />
+                            <small class="config-help" data-translate="min_candles_help">Минимум 200 свечей = 50 дней на 6H. Защита от молодых монет</small>
+                        </div>
+                        
+
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📉</span>
+                                <span class="label-text" data-translate="min_rsi_low_label">Мин. достигнутый RSI:</span>
+                            </label>
+                            <input type="number" id="minRsiLow" value="35" min="10" max="50" step="5" class="config-input" />
+                            <small class="config-help" data-translate="min_rsi_low_help">RSI должен был опускаться до этого уровня (близко к перепроданности)</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📈</span>
+                                <span class="label-text" data-translate="max_rsi_high_label">Макс. достигнутый RSI:</span>
+                            </label>
+                            <input type="number" id="maxRsiHigh" value="65" min="50" max="90" step="5" class="config-input" />
+                            <small class="config-help" data-translate="max_rsi_high_help">RSI должен был подниматься до этого уровня (близко к перекупленности)</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📊</span>
+                                <span class="label-text" data-translate="min_volatility_threshold_label">Мин. волатильность:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="minVolatilityThreshold" class="config-input" 
+                                       min="0.01" max="0.5" step="0.01" value="0.05"
+                                       placeholder="0.05">
+                                <span class="input-unit">%</span>
+                            </div>
+                            <small class="config-help" data-translate="min_volatility_threshold_help">Минимальная историческая волатильность монеты (5% = 0.05)</small>
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="config-section-actions">
+                        <button class="btn btn-success config-section-save-btn" data-section="maturity">
+                            <span data-translate="save_maturity_section_btn">💾 Сохранить настройки зрелости</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ❌ EMA параметры тренда - ПОЛНОСТЬЮ УДАЛЕНО (больше не используется) -->
+
+                <!-- 🤖 AI Модули (Premium) - показывается только если есть лицензия -->
+                <div class="config-section" id="aiConfigSection" style="display: none;">
+                    <div class="section-header">
+                        <h3>🤖 <span data-translate="ai_modules_title">AI Модули (Premium)</span></h3>
+                        <div class="section-description">
+                            <span data-translate="ai_modules_description">Умное управление торговлей с помощью машинного обучения</span>
+                        </div>
+                        <div class="ai-license-badge" id="aiLicenseBadge" style="margin-top: 10px;">
+                            <span class="badge badge-success">✅ <span data-translate="license_active">Лицензия активна</span></span>
+                        </div>
+                    </div>
+                    
+                    <div class="config-grid">
+                        <!-- Мастер-переключатель AI -->
+                        <div class="config-item config-item-highlight">
+                            <label class="config-label">
+                                <span class="label-text" data-translate="ai_master_switch">🤖 Включить AI модули:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="aiEnabled" />
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <small class="config-help" data-translate="ai_master_help">Мастер-переключатель для всех AI функций</small>
+                        </div>
+                        
+                        <!-- Anomaly Detection -->
+                        <div class="config-subsection">
+                            <h4>🛡️ <span data-translate="anomaly_detection_title">Anomaly Detection</span></h4>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="anomaly_enabled_label">Обнаружение аномалий:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="anomalyDetectionEnabled" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="anomaly_enabled_help">Блокировать входы при обнаружении PUMP/DUMP</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">⚠️</span>
+                                    <span class="label-text" data-translate="anomaly_threshold_label">Порог блокировки:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="anomalyBlockThreshold" class="config-input" 
+                                           min="0.5" max="0.95" step="0.05" value="0.7"
+                                           placeholder="0.7">
+                                    <span class="input-unit">%</span>
+                                </div>
+                                <small class="config-help" data-translate="anomaly_threshold_help">Блокировать если severity > этого значения (0.7 = 70%)</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="anomaly_log_label">Логировать аномалии:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="anomalyLogEnabled" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="anomaly_log_help">Записывать обнаруженные аномалии в логи</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Risk Management -->
+                        <div class="config-subsection">
+                            <h4>⚖️ <span data-translate="risk_management_title">Risk Management</span></h4>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="risk_enabled_label">Умное управление рисками:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="riskManagementEnabled" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="risk_enabled_help">Адаптивные SL/TP и размер позиции</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">⏰</span>
+                                    <span class="label-text" data-translate="risk_update_interval_label">Интервал обновления:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="riskUpdateInterval" class="config-input" 
+                                           min="60" max="3600" step="60" value="300"
+                                           placeholder="300">
+                                    <span class="input-unit" data-translate="seconds_unit">сек</span>
+                                </div>
+                                <small class="config-help" data-translate="risk_update_help">Частота мониторинга открытых позиций (рекомендуется 300 сек = 5 минут)</small>
+                            </div>
+                        </div>
+                        
+                        <!-- LSTM Predictor -->
+                        <div class="config-subsection">
+                            <h4>🧠 <span data-translate="lstm_predictor_title">LSTM Predictor</span></h4>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="lstm_enabled_label">LSTM предсказание цены:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="lstmEnabled" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="lstm_enabled_help">Использовать нейронную сеть для предсказания движения цены</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">🎯</span>
+                                    <span class="label-text" data-translate="lstm_min_confidence_label">Минимальная уверенность:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="lstmMinConfidence" class="config-input" 
+                                           min="0.3" max="0.95" step="0.05" value="0.6"
+                                           placeholder="0.6">
+                                    <span class="input-unit">%</span>
+                                </div>
+                                <small class="config-help" data-translate="lstm_min_confidence_help">Минимальная уверенность LSTM для применения (0.6 = 60%)</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">⚖️</span>
+                                    <span class="label-text" data-translate="lstm_weight_label">Вес в голосовании:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="lstmWeight" class="config-input" 
+                                           min="0.5" max="3.0" step="0.1" value="1.5"
+                                           placeholder="1.5">
+                                    <span class="input-unit">x</span>
+                                </div>
+                                <small class="config-help" data-translate="lstm_weight_help">Влияние LSTM на общее решение (1.5 = повышенный вес)</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Pattern Recognition -->
+                        <div class="config-subsection">
+                            <h4>📊 <span data-translate="pattern_recognition_title">Pattern Recognition</span></h4>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="pattern_enabled_label">Распознавание паттернов:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="patternEnabled" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="pattern_enabled_help">Анализ классических графических паттернов (H&S, Double Top, и др.)</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">🎯</span>
+                                    <span class="label-text" data-translate="pattern_min_confidence_label">Минимальная уверенность:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="patternMinConfidence" class="config-input" 
+                                           min="0.3" max="0.95" step="0.05" value="0.6"
+                                           placeholder="0.6">
+                                    <span class="input-unit">%</span>
+                                </div>
+                                <small class="config-help" data-translate="pattern_min_confidence_help">Минимальная уверенность паттернов для применения (0.6 = 60%)</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">⚖️</span>
+                                    <span class="label-text" data-translate="pattern_weight_label">Вес в голосовании:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="patternWeight" class="config-input" 
+                                           min="0.5" max="3.0" step="0.1" value="1.2"
+                                           placeholder="1.2">
+                                    <span class="input-unit">x</span>
+                                </div>
+                                <small class="config-help" data-translate="pattern_weight_help">Влияние паттернов на общее решение (1.2 = повышенный вес)</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Auto Training -->
+                        <div class="config-subsection">
+                            <h4>🔄 <span data-translate="auto_training_title">Auto Training</span></h4>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="auto_train_enabled_label">Автоматическое обучение:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="autoTrainEnabled" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="auto_train_help">Автоматическое обновление данных и переобучение модели</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="auto_update_data_label">Обновление данных:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="autoUpdateData" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="auto_update_help">Ежедневное обновление исторических данных</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">📥</span>
+                                    <span class="label-text" data-translate="data_update_interval_label">Интервал обновления данных:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="dataUpdateInterval" class="config-input" 
+                                           min="3600" max="604800" step="3600" value="86400"
+                                           placeholder="86400">
+                                    <span class="input-unit" data-translate="hours_unit">часов</span>
+                                </div>
+                                <small class="config-help" data-translate="data_update_interval_help">24 часа (86400 сек) = ежедневное обновление</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="auto_retrain_label">Автоматическое переобучение:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="autoRetrain" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="auto_retrain_help">Еженедельное переобучение модели</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">🧠</span>
+                                    <span class="label-text" data-translate="retrain_interval_label">Интервал переобучения:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="retrainInterval" class="config-input" 
+                                           min="86400" max="2592000" step="86400" value="604800"
+                                           placeholder="604800">
+                                    <span class="input-unit" data-translate="days_unit">дней</span>
+                                </div>
+                                <small class="config-help" data-translate="retrain_interval_help">7 дней (604800 сек) = еженедельное переобучение</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">⏰</span>
+                                    <span class="label-text" data-translate="retrain_hour_label">Время переобучения:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="retrainHour" class="config-input" 
+                                           min="0" max="23" step="1" value="3"
+                                           placeholder="3">
+                                    <span class="input-unit" data-translate="hour_unit">час</span>
+                                </div>
+                                <small class="config-help" data-translate="retrain_hour_help">Час для запуска переобучения (3 = 3:00 AM, минимальная нагрузка)</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Optimal Entry Detection -->
+                        <div class="config-subsection">
+                            <h4>🎯 <span data-translate="optimal_entry_title">Optimal Entry Detection</span></h4>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="optimal_entry_enabled_label">Определение оптимальной точки входа:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="optimalEntryEnabled" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="optimal_entry_enabled_help">ИИ определяет оптимальную цену входа и может отложить вход для лучшей цены</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">📊</span>
+                                    <span class="label-text" data-translate="data_collection_label">Сбор данных для обучения:</span>
+                                </label>
+                                <label class="toggle-info" style="font-size: 14px; color: #4CAF50;">
+                                    ✅ <span data-translate="always_enabled">Всегда включен</span>
+                                </label>
+                                <small class="config-help" data-translate="data_collection_help">Данные о точках входа собираются автоматически даже при отключенной фильтрации</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Логирование AI -->
+                        <div class="config-subsection">
+                            <h4>📝 <span data-translate="ai_logging_title">Логирование AI</span></h4>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="log_predictions_label">Логировать предсказания:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="logPredictions" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="log_predictions_help">Записывать все AI решения в логи</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="log_anomalies_label">Логировать аномалии:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="logAnomalies" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="log_anomalies_help">Записывать обнаруженные аномалии в логи</small>
+                            </div>
+                            
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="log_patterns_label">Логировать паттерны:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="logPatterns" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="log_patterns_help">Записывать найденные графические паттерны в логи</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="config-section-actions">
+                        <button class="btn btn-success config-section-save-btn" data-section="ai">
+                            <span data-translate="save_ai_section_btn">💾 Сохранить AI настройки</span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+            <!-- Кнопки сохранения -->
+            <div class="config-actions">
+                <button class="btn btn-primary config-save-btn" id="saveConfigBtn">
+                    <span data-translate="save_config_btn">💾 Сохранить конфигурацию</span>
+                </button>
+                <button class="btn btn-secondary config-reset-btn" id="resetConfigBtn">
+                    <span data-translate="reset_config_btn">🔄 Сбросить к умолчаниям</span>
+                </button>
+                <button class="btn btn-info config-test-btn" id="testConfigBtn">
+                    <span data-translate="test_config_btn">🧪 Тестировать настройки</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Таб 4: Активные боты -->
+    <div class="bots-tab-content" id="activeBotsTab">
+        <div class="active-bots-layout">
+            <div class="active-bots-header">
+                <h2 data-translate="active_bots_header">Активные боты</h2>
+                <div class="bots-stats">
+                    <span class="stat-item"><span data-translate="total_label">Всего:</span> <span id="totalBotsCount">0</span></span>
+                    <span class="stat-item"><span data-translate="active_label">Активных:</span> <span id="activeBotsCount">0</span></span>
+                    <span class="stat-item"><span data-translate="in_position_label">В позиции:</span> <span id="inPositionBotsCount">0</span></span>
+                    <span class="stat-item"><span data-translate="total_pnl_label">Общий PnL:</span> <span id="totalBotsePnL">$0</span></span>
+                </div>
+            </div>
+            
+            <div class="active-bots-list" id="activeBotsDetailsList">
+                <div class="empty-bots-state">
+                    <p data-translate="no_active_bots">Активные боты отсутствуют</p>
+                    <small data-translate="create_bots_for_trading">Создайте ботов во вкладке "Управление"</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Таб 5: История ботов -->
+    <div class="bots-tab-content" id="historyTab">
+        <div class="history-layout">
+            <div class="history-header">
+                <h2 data-translate="bot_history_title">📊 История торговли ботов</h2>
+                <p data-translate="bot_history_description">Полная история действий ботов, сделок и торговых решений</p>
+            </div>
+            
+            <!-- Фильтры истории -->
+            <div class="history-filters">
+                <div class="filter-group">
+                    <label data-translate="filter_by_bot">🤖 Фильтр по боту:</label>
+                    <select id="historyBotFilter">
+                        <option value="all" data-translate="all_bots">Все боты</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label data-translate="filter_by_action">⚡ Тип действия:</label>
+                    <select id="historyActionFilter">
+                        <option value="all" data-translate="all_actions">Все действия</option>
+                        <option value="BOT_START" data-translate="bot_started">Запуск бота</option>
+                        <option value="BOT_STOP" data-translate="bot_stopped">Остановка бота</option>
+                        <option value="POSITION_OPENED" data-translate="position_opened">Открытие позиции</option>
+                        <option value="POSITION_CLOSED" data-translate="position_closed">Закрытие позиции</option>
+                        <option value="SIGNAL" data-translate="signal_received">Получен сигнал</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label>🤖 Источник решения:</label>
+                    <select id="historyDecisionSourceFilter">
+                        <option value="all">Все</option>
+                        <option value="AI">AI решения</option>
+                        <option value="SCRIPT">Скриптовые правила</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label>📊 Результат:</label>
+                    <select id="historyResultFilter">
+                        <option value="all">Все</option>
+                        <option value="successful">✅ Успешные</option>
+                        <option value="failed">❌ Неуспешные</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label data-translate="filter_by_date">📅 Период:</label>
+                    <select id="historyDateFilter">
+                        <option value="all" data-translate="all_time" selected>Все время</option>
+                        <option value="today" data-translate="today">Сегодня</option>
+                        <option value="week" data-translate="this_week">Эта неделя</option>
+                        <option value="month" data-translate="this_month">Этот месяц</option>
+                    </select>
+                </div>
+                
+                <div class="filter-actions">
+                    <button class="btn btn-primary" id="applyHistoryFilters">
+                        <span data-translate="apply_filters">🔍 Применить</span>
+                    </button>
+                    <button class="btn btn-secondary" id="clearHistoryFilters">
+                        <span data-translate="clear_filters">🗑️ Очистить</span>
+                    </button>
+                    <button class="btn btn-info" id="exportHistoryBtn">
+                        <span data-translate="export_history">📤 Экспорт</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Статистика истории -->
+            <div class="history-stats">
+                <div class="stat-card">
+                    <div class="stat-icon">🤖</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="totalBotActions">0</div>
+                        <div class="stat-label" data-translate="total_actions">Всего действий</div>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="totalTrades">0</div>
+                        <div class="stat-label" data-translate="total_trades">Всего сделок</div>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="totalPnL">$0.00</div>
+                        <div class="stat-label" data-translate="total_pnl">Общий PnL</div>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">🎯</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="successRate">0%</div>
+                        <div class="stat-label" data-translate="success_rate">Успешность</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Список истории -->
+            <div class="history-content">
+                <div class="history-tabs">
+                    <button class="history-tab-btn active" data-history-tab="actions">📋 <span data-translate="bot_actions">Действия ботов</span></button>
+                    <button class="history-tab-btn" data-history-tab="trades">💼 <span data-translate="trade_history">История сделок</span></button>
+                    <button class="history-tab-btn" data-history-tab="signals">⚡ <span data-translate="signal_history">История сигналов</span></button>
+                    <button class="history-tab-btn" data-history-tab="ai">🤖 <span>AI История</span></button>
+                </div>
+                
+                <!-- История действий -->
+                <div class="history-tab-content active" id="actionsHistory">
+                    <div class="history-list" id="botActionsList">
+                        <div class="empty-history-state">
+                            <div class="empty-icon">📊</div>
+                            <p data-translate="no_actions_found">История действий не найдена</p>
+                            <small data-translate="actions_will_appear_here">Действия ботов будут отображаться здесь</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- История сделок -->
+                <div class="history-tab-content" id="tradesHistory">
+                    <div class="history-list" id="botTradesList">
+                        <div class="empty-history-state">
+                            <div class="empty-icon">💼</div>
+                            <p data-translate="no_trades_found">История сделок не найдена</p>
+                            <small data-translate="trades_will_appear_here">Торговые сделки будут отображаться здесь</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- История сигналов -->
+                <div class="history-tab-content" id="signalsHistory">
+                    <div class="history-list" id="botSignalsList">
+                        <div class="empty-history-state">
+                            <div class="empty-icon">⚡</div>
+                            <p data-translate="no_signals_found">История сигналов не найдена</p>
+                            <small data-translate="signals_will_appear_here">Торговые сигналы будут отображаться здесь</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- AI История -->
+                <div class="history-tab-content" id="aiHistory">
+                    <div class="ai-stats-section">
+                        <h3>📊 Статистика AI vs Скриптовые</h3>
+                        <div class="ai-stats-grid" id="aiStatsGrid">
+                            <div class="stat-card">
+                                <div class="stat-label">AI Решения</div>
+                                <div class="stat-value" id="aiTotalDecisions">-</div>
+                                <div class="stat-detail" id="aiWinRate">Win Rate: -</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Скриптовые</div>
+                                <div class="stat-value" id="scriptTotalDecisions">-</div>
+                                <div class="stat-detail" id="scriptWinRate">Win Rate: -</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Сравнение</div>
+                                <div class="stat-value" id="comparisonWinRate">-</div>
+                                <div class="stat-detail" id="comparisonAvgPnl">Avg PnL: -</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="ai-decisions-section">
+                        <h3>🤖 Решения AI</h3>
+                        <div class="history-list" id="aiDecisionsList">
+                            <div class="empty-history-state">
+                                <div class="empty-icon">🤖</div>
+                                <p>Решения AI не найдены</p>
+                                <small>Решения AI будут отображаться здесь</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Кнопки управления историей -->
+            <div class="history-actions">
+                <button class="btn btn-success" id="createDemoDataBtn">
+                    <span data-translate="create_demo_data">🎭 Создать демо-данные</span>
+                </button>
+                <button class="btn btn-info" id="refreshHistoryBtn">
+                    <span data-translate="refresh_history">🔄 Обновить</span>
+                </button>
+                <button class="btn btn-warning" id="clearHistoryBtn">
+                    <span data-translate="clear_all_history">🗑️ Очистить всю историю</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+// Функция для сворачивания/разворачивания справочника статусов
+function toggleStatusGuide() {
+    const content = document.getElementById('statusGuideContent');
+    const arrow = document.querySelector('.toggle-arrow');
+    
+    if (content.style.display === 'none' || content.style.display === '') {
+        content.style.display = 'block';
+        arrow.textContent = '▲';
+    } else {
+        content.style.display = 'none';
+        arrow.textContent = '▼';
+    }
+}
+
+// Функция для обновления активных иконок монеты
+function updateActiveCoinIcons(activeStatusData) {
+    const container = document.getElementById('activeIconsContainer');
+    const section = document.getElementById('activeCoinIcons');
+    
+    if (!activeStatusData || Object.keys(activeStatusData).length === 0) {
+        section.style.display = 'none';
+        return;
+    }
+    
+    section.style.display = 'block';
+    container.innerHTML = '';
+    
+    // Добавляем активные иконки с описаниями
+    for (const [statusType, statusValue] of Object.entries(activeStatusData)) {
+        if (statusValue && statusValue !== 'None' && statusValue !== 'WAIT') {
+            // Получаем детальную информацию для каждого типа статуса
+            const detailedData = getDetailedStatusInfo(statusType, statusValue, activeStatusData);
+            const iconElement = createStatusIcon(statusType, statusValue, detailedData);
+            container.appendChild(iconElement);
+        }
+    }
+}
+
+// Функция для создания иконки статуса
+function createStatusIcon(statusType, statusValue, detailedData) {
+    const iconDiv = document.createElement('div');
+    iconDiv.className = 'active-status-item';
+    iconDiv.style.cssText = 'display: flex; align-items: center; gap: 10px; padding: 12px; margin: 5px 0; background: var(--section-bg); border-radius: 8px; border-left: 4px solid var(--green-color); border: 1px solid var(--border-color);';
+    
+    const icon = getStatusIcon(statusType, statusValue);
+    const description = getStatusDescription(statusType, statusValue);
+    
+    // Создаем детальную информацию
+    let detailedInfo = '';
+    if (detailedData) {
+        detailedInfo = `<div class="detailed-info" style="color: var(--text-muted, var(--border-color)); font-size: 11px; margin-top: 4px; line-height: 1.3;">${detailedData}</div>`;
+    }
+    
+    iconDiv.innerHTML = `
+        <span class="status-icon" style="font-size: 20px; min-width: 24px;">${icon}</span>
+        <div class="status-info" style="flex: 1;">
+            <div class="status-label" style="color: var(--green-color); font-weight: bold; font-size: 13px; margin-bottom: 2px;">${statusType.toUpperCase()}</div>
+            <div class="status-value" style="color: var(--text-color); font-size: 14px; font-weight: 500;">${statusValue}</div>
+            ${detailedInfo}
+        </div>
+        <div class="status-description" style="color: var(--text-muted, var(--border-color)); font-size: 12px; text-align: right; max-width: 200px;">${description}</div>
+    `;
+    
+    return iconDiv;
+}
+
+// Функция для получения иконки статуса
+function getStatusIcon(statusType, statusValue) {
+    const iconMap = {
+        'trend': {
+            'UP': '📈',
+            'DOWN': '📉',
+            'NEUTRAL': '➖'
+        },
+        'signal': {
+            'ENTER_LONG': '📈',
+            'ENTER_SHORT': '📉',
+            'EXIT_LONG': '📉',
+            'EXIT_SHORT': '📈',
+            'NEUTRAL': '➖',
+            'WAIT': '⏸️',
+            'HOLD': '⏸️'
+        },
+        'zone': {
+            'OVERSOLD': '🔴',
+            'OVERBOUGHT': '🟢',
+            'NEUTRAL': '🟡'
+        },
+        'bot': {
+            'running': '🟢',
+            'waiting': '🔵',
+            'error': '🔴',
+            'stopped': '🔴',
+            'in_position': '🟣',
+            'paused': '⚪'
+        },
+        'stochastic_rsi': {
+            'OVERSOLD': '🔴',
+            'OVERBOUGHT': '🟢',
+            'NEUTRAL': '🟡',
+            'BULLISH': '📈',
+            'BEARISH': '📉'
+        },
+        'rsi_time_filter': {
+            'ALLOWED': '✅',
+            'BLOCKED': '❌',
+            'WAITING': '⏳'
+        },
+        'exit_scam': {
+            'SAFE': '✅',
+            'RISK': '⚠️',
+            'SCAM': '🚨',
+            'CHECKING': '🔍'
+        },
+        'maturity': {
+            'MATURE': '✅',
+            'IMMATURE': '❌',
+            'CHECKING': '🔍'
+        },
+        'risk': {
+            'LOW': '🟢',
+            'MEDIUM': '🟡',
+            'HIGH': '🔴',
+            'EXTREME': '🚨'
+        },
+        'whitelist': {
+            'ALLOWED': '✅',
+            'BLOCKED': '❌'
+        },
+        'blacklist': {
+            'ALLOWED': '✅',
+            'BLOCKED': '❌'
+        },
+        'enhanced_warning': {
+            'EXTREME_OVERSOLD_LONG': '⚠️',
+            'EXTREME_OVERBOUGHT_LONG': '⚠️',
+            'OVERSOLD': '🟢',
+            'OVERBOUGHT': '🔴'
+        },
+        'manual_position': {
+            'MANUAL': '✋'
+        },
+        'volume_confirmation': {
+            'CONFIRMED': '📊',
+            'NOT_CONFIRMED': '❌',
+            'LOW_VOLUME': '⚠️',
+            'HIGH_VOLUME': '📈'
+        },
+        'exit_scam': {
+            'SAFE': '✅',
+            'RISK': '⚠️',
+            'SCAM': '🚨',
+            'CHECKING': '🔍'
+        },
+        'rsi_time_filter': {
+            'ALLOWED': '✅',
+            'BLOCKED': '❌',
+            'WAITING': '⏳',
+            'TIMEOUT': '⏰'
+        },
+        'maturity': {
+            'MATURE': '✅',
+            'IMMATURE': '❌',
+            'CHECKING': '🔍'
+        },
+        'risk': {
+            'LOW': '🟢',
+            'MEDIUM': '🟡',
+            'HIGH': '🔴',
+            'EXTREME': '🚨'
+        },
+        'whitelist': {
+            'ALLOWED': '✅',
+            'BLOCKED': '❌'
+        },
+        'blacklist': {
+            'ALLOWED': '✅',
+            'BLOCKED': '❌'
+        }
+    };
+    
+    return iconMap[statusType]?.[statusValue] || '❓';
+}
+
+// Функция для получения описания статуса
+function getStatusDescription(statusType, statusValue) {
+    const descriptionMap = {
+        'trend': {
+            'UP': 'Восходящий тренд',
+            'DOWN': 'Нисходящий тренд',
+            'NEUTRAL': 'Боковой тренд'
+        },
+        'signal': {
+            'ENTER_LONG': 'Сигнал на покупку (RSI ≤ 29)',
+            'ENTER_SHORT': 'Сигнал на продажу (RSI ≥ 71)',
+            'EXIT_LONG': 'Выход из LONG (RSI ≥ 55)',
+            'EXIT_SHORT': 'Выход из SHORT (RSI ≤ 45)',
+            'NEUTRAL': 'Нейтральная зона (29 < RSI < 71)',
+            'WAIT': 'Ожидание сигнала',
+            'HOLD': 'Удерживать позицию'
+        },
+        'zone': {
+            'OVERSOLD': 'Зона перепроданности',
+            'OVERBOUGHT': 'Зона перекупленности',
+            'NEUTRAL': 'Нейтральная зона RSI'
+        },
+        'bot': {
+            'running': 'Бот активен и работает',
+            'waiting': 'Ожидание сигнала',
+            'error': 'Ошибка в работе',
+            'stopped': 'Бот остановлен',
+            'in_position': 'В позиции',
+            'paused': 'Приостановлен'
+        },
+        'stochastic_rsi': {
+            'OVERSOLD': 'Stochastic RSI перепродан',
+            'OVERBOUGHT': 'Stochastic RSI перекуплен',
+            'NEUTRAL': 'Stochastic RSI нейтральный',
+            'BULLISH': 'Stochastic RSI бычий сигнал',
+            'BEARISH': 'Stochastic RSI медвежий сигнал'
+        },
+        'rsi_time_filter': {
+            'ALLOWED': 'RSI Time Filter разрешен',
+            'BLOCKED': 'RSI Time Filter заблокирован',
+            'WAITING': 'RSI Time Filter ожидание'
+        },
+        'exit_scam': {
+            'SAFE': 'ExitScam: Безопасно',
+            'RISK': 'ExitScam: Риск обнаружен',
+            'SCAM': 'ExitScam: Возможный скам',
+            'CHECKING': 'ExitScam: Проверка'
+        },
+        'maturity': {
+            'MATURE': 'Монета зрелая (>400 свечей)',
+            'IMMATURE': 'Монета незрелая (<400 свечей)',
+            'CHECKING': 'Проверка зрелости'
+        },
+        'risk': {
+            'LOW': 'Низкий риск',
+            'MEDIUM': 'Средний риск',
+            'HIGH': 'Высокий риск',
+            'EXTREME': 'Экстремальный риск'
+        },
+        'whitelist': {
+            'ALLOWED': 'В белом списке',
+            'BLOCKED': 'Не в белом списке'
+        },
+        'blacklist': {
+            'ALLOWED': 'Не в черном списке',
+            'BLOCKED': 'В черном списке'
+        },
+        'enhanced_warning': {
+            'EXTREME_OVERSOLD_LONG': 'ВНИМАНИЕ: Экстремальная перепроданность',
+            'EXTREME_OVERBOUGHT_LONG': 'ВНИМАНИЕ: Экстремальная перекупленность',
+            'OVERSOLD': 'Перепроданность',
+            'OVERBOUGHT': 'Перекупленность'
+        },
+        'manual_position': {
+            'MANUAL': 'Ручная позиция'
+        },
+        'volume_confirmation': {
+            'CONFIRMED': 'Объем подтвержден',
+            'NOT_CONFIRMED': 'Объем не подтвержден',
+            'LOW_VOLUME': 'Низкий объем',
+            'HIGH_VOLUME': 'Высокий объем'
+        },
+        'exit_scam': {
+            'SAFE': 'ExitScam: Безопасно',
+            'RISK': 'ExitScam: Риск обнаружен',
+            'SCAM': 'ExitScam: Возможный скам',
+            'CHECKING': 'ExitScam: Проверка'
+        },
+        'rsi_time_filter': {
+            'ALLOWED': 'RSI Time Filter разрешен',
+            'BLOCKED': 'RSI Time Filter заблокирован',
+            'WAITING': 'RSI Time Filter ожидание',
+            'TIMEOUT': 'RSI Time Filter таймаут'
+        },
+        'maturity': {
+            'MATURE': 'Монета зрелая (>400 свечей)',
+            'IMMATURE': 'Монета незрелая (<400 свечей)',
+            'CHECKING': 'Проверка зрелости'
+        },
+        'risk': {
+            'LOW': 'Низкий риск',
+            'MEDIUM': 'Средний риск',
+            'HIGH': 'Высокий риск',
+            'EXTREME': 'Экстремальный риск'
+        },
+        'whitelist': {
+            'ALLOWED': 'В белом списке',
+            'BLOCKED': 'Не в белом списке'
+        },
+        'blacklist': {
+            'ALLOWED': 'Не в черном списке',
+            'BLOCKED': 'В черном списке'
+        }
+    };
+    
+    return descriptionMap[statusType]?.[statusValue] || 'Неизвестный статус';
+}
+
+// Функция для включения бота для текущей монеты
+function enableBotForCurrentCoin() {
+    if (window.botsManager && window.botsManager.selectedCoin) {
+        const coin = window.botsManager.selectedCoin;
+        console.log('[EnableBot] Включение бота для монеты:', coin.symbol);
+        
+        // Отправляем запрос на создание бота
+        fetch('/api/bots/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                symbol: coin.symbol,
+                signal: coin.signal || 'ENTER_LONG'
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('[EnableBot] Бот успешно создан:', data);
+                // Обновляем интерфейс
+                window.botsManager.updateCoinInfo(coin);
+                // Скрываем кнопку
+                document.getElementById('enableBotBtn').style.display = 'none';
+            } else {
+                console.error('[EnableBot] Ошибка создания бота:', data.error);
+                alert('Ошибка создания бота: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('[EnableBot] Ошибка:', error);
+            alert('Ошибка создания бота: ' + error.message);
+        });
+    }
+}
+</script>

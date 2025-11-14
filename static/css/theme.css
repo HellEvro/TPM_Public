@@ -1,0 +1,80 @@
+:root {
+    --bg-color: #1a1a1a;
+    --blue-color: #1e88e5;
+    --border-color: #404040;
+    --green-color: #4CAF50;
+    --red-color: #f44336;
+    --section-bg: #2d2d2d;
+    --text-color: #fff;
+    --text-muted: #bbb;
+    --button-bg: #3a3a3a;
+    --input-bg: #2d2d2d;
+    
+    /* Улучшенные цвета для лучшей читаемости на темном фоне */
+    --green-bright: #66bb6a;  /* Более яркий зеленый */
+    --red-bright: #ff5252;    /* Более яркий красный */
+    --green-text: #81c784;    /* Зеленый для текста */
+    --red-text: #ff8a80;      /* Красный для текста */
+    --warning-color: #ff9800; /* Оранжевый для предупреждений */
+    --warning-bright: #ffb74d; /* Яркий оранжевый для текста */
+}
+
+[data-theme="light"] {
+    --bg-color: #f0f0f0;
+    --border-color: #ddd;
+    --section-bg: #fff;
+    --text-color: #000;
+    --text-muted: #444;
+    --button-bg: #e0e0e0;
+    --input-bg: #fff;
+    --hover-bg: #f5f5f5;
+    
+    /* Цвета для светлой темы - темные для лучшей читаемости */
+    --green-bright: #2e7d32;  /* Темно-зеленый для светлого фона */
+    --red-bright: #c62828;     /* Темно-красный для светлого фона */
+    --green-text: #1b5e20;    /* Темно-зеленый для текста */
+    --red-text: #b71c1c;       /* Темно-красный для текста */
+    --warning-color: #e65100; /* Темно-оранжевый для предупреждений */
+    --warning-bright: #d84315; /* Темно-оранжевый для текста */
+    --blue-color: #1565c0;     /* Темно-синий для светлого фона */
+    --green-color: #2e7d32;    /* Темно-зеленый для светлого фона */
+    --red-color: #c62828;      /* Темно-красный для светлого фона */
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: Arial, sans-serif;
+    margin: 20px;
+}
+
+.theme-switch {
+    background: none;
+    border: none;
+    color: var(--text-color);
+    cursor: pointer;
+    padding: 10px 20px;
+    position: fixed;
+    right: 20px;
+    top: 20px;
+    transition: all 0.3s ease;
+}
+
+/* === Scrollbar Styles === */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--section-bg);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #666;
+} 

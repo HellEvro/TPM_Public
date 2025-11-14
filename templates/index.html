@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="{{ get_current_language() }}">
+<head>
+    <title>Trading Positions Monitor</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    
+    <!-- Подключаем стили -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/layout.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/positions.css') }}">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/stats.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/notifications.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/bots.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/simple-mobile.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/toast.css') }}">
+    
+    <!-- Сначала подключаем внешние библиотеки -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Затем подключаем наши модули в правильном порядке -->
+    <script src="{{ url_for('static', filename='js/config.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/logger.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/constants.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/utils.js') }}"></script>
+
+    <script src="{{ url_for('static', filename='js/positions.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/statistics.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/exchange_manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/position_closer.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/single_position_closer.js') }}"></script>
+
+    <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/ai_config_manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/language.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ui_utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/routes.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/router.js') }}"></script>
+    <script>
+        // Инициализация языка при загрузке страницы
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const response = await fetch('/api/get_language');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                if (data.success) {
+                    document.documentElement.lang = data.language;
+                    updateInterface();
+                }
+            } catch (error) {
+                console.error('Error getting language:', error);
+                // Используем язык по умолчанию
+                document.documentElement.lang = 'ru';
+                updateInterface();
+            }
+        });
+    </script>
+</head>
+<body>
+    <div class="header-container">
+        <h1 class="header-title">Trading Positions Monitor</h1>
+        <div class="last-update header-update">
+            <span data-translate="last-update">Последнее обновление</span>: <span id="update-time">-</span>
+        </div>
+    </div>
+
+    <div class="controls-wrapper">
+        <div class="menu-container">
+            <!-- Бургер меню -->
+            <div class="burger-menu">
+                <button class="burger-button" onclick="toggleMenu()">
+                    ☰ <span id="currentPage" class="menu-title" data-translate="positions">Позиции</span>
+                </button>
+                <div class="menu-dropdown" id="menuDropdown">
+                    <a class="menu-item" onclick="window.app.showTab('positions')" id="positionsMenuItem" data-translate="positions">Позиции</a>
+
+                    <a class="menu-item" onclick="window.app.showTab('bots')" id="botsMenuItem" data-translate="bots">Боты</a>
+                    <a class="menu-item" onclick="window.app.showTab('closedPnl')" id="closedPnlMenuItem" data-translate="closedPnl">Закрытые PNL</a>
+                </div>
+            </div>
+
+            <!-- Поиск -->
+            <div class="search-container">
+                <input type="text" 
+                       id="tickerSearch" 
+                       placeholder="Поиск тикера..."
+                       class="search-input">
+                <button id="clearSearch" class="clear-search">×</button>
+            </div>
+        </div>
+
+        <!-- Панель управления -->
+        <div class="controls-panel">
+            <div class="control-item">
+                <select id="exchange-select" class="exchange-select">
+                    <!-- Опции будут добавлены через JavaScript -->
+                </select>
+            </div>
+            <label class="control-item reduce-load">
+                <input type="checkbox" id="reduceLoadCheckbox">
+                <span data-translate="reduceLoad">Снизить нагрузку</span>
+            </label>
+            <div class="control-item" onclick="window.app.toggleTheme()">
+                <span data-translate="theme">🌓 Сменить тему</span>
+            </div>
+            <div class="control-item" onclick="toggleLanguage()">
+                <span>🌐 RU/EN</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        {% include 'pages/positions.html' %}
+    </div>
+
+
+
+    <div id="botsContainer" class="tab-content hidden">
+        {% include 'pages/bots.html' %}
+    </div>
+
+    <div id="closedPnlContainer" class="tab-content hidden">
+        {% include 'pages/closed_pnl.html' %}
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Все инициализации и обновления теперь происходят в модульном коде
+        });
+    </script>
+    <script>
+        // Проверяем загрузку всех скриптов
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM loaded');
+            console.log('toggleLanguage function exists:', typeof window.toggleLanguage === 'function');
+            console.log('Current language:', document.documentElement.lang);
+        });
+    </script>
+</body>
+</html> 

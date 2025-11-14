@@ -1,0 +1,196 @@
+/* === МОБИЛЬНЫЙ БЛОК СТАТИСТИКИ НАД БЛОКОМ ОДНОЙ МОНЕТЫ === */
+
+/* Мобильный блок статистики - показывается только на мобильных */
+.mobile-stats-block {
+    display: none; /* Скрыт по умолчанию */
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* БЛОК 1: БАЛАНС СЧЕТА */
+.mobile-balance-block {
+    margin-bottom: 12px;
+}
+
+.mobile-balance-block h4 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.mobile-balance-stats {
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.mobile-balance-item {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    background: transparent;
+    border: none;
+}
+
+.mobile-balance-item .label {
+    font-size: 8px;
+    color: var(--text-secondary);
+    margin: 0;
+    white-space: nowrap;
+}
+
+.mobile-balance-item .value {
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.mobile-balance-item .value.positive {
+    color: var(--success-color);
+}
+
+.mobile-balance-item .value.negative {
+    color: var(--danger-color);
+}
+
+/* БЛОК 2: AUTO BOT И АКТИВНЫЕ БОТЫ */
+.mobile-autobot-block {
+    border-top: 1px solid var(--border-color);
+    padding-top: 12px;
+}
+
+.mobile-autobot-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.mobile-autobot-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.mobile-autobot-status {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--danger-color);
+    color: white;
+}
+
+.mobile-autobot-status.enabled {
+    background: var(--success-color);
+}
+
+/* БЛОК АКТИВНЫХ БОТОВ */
+.mobile-active-bots {
+    background: var(--bg-primary);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    padding: 8px;
+}
+
+.mobile-bots-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.bots-icon {
+    font-size: 14px;
+}
+
+.bots-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.mobile-bots-content {
+    min-height: 40px;
+}
+
+.mobile-no-bots {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 8px;
+}
+
+.no-bots-icon {
+    font-size: 20px;
+    margin-bottom: 4px;
+}
+
+.no-bots-text p {
+    margin: 0 0 2px 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.no-bots-text small {
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+/* Показываем мобильный блок только на маленьких экранах */
+@media (max-width: 1000px) {
+    .mobile-stats-block {
+        display: block !important;
+    }
+    
+    /* Делаем layout в одну колонку */
+    .management-layout {
+        grid-template-columns: 1fr !important;
+        gap: 12px;
+    }
+}
+
+/* Скрываем правую панель только на очень маленьких экранах */
+@media (max-width: 768px) {
+    .active-bots-sidebar {
+        display: none !important;
+    }
+}
+
+/* На больших экранах скрываем */
+@media (min-width: 1001px) {
+    .mobile-stats-block {
+        display: none !important;
+    }
+}
+
+/* Адаптация для очень маленьких экранов */
+@media (max-width: 480px) {
+    .mobile-balance-stats {
+        gap: 4px;
+    }
+    
+    .mobile-balance-item {
+        gap: 2px;
+    }
+    
+    .mobile-balance-item .label {
+        font-size: 7px;
+    }
+    
+    .mobile-balance-item .value {
+        font-size: 8px;
+    }
+}
