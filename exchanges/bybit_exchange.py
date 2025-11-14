@@ -1394,7 +1394,8 @@ class BybitExchange(BaseExchange):
             }
 
     @with_timeout(15)  # 15 секунд таймаут для размещения ордера
-    def place_order(self, symbol, side, quantity, order_type='market', price=None, take_profit=None, stop_loss=None, max_loss_percent=None):
+    def place_order(self, symbol, side, quantity, order_type='market', price=None,
+                    take_profit=None, stop_loss=None, max_loss_percent=None, quantity_is_usdt=True):
         """Размещение ордера для бота
         
         Args:
@@ -1411,7 +1412,8 @@ class BybitExchange(BaseExchange):
             dict: Результат размещения ордера
         """
         try:
-            print(f"[BYBIT_BOT] Размещение ордера: {symbol} {side} {quantity} USDT ({order_type})")
+            unit_label = "USDT" if quantity_is_usdt else "coins"
+            print(f"[BYBIT_BOT] Размещение ордера: {symbol} {side} {quantity} {unit_label} ({order_type})")
             
             # ✅ КРИТИЧНО: Получаем АКТУАЛЬНУЮ цену с биржи ПЕРЕД расчетом ордера!
             # Цена нужна всегда, чтобы правильно рассчитать количество монет и округление
@@ -1511,16 +1513,22 @@ class BybitExchange(BaseExchange):
                 current_leverage = 10.0
                 print(f"[BYBIT_BOT] ⚠️ {symbol}: FALLBACK - используем дефолтное плечо: {current_leverage}x")
             
-            requested_qty_usdt = quantity  # ✅ Запрошенная сумма из конфига (margin)
-            print(f"[BYBIT_BOT] 🎯 {symbol}: Запрошенная сумма из конфига: {requested_qty_usdt} USDT")
+            qty_in_coins = None
+            requested_qty_usdt = None
+            if quantity_is_usdt:
+                requested_qty_usdt = float(quantity)
+                print(f"[BYBIT_BOT] 🎯 {symbol}: Запрошенная сумма из конфига: {requested_qty_usdt} USDT")
+            else:
+                qty_in_coins = float(quantity)
+                requested_qty_usdt = qty_in_coins * current_price
+                print(f"[BYBIT_BOT] 🎯 {symbol}: Запрошено {qty_in_coins} монет (~{requested_qty_usdt:.4f} USDT)")
             
             # Рассчитываем количество МОНЕТ с учетом кратности qtyStep и minOrderQty
             # Затем передаем монеты в Bybit - он САМ применит плечо!
-            qty_in_coins = None
             if qty_step and current_price and min_order_qty:
-                # ✅ ШАГ 1: Считаем сколько МОНЕТ можно купить на запрошенную сумму USDT
-                requested_coins = requested_qty_usdt / current_price
-                print(f"[BYBIT_BOT] 🔍 {symbol}: За запрошенные {requested_qty_usdt} USDT получается {requested_coins:.2f} монет")
+                # ✅ ШАГ 1: Считаем сколько МОНЕТ нужно
+                requested_coins = requested_qty_usdt / current_price if quantity_is_usdt else qty_in_coins
+                print(f"[BYBIT_BOT] 🔍 {symbol}: Исходное количество монет: {requested_coins:.2f}")
                 
                 # ✅ ШАГ 2: Округляем монеты вверх до qtyStep
                 rounded_coins = math.ceil(requested_coins / qty_step) * qty_step
@@ -1728,6 +1736,30 @@ class BybitExchange(BaseExchange):
                 'message': f"Ошибка обновления TP: {str(e)}"
             }
     
+    def place_stop_loss(self, symbol, side, entry_price, loss_percent):
+        """
+        Совместимость со старым API: рассчитывает цену SL и делегирует на update_stop_loss
+        """
+        try:
+            if not entry_price or entry_price <= 0 or not loss_percent:
+                return {'success': False, 'message': 'Некорректные параметры SL'}
+            
+            side = (side or '').upper()
+            loss_percent = float(loss_percent)
+            
+            if side == 'LONG':
+                stop_price = entry_price * (1 - loss_percent / 100.0)
+            elif side == 'SHORT':
+                stop_price = entry_price * (1 + loss_percent / 100.0)
+            else:
+                return {'success': False, 'message': f'Неизвестная сторона позиции: {side}'}
+            
+            stop_price = round(float(stop_price), 6)
+            return self.update_stop_loss(symbol, stop_price, side)
+        except Exception as exc:
+            logger.error(f"[BYBIT_BOT] Ошибка place_stop_loss: {exc}")
+            return {'success': False, 'message': str(exc)}
+
     @with_timeout(15)  # 15 секунд таймаут для обновления SL
     def update_stop_loss(self, symbol, stop_loss_price, position_side=None):
         """

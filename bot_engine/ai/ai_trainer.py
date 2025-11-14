@@ -24,6 +24,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report, mean_squared_error
 import joblib
 from bot_engine.protections import ProtectionState, evaluate_protections
+from bot_engine.ai.filter_utils import apply_entry_filters
 
 logger = logging.getLogger('AI.Trainer')
 
@@ -1960,13 +1961,25 @@ class AITrainer:
                             
                             # ПРОВЕРКА ВХОДА (если нет открытой позиции)
                             if not current_position:
-                                # Используем ВАШИ правила входа из bot_config.py
-                                should_enter_long = False
-                                should_enter_short = False
+                                should_enter_long = current_rsi <= coin_RSI_OVERSOLD
+                                should_enter_short = current_rsi >= coin_RSI_OVERBOUGHT
                                 
-                                # LONG: RSI <= RSI_OVERSOLD (используем параметры для монеты)
-                                if current_rsi <= coin_RSI_OVERSOLD:
-                                    should_enter_long = True
+                                if should_enter_long or should_enter_short:
+                                    signal = 'ENTER_LONG' if should_enter_long else 'ENTER_SHORT'
+                                    filters_allowed, filters_reason = apply_entry_filters(
+                                        symbol,
+                                        candles[:i + 1],
+                                        current_rsi,
+                                        signal,
+                                        coin_base_config,
+                                        trend=trend,
+                                    )
+                                    if not filters_allowed:
+                                        logger.debug(f"   🚫 {symbol}: фильтры блокируют вход ({filters_reason})")
+                                        should_enter_long = False
+                                        should_enter_short = False
+                                
+                                if should_enter_long:
                                     entry_ts_ms = times[i]
                                     current_position = {
                                         'direction': 'LONG',
@@ -1979,9 +1992,7 @@ class AITrainer:
                                         'protection_state': _build_protection_state('LONG', current_price, entry_ts_ms, position_size_usdt),
                                     }
                                 
-                                # SHORT: RSI >= RSI_OVERBOUGHT (используем параметры для монеты)
-                                if current_rsi >= coin_RSI_OVERBOUGHT:
-                                    should_enter_short = True
+                                elif should_enter_short:
                                     entry_ts_ms = times[i]
                                     current_position = {
                                         'direction': 'SHORT',
@@ -1993,10 +2004,9 @@ class AITrainer:
                                         'position_size_usdt': position_size_usdt,
                                         'protection_state': _build_protection_state('SHORT', current_price, entry_ts_ms, position_size_usdt),
                                     }
-                            
-                        except Exception as e:
-                            logger.debug(f"   ⚠️ Ошибка симуляции свечи {i} для {symbol}: {e}")
-                            continue
+                    except Exception as e:
+                        logger.debug(f"   ⚠️ Ошибка симуляции свечи {i} для {symbol}: {e}")
+                        continue
                     
                     total_candles_processed += len(candles)
                     

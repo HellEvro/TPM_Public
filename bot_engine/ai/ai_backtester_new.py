@@ -16,6 +16,8 @@ import numpy as np
 import pandas as pd
 
 from bot_engine.protections import ProtectionState, evaluate_protections
+from bot_engine.ai.filter_utils import apply_entry_filters
+from bot_engine.utils.rsi_utils import calculate_rsi_history
 
 logger = logging.getLogger('AI.Backtester')
 
@@ -435,6 +437,18 @@ class AIBacktester:
                     should_enter_short = current_rsi >= rsi_short_entry
                     
                     if not (should_enter_long or should_enter_short):
+                        continue
+                    
+                    filters_allowed, filters_reason = apply_entry_filters(
+                        symbol,
+                        candles[:i + 1],
+                        current_rsi,
+                        'ENTER_LONG' if should_enter_long else 'ENTER_SHORT',
+                        symbol_config,
+                        trend=trend,
+                    )
+                    if not filters_allowed:
+                        logger.debug(f"   🚫 {symbol}: фильтры блокируют вход ({filters_reason})")
                         continue
                     
                     direction = 'LONG' if should_enter_long else 'SHORT'

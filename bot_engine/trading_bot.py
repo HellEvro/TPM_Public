@@ -804,15 +804,8 @@ class TradingBot:
                 return self.volume_value
             
             elif self.volume_mode == VolumeMode.FIXED_USDT or self.volume_mode == 'usdt':
-                self.logger.info(f" {self.symbol}: Режим FIXED_USDT, получаем цену...")
-                current_price = self._get_current_price()
-                if current_price:
-                    size = self.volume_value / current_price
-                    self.logger.info(f" {self.symbol}: Размер позиции: {self.volume_value} / {current_price} = {size}")
-                    return size
-                else:
-                    self.logger.warning(f" {self.symbol}: Не удалось получить цену")
-                    return None
+                self.logger.info(f" {self.symbol}: Режим FIXED_USDT, используем {self.volume_value} USDT")
+                return self.volume_value
             
             elif self.volume_mode == VolumeMode.PERCENT_BALANCE or self.volume_mode == 'percent':
                 self.logger.info(f" {self.symbol}: Режим PERCENT_BALANCE (процент от депозита)")
@@ -822,13 +815,7 @@ class TradingBot:
                     self.logger.info(
                         f" {self.symbol}: Депозит {deposit_balance:.4f} USDT, {self.volume_value}% → {usdt_amount:.4f} USDT"
                     )
-                    current_price = self._get_current_price()
-                    if current_price:
-                        size = usdt_amount / current_price
-                        self.logger.info(f" {self.symbol}: Размер позиции по депозиту: {usdt_amount} / {current_price} = {size}")
-                        return size
-                    else:
-                        self.logger.warning(f" {self.symbol}: Не удалось получить цену для расчета процента от депозита")
+                    return usdt_amount
                 else:
                     self.logger.warning(f" {self.symbol}: Не удалось получить общий баланс депозита")
             
