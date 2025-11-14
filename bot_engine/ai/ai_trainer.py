@@ -67,6 +67,35 @@ def _get_existing_coin_settings(symbol: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _get_config_snapshot(symbol: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Унифицированный способ получить настройки (глобальные + индивидуальные) даже без запущенного bots.py.
+    """
+    try:
+        from bots_modules.imports_and_globals import get_config_snapshot  # noqa: WPS433,E402
+
+        return get_config_snapshot(symbol)
+    except Exception as exc:
+        logger.debug(f"⚠️ Не удалось получить конфиг через bots_modules ({exc}), используем запасной путь")
+        try:
+            from bot_engine.bot_config import DEFAULT_AUTO_BOT_CONFIG  # noqa: WPS433,E402
+
+            global_config = deepcopy(DEFAULT_AUTO_BOT_CONFIG)
+        except Exception:
+            global_config = {}
+        individual_config = _get_existing_coin_settings(symbol) if symbol else None
+        merged_config = deepcopy(global_config)
+        if individual_config:
+            merged_config.update(individual_config)
+        return {
+            'global': global_config,
+            'individual': individual_config,
+            'merged': merged_config,
+            'symbol': symbol.upper() if symbol else None,
+            'timestamp': datetime.now().isoformat()
+        }
+
+
 class AITrainer:
     """
     Класс для обучения AI моделей
@@ -1279,7 +1308,7 @@ class AITrainer:
                     RSI_OVERSOLD, RSI_OVERBOUGHT,
                     RSI_EXIT_LONG_WITH_TREND, RSI_EXIT_LONG_AGAINST_TREND,
                     RSI_EXIT_SHORT_WITH_TREND, RSI_EXIT_SHORT_AGAINST_TREND,
-                    RSI_PERIOD, DEFAULT_AUTO_BOT_CONFIG
+                    RSI_PERIOD
                 )
                 base_rsi_oversold = RSI_OVERSOLD
                 base_rsi_overbought = RSI_OVERBOUGHT
@@ -1326,11 +1355,8 @@ class AITrainer:
             else:
                 logger.debug("   ⚙️ Трекер параметров недоступен — используем случайные комбинации на монету")
 
-            try:
-                from bot_engine.bot_config import DEFAULT_AUTO_BOT_CONFIG
-                base_config = DEFAULT_AUTO_BOT_CONFIG
-            except:
-                base_config = {}
+            base_config_snapshot = _get_config_snapshot()
+            base_config = base_config_snapshot.get('global', {})
 
             base_stop_loss = base_config.get('max_loss_percent', 15.0)
             base_take_profit = base_config.get('take_profit_percent', 20.0)
@@ -1762,6 +1788,29 @@ class AITrainer:
                     simulated_trades_symbol = []  # Симулированные сделки ТОЛЬКО для этой монеты
                     current_position = None  # {'direction': 'LONG'/'SHORT', 'entry_idx': int, 'entry_price': float, 'entry_rsi': float, 'entry_trend': str}
                     trades_for_symbol = 0
+
+                    # Размер позиции для текущего символа (логируем ОДИН раз)
+                    position_size_value = coin_base_config.get(
+                        'default_position_size',
+                        base_config.get('default_position_size', 5)
+                    )
+                    position_size_mode = coin_base_config.get(
+                        'default_position_mode',
+                        base_config.get('default_position_mode', 'usdt')
+                    )
+                    if position_size_mode == 'percent':
+                        reference_deposit = coin_base_config.get(
+                            'ai_reference_deposit_usdt',
+                            base_config.get('ai_reference_deposit_usdt', 1000)
+                        )
+                        position_size_usdt = reference_deposit * (position_size_value / 100)
+                        logger.info(
+                            f"   💵 {symbol}: размер сделки {position_size_usdt:.4f} USDT "
+                            f"(режим percent, {position_size_value}% от депозита {reference_deposit} USDT)"
+                        )
+                    else:
+                        position_size_usdt = position_size_value
+                        logger.info(f"   💵 {symbol}: размер сделки {position_size_usdt:.4f} USDT (режим fixed_usdt)")
                     
                     # Логируем начало симуляции для ВСЕХ монет (INFO для первых 10 и каждых 50)
                     candles_to_process = len(candles) - RSI_PERIOD
@@ -1918,19 +1967,7 @@ class AITrainer:
                                     else:
                                         pnl_pct = ((entry_price - current_price) / entry_price) * 100
                                     
-                                    # Симулируем PnL в USDT (учитываем режим размера позиции)
-                                    position_size_value = DEFAULT_AUTO_BOT_CONFIG.get('default_position_size', 5)
-                                    position_size_mode = DEFAULT_AUTO_BOT_CONFIG.get('default_position_mode', 'usdt')
-                                    if position_size_mode == 'percent':
-                                        reference_deposit = DEFAULT_AUTO_BOT_CONFIG.get('ai_reference_deposit_usdt', 1000)
-                                        position_size_usdt = reference_deposit * (position_size_value / 100)
-                                        logger.info(
-                                            f"    💵 {symbol}: размер сделки {position_size_usdt:.4f} USDT "
-                                            f"(режим percent, {position_size_value}% от депозита {reference_deposit} USDT)"
-                                        )
-                                    else:
-                                        position_size_usdt = position_size_value
-                                        logger.info(f"    💵 {symbol}: размер сделки {position_size_usdt:.4f} USDT (режим fixed_usdt)")
+                                    # Симулируем PnL в USDT (используем заранее рассчитанный размер позиции)
                                     pnl_usdt = position_size_usdt * (pnl_pct / 100)
                                     
                                     simulated_trade = {
