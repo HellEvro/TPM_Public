@@ -328,6 +328,7 @@ class InfoBotManager(tk.Tk):
         self.ensure_git_repository()
         self.update_git_status(initial=True)
         self.update_license_status()
+        self._ensure_required_app_files()
 
         self.service_status_vars: Dict[str, tk.StringVar] = {}
 
@@ -1144,12 +1145,7 @@ class InfoBotManager(tk.Tk):
                     "Создать конфиг",
                     "Файл app/config.py не найден. Создать его из app/config.example.py?",
                 ):
-                    try:
-                        shutil.copy2(example, target)
-                        self._strip_example_header(target)
-                        self.log("Создан app/config.py", channel="system")
-                    except OSError as exc:
-                        messagebox.showerror("Ошибка копирования", str(exc))
+                    if not self._create_config_file_from_example(silent=False):
                         return
             else:
                 messagebox.showwarning(
@@ -1168,11 +1164,7 @@ class InfoBotManager(tk.Tk):
                     "Создать файл ключей",
                     "Файл app/keys.py не найден. Создать его из app/keys.example.py?",
                 ):
-                    try:
-                        shutil.copy2(example, target)
-                        self.log("Создан app/keys.py из app/keys.example.py", channel="system")
-                    except OSError as exc:
-                        messagebox.showerror("Ошибка копирования", str(exc))
+                    if not self._create_keys_file_from_example(silent=False):
                         return
             else:
                 messagebox.showwarning(
@@ -1435,6 +1427,67 @@ class InfoBotManager(tk.Tk):
                 )
             except Exception:
                 pass
+
+    def _ensure_required_app_files(self) -> None:
+        config_path = PROJECT_ROOT / "app" / "config.py"
+        if not config_path.exists():
+            self._create_config_file_from_example(silent=True)
+
+        keys_path = PROJECT_ROOT / "app" / "keys.py"
+        if not keys_path.exists():
+            self._create_keys_file_from_example(silent=True)
+
+    def _create_config_file_from_example(self, silent: bool = False) -> bool:
+        target = PROJECT_ROOT / "app" / "config.py"
+        example = PROJECT_ROOT / "app" / "config.example.py"
+        if not example.exists():
+            message = (
+                "Файл app/config.example.py не найден. Скопируйте шаблон конфигурации вручную."
+            )
+            if silent:
+                self.log(message, channel="system")
+            else:
+                messagebox.showwarning("Файл не найден", message)
+            return False
+
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(example, target)
+            self._strip_example_header(target)
+            self.log("Создан app/config.py из app/config.example.py", channel="system")
+            return True
+        except OSError as exc:
+            message = f"Не удалось создать app/config.py: {exc}"
+            if silent:
+                self.log(message, channel="system")
+            else:
+                messagebox.showerror("Ошибка копирования", str(exc))
+            return False
+
+    def _create_keys_file_from_example(self, silent: bool = False) -> bool:
+        target = PROJECT_ROOT / "app" / "keys.py"
+        example = PROJECT_ROOT / "app" / "keys.example.py"
+        if not example.exists():
+            message = "Файл app/keys.example.py не найден. Скопируйте шаблон ключей вручную."
+            if silent:
+                self.log(message, channel="system")
+            else:
+                messagebox.showwarning("Файл не найден", message)
+            return False
+
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(example, target)
+            self.log("Создан app/keys.py из app/keys.example.py", channel="system")
+            self.log("Добавьте свои API ключи в app/keys.py перед запуском сервисов.", channel="system")
+            return True
+        except OSError as exc:
+            message = f"Не удалось создать app/keys.py: {exc}"
+            if silent:
+                self.log(message, channel="system")
+            else:
+                messagebox.showerror("Ошибка копирования", str(exc))
+            return False
 
     def _strip_example_header(self, config_path: Path) -> None:
         try:
