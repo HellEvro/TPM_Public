@@ -249,7 +249,10 @@
                                 <span class="label" data-translate="bot_status_label">🤖 Статус бота:</span>
                                 <span class="value" id="selectedCoinBotStatus">-</span>
                                 <span class="status-icon" id="botStatusIcon" style="margin-left: 8px; font-size: 16px;"></span>
-                                <button id="enableBotBtn" class="btn btn-success btn-sm" style="margin-left: 10px; display: none;" onclick="enableBotForCurrentCoin()" data-translate="enable_bot_btn">Включить</button>
+                                <div id="manualBotButtons" class="btn-group" style="margin-left: 10px; display: none; gap: 8px;">
+                                    <button id="enableBotLongBtn" class="btn btn-success btn-sm" onclick="enableBotForCurrentCoin('LONG')" data-translate="enable_bot_long_btn">LONG</button>
+                                    <button id="enableBotShortBtn" class="btn btn-danger btn-sm" onclick="enableBotForCurrentCoin('SHORT')" data-translate="enable_bot_short_btn">SHORT</button>
+                                </div>
                         </div>
                     </div>
                 </div>
@@ -2765,10 +2768,11 @@ function getStatusDescription(statusType, statusValue) {
 }
 
 // Функция для включения бота для текущей монеты
-function enableBotForCurrentCoin() {
+function enableBotForCurrentCoin(direction) {
     if (window.botsManager && window.botsManager.selectedCoin) {
         const coin = window.botsManager.selectedCoin;
         console.log('[EnableBot] Включение бота для монеты:', coin.symbol);
+        const normalizedDirection = (direction === 'SHORT') ? 'ENTER_SHORT' : 'ENTER_LONG';
         
         // Отправляем запрос на создание бота
         fetch('/api/bots/create', {
@@ -2778,8 +2782,9 @@ function enableBotForCurrentCoin() {
             },
             body: JSON.stringify({
                 symbol: coin.symbol,
-                signal: coin.signal || 'ENTER_LONG',
-                skip_maturity_check: true
+                signal: normalizedDirection,
+                skip_maturity_check: true,
+                force_manual_entry: true
             })
         })
         .then(response => response.json())
@@ -2789,7 +2794,8 @@ function enableBotForCurrentCoin() {
                 // Обновляем интерфейс
                 window.botsManager.updateCoinInfo(coin);
                 // Скрываем кнопку
-                document.getElementById('enableBotBtn').style.display = 'none';
+                const manualButtons = document.getElementById('manualBotButtons');
+                if (manualButtons) manualButtons.style.display = 'none';
             } else {
                 console.error('[EnableBot] Ошибка создания бота:', data.error);
                 alert('Ошибка создания бота: ' + data.error);

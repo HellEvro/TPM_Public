@@ -663,6 +663,60 @@ def get_auto_bot_config():
         return DEFAULT_AUTO_BOT_CONFIG.copy()
 
 
+def get_config_snapshot(symbol=None, force_reload=False):
+    """
+    Возвращает полный срез настроек: глобальный конфиг, индивидуальные настройки и итоговый merge.
+
+    Args:
+        symbol (str|None): символ монеты для получения overrides.
+        force_reload (bool): перезагрузить конфиг из источника истины перед чтением.
+
+    Returns:
+        dict: {
+            'global': dict,
+            'individual': dict|None,
+            'merged': dict,
+            'symbol': str|None,
+            'timestamp': iso8601 str
+        }
+    """
+    normalized_symbol = _normalize_symbol(symbol) if symbol else None
+
+    if force_reload:
+        try:
+            if hasattr(load_auto_bot_config, '_last_mtime'):
+                load_auto_bot_config._last_mtime = 0
+        except Exception:
+            pass
+        load_auto_bot_config()
+    else:
+        # Если конфиг еще не загружен, загружаем его один раз
+        with bots_data_lock:
+            has_config = bool(bots_data.get('auto_bot_config'))
+        if not has_config:
+            load_auto_bot_config()
+
+    with bots_data_lock:
+        global_config = deepcopy(bots_data.get('auto_bot_config', DEFAULT_AUTO_BOT_CONFIG.copy()))
+
+    individual_settings = None
+    if normalized_symbol:
+        individual_settings = get_individual_coin_settings(normalized_symbol)
+
+    merged_config = deepcopy(global_config)
+    if individual_settings:
+        merged_config.update(individual_settings)
+
+    snapshot = {
+        'global': global_config,
+        'individual': deepcopy(individual_settings) if individual_settings else None,
+        'merged': merged_config,
+        'symbol': normalized_symbol,
+        'timestamp': datetime.utcnow().isoformat()
+    }
+    return snapshot
+
+
 # ===== Индивидуальные настройки монет =====
 
 def _normalize_symbol(symbol: str) -> str:

@@ -11,6 +11,7 @@ from datetime import datetime
 import time
 import threading
 from typing import Optional, Dict
+from dataclasses import dataclass
 
 logger = logging.getLogger('BotsService')
 
@@ -54,6 +55,33 @@ try:
 except ImportError:
     DynamicRiskManager = None
     AI_RISK_MANAGER_AVAILABLE = False
+
+try:
+    from bot_engine.protections import ProtectionState, evaluate_protections
+except ImportError:
+    @dataclass
+    class ProtectionState:
+        position_side: str = 'LONG'
+        entry_price: float = 0.0
+        entry_time: Optional[float] = None
+        quantity: Optional[float] = None
+        notional_usdt: Optional[float] = None
+        max_profit_percent: float = 0.0
+        break_even_activated: bool = False
+        break_even_stop_price: Optional[float] = None
+        trailing_active: bool = False
+        trailing_reference_price: Optional[float] = None
+        trailing_stop_price: Optional[float] = None
+        trailing_take_profit_price: Optional[float] = None
+        trailing_last_update_ts: float = 0.0
+
+    def evaluate_protections(*args, **kwargs):
+        class _Decision:
+            should_close = False
+            reason = None
+            state = ProtectionState()
+            profit_percent = 0.0
+        return _Decision()
 
 class NewTradingBot:
     """Новый торговый бот согласно требованиям"""
@@ -174,6 +202,82 @@ class NewTradingBot:
             self.trailing_last_update_ts = 0.0
             self.trailing_take_profit_price = None
             
+    def _get_effective_protection_config(self) -> Dict:
+        try:
+            base_config = get_auto_bot_config().copy()
+        except Exception:
+            base_config = {}
+        merged = dict(base_config)
+        overrides = self.config or {}
+        for key, value in overrides.items():
+            if value is not None:
+                merged[key] = value
+        return merged
+
+    def _build_protection_state(self) -> ProtectionState:
+        entry_price = self._safe_float(self.entry_price, 0.0) or 0.0
+        position_side = (self.position_side or '').upper() or 'LONG'
+
+        entry_time = None
+        if isinstance(self.position_start_time, datetime):
+            entry_time = self.position_start_time.timestamp()
+        elif self.config.get('entry_timestamp'):
+            entry_time = self._safe_float(self.config.get('entry_timestamp'), None)
+            if entry_time and entry_time > 1e12:
+                entry_time = entry_time / 1000.0
+
+        quantity = self._get_position_quantity() or None
+
+        notional_usdt = None
+        if quantity and entry_price:
+            notional_usdt = quantity * entry_price
+        elif isinstance(self.volume_value, (int, float)):
+            notional_usdt = float(self.volume_value)
+
+        return ProtectionState(
+            position_side=position_side,
+            entry_price=entry_price,
+            entry_time=entry_time,
+            quantity=quantity,
+            notional_usdt=notional_usdt,
+            max_profit_percent=self.max_profit_achieved or 0.0,
+            break_even_activated=bool(self.break_even_activated),
+            break_even_stop_price=self._safe_float(self.break_even_stop_price),
+            trailing_active=bool(self.trailing_active),
+            trailing_reference_price=self._safe_float(self.trailing_reference_price),
+            trailing_stop_price=self._safe_float(self.trailing_stop_price),
+            trailing_take_profit_price=self._safe_float(self.trailing_take_profit_price),
+            trailing_last_update_ts=self._safe_float(self.trailing_last_update_ts, 0.0) or 0.0,
+        )
+
+    def _apply_protection_state(self, state: ProtectionState) -> None:
+        self.max_profit_achieved = state.max_profit_percent
+        self.break_even_activated = state.break_even_activated
+        self.break_even_stop_price = state.break_even_stop_price
+        self.trailing_active = state.trailing_active
+        self.trailing_reference_price = state.trailing_reference_price
+        self.trailing_stop_price = state.trailing_stop_price
+        self.trailing_take_profit_price = state.trailing_take_profit_price
+        self.trailing_last_update_ts = state.trailing_last_update_ts
+
+    def _evaluate_protection_decision(self, current_price: float):
+        try:
+            config = self._get_effective_protection_config()
+        except Exception:
+            config = {}
+        state = self._build_protection_state()
+        realized = self._safe_float(self.realized_pnl, 0.0) or 0.0
+        decision = evaluate_protections(
+            current_price=current_price,
+            config=config,
+            state=state,
+            realized_pnl=realized,
+            now_ts=time.time(),
+        )
+        if decision.state:
+            self._apply_protection_state(decision.state)
+        return decision
+
     
     def should_open_long(self, rsi, trend, candles):
         """Проверяет, нужно ли открывать LONG позицию"""
@@ -641,9 +745,6 @@ class NewTradingBot:
                 else:
                     logger.debug(f"[NEW_BOT_{self.symbol}] ⏳ Продолжаем держать {self.position_side} позицию (RSI не достиг порога)")
             
-            # 3. Обновляем защитные механизмы
-            self._update_protection_mechanisms(price)
-            
             logger.debug(f"[NEW_BOT_{self.symbol}] 📊 В позиции {self.position_side} (RSI: {rsi:.1f}, Цена: {price})")
             return {'success': True, 'status': self.status, 'position_side': self.position_side}
             
@@ -789,69 +890,11 @@ class NewTradingBot:
     def check_protection_mechanisms(self, current_price):
         """Проверяет все защитные механизмы"""
         try:
-            current_price = self._safe_float(current_price)
-            entry_price = self._safe_float(self.entry_price)
-            if current_price is None or entry_price is None or entry_price == 0:
-                return {'should_close': False, 'reason': None}
-
-            with bots_data_lock:
-                auto_config = bots_data.get('auto_bot_config', {})
-                stop_loss_percent = auto_config.get('stop_loss_percent', 15.0)
-                break_even_enabled = bool(auto_config.get('break_even_protection', True))
-                break_even_trigger_raw = auto_config.get(
-                    'break_even_trigger_percent',
-                    auto_config.get('break_even_trigger', 100.0)
-                )
-
-            try:
-                break_even_trigger_percent = float(break_even_trigger_raw or 0.0)
-            except (TypeError, ValueError):
-                break_even_trigger_percent = 0.0
-            if break_even_trigger_percent < 0:
-                break_even_trigger_percent = 0.0
-
-            if self.position_side == 'LONG':
-                profit_percent = ((current_price - entry_price) / entry_price) * 100
-            else:
-                profit_percent = ((entry_price - current_price) / entry_price) * 100
-
-            logger.info(
-                f"[NEW_BOT_{self.symbol}] 🛡️ Break-even статус: enabled={break_even_enabled} "
-                f"trigger={break_even_trigger_percent:.2f}% profit={profit_percent:.2f}% "
-                f"activated={self.break_even_activated} stop={self.break_even_stop_price}"
-            )
-
-            if profit_percent <= -stop_loss_percent:
-                logger.warning(f"[NEW_BOT_{self.symbol}] 💀 Стоп-лосс! Убыток: {profit_percent:.2f}%")
-                return {'should_close': True, 'reason': f'STOP_LOSS_{profit_percent:.2f}%'}
-
-            if profit_percent > self.max_profit_achieved:
-                self.max_profit_achieved = profit_percent
-                logger.debug(f"[NEW_BOT_{self.symbol}] 📈 Новая максимальная прибыль: {profit_percent:.2f}%")
-
-            if break_even_enabled and break_even_trigger_percent > 0:
-                if not self.break_even_activated and profit_percent >= break_even_trigger_percent:
-                    self.break_even_activated = True
-                    logger.info(f"[NEW_BOT_{self.symbol}] 🛡️ Безубыток активирован: {profit_percent:.2f}%")
-                    self._ensure_break_even_stop(current_price, force=True)
-
-                if self.break_even_activated:
-                    self._ensure_break_even_stop(current_price)
-                    if profit_percent <= 0:
-                        logger.info(f"[NEW_BOT_{self.symbol}] 🛡️ Закрываем по безубытку")
-                        return {'should_close': True, 'reason': f'BREAK_EVEN_MAX_{self.max_profit_achieved:.2f}%'}
-            else:
-                if self.break_even_activated or self.break_even_stop_price is not None:
-                    logger.debug(f"[NEW_BOT_{self.symbol}] 🛡️ Безубыток отключен настройками")
-                self.break_even_activated = False
-                self.break_even_stop_price = None
-
-            trailing_result = self._update_trailing_stops(current_price, profit_percent)
-            if trailing_result.get('should_close'):
-                return trailing_result
-
-            return {'should_close': False, 'reason': None}
-
+            decision = self._evaluate_protection_decision(current_price)
+            return {
+                'should_close': bool(decision.should_close),
+                'reason': decision.reason
+            }
         except Exception as e:
             logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка проверки защитных механизмов: {e}")
             return {'should_close': False, 'reason': None}

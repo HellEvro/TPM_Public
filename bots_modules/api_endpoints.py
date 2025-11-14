@@ -28,7 +28,8 @@ from bots_modules.imports_and_globals import (
     BOT_STATUS, ASYNC_AVAILABLE, RSI_CACHE_FILE, bot_history_manager,
     get_exchange, load_individual_coin_settings,
     get_individual_coin_settings, set_individual_coin_settings,
-    remove_individual_coin_settings, copy_individual_coin_settings_to_all
+    remove_individual_coin_settings, copy_individual_coin_settings_to_all,
+    RealTradingBot
 )
 import bots_modules.imports_and_globals as globals_module
 
@@ -747,6 +748,9 @@ def create_bot_endpoint():
         symbol = data['symbol']
         config = data.get('config', {})
         skip_maturity_check = data.get('skip_maturity_check', False)
+        force_manual_entry = data.get('force_manual_entry', False) or data.get('ignore_filters', False)
+        if force_manual_entry:
+            skip_maturity_check = True  # принудительно отключаем зрелость для ручного запуска
         
         logger.info(f" Запрос на создание бота для {symbol}")
         logger.info(f" Конфигурация: {config}")
@@ -779,6 +783,10 @@ def create_bot_endpoint():
         if skip_maturity_check:
             logger.info(f" ✋ {symbol}: Принудительное создание бота - проверка зрелости отключена")
             enable_maturity_check_coin = False
+            # Дополнительно отключаем защитные фильтры, если запрос ручной
+            config['avoid_down_trend'] = False
+            config['avoid_up_trend'] = False
+            config['rsi_time_filter_enabled'] = False
         
         if enable_maturity_check_coin and not has_manual_position:
             # Получаем данные свечей для проверки зрелости
@@ -843,30 +851,42 @@ def create_bot_endpoint():
         # ✅ Возвращаем ответ БЫСТРО
         logger.info(f" ✅ Бот для {symbol} создан")
         
+        manual_signal = data.get('signal')
+        manual_direction = None
+        if manual_signal:
+            signal_upper = str(manual_signal).upper()
+            if 'SHORT' in signal_upper:
+                manual_direction = 'SHORT'
+            elif 'LONG' in signal_upper:
+                manual_direction = 'LONG'
+
         # ✅ Запускаем вход в позицию АСИНХРОННО (только если НЕТ существующей позиции!)
         if not has_existing_position:
             def enter_position_async():
                 try:
-                    with rsi_data_lock:
-                        coin_data = coins_rsi_data['coins'].get(symbol)
-                        if coin_data and coin_data.get('signal') in ['ENTER_LONG', 'ENTER_SHORT']:
-                            signal = coin_data.get('signal')
-                            direction = 'LONG' if signal == 'ENTER_LONG' else 'SHORT'
-                            
-                            logger.info(f" 🚀 Входим в {direction} позицию для {symbol}")
-                            
-                            from bots_modules.bot_class import NewTradingBot
-                            bot_instance = NewTradingBot(symbol, bot_config, get_exchange())
-                            
-                            result = bot_instance.enter_position(direction)
-                            if result:
-                                logger.info(f" ✅ Успешно вошли в {direction} позицию для {symbol}")
-                                with bots_data_lock:
-                                    bots_data['bots'][symbol] = bot_instance.to_dict()
-                            else:
-                                logger.error(f" ❌ НЕ УДАЛОСЬ войти в {direction} позицию для {symbol}")
+                    direction = None
+                    if force_manual_entry and manual_direction:
+                        direction = manual_direction
+                        logger.info(f" 🚀 Принудительный вход в {direction} для {symbol} (ручной запуск)")
+                    else:
+                        with rsi_data_lock:
+                            coin_data = coins_rsi_data['coins'].get(symbol)
+                            if coin_data and coin_data.get('signal') in ['ENTER_LONG', 'ENTER_SHORT']:
+                                signal = coin_data.get('signal')
+                                direction = 'LONG' if signal == 'ENTER_LONG' else 'SHORT'
+                    
+                    if direction:
+                        trading_bot = RealTradingBot(symbol, get_exchange(), bot_config)
+                        result = trading_bot._enter_position(direction)
+                        if result and result.get('success'):
+                            logger.info(f" ✅ Успешно вошли в {direction} позицию для {symbol}")
+                            with bots_data_lock:
+                                bots_data['bots'][symbol] = trading_bot.to_dict()
                         else:
-                            logger.info(f" ℹ️ Нет активного сигнала для {symbol}, бот будет ждать")
+                            error_msg = (result or {}).get('error', 'unknown')
+                            logger.error(f" ❌ НЕ УДАЛОСЬ войти в {direction} позицию для {symbol}: {error_msg}")
+                    else:
+                        logger.info(f" ℹ️ Нет активного сигнала для {symbol}, бот будет ждать")
                 except Exception as e:
                     logger.error(f" ❌ Ошибка входа в позицию: {e}")
             

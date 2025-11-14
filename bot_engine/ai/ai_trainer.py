@@ -23,6 +23,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report, mean_squared_error
 import joblib
+from bot_engine.protections import ProtectionState, evaluate_protections
 
 logger = logging.getLogger('AI.Trainer')
 
@@ -1300,6 +1301,31 @@ class AITrainer:
         
         # Сокращенные логи - только seed для отслеживания
         logger.debug(f"🎲 Seed обучения: {training_seed}")
+
+        def _normalize_timestamp(raw_ts):
+            """Преобразует таймстамп свечи (мс/с) в секунды."""
+            try:
+                value = float(raw_ts)
+                if value > 1e12:  # мс
+                    return value / 1000.0
+                if value > 1e10:  # fallback для мкс
+                    return value / 1000.0
+                return value
+            except (TypeError, ValueError):
+                return None
+
+        def _build_protection_state(direction: str, entry_price: float, entry_ts_ms: Optional[float], position_size: float) -> ProtectionState:
+            quantity = None
+            safe_entry = float(entry_price) if entry_price else None
+            if safe_entry and safe_entry > 0 and position_size:
+                quantity = position_size / safe_entry
+            return ProtectionState(
+                position_side=direction,
+                entry_price=safe_entry,
+                entry_time=_normalize_timestamp(entry_ts_ms),
+                quantity=quantity,
+                notional_usdt=position_size,
+            )
         
         try:
             # Импортируем ВАШИ настройки из bots.py
@@ -1870,45 +1896,6 @@ class AITrainer:
                                         if current_rsi >= RSI_EXIT_LONG_AGAINST_TREND:
                                             should_exit = True
                                             exit_reason = 'RSI_EXIT_AGAINST_TREND'
-                                    
-                                    # Стоп-лосс (используем СГЕНЕРИРОВАННЫЕ параметры для этого обучения!)
-                                    if current_price <= current_position['entry_price'] * (1 - MAX_LOSS_PERCENT / 100):
-                                        should_exit = True
-                                        exit_reason = 'STOP_LOSS'
-                                    
-                                    # Take Profit (используем СГЕНЕРИРОВАННЫЕ параметры!)
-                                    if current_price >= current_position['entry_price'] * (1 + TAKE_PROFIT_PERCENT / 100):
-                                        should_exit = True
-                                        exit_reason = 'TAKE_PROFIT'
-                                    
-                                    # Trailing Stop (если активирован)
-                                    if current_position.get('max_profit', 0) > 0:
-                                        max_profit_pct = ((current_position['max_profit'] - current_position['entry_price']) / current_position['entry_price']) * 100
-                                        if max_profit_pct >= TRAILING_STOP_ACTIVATION:
-                                            # Trailing stop активирован
-                                            trailing_stop_price = current_position['entry_price'] * (1 + (max_profit_pct - TRAILING_STOP_DISTANCE) / 100)
-                                            if current_price <= trailing_stop_price:
-                                                should_exit = True
-                                                exit_reason = 'TRAILING_STOP'
-                                    
-                                    # Break Even Protection
-                                    if BREAK_EVEN_PROTECTION and current_position.get('max_profit', 0) > 0:
-                                        max_profit_pct = ((current_position['max_profit'] - current_position['entry_price']) / current_position['entry_price']) * 100
-                                        if max_profit_pct >= BREAK_EVEN_TRIGGER:
-                                            # Break even активирован - защищаем безубыточность
-                                            if current_price <= current_position['entry_price']:
-                                                should_exit = True
-                                                exit_reason = 'BREAK_EVEN'
-                                    
-                                    # Max Position Hours
-                                    if current_position.get('entry_time'):
-                                        from datetime import datetime
-                                        entry_time = datetime.fromtimestamp(current_position['entry_time'] / 1000)
-                                        current_time = datetime.fromtimestamp(times[i] / 1000)
-                                        hours_held = (current_time - entry_time).total_seconds() / 3600
-                                        if hours_held >= MAX_POSITION_HOURS:
-                                            should_exit = True
-                                            exit_reason = 'MAX_POSITION_HOURS'
                                 
                                 elif direction == 'SHORT':
                                     if entry_trend == 'DOWN':
@@ -1919,45 +1906,20 @@ class AITrainer:
                                         if current_rsi <= RSI_EXIT_SHORT_AGAINST_TREND:
                                             should_exit = True
                                             exit_reason = 'RSI_EXIT_AGAINST_TREND'
-                                    
-                                    # Стоп-лосс (используем СГЕНЕРИРОВАННЫЕ параметры для этого обучения!)
-                                    if current_price >= current_position['entry_price'] * (1 + MAX_LOSS_PERCENT / 100):
+
+                                protection_state = current_position.get('protection_state')
+                                if protection_state:
+                                    protection_decision = evaluate_protections(
+                                        current_price=current_price,
+                                        config=coin_base_config,
+                                        state=protection_state,
+                                        realized_pnl=0.0,
+                                        now_ts=_normalize_timestamp(times[i]),
+                                    )
+                                    current_position['protection_state'] = protection_decision.state
+                                    if protection_decision.should_close:
                                         should_exit = True
-                                        exit_reason = 'STOP_LOSS'
-                                    
-                                    # Take Profit (используем СГЕНЕРИРОВАННЫЕ параметры!)
-                                    if current_price <= current_position['entry_price'] * (1 - TAKE_PROFIT_PERCENT / 100):
-                                        should_exit = True
-                                        exit_reason = 'TAKE_PROFIT'
-                                    
-                                    # Trailing Stop (если активирован)
-                                    if current_position.get('max_profit', 0) > 0:
-                                        max_profit_pct = ((current_position['entry_price'] - current_position['max_profit']) / current_position['entry_price']) * 100
-                                        if max_profit_pct >= TRAILING_STOP_ACTIVATION:
-                                            # Trailing stop активирован
-                                            trailing_stop_price = current_position['entry_price'] * (1 - (max_profit_pct - TRAILING_STOP_DISTANCE) / 100)
-                                            if current_price >= trailing_stop_price:
-                                                should_exit = True
-                                                exit_reason = 'TRAILING_STOP'
-                                    
-                                    # Break Even Protection
-                                    if BREAK_EVEN_PROTECTION and current_position.get('max_profit', 0) > 0:
-                                        max_profit_pct = ((current_position['entry_price'] - current_position['max_profit']) / current_position['entry_price']) * 100
-                                        if max_profit_pct >= BREAK_EVEN_TRIGGER:
-                                            # Break even активирован - защищаем безубыточность
-                                            if current_price >= current_position['entry_price']:
-                                                should_exit = True
-                                                exit_reason = 'BREAK_EVEN'
-                                    
-                                    # Max Position Hours
-                                    if current_position.get('entry_time'):
-                                        from datetime import datetime
-                                        entry_time = datetime.fromtimestamp(current_position['entry_time'] / 1000)
-                                        current_time = datetime.fromtimestamp(times[i] / 1000)
-                                        hours_held = (current_time - entry_time).total_seconds() / 3600
-                                        if hours_held >= MAX_POSITION_HOURS:
-                                            should_exit = True
-                                            exit_reason = 'MAX_POSITION_HOURS'
+                                        exit_reason = protection_decision.reason or exit_reason or 'PROTECTION'
                                 
                                 if should_exit:
                                     # Закрываем позицию и записываем результат
@@ -1968,7 +1930,8 @@ class AITrainer:
                                         pnl_pct = ((entry_price - current_price) / entry_price) * 100
                                     
                                     # Симулируем PnL в USDT (используем заранее рассчитанный размер позиции)
-                                    pnl_usdt = position_size_usdt * (pnl_pct / 100)
+                                    position_size_for_trade = current_position.get('position_size_usdt', position_size_usdt)
+                                    pnl_usdt = position_size_for_trade * (pnl_pct / 100)
                                     
                                     simulated_trade = {
                                         'symbol': symbol,
@@ -1995,15 +1958,6 @@ class AITrainer:
                                     trades_for_symbol += 1
                                     current_position = None
                             
-                            # ОБНОВЛЯЕМ max_profit для открытых позиций (для trailing stop и break even)
-                            if current_position:
-                                if current_position['direction'] == 'LONG':
-                                    if current_price > current_position.get('max_profit', current_position['entry_price']):
-                                        current_position['max_profit'] = current_price
-                                else:  # SHORT
-                                    if current_price < current_position.get('max_profit', current_position['entry_price']):
-                                        current_position['max_profit'] = current_price
-                            
                             # ПРОВЕРКА ВХОДА (если нет открытой позиции)
                             if not current_position:
                                 # Используем ВАШИ правила входа из bot_config.py
@@ -2013,27 +1967,31 @@ class AITrainer:
                                 # LONG: RSI <= RSI_OVERSOLD (используем параметры для монеты)
                                 if current_rsi <= coin_RSI_OVERSOLD:
                                     should_enter_long = True
+                                    entry_ts_ms = times[i]
                                     current_position = {
                                         'direction': 'LONG',
                                         'entry_idx': i,
                                         'entry_price': current_price,
                                         'entry_rsi': current_rsi,
                                         'entry_trend': trend,
-                                        'entry_time': times[i],
-                                        'max_profit': current_price  # Отслеживаем максимальную прибыль для trailing stop
+                                        'entry_time': entry_ts_ms,
+                                        'position_size_usdt': position_size_usdt,
+                                        'protection_state': _build_protection_state('LONG', current_price, entry_ts_ms, position_size_usdt),
                                     }
                                 
                                 # SHORT: RSI >= RSI_OVERBOUGHT (используем параметры для монеты)
                                 if current_rsi >= coin_RSI_OVERBOUGHT:
                                     should_enter_short = True
+                                    entry_ts_ms = times[i]
                                     current_position = {
                                         'direction': 'SHORT',
                                         'entry_idx': i,
                                         'entry_price': current_price,
                                         'entry_rsi': current_rsi,
                                         'entry_trend': trend,
-                                        'entry_time': times[i],
-                                        'max_profit': current_price  # Для SHORT это минимум цены (максимальная прибыль)
+                                        'entry_time': entry_ts_ms,
+                                        'position_size_usdt': position_size_usdt,
+                                        'protection_state': _build_protection_state('SHORT', current_price, entry_ts_ms, position_size_usdt),
                                     }
                             
                         except Exception as e:

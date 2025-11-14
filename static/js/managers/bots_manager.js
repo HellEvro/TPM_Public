@@ -2154,18 +2154,13 @@ class BotsManager {
                         description = 'Бот не создан';
                         valueElement.style.color = 'var(--text-muted, var(--text-color))';
                         
-                        // Показываем кнопку "Включить" для монет с сигналами LONG/SHORT ИЛИ для ручных позиций
-                        const enableBotBtn = document.getElementById('enableBotBtn');
-                        if (enableBotBtn && this.selectedCoin) {
-                            const signal = this.selectedCoin.signal;
-                            const isManualPosition = this.selectedCoin.manual_position === true || this.selectedCoin.is_manual_position === true;
-                            
-                            // Показываем кнопку если есть сигнал LONG/SHORT ИЛИ есть ручная позиция
-                            if (signal === 'ENTER_LONG' || signal === 'ENTER_SHORT' || isManualPosition) {
-                                enableBotBtn.style.display = 'inline-block';
-                            } else {
-                                enableBotBtn.style.display = 'none';
-                            }
+                        const manualButtons = document.getElementById('manualBotButtons');
+                        const longBtn = document.getElementById('enableBotLongBtn');
+                        const shortBtn = document.getElementById('enableBotShortBtn');
+                        if (manualButtons && longBtn && shortBtn) {
+                            manualButtons.style.display = 'inline-flex';
+                            longBtn.style.display = 'inline-block';
+                            shortBtn.style.display = 'inline-block';
                         }
                     }
                     else if (statusValue.includes('running') || statusValue === window.languageUtils.translate('active_status') || statusValue === 'Активен') { 
@@ -2173,8 +2168,8 @@ class BotsManager {
                         description = window.languageUtils.translate('bot_active_and_working');
                         valueElement.style.color = 'var(--green-color)';
                         // Скрываем кнопку для активных ботов
-                        const enableBotBtn = document.getElementById('enableBotBtn');
-                        if (enableBotBtn) enableBotBtn.style.display = 'none';
+                        const manualButtons = document.getElementById('manualBotButtons');
+                        if (manualButtons) manualButtons.style.display = 'none';
                     }
                     else if (statusValue.includes('waiting') || statusValue.includes('idle')) { 
                         icon = '🔵'; 
@@ -2560,13 +2555,13 @@ class BotsManager {
     }
 
     // Методы управления ботами
-    async createBot() {
+    async createBot(manualDirection = null) {
         console.log('[BotsManager] 🚀 Запуск создания бота...');
         
         if (!this.selectedCoin) {
             console.log('[BotsManager] ❌ Нет выбранной монеты!');
             this.showNotification('⚠️ ' + this.translate('select_coin_to_create_bot'), 'warning');
-            return;
+            return null;
         }
         
         console.log(`[BotsManager] 🤖 Создание бота для ${this.selectedCoin.symbol}`);
@@ -2595,7 +2590,9 @@ class BotsManager {
                 body: JSON.stringify({
                     symbol: this.selectedCoin.symbol,
                     config: config,
-                    skip_maturity_check: true
+                    signal: manualDirection ? (manualDirection === 'SHORT' ? 'ENTER_SHORT' : 'ENTER_LONG') : (this.selectedCoin.signal || 'ENTER_LONG'),
+                    skip_maturity_check: true,
+                    force_manual_entry: true
                 })
             });
             
@@ -2657,14 +2654,23 @@ class BotsManager {
                 
                 console.log('[BotsManager] ✅ Все обновления интерфейса завершены!');
                 
+                const manualButtons = document.getElementById('manualBotButtons');
+                if (manualButtons) manualButtons.style.display = 'none';
+                const longBtn = document.getElementById('enableBotLongBtn');
+                const shortBtn = document.getElementById('enableBotShortBtn');
+                if (longBtn) longBtn.style.display = 'none';
+                if (shortBtn) shortBtn.style.display = 'none';
+                
             } else {
                 console.error('[BotsManager] ❌ Ошибка создания бота:', data.error);
                 this.showNotification(`❌ Ошибка создания бота: ${data.error}`, 'error');
             }
             
+            return data;
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка создания бота:', error);
             this.showNotification('❌ ' + this.translate('connection_error_bot_service'), 'error');
+            return null;
         }
     }
     
@@ -3504,36 +3510,7 @@ class BotsManager {
         
         try {
             console.log(`[BotsManager] 🚀 Быстрый запуск ${direction} бота для ${this.selectedCoin.symbol}`);
-            
-            // Собираем настройки
-            const settings = this.collectDuplicateSettings();
-            settings.volume_mode = document.getElementById('volumeModeSelect')?.value || 'usdt';
-            settings.volume_value = parseFloat(document.getElementById('volumeValueInput')?.value || '10');
-            
-            // Создаем бота с настройками
-            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/create`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    symbol: this.selectedCoin.symbol,
-                    config: settings,
-                    skip_maturity_check: true
-                })
-            });
-            
-            const data = await response.json();
-            if (data.success) {
-                this.showNotification(`✅ ${direction} бот для ${this.selectedCoin.symbol} создан и запущен`, 'success');
-                
-                // Обновляем UI
-                await this.loadActiveBotsData();
-                this.updateBotControlButtons();
-                this.updateBotStatus();
-                this.updateCoinsListWithBotStatus();
-                this.renderActiveBotsDetails();
-            } else {
-                this.showNotification(`❌ Ошибка создания ${direction} бота: ${data.error}`, 'error');
-            }
+            await this.createBot(direction);
         } catch (error) {
             console.error(`[BotsManager] ❌ Ошибка быстрого запуска ${direction} бота:`, error);
             this.showNotification('❌ Ошибка соединения при создании бота', 'error');
@@ -9235,9 +9212,9 @@ class BotsManager {
 window.BotsManager = BotsManager;
 
 // Глобальная функция для включения бота для текущей монеты (используется в HTML onclick)
-window.enableBotForCurrentCoin = function() {
+window.enableBotForCurrentCoin = function(direction) {
     if (window.botsManager && window.botsManager.selectedCoin) {
-        window.botsManager.createBot();
+        window.botsManager.createBot(direction || null);
     } else {
         console.error('[enableBotForCurrentCoin] BotsManager не инициализирован или монета не выбрана');
         if (window.showToast) {
