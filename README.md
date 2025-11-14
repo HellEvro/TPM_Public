@@ -1,147 +1,169 @@
 # 🤖 InfoBot — AI-Powered Trading System
 
-**Версия:** 1.6 AI Edition  
-**Дата:** 7 ноября 2025  
-**Статус:** ✅ Production Ready + AI (Anomaly + Risk Manager)  
-**AI прогресс:** 42% (2/4 модулей активны, 32/76 задач)  
-**Автопроверка:** `python scripts/verify_ai_ready.py` → 10/10 ✅
+**Версия:** 1.7 AI Edition  
+**Дата:** 14 ноября 2025  
+**Статус:** ✅ Production Ready + AI Launcher (LSTM + License)  
+**AI прогресс:** 47% (3/4 модулей активны, 36/76 задач)  
+**Автопроверка:** `python scripts/verify_ai_ready.py` → 10/10 ✅  
+**Лицензия:** HWID `.lic` (генерация через `scripts/activate_premium.py`)  
 **Репозиторий:** [github.com/HellEvro/TPM_Public](https://github.com/HellEvro/TPM_Public)
 
-> Интеллектуальная торговая система с AI модулями: защита от pump/dump, адаптивные SL/TP, умный размер позиции, полная история действий.
+> Интеллектуальная торговая система с AI лаунчером, защищёнными премиум модулями, 6h LSTM-предсказаниями, адаптивным риск-менеджером и полной историей действий.
 
 ---
 
-## 🚀 Что нового (Q4 2025)
-- 🤖 **Dynamic Risk Manager**: адаптивные стоп-лоссы (8-25%), тейк-профиты (150-600%) и размер позиции (5-20 USDT)
-- 🎛️ **AI Config UI**: 12+ параметров, hot reload, проверка лицензии, RU/EN локализация
-- 📊 **История ботов**: журнал действий/сделок, фильтры, экспорты и REST API статистики
-- 🔌 **AI REST API**: `/api/ai/status`, `/api/ai/config`, `/api/ai/force-update` + журнал изменений конфигурации
-- 🔄 **Auto Trainer 2.0**: ежедневные обновления 583 монет, еженедельное переобучение с горячей перезагрузкой
-- 🧪 **Новые тесты**: 7 скриптов для инициализации, детектора аномалий, риск-менеджера и комплексной проверки
-- 📚 **Документация**: обновлённые `AI_README`, `AI_RISK_MANAGER`, `BOT_HISTORY`, `AI_UI_CONFIGURATION`
+## 🚀 Что нового (ноябрь 2025)
+- 🧠 **LSTM Predictor 1.0**: 6‑часовые прогнозы направления с автообучением (`docs/ai_development/PHASE_3_LSTM_COMPLETE.md`, `bot_engine/ai/lstm_predictor.py`) и валидацией сигналов прямо из `bots_modules/filters.py`.
+- 🛰️ **AI Launcher & Scheduler**: `ai.py` проксирует защищённый `_ai_launcher.pyc`, запускает `data-service`, `train`, `scheduler` режимы (`python ai.py --mode all`) и следит за состоянием AI подсистем.
+- 🔐 **Premium License & Protection**: единый HWID (`scripts/activate_premium.py`), проверка `.lic` через `bot_engine/ai/license_checker.pyc`, обновляемый билд `license_generator/build_ai_launcher.py`, загрузчик `_infobot_ai_protected.py`.
+- ⚖️ **Smart Risk Manager**: премиум-модуль (`bot_engine/ai/smart_risk_manager.py`) анализирует стопы, делает быстрый бэктест перед входом и оптимизирует SL/TP на основе `ml_risk_predictor`.
+- 📡 **AI Data Service & Automation**: постоянный сбор/хранение (`AIDataCollector`, `ai_data_storage.py`), backtest (`ai_backtester_new.py`), оптимизация (`ai_strategy_optimizer.py`), управление ботами (`ai_bot_manager.py`) и непрерывное обучение (`ai_continuous_learning.py`).
+- 📦 **Release tooling**: `sync_to_public.py` формирует `InfoBot_Public` с обязательными стартовыми скриптами и скомпилированными AI файлами, `start_infobot_manager` получил пошаговый лицензионный этап.
 
 ---
 
 ## 🎯 Основные возможности
 
 ### Базовая система
-- 📊 Мониторинг позиций и сигналов в реальном времени
-- 🤖 Auto Bot: торговля по RSI/EMA с фильтрами зрелости и анти-скам
-- 👤 Manual Bots: ручной контроль и сценарии запуска
-- 🔁 Optimal EMA Worker и синхронизация позиций
-- 🔔 Telegram уведомления, trailing stop, break-even защита
-- 📂 JSON-хранилище состояний + экспорт истории
+- 📊 Реальный мониторинг позиций и сигналов + экспорт истории.
+- 🤖 Auto Bot: RSI/EMA, фильтры зрелости, анти-скам, break-even, трейлинг.
+- 👤 Manual Bots: ручные сценарии, индивидуальные конфиги, hot reload.
+- 🔁 Optimal EMA и синхронизация (`bots_modules/sync_and_cache.py`) + фоновые воркеры.
+- 🔔 Telegram-уведомления, логирование, JSON-хранилища + GUI `start_infobot_manager`.
 
 ### AI Модули (активно)
-- 🛡️ Anomaly Detection: IsolationForest (100 деревьев), 15 признаков, блокировка pump/dump (>70%)
-- ⚖️ Dynamic Risk Management: адаптивные SL/TP, размер позиции, рекомендации удержания
-- 🔄 Auto Training: автообновление данных и переобучение без остановки бота
-- 🎛️ UI + REST API: управление из `bots.html` и `static/js/managers/ai_config_manager.js`
+- 🛡️ **Anomaly Detection** (`bot_engine/ai/anomaly_detector.py`): IsolationForest 100 деревьев, >15 признаков для блокировки pump/dump.
+- 🧠 **LSTM Predictor** (`bot_engine/ai/lstm_predictor.py`): подтверждение сигналов, вероятность движения, auto retrain.
+- ⚖️ **Dynamic & Smart Risk** (`bot_engine/ai/risk_manager.py`, `smart_risk_manager.py`): адаптивные SL/TP, размер позиции, премиум backtest перед входом.
+- 🔄 **Auto Training & Continuous Learning** (`auto_trainer.py`, `ai_continuous_learning.py`): автообновление данных, weekly retrain, база знаний по сделкам.
+- 🛰️ **AI Launcher сервисы**: `AIDataCollector`, `AIBacktester`, `AIStrategyOptimizer`, `AIBotManager`, REST/UI управление (`static/js/managers/ai_config_manager.js`).
+
+### Premium / Лицензирование
+- 🎫 HWID → `.lic` проверка (`scripts/activate_premium.py`, `bot_engine/ai/license_checker.pyc`) с кэшированием статуса и мягким отключением.
+- 🧩 SmartRisk, ML Risk Predictor и премиум SL/TP доступны только с валидной лицензией.
+- 🛡️ `license_generator/source/@source/ai_launcher_source.py` + `build_ai_launcher.py` готовят защищённый `_ai_launcher.pyc` и обновляют обёртки `ai.py`, `_infobot_ai_protected.py`.
 
 ### В разработке (roadmap)
-- 🔮 LSTM Predictor: прогноз направления на 6 свечей вперёд
-- 🧭 Pattern Recognition: распознавание паттернов (H&S, треугольники, флаги)
-- 🧠 Premium AI (license): продвинутые модули через `_premium_loader`
+- 🧭 Pattern Recognition (`bot_engine/ai/pattern_detector.py`, CNN 0/7 задач).
+- 🤖 Telegram/бот для продажи лицензий и мультипользовательские планы (см. `TODO.txt`).
+- 🌍 Мульти-биржи и расширенный маркет-мейкинг (Binance, OKX интеграции в `exchanges/`).
 
 ---
 
 ## 🏗️ Архитектура
-- **Сервисы:** `app.py` (порт 5000, UI) + `bots.py` (порт 5001, торговые и AI API)
-- **Модули ботов:** `bots_modules/` (10 модулей, 228 строк ядра после декомпозиции)
-- **AI ядро:** `bot_engine/ai/` (`ai_manager`, `anomaly_detector`, `risk_manager`, `auto_trainer`, `_premium_loader`)
-- **История:** `bot_engine/bot_history.py` + REST `/api/bots/history`, `/api/bots/trades`, `/api/bots/statistics`
-- **Фронтенд:** `templates/pages/bots.html`, `static/js/managers/*.js`, `static/css/`
-- **Данные:** `data/ai/models/`, `data/ai/historical/583 csv`, `data/bot_history.json`
+- **Сервисы:** `app.py` (порт 5000, Web UI) + `bots.py` (порт 5001, торговые/AI API + `/api/bots/*`).
+- **AI Launcher:** `ai.py` → `_ai_launcher.pyc` orchestrator (data-service/train/scheduler) + процессы `AIDataCollector`, `AITrainer`, `AIBacktester`, `AIStrategyOptimizer`, `AIBotManager`, `AIContinuousLearning`.
+- **AI ядро:** `bot_engine/ai/` (анализаторы, автообучение, premium, лицензирование, ml модели).
+- **История и данные:** `bot_engine/bot_history.py`, REST `/api/bots/history|trades|statistics`, файлы `data/ai/*`, `data/bot_history.json`.
+- **Фронтенд:** `templates/pages/bots.html`, `static/js/managers/*.js`, `static/css/`.
+- **Лицензирование:** `.lic` в корне, `bot_engine/ai/license_checker.pyc`, `scripts/activate_premium.py`, генератор HWID в `license_generator/`.
+- **Релизы:** `sync_to_public.py`, каталог `InfoBot_Public/`, авто-добавление `start_infobot_manager.{cmd|sh|vbs}`, `launcher/`.
 
 ---
 
 ## ⚡ Быстрый старт
 
-> 🔸 **Рекомендуется:** выполните `installer/install_<os>.{ps1|sh}` и запустите `start_infobot_manager`  
-> GUI-менеджер проведёт через установку зависимостей, проверку обновлений и запуск сервисов.
-> На Windows можно открыть `start_infobot_manager.vbs`, чтобы запустить менеджер без консоли.
-> Менеджер работает пошагово: 1) настройка собственного `.venv` (рекомендуемый вариант), 2) при необходимости установка напрямую в системный Python (тоже с авто-фильтрацией `coincurve` на Windows/Python 3.13), 3) обновления Git — кнопка выполняет full sync с `origin/main` и показывает свежие коммиты, 4) лицензия (опционально), 5) запуск сервисов (в том числе быстрый доступ к `app/config.py` и `app/keys.py`), 6) документация, 7) логи.
-> Если папка была скачана архивом без `.git`, менеджер автоматически выполнит `git init` и добавит `origin git@github.com:HellEvro/TPM_Public.git`.
-> Во время длительных операций кнопки блокируются и в верхней части окна отображается индикатор прогресса — видно, что работа ещё идёт.
+> 🔸 **Рекомендуется:** `installer/install_<os>.{ps1|sh}` + `start_infobot_manager` (проводник по venv, зависимостям, Git sync, HWID/лицензии, запуску сервисов и логам).  
+> Windows: запустите `start_infobot_manager.vbs`, чтобы открыть GUI без консоли.  
+> Менеджер блокирует кнопки на тяжёлых операциях, отображает прогресс и помогает инициировать `scripts/activate_premium.py` прямо из интерфейса (если `.git` отсутствует, выполнит init + origin).
 
 ```bash
 # 1. Установите зависимости
 pip install -r requirements.txt
+pip install "tensorflow>=2.13.0" "scikit-learn>=1.3.0"  # для LSTM/AI Launcher
 
 # 2. Настройте конфигурацию и ключи
 copy app\config.example.py app\config.py
 copy app\keys.example.py app\keys.py
 
-# 3. Запустите службы
-python app.py   # UI (порт 5000)
-python bots.py  # Bot & AI API (порт 5001)
+# 3. Получите HWID и активируйте лицензии (при необходимости AI/Premium)
+python scripts/activate_premium.py   # HWID -> создайте .lic в корне
 
-# 4. Проверка готовности AI
+# 4. Запустите основные сервисы
+python app.py    # UI (порт 5000)
+python bots.py   # Bot & AI API (порт 5001)
+
+# 5. Запустите AI Launcher (требует активную лицензию)
+python ai.py --mode all         # оркестратор data-service + scheduler + train
+python ai.py --mode data-service   # только сбор данных
+python ai.py --mode train          # обучение/оптимизация
+
+# 6. Проверка готовности AI
 python scripts/verify_ai_ready.py
 ```
 
-Подробности: [docs/QUICKSTART.md](docs/QUICKSTART.md), [docs/AI_QUICK_START.md](docs/AI_QUICK_START.md)
+Подробности: [docs/QUICKSTART.md](docs/QUICKSTART.md), [docs/AI_QUICK_START.md](docs/AI_QUICK_START.md), [docs/START_HERE.md](docs/START_HERE.md).
 
 ---
 
 ## 🔌 REST API
-- `GET /api/status` — статус бота и подключений
-- `GET /api/bots/history` / `trades` / `statistics` — история действий, сделки, аналитика
-- `POST /api/bots/history/demo` — демо-данные для UI, `POST /api/bots/history/clear` — очистка
-- `GET /api/ai/status` — активность модулей, автообучение, лицензия
-- `GET|POST /api/ai/config` — чтение/сохранение AI параметров (логируется по ключам)
-- `POST /api/ai/force-update` — немедленное обновление данных и переобучение
+- `GET /api/status` — статус бота и подключений.
+- `GET /api/bots/history|trades|statistics` — лог действий, сделки, аналитика.
+- `POST /api/bots/history/demo` / `history/clear` — демо-данные и очистка UI.
+- `GET /api/ai/status` — активность модулей, автообучение, лицензия.
+- `GET|POST /api/ai/config` — чтение/сохранение AI параметров с логом изменений.
+- `POST /api/ai/force-update` — немедленное обновление данных и переобучение.
 
-См. `bot_engine/api/endpoints_ai.py` и `bot_engine/api/endpoints_history.py`.
+См. `bot_engine/api/endpoints_ai.py`, `bot_engine/api/endpoints_history.py`, `bot_engine/api/endpoints_bots.py`.
+
+---
+
+## 🔐 Лицензирование и защита
+- `scripts/activate_premium.py` и `tests/test_hwid_check.py` гарантируют единый HWID для `.lic`.
+- `bot_engine/ai/license_checker.pyc` + `ai_launcher_source` валидируют лицензию до старта подсистем, кэшируют результат и блокируют AI при истечении срока.
+- `bot_engine/ai/_infobot_ai_protected.py` подгружает `_ai_launcher.pyc`, а `ai.py` экспортирует только публичные API.
+- `license_generator/build_ai_launcher.py` пересобирает защищённый модуль и обёртки, чтобы перед релизом исключить исходники.
+- Премиум-функции (`smart_risk_manager.py`, `ml_risk_predictor.py`, premium SL/TP) доступны только при `check_premium_license()` → True.
 
 ---
 
 ## 🧪 Тестирование
 
 ```bash
-python scripts/test_ai_initialization.py   # Проверка инициализации AI
-python scripts/test_ai_detector_status.py # Статус Anomaly Detector
-python scripts/test_risk_manager.py       # Расчёты Risk Manager
-python scripts/test_full_ai_system.py     # Комплексная проверка AI
-python scripts/verify_ai_ready.py         # Финальная проверка (10/10)
+python scripts/test_ai_initialization.py    # Проверка инициализации AI
+python scripts/test_ai_detector_status.py  # Статус Anomaly Detector
+python scripts/test_risk_manager.py        # Расчёты Risk Manager
+python scripts/test_full_ai_system.py      # Комплексная проверка AI
+python tests/test_hwid_check.py            # Сверка HWID и лицензий
+python scripts/verify_ai_ready.py          # Финальная проверка (10/10)
 ```
 
 ---
 
 ## 📚 Документация
-- 🚀 Быстрый старт: `docs/INSTALL.md`, `docs/QUICKSTART.md`, `docs/AI_QUICK_START.md`
-- 📖 Обзор: `docs/SYSTEM_OVERVIEW.md`, `docs/ARCHITECTURE.md`, `docs/MODULES.md`
-- 📊 История: `docs/BOT_HISTORY.md`, `docs/BOT_SIGNAL_PROCESSING_FLOW.md`
-- 🤖 AI: `docs/AI_README.md`, `docs/ai_technical/*.md`, `docs/AI_RISK_MANAGER.md`
-- 🛠️ Разработка: `docs/AI_IMPLEMENTATION_CHECKLIST.md`, `docs/ai_development/`
-- 📦 Deployment: `docs/DEPLOYMENT.md`
+- 🚀 Быстрый старт: `docs/INSTALL.md`, `docs/QUICKSTART.md`, `docs/AI_QUICK_START.md`, `docs/START_HERE.md`.
+- 📖 Обзор и архитектура: `docs/SYSTEM_OVERVIEW.md`, `docs/ARCHITECTURE.md`, `docs/MODULES.md`.
+- 📊 История и сигналы: `docs/BOT_HISTORY.md`, `docs/BOT_SIGNAL_PROCESSING_FLOW.md`.
+- 🤖 AI: `docs/AI_README.md`, `docs/ai_technical/*.md`, `docs/AI_RISK_MANAGER.md`, `docs/ai_development/PHASE_3_LSTM_COMPLETE.md`, `docs/AI_DOCS_STRUCTURE.md`.
+- 🔐 Лицензии и защита: `docs/HWID_FIX_REPORT.md`, `docs/PREMIUM_STOP_ANALYSIS_ARCHITECTURE.md`, `docs/ML_MODELS_DISTRIBUTION.md`.
+- 🛠️ Разработка и чеклисты: `docs/AI_IMPLEMENTATION_CHECKLIST.md`, `docs/READY_FOR_YOU.md`, `docs/DOCUMENTATION_COMPLETE.md`.
 
-Полный список: каталог `docs/` (4000+ строк, 12 актуальных AI-гидов).
+Полный список — каталог `docs/` (4000+ строк, 12+ актуальных AI-гидов и отчётов).
 
 ---
 
 ## 📊 Статус проекта
-- ✅ Соответствие ТЗ: 100%
-- 🤖 AI: 2/4 модулей, 32/76 задач (42.1%)
-- 🧠 Модули в работе: LSTM Predictor, Pattern Recognition
-- 📦 Компоненты: 190+ файлов (UI, API, AI, тесты)
-- ⏱️ Производительность: запуск <5 c, обработка сигналов <100 мс, синхронизация <500 мс
+- ✅ Соответствие ТЗ: 100%.
+- 🤖 AI: 3/4 модулей, 36/76 задач (47%) — осталось Pattern Recognition.
+- ⚙️ Производительность: запуск <5 c, обработка сигналов <100 мс, синхронизация <500 мс.
+- 📦 Компоненты: 190+ файлов (UI, API, AI, тесты, лицензирование).
+- 🔐 Лицензирование: HWID `.lic`, SmartRisk и `_ai_launcher.pyc` активны при валидной лицензии.
 
 ---
 
 ## 🛣️ Следующие шаги
-- Реализация LSTM Predictor (`bot_engine/ai/lstm_predictor.py`)
-- Распознавание паттернов (`bot_engine/ai/pattern_detector.py`)
-- Premium AI лицензирование и защита модулей
-- Расширение поддерживаемых бирж (Binance, OKX)
+- Завершить Pattern Recognition (`bot_engine/ai/pattern_detector.py`, 0/7 задач).
+- Вынести премиум лицензии в отдельный Telegram-бот/сервер (см. `TODO.txt`).
+- Расширить торговлю на Binance/OKX с единым AI лаунчером.
+- Добавить визуальные отчёты по AI backtest/optimizer в Web UI.
 
 ---
 
 ## 📞 Поддержка и мониторинг
-- Документация: `docs/AI_README.md`, `docs/SYSTEM_OVERVIEW.md`
-- Логи: `logs/bots.log`
-- Web UI: http://localhost:5000 (вкладка «Боты» → «Конфигурация» → «AI»)
-- API статус: http://localhost:5001/api/status, http://localhost:5001/api/ai/status
+- Документация: `docs/AI_README.md`, `docs/SYSTEM_OVERVIEW.md`.
+- Логи: `logs/bots.log`, `logs/ai.log`.
+- Web UI: http://localhost:5000 (вкладка «Боты» → «Конфигурация» → «AI»).
+- API статус: http://localhost:5001/api/status, http://localhost:5001/api/ai/status.
 - Telegram: [H3113vr0](https://t.me/H3113vr0)
 - Email: gci.company.ou@gmail.com
 
