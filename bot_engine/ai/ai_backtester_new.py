@@ -9,12 +9,112 @@
 import os
 import json
 import logging
+from copy import deepcopy
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 
+from bot_engine.protections import ProtectionState, evaluate_protections
+
 logger = logging.getLogger('AI.Backtester')
+
+_individual_settings_cache: Optional[Dict[str, Dict[str, Any]]] = None
+
+
+def _get_cached_individual_settings(symbol: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Фолбек для получения индивидуальных настроек, когда bots_modules недоступен."""
+    if not symbol:
+        return None
+    normalized = symbol.upper()
+    global _individual_settings_cache  # noqa: WPS420
+    try:
+        if _individual_settings_cache is None:
+            from bot_engine.storage import load_individual_coin_settings  # noqa: WPS433,E402
+
+            _individual_settings_cache = load_individual_coin_settings() or {}
+        settings = _individual_settings_cache.get(normalized)
+        return deepcopy(settings) if settings else None
+    except Exception as exc:  # pragma: no cover - резервный путь
+        logger.debug(f"⚠️ Не удалось загрузить индивидуальные настройки {normalized}: {exc}")
+        return None
+
+
+def _get_config_snapshot(symbol: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Возвращает срез настроек Auto Bot (глобальный + overrides), используется тренером и бэктестером.
+    """
+    try:
+        from bots_modules.imports_and_globals import get_config_snapshot  # noqa: WPS433,E402
+
+        return get_config_snapshot(symbol)
+    except Exception as exc:  # pragma: no cover - fallback при отсутствии сервиса ботов
+        logger.debug(f"⚠️ Не удалось получить конфиг через bots_modules ({exc}), используем bot_config.py")
+        try:
+            from bot_engine.bot_config import DEFAULT_AUTO_BOT_CONFIG  # noqa: WPS433,E402
+
+            global_config = deepcopy(DEFAULT_AUTO_BOT_CONFIG)
+        except Exception:
+            global_config = {}
+        individual_config = _get_cached_individual_settings(symbol) if symbol else None
+        merged_config = deepcopy(global_config)
+        if individual_config:
+            merged_config.update(individual_config)
+        return {
+            'global': global_config,
+            'individual': individual_config,
+            'merged': merged_config,
+            'symbol': symbol.upper() if symbol else None,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+
+
+def _normalize_timestamp(raw_ts: Any) -> Optional[float]:
+    """Преобразует таймстамп (мс/с/iso) в секунды."""
+    if raw_ts is None:
+        return None
+    if isinstance(raw_ts, (int, float)):
+        value = float(raw_ts)
+        if value > 1e12:
+            return value / 1000.0
+        return value
+    if isinstance(raw_ts, str):
+        try:
+            return datetime.fromisoformat(raw_ts.replace('Z', '')).timestamp()
+        except ValueError:
+            try:
+                value = float(raw_ts)
+                return _normalize_timestamp(value)
+            except ValueError:
+                return None
+    return None
+
+
+def _create_protection_state(direction: str, entry_price: float, notional_usdt: float, entry_ts: Any) -> ProtectionState:
+    safe_price = float(entry_price) if entry_price else 0.0
+    quantity = None
+    if safe_price > 0 and notional_usdt:
+        quantity = notional_usdt / safe_price
+    return ProtectionState(
+        position_side=direction,
+        entry_price=safe_price,
+        entry_time=_normalize_timestamp(entry_ts),
+        quantity=quantity,
+        notional_usdt=notional_usdt,
+    )
+
+
+def _determine_trend(closes: List[float], index: int, window: int) -> str:
+    if not closes or index <= 0:
+        return 'NEUTRAL'
+    lookback = max(1, min(window or 1, index))
+    base_price = closes[index - lookback]
+    current_price = closes[index]
+    if current_price > base_price:
+        return 'UP'
+    if current_price < base_price:
+        return 'DOWN'
+    return 'NEUTRAL'
 
 
 class AIBacktester:
@@ -26,6 +126,8 @@ class AIBacktester:
         """Инициализация бэктестера"""
         self.results_dir = 'data/ai/backtest_results'
         self.data_dir = 'data/ai'
+        config_snapshot = _get_config_snapshot()
+        self.auto_bot_config = config_snapshot.get('global', {})
         
         # Создаем директории
         os.makedirs(self.results_dir, exist_ok=True)
@@ -216,7 +318,6 @@ class AIBacktester:
         logger.info("📊 Бэктест на основе свечей...")
         
         try:
-            # Загружаем рыночные данные (свечи)
             market_data = self._load_market_data()
             latest = market_data.get('latest', {})
             candles_data = latest.get('candles', {})
@@ -225,65 +326,143 @@ class AIBacktester:
                 logger.warning("⚠️ Нет свечей для бэктеста")
                 return {'error': 'No candles available for backtesting'}
             
-            # Параметры стратегии
-            rsi_long_entry = strategy_params.get('rsi_long_entry', 29)
-            rsi_long_exit = strategy_params.get('rsi_long_exit', 65)
-            rsi_short_entry = strategy_params.get('rsi_short_entry', 71)
-            rsi_short_exit = strategy_params.get('rsi_short_exit', 35)
-            stop_loss_pct = strategy_params.get('stop_loss_pct', 2.0)
-            take_profit_pct = strategy_params.get('take_profit_pct', 20.0)
-            position_size_pct = strategy_params.get('position_size_pct', 10.0)
-            
-            # Симулируем торговлю на свечах
+            base_config = self.auto_bot_config or {}
+            rsi_period = int(base_config.get('rsi_period', 14) or 14)
             initial_balance = 10000.0
             balance = initial_balance
-            positions = []
-            closed_trades = []
+            closed_trades: List[Dict[str, Any]] = []
+            total_positions_opened = 0
             
-            # Обрабатываем свечи каждой монеты
+            def close_position(position: Optional[Dict[str, Any]], exit_price: float, exit_time: Any, reason: str):
+                nonlocal balance
+                if not position or exit_price <= 0:
+                    return None
+                entry_price = position['entry_price']
+                direction = position['direction']
+                size = position['size']
+                if direction == 'LONG':
+                    pnl_pct = ((exit_price - entry_price) / entry_price) * 100
+                else:
+                    pnl_pct = ((entry_price - exit_price) / entry_price) * 100
+                pnl_usdt = size * (pnl_pct / 100)
+                balance += size + pnl_usdt
+                closed_trades.append({
+                    'symbol': position['symbol'],
+                    'direction': direction,
+                    'entry_price': entry_price,
+                    'exit_price': exit_price,
+                    'pnl': pnl_usdt,
+                    'pnl_pct': pnl_pct,
+                    'exit_reason': reason,
+                    'entry_time': position['entry_time'],
+                    'exit_time': exit_time
+                })
+                return None
+            
             processed_symbols = 0
             for symbol, candle_info in candles_data.items():
                 candles = candle_info.get('candles', [])
-                if len(candles) < 50:  # Нужно минимум свечей для анализа
+                if len(candles) < rsi_period + 5:
                     continue
                 
-                indicators = latest.get('indicators', {}).get(symbol, {})
-                current_rsi = indicators.get('rsi', 50)
+                symbol_config = _get_config_snapshot(symbol).get('merged', base_config)
+                position_size_pct = strategy_params.get('position_size_pct')
+                if position_size_pct is None:
+                    if symbol_config.get('default_position_mode') == 'percent':
+                        position_size_pct = symbol_config.get('default_position_size', 10.0)
+                    else:
+                        position_size_pct = 10.0
                 
-                # Простая симуляция: проверяем условия входа/выхода на основе RSI
-                # В реальном бэктесте нужно анализировать каждую свечу последовательно
+                closes = [float(c.get('close', 0) or 0) for c in candles]
+                times = [c.get('time') for c in candles]
+                if len(closes) <= rsi_period + 1 or any(price <= 0 for price in closes):
+                    continue
                 
-                # Проверяем условия входа
-                should_enter_long = current_rsi <= rsi_long_entry
-                should_enter_short = current_rsi >= rsi_short_entry
+                rsi_history = calculate_rsi_history(closes, period=rsi_period)
+                if not rsi_history:
+                    continue
                 
-                if should_enter_long or should_enter_short:
-                    # Получаем текущую цену из последней свечи
-                    if candles:
-                        current_price = candles[-1].get('close', 0)
-                        if current_price > 0:
-                            direction = 'LONG' if should_enter_long else 'SHORT'
-                            position_size = balance * (position_size_pct / 100.0)
-                            
-                            position = {
-                                'symbol': symbol,
-                                'direction': direction,
-                                'entry_price': current_price,
-                                'size': position_size,
-                                'entry_rsi': current_rsi,
-                                'entry_time': candles[-1].get('time')
-                            }
-                            positions.append(position)
-                            balance -= position_size
+                position = None
+                for i in range(rsi_period, len(closes)):
+                    rsi_index = i - rsi_period
+                    if rsi_index >= len(rsi_history):
+                        break
+                    
+                    current_price = closes[i]
+                    current_time = times[i]
+                    current_rsi = rsi_history[rsi_index]
+                    trend_window = int(symbol_config.get('trend_analysis_period', 30) or 30)
+                    trend = _determine_trend(closes, i, trend_window)
+                    
+                    if position:
+                        decision = evaluate_protections(
+                            current_price=current_price,
+                            config=symbol_config,
+                            state=position['protection_state'],
+                            realized_pnl=0.0,
+                            now_ts=_normalize_timestamp(current_time)
+                        )
+                        position['protection_state'] = decision.state
+                        if decision.should_close and decision.reason:
+                            position = close_position(position, current_price, current_time, decision.reason)
+                            continue
+                        
+                        if position:
+                            if position['direction'] == 'LONG':
+                                if position['entry_trend'] == 'UP':
+                                    rsi_exit = symbol_config.get('rsi_exit_long_with_trend', base_config.get('rsi_exit_long_with_trend', 65))
+                                else:
+                                    rsi_exit = symbol_config.get('rsi_exit_long_against_trend', base_config.get('rsi_exit_long_against_trend', 60))
+                                if current_rsi >= rsi_exit:
+                                    position = close_position(position, current_price, current_time, 'RSI_EXIT')
+                                    continue
+                            else:
+                                if position['entry_trend'] == 'DOWN':
+                                    rsi_exit = symbol_config.get('rsi_exit_short_with_trend', base_config.get('rsi_exit_short_with_trend', 35))
+                                else:
+                                    rsi_exit = symbol_config.get('rsi_exit_short_against_trend', base_config.get('rsi_exit_short_against_trend', 40))
+                                if current_rsi <= rsi_exit:
+                                    position = close_position(position, current_price, current_time, 'RSI_EXIT')
+                                    continue
+                    
+                    if position:
+                        continue
+                    
+                    rsi_long_entry = strategy_params.get('rsi_long_entry', symbol_config.get('rsi_long_threshold', 29))
+                    rsi_short_entry = strategy_params.get('rsi_short_entry', symbol_config.get('rsi_short_threshold', 71))
+                    
+                    should_enter_long = current_rsi <= rsi_long_entry
+                    should_enter_short = current_rsi >= rsi_short_entry
+                    
+                    if not (should_enter_long or should_enter_short):
+                        continue
+                    
+                    direction = 'LONG' if should_enter_long else 'SHORT'
+                    position_size_usdt = balance * (position_size_pct / 100.0)
+                    if position_size_usdt <= 0:
+                        continue
+                    
+                    position = {
+                        'symbol': symbol,
+                        'direction': direction,
+                        'entry_price': current_price,
+                        'entry_time': current_time,
+                        'entry_rsi': current_rsi,
+                        'entry_trend': trend,
+                        'size': position_size_usdt,
+                        'protection_state': _create_protection_state(direction, current_price, position_size_usdt, current_time)
+                    }
+                    balance -= position_size_usdt
+                    total_positions_opened += 1
+                
+                if position:
+                    position = close_position(position, closes[-1], times[-1], 'FORCED_EXIT_END')
                 
                 processed_symbols += 1
-                if processed_symbols >= 10:  # Ограничиваем количество монет для теста
+                if processed_symbols >= 10:
                     break
             
-            # Упрощенная симуляция выхода (в реальности нужно отслеживать каждую позицию)
-            # Для демонстрации просто возвращаем базовые результаты
-            
-            if len(positions) == 0:
+            if len(closed_trades) == 0:
                 logger.warning("⚠️ Не удалось открыть позиции на основе текущих данных свечей")
                 return {
                     'strategy_params': strategy_params,
@@ -303,8 +482,13 @@ class AIBacktester:
                     'note': 'Не удалось открыть позиции (нужна история сделок для полного анализа)'
                 }
             
-            # Базовые результаты
-            final_balance = balance + sum(p['size'] for p in positions)
+            winning_trades = [t for t in closed_trades if t['pnl'] > 0]
+            losing_trades = [t for t in closed_trades if t['pnl'] < 0]
+            total_pnl = sum(t['pnl'] for t in closed_trades)
+            win_rate = len(winning_trades) / len(closed_trades) * 100 if closed_trades else 0.0
+            avg_win = float(np.mean([t['pnl'] for t in winning_trades])) if winning_trades else 0.0
+            avg_loss = float(np.mean([t['pnl'] for t in losing_trades])) if losing_trades else 0.0
+            final_balance = balance
             total_return = ((final_balance - initial_balance) / initial_balance) * 100
             
             results = {
@@ -313,23 +497,27 @@ class AIBacktester:
                 'initial_balance': initial_balance,
                 'final_balance': final_balance,
                 'total_return': total_return,
-                'total_pnl': final_balance - initial_balance,
-                'total_trades': len(positions),
-                'winning_trades': 0,
-                'losing_trades': 0,
-                'win_rate': 0.0,
-                'avg_win': 0.0,
-                'avg_loss': 0.0,
-                'profit_factor': 0.0,
+                'total_pnl': total_pnl,
+                'total_trades': len(closed_trades),
+                'winning_trades': len(winning_trades),
+                'losing_trades': len(losing_trades),
+                'win_rate': win_rate,
+                'avg_win': avg_win,
+                'avg_loss': avg_loss,
+                'profit_factor': abs(avg_win / avg_loss) if avg_loss != 0 else 0.0,
                 'timestamp': datetime.now().isoformat(),
-                'note': 'Упрощенный бэктест на свечах (нужна история сделок для полного анализа)',
-                'positions_opened': len(positions)
+                'note': 'Расширенный бэктест на свечах (Protection Engine)',
+                'positions_opened': total_positions_opened,
+                'closed_trades': closed_trades
             }
             
-            logger.info(f"✅ Бэктест на свечах завершен: открыто {len(positions)} позиций, баланс: {final_balance:.2f}")
+            logger.info(
+                f"✅ Бэктест на свечах: {len(closed_trades)} сделок, "
+                f"Return={total_return:.2f}%, WinRate={win_rate:.2f}%"
+            )
             
             return results
-            
+        
         except Exception as e:
             logger.error(f"❌ Ошибка бэктеста на свечах: {e}")
             import traceback
@@ -379,6 +567,8 @@ class AIBacktester:
                 logger.info("⚠️ Недостаточно сделок за период, используем свечи для симуляции...")
                 return self._backtest_on_candles(strategy_params, period_days)
             
+            base_config = _get_config_snapshot().get('global', {})
+
             # Симулируем торговлю с новыми параметрами
             initial_balance = 10000.0
             balance = initial_balance
@@ -386,12 +576,30 @@ class AIBacktester:
             closed_trades = []
             
             # Параметры стратегии
-            rsi_long_entry = strategy_params.get('rsi_long_entry', 29)
-            rsi_long_exit = strategy_params.get('rsi_long_exit', 65)
-            rsi_short_entry = strategy_params.get('rsi_short_entry', 71)
-            rsi_short_exit = strategy_params.get('rsi_short_exit', 35)
-            stop_loss_pct = strategy_params.get('stop_loss_pct', 2.0)
-            take_profit_pct = strategy_params.get('take_profit_pct', 20.0)
+            rsi_long_entry = strategy_params.get(
+                'rsi_long_entry',
+                base_config.get('rsi_long_threshold', 29)
+            )
+            rsi_long_exit = strategy_params.get(
+                'rsi_long_exit',
+                base_config.get('rsi_exit_long_with_trend', 65)
+            )
+            rsi_short_entry = strategy_params.get(
+                'rsi_short_entry',
+                base_config.get('rsi_short_threshold', 71)
+            )
+            rsi_short_exit = strategy_params.get(
+                'rsi_short_exit',
+                base_config.get('rsi_exit_short_with_trend', 35)
+            )
+            stop_loss_pct = strategy_params.get(
+                'stop_loss_pct',
+                base_config.get('max_loss_percent', 2.0)
+            )
+            take_profit_pct = strategy_params.get(
+                'take_profit_pct',
+                base_config.get('take_profit_percent', 20.0)
+            )
             position_size_pct = strategy_params.get('position_size_pct', 10.0)
             
             # Симулируем каждую сделку
@@ -427,7 +635,13 @@ class AIBacktester:
                     'entry_price': entry_price,
                     'size': position_size,
                     'entry_rsi': entry_rsi,
-                    'entry_time': trade.get('timestamp')
+                    'entry_time': trade.get('timestamp'),
+                    'protection_state': _create_protection_state(
+                        direction,
+                        entry_price,
+                        position_size,
+                        trade.get('timestamp')
+                    )
                 }
                 positions.append(position)
                 balance -= position_size
@@ -435,31 +649,40 @@ class AIBacktester:
                 # Проверяем условия выхода
                 should_exit = False
                 exit_reason = None
+                protection_decision = evaluate_protections(
+                    current_price=exit_price,
+                    config=base_config,
+                    state=position.get('protection_state'),
+                    realized_pnl=0.0,
+                    now_ts=_normalize_timestamp(
+                        exit_market_data.get('time')
+                        if exit_market_data
+                        else trade.get('exit_time')
+                    )
+                )
+                position['protection_state'] = protection_decision.state
+                if protection_decision.should_close and protection_decision.reason:
+                    should_exit = True
+                    exit_reason = protection_decision.reason
                 
-                if direction == 'LONG':
-                    # Проверяем стоп-лосс
+                if not should_exit and direction == 'LONG':
                     if exit_price <= entry_price * (1 - stop_loss_pct / 100.0):
                         should_exit = True
                         exit_reason = 'STOP_LOSS'
-                    # Проверяем тейк-профит
                     elif exit_price >= entry_price * (1 + take_profit_pct / 100.0):
                         should_exit = True
                         exit_reason = 'TAKE_PROFIT'
-                    # Проверяем RSI выход
                     elif exit_rsi >= rsi_long_exit:
                         should_exit = True
                         exit_reason = 'RSI_EXIT'
                 
-                elif direction == 'SHORT':
-                    # Проверяем стоп-лосс
+                elif not should_exit and direction == 'SHORT':
                     if exit_price >= entry_price * (1 + stop_loss_pct / 100.0):
                         should_exit = True
                         exit_reason = 'STOP_LOSS'
-                    # Проверяем тейк-профит
                     elif exit_price <= entry_price * (1 - take_profit_pct / 100.0):
                         should_exit = True
                         exit_reason = 'TAKE_PROFIT'
-                    # Проверяем RSI выход
                     elif exit_rsi <= rsi_short_exit:
                         should_exit = True
                         exit_reason = 'RSI_EXIT'
