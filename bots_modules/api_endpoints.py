@@ -1492,6 +1492,9 @@ def system_config():
             SystemConfig.RSI_DIVERGENCE_LOOKBACK = new_value
             system_changes_count += 1
         
+        system_config_data = {}
+        saved_to_file = False
+
         # Параметры определения тренда
         if 'trend_confirmation_bars' in data:
             old_value = SystemConfig.TREND_CONFIRMATION_BARS
@@ -1589,9 +1592,9 @@ def system_config():
         
         return jsonify({
             'success': True,
-                'message': 'Системные настройки обновлены и сохранены',
-                'config': system_config_data,
-                'saved_to_file': saved_to_file
+            'message': 'Системные настройки обновлены и сохранены',
+            'config': system_config_data,
+            'saved_to_file': saved_to_file
         })
         
     except Exception as e:
