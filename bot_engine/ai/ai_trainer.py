@@ -1924,8 +1924,13 @@ class AITrainer:
                                     if position_size_mode == 'percent':
                                         reference_deposit = DEFAULT_AUTO_BOT_CONFIG.get('ai_reference_deposit_usdt', 1000)
                                         position_size_usdt = reference_deposit * (position_size_value / 100)
+                                        logger.info(
+                                            f"    💵 {symbol}: размер сделки {position_size_usdt:.4f} USDT "
+                                            f"(режим percent, {position_size_value}% от депозита {reference_deposit} USDT)"
+                                        )
                                     else:
                                         position_size_usdt = position_size_value
+                                        logger.info(f"    💵 {symbol}: размер сделки {position_size_usdt:.4f} USDT (режим fixed_usdt)")
                                     pnl_usdt = position_size_usdt * (pnl_pct / 100)
                                     
                                     simulated_trade = {
