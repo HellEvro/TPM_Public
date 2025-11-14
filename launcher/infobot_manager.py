@@ -13,6 +13,7 @@ Provides a cross-platform control panel to:
 from __future__ import annotations
 
 import atexit
+import importlib
 import json
 import os
 import queue
@@ -27,7 +28,7 @@ import time
 import webbrowser
 from collections import defaultdict
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 try:
     import tkinter as tk
@@ -789,9 +790,49 @@ class InfoBotManager(tk.Tk):
     def update_license_status(self) -> None:
         lic_files = sorted(PROJECT_ROOT.glob("*.lic"))
         if lic_files:
-            self.license_status_var.set(f"Найден файл: {lic_files[0].name}")
+            lic_name = lic_files[0].name
+            self.license_status_var.set(f"Файл найден: {lic_name} (проверка...)")
+
+            def worker() -> None:
+                os.environ.pop("INFOBOT_LICENSE_STATUS", None)
+                try:
+                    ai_module = importlib.import_module("ai")
+                    ai_module.ensure_license_available(force_refresh=True, silent=True)
+                except SystemExit:
+                    pass
+                except Exception as exc:  # pylint: disable=broad-except
+                    message = f"Ошибка проверки лицензии: {exc}"
+                    self.after(0, lambda: self.license_status_var.set(message))
+                    return
+
+                raw_status = os.environ.get("INFOBOT_LICENSE_STATUS")
+                try:
+                    status_payload = json.loads(raw_status) if raw_status else {}
+                except json.JSONDecodeError:
+                    status_payload = {}
+
+                message = self._format_license_status(status_payload, lic_name)
+                self.after(0, lambda: self.license_status_var.set(message))
+
+            threading.Thread(target=worker, daemon=True).start()
         else:
             self.license_status_var.set("Лицензия не найдена (.lic файл в корне проекта)")
+
+    def _format_license_status(self, status_payload: Dict[str, Any], filename: str) -> str:
+        state = status_payload.get("state")
+        expires_at = status_payload.get("expires_at", "N/A")
+        if state == "valid":
+            source = status_payload.get("time_source", "unknown")
+            source_text = "онлайн" if source == "internet" else "локально"
+            return f"Лицензия активна (до {expires_at}, проверено {source_text})"
+        if state == "expired":
+            return f"Лицензия недействительна (истекла {expires_at})"
+        if state == "invalid":
+            reason = status_payload.get("reason") or "файл не найден или поврежден"
+            return f"Лицензия недействительна ({reason})"
+        if state == "time_unavailable":
+            return "Проверка лицензии недоступна: нет доступа к серверам времени"
+        return f"Ошибка проверки лицензии (файл {filename})"
 
     def _enqueue_log(self, channel: str, message: str, broadcast: bool = True) -> None:
         if broadcast and channel != "system":

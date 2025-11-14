@@ -16,6 +16,8 @@ import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
+from bots_modules.imports_and_globals import shutdown_flag
+
 logger = logging.getLogger('BotsService')
 
 # ✅ КЭШИРОВАНИЕ AI MANAGER для избежания повторных инициализаций
@@ -360,6 +362,10 @@ def check_rsi_time_filter(candles, rsi, signal):
 def get_coin_candles_only(symbol, exchange_obj=None):
     """⚡ БЫСТРАЯ загрузка ТОЛЬКО свечей БЕЗ расчетов"""
     try:
+        if shutdown_flag.is_set():
+            logger.debug(f"{symbol}: Пропуск загрузки свечей (shutdown requested)")
+            return None
+
         from bots_modules.imports_and_globals import get_exchange
         exchange_to_use = exchange_obj if exchange_obj is not None else get_exchange()
         
@@ -397,6 +403,10 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
             enable_trace()
     except:
         pass
+
+    if shutdown_flag.is_set():
+        logger.debug(f"{symbol}: Пропуск анализа RSI (shutdown requested)")
+        return None
     
     # ⚡ СЕМАФОР: Ограничиваем одновременные API запросы к бирже (если нет в кэше)
     # Это предотвращает перегрузку API биржи
@@ -889,6 +899,10 @@ def load_all_coins_candles_fast():
             logger.error("❌ Биржа не инициализирована")
             return False
         
+        if shutdown_flag.is_set():
+            logger.info("⏹️ Загрузка свечей отменена: система завершает работу")
+            return False
+
         # Получаем список всех пар
         pairs = current_exchange.get_all_pairs()
         if not pairs:
@@ -904,7 +918,13 @@ def load_all_coins_candles_fast():
         current_max_workers = 20  # Базовое количество воркеров
         rate_limit_detected = False  # Флаг обнаружения rate limit в предыдущем батче
         
+        shutdown_requested = False
+
         for i in range(0, len(pairs), batch_size):
+            if shutdown_flag.is_set():
+                shutdown_requested = True
+                break
+
             batch = pairs[i:i + batch_size]
             batch_num = i//batch_size + 1
             total_batches = (len(pairs) + batch_size - 1)//batch_size
@@ -929,6 +949,12 @@ def load_all_coins_candles_fast():
                     executor.submit(get_coin_candles_only, symbol, current_exchange): symbol
                     for symbol in batch
                 }
+
+                if shutdown_flag.is_set():
+                    shutdown_requested = True
+                    for future in future_to_symbol:
+                        future.cancel()
+                    break
                 
                 completed = 0
                 done, not_done = concurrent.futures.wait(
@@ -936,6 +962,12 @@ def load_all_coins_candles_fast():
                     timeout=90,
                     return_when=concurrent.futures.ALL_COMPLETED
                 )
+
+                if shutdown_flag.is_set():
+                    shutdown_requested = True
+                    for future in future_to_symbol:
+                        future.cancel()
+                    break
                 
                 for future in done:
                     symbol = future_to_symbol.get(future)
@@ -969,7 +1001,16 @@ def load_all_coins_candles_fast():
                 
                 # Уменьшили паузу между пакетами
                 import time
-                time.sleep(0.1)  # Уменьшили с 0.3 до 0.1
+                if shutdown_flag.wait(0.1):
+                    shutdown_requested = True
+                    break
+
+            if shutdown_requested:
+                break
+        
+        if shutdown_requested:
+            logger.info("⏹️ Загрузка свечей прервана из-за остановки системы")
+            return False
         
         logger.info(f"✅ Загрузка завершена: {len(candles_cache)} монет")
         
@@ -1102,6 +1143,11 @@ def load_all_coins_rsi():
         coins_rsi_data['update_in_progress'] = True
         # ✅ UI блокировка уже установлена в continuous_data_loader
         
+        if shutdown_flag.is_set():
+            logger.info("⏹️ Обновление RSI отменено: система завершает работу")
+            coins_rsi_data['update_in_progress'] = False
+            return False
+
         # ✅ КРИТИЧНО: Создаем ВРЕМЕННОЕ хранилище для всех монет
         # Обновляем coins_rsi_data ТОЛЬКО после завершения всех проверок!
         temp_coins_data = {}
@@ -1144,7 +1190,13 @@ def load_all_coins_rsi():
         batch_size = 100
         total_batches = (len(pairs) + batch_size - 1) // batch_size
         
+        shutdown_requested = False
+
         for i in range(0, len(pairs), batch_size):
+            if shutdown_flag.is_set():
+                shutdown_requested = True
+                break
+
             batch = pairs[i:i + batch_size]
             batch_num = i // batch_size + 1
             
@@ -1154,24 +1206,52 @@ def load_all_coins_rsi():
                     executor.submit(get_coin_rsi_data, symbol, current_exchange): symbol 
                     for symbol in batch
                 }
+
+                if shutdown_flag.is_set():
+                    shutdown_requested = True
+                    for future in future_to_symbol:
+                        future.cancel()
+                    break
                 
-                for future in concurrent.futures.as_completed(future_to_symbol, timeout=60):
-                    symbol = future_to_symbol[future]
-                    try:
-                        result = future.result(timeout=20)
-                        if result:
-                            temp_coins_data[result['symbol']] = result
-                            coins_rsi_data['successful_coins'] += 1
-                        else:
+                try:
+                    for future in concurrent.futures.as_completed(future_to_symbol, timeout=60):
+                        if shutdown_flag.is_set():
+                            shutdown_requested = True
+                            break
+
+                        symbol = future_to_symbol[future]
+                        try:
+                            result = future.result(timeout=20)
+                            if result:
+                                temp_coins_data[result['symbol']] = result
+                                coins_rsi_data['successful_coins'] += 1
+                            else:
+                                coins_rsi_data['failed_coins'] += 1
+                        except Exception as e:
+                            logger.error(f"❌ {symbol}: {e}")
                             coins_rsi_data['failed_coins'] += 1
-                    except Exception as e:
-                        logger.error(f"❌ {symbol}: {e}")
-                        coins_rsi_data['failed_coins'] += 1
+                except concurrent.futures.TimeoutError:
+                    logger.error(f"⚠️ Timeout при загрузке RSI для пакета {batch_num}")
+                    coins_rsi_data['failed_coins'] += len(batch)
+
+                if shutdown_flag.is_set():
+                    shutdown_requested = True
+                    for future in future_to_symbol:
+                        future.cancel()
+                    break
             
             # ✅ Выводим прогресс в лог
             processed = coins_rsi_data['successful_coins'] + coins_rsi_data['failed_coins']
             if batch_num <= total_batches:
                 logger.info(f"📊 Прогресс: {processed}/{len(pairs)} ({processed*100//len(pairs)}%)")
+
+            if shutdown_requested:
+                break
+
+        if shutdown_requested:
+            logger.info("⏹️ Обновление RSI прервано из-за остановки системы")
+            coins_rsi_data['update_in_progress'] = False
+            return False
         
         # ✅ КРИТИЧНО: АТОМАРНОЕ обновление всех данных ОДНИМ МАХОМ!
         coins_rsi_data['coins'] = temp_coins_data
