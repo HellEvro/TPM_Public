@@ -1086,9 +1086,10 @@ def background_cache_cleanup():
 # Прокси для API endpoints ботов (перенаправляем на внешний сервис)
 def call_bots_service(endpoint, method='GET', data=None, timeout=10):
     """Универсальная функция для вызова API сервиса ботов"""
+    # Определяем URL сервиса ботов динамически (доступен в обработчиках Flask)
+    bots_service_url = request.headers.get('X-Bots-Service-URL', 'http://127.0.0.1:5001')
+    
     try:
-        # Определяем URL сервиса ботов динамически
-        bots_service_url = request.headers.get('X-Bots-Service-URL', 'http://127.0.0.1:5001')
         url = f"{bots_service_url}{endpoint}"
         
         if method == 'GET':
@@ -1098,26 +1099,62 @@ def call_bots_service(endpoint, method='GET', data=None, timeout=10):
         else:
             return {'success': False, 'error': f'Unsupported method: {method}'}
         
+        def _safe_json():
+            try:
+                return response.json()
+            except ValueError:
+                return None
+        
+        payload = _safe_json()
         if response.status_code == 200:
-            return response.json()
-        else:
+            if isinstance(payload, dict):
+                payload.setdefault('success', True)
+                payload['status_code'] = response.status_code
+                return payload
             return {
-                'success': False, 
-                'error': f'Bots service returned status {response.status_code}',
-                'details': response.text
+                'success': True,
+                'data': payload if payload is not None else response.text,
+                'status_code': response.status_code
+            }
+        else:
+            # Пытаемся извлечь человекочитаемое сообщение из ответа сервиса ботов
+            if isinstance(payload, dict):
+                error_message = payload.get('error') or payload.get('message')
+                details = payload
+            else:
+                error_message = response.text.strip() or None
+                details = response.text
+            
+            if not error_message:
+                error_message = f'Bots service returned status {response.status_code}'
+            
+            return {
+                'success': False,
+                'error': error_message,
+                'details': details,
+                'status_code': response.status_code
             }
             
     except requests.exceptions.ConnectionError:
         return {
             'success': False, 
             'error': 'Сервис ботов недоступен. Запустите в отдельном терминале: python bots.py',
-            'service_url': BOTS_SERVICE_URL,
-            'instructions': 'Откройте новый терминал и выполните: python bots.py'
+            'service_url': bots_service_url,
+            'instructions': 'Откройте новый терминал и выполните: python bots.py',
+            'status_code': 503
         }
     except requests.exceptions.Timeout:
-        return {'success': False, 'error': f'Timeout calling bots service ({timeout}s)'}
+        return {
+            'success': False,
+            'error': f'Timeout calling bots service ({timeout}s)',
+            'status_code': 504
+        }
     except Exception as e:
-        return {'success': False, 'error': f'Error calling bots service: {str(e)}'}
+        return {
+            'success': False,
+            'error': f'Error calling bots service: {str(e)}',
+            'status_code': 500
+        }
 
 
 
@@ -1125,7 +1162,7 @@ def call_bots_service(endpoint, method='GET', data=None, timeout=10):
 def get_bots_list():
     """Получение списка всех ботов (прокси к сервису ботов)"""
     result = call_bots_service('/api/bots/list')
-    status_code = 200 if result.get('success') else 500
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
 @app.route('/api/bots/control', methods=['POST'])
@@ -1133,7 +1170,7 @@ def control_bot():
     """Управление ботом (прокси к сервису ботов)"""
     data = request.get_json()
     result = call_bots_service('/api/bots/control', method='POST', data=data)
-    status_code = 200 if result.get('success') else 500
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
 @app.route('/api/bots/config', methods=['GET', 'POST'])
@@ -1145,42 +1182,35 @@ def bots_config():
         data = request.get_json()
         result = call_bots_service('/api/bots/config', method='POST', data=data)
     
-    status_code = 200 if result.get('success') else 500
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
 @app.route('/api/bots/status', methods=['GET'])
 def get_bots_status():
     """Получение общего статуса ботов (прокси к сервису ботов)"""
     result = call_bots_service('/api/bots/status')
-    status_code = 200 if result.get('success') else 500
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
 @app.route('/api/bots/pairs', methods=['GET'])
 def get_bots_pairs():
     """Получение списка доступных торговых пар (прокси к сервису ботов)"""
     result = call_bots_service('/api/bots/pairs')
-    status_code = 200 if result.get('success') else 500
-    return jsonify(result), status_code
-
-@app.route('/api/bots/ensure/<symbol>', methods=['POST'])
-def ensure_bot_exists(symbol):
-    """Создание бота для символа (прокси к сервису ботов)"""
-    result = call_bots_service(f'/api/bots/ensure/{symbol}', method='POST')
-    status_code = 200 if result.get('success') else 500
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
 @app.route('/api/bots/health', methods=['GET'])
 def get_bots_health():
     """Проверка состояния сервиса ботов"""
     result = call_bots_service('/health', timeout=5)
-    status_code = 200 if result.get('status') == 'ok' else 503
+    status_code = result.get('status_code', 200 if result.get('status') == 'ok' else 503)
     return jsonify(result), status_code
 
 @app.route('/api/bots/status/<symbol>', methods=['GET'])
 def get_bot_status(symbol):
     """Получить статус конкретного бота (прокси к сервису ботов)"""
     result = call_bots_service(f'/api/bots/status/{symbol}')
-    status_code = 200 if result.get('success') else 500
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
 @app.route('/api/bots/create', methods=['POST'])
@@ -1188,7 +1218,7 @@ def create_bot():
     """Создать бота (прокси к сервису ботов)"""
     data = request.get_json()
     result = call_bots_service('/api/bots/create', method='POST', data=data)
-    status_code = 200 if result.get('success') else 500
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
 @app.route('/api/bots/auto-bot', methods=['POST'])
@@ -1196,14 +1226,14 @@ def toggle_auto_bot():
     """Переключить Auto Bot (прокси к сервису ботов)"""
     data = request.get_json()
     result = call_bots_service('/api/bots/auto-bot', method='POST', data=data)
-    status_code = 200 if result.get('success') else 500
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
 @app.route('/api/bots/account-info', methods=['GET'])
 def get_account_info():
     """Получить информацию об аккаунте (прокси к сервису ботов)"""
     result = call_bots_service('/api/bots/account-info')
-    status_code = 200 if result.get('success') else 500
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
 @app.route('/api/bots/sync-positions', methods=['GET', 'POST'])
@@ -1211,14 +1241,14 @@ def sync_positions():
     """Синхронизировать позиции (прокси к сервису ботов, работает с GET и POST)"""
     method = request.method
     result = call_bots_service('/api/bots/sync-positions', method=method)
-    status_code = 200 if result.get('success') else 500
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
 @app.route('/api/bots/coins-with-rsi', methods=['GET'])
 def get_coins_with_rsi():
     """Получить монеты с RSI данными (прокси к сервису ботов)"""
     result = call_bots_service('/api/bots/coins-with-rsi')
-    status_code = 200 if result.get('success') else 500
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
 @app.route('/api/bots/individual-settings/<symbol>', methods=['GET', 'POST'])
@@ -1229,14 +1259,14 @@ def individual_settings(symbol):
     else:
         data = request.get_json()
         result = call_bots_service(f'/api/bots/individual-settings/{symbol}', method='POST', data=data)
-    status_code = 200 if result.get('success') else 500
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
 @app.route('/api/bots/individual-settings/<symbol>/copy-to-all', methods=['POST'])
 def copy_individual_settings(symbol):
     """Копировать индивидуальные настройки на все боты (прокси к сервису ботов)"""
     result = call_bots_service(f'/api/bots/individual-settings/{symbol}/copy-to-all', method='POST')
-    status_code = 200 if result.get('success') else 500
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
 @app.route('/api/bots/start', methods=['POST'])
@@ -1244,7 +1274,7 @@ def start_bot():
     """Запустить бота (прокси к сервису ботов)"""
     data = request.get_json()
     result = call_bots_service('/api/bots/start', method='POST', data=data)
-    status_code = 200 if result.get('success') else 500
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
 @app.route('/get_symbol_chart/<symbol>')
