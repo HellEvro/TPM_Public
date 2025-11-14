@@ -2004,9 +2004,9 @@ class AITrainer:
                                         'position_size_usdt': position_size_usdt,
                                         'protection_state': _build_protection_state('SHORT', current_price, entry_ts_ms, position_size_usdt),
                                     }
-                    except Exception as e:
-                        logger.debug(f"   ⚠️ Ошибка симуляции свечи {i} для {symbol}: {e}")
-                        continue
+                        except Exception as e:
+                            logger.debug(f"   ⚠️ Ошибка симуляции свечи {i} для {symbol}: {e}")
+                            continue
                     
                     total_candles_processed += len(candles)
                     
