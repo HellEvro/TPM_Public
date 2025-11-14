@@ -815,13 +815,22 @@ class TradingBot:
                     return None
             
             elif self.volume_mode == VolumeMode.PERCENT_BALANCE or self.volume_mode == 'percent':
-                self.logger.info(f" {self.symbol}: Режим PERCENT_BALANCE")
-                balance = self._get_available_balance()
-                if balance:
-                    usdt_amount = balance * (self.volume_value / 100)
+                self.logger.info(f" {self.symbol}: Режим PERCENT_BALANCE (процент от депозита)")
+                deposit_balance = self._get_total_balance()
+                if deposit_balance:
+                    usdt_amount = deposit_balance * (self.volume_value / 100)
+                    self.logger.info(
+                        f" {self.symbol}: Депозит {deposit_balance:.4f} USDT, {self.volume_value}% → {usdt_amount:.4f} USDT"
+                    )
                     current_price = self._get_current_price()
                     if current_price:
-                        return usdt_amount / current_price
+                        size = usdt_amount / current_price
+                        self.logger.info(f" {self.symbol}: Размер позиции по депозиту: {usdt_amount} / {current_price} = {size}")
+                        return size
+                    else:
+                        self.logger.warning(f" {self.symbol}: Не удалось получить цену для расчета процента от депозита")
+                else:
+                    self.logger.warning(f" {self.symbol}: Не удалось получить общий баланс депозита")
             
             self.logger.warning(f" {self.symbol}: Неизвестный режим volume_mode: {self.volume_mode}")
             return None
@@ -903,13 +912,37 @@ class TradingBot:
             self.logger.error(f"Error getting current price: {str(e)}")
             return None
     
+    def _get_wallet_balance_data(self) -> Optional[Dict]:
+        """Получает словарь с данными кошелька"""
+        try:
+            return self.exchange.get_wallet_balance()
+        except Exception as e:
+            self.logger.error(f"Error getting wallet balance: {str(e)}")
+            return None
+
     def _get_available_balance(self) -> Optional[float]:
         """Получает доступный баланс в USDT"""
+        balance_data = self._get_wallet_balance_data()
+        if not balance_data:
+            return None
         try:
-            balance_data = self.exchange.get_wallet_balance()
             return float(balance_data.get('available_balance', 0))
-        except Exception as e:
-            self.logger.error(f"Error getting balance: {str(e)}")
+        except (TypeError, ValueError):
+            self.logger.error("Received invalid available_balance from exchange response")
+            return None
+
+    def _get_total_balance(self) -> Optional[float]:
+        """Получает общий баланс (депозит) в USDT"""
+        balance_data = self._get_wallet_balance_data()
+        if not balance_data:
+            return None
+        balance_value = balance_data.get('total_balance')
+        if balance_value is None:
+            balance_value = balance_data.get('available_balance')
+        try:
+            return float(balance_value)
+        except (TypeError, ValueError):
+            self.logger.error("Received invalid total_balance from exchange response")
             return None
     
     def _calculate_pnl(self, exit_price: float) -> float:

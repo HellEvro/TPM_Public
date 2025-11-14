@@ -402,7 +402,12 @@ class DynamicRiskManager:
         """
         from bot_engine.bot_config import DEFAULT_AUTO_BOT_CONFIG
         
-        base_size = DEFAULT_AUTO_BOT_CONFIG.get('default_position_size', 10.0)
+        base_size_value = DEFAULT_AUTO_BOT_CONFIG.get('default_position_size', 10.0)
+        base_size_mode = DEFAULT_AUTO_BOT_CONFIG.get('default_position_mode', 'usdt')
+        if base_size_mode == 'percent' and balance_usdt:
+            base_size = balance_usdt * (base_size_value / 100.0)
+        else:
+            base_size = base_size_value
         
         # Рассчитываем волатильность
         volatility = self.calculate_volatility(candles)

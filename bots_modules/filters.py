@@ -2248,9 +2248,11 @@ def create_new_bot(symbol, config=None, exchange_obj=None):
         from bots_modules.imports_and_globals import get_exchange
         exchange_to_use = exchange_obj if exchange_obj else get_exchange()
         
-        # Получаем размер позиции из конфига
+        # Получаем настройки размера позиции из конфига
         # ⚡ БЕЗ БЛОКИРОВКИ: чтение словаря - атомарная операция
-        default_volume = bots_data['auto_bot_config']['default_position_size']
+        auto_bot_config = bots_data['auto_bot_config']
+        default_volume = auto_bot_config.get('default_position_size')
+        default_volume_mode = auto_bot_config.get('default_position_mode', 'usdt')
         
         # Создаем конфигурацию бота
         bot_config = {
@@ -2258,7 +2260,7 @@ def create_new_bot(symbol, config=None, exchange_obj=None):
             'status': BOT_STATUS['RUNNING'],  # ✅ ИСПРАВЛЕНО: бот должен быть активным
             'created_at': datetime.now().isoformat(),
             'opened_by_autobot': True,
-            'volume_mode': 'usdt',
+            'volume_mode': default_volume_mode,
             'volume_value': default_volume  # ✅ ИСПРАВЛЕНО: используем значение из конфига
         }
 
@@ -2269,7 +2271,7 @@ def create_new_bot(symbol, config=None, exchange_obj=None):
         # Гарантируем обязательные поля
         bot_config['symbol'] = symbol
         bot_config['status'] = BOT_STATUS['RUNNING']
-        bot_config.setdefault('volume_mode', 'usdt')
+        bot_config.setdefault('volume_mode', default_volume_mode)
         if bot_config.get('volume_value') is None:
             bot_config['volume_value'] = default_volume
         

@@ -79,7 +79,8 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'rsi_exit_long_against_trend': 60,   # Выход из LONG при RSI >= 60 (вход против тренда)
     'rsi_exit_short_with_trend': 35,     # Выход из SHORT при RSI <= 35 (вход по тренду)
     'rsi_exit_short_against_trend': 40,  # Выход из SHORT при RSI <= 40 (вход против тренда)
-    'default_position_size': 5,  # Размер позиции в USDT
+    'default_position_size': 5,          # Базовый размер позиции (в единицах согласно default_position_mode)
+    'default_position_mode': 'usdt',     # Режим расчета: usdt | percent
     'check_interval': 180,      # Интервал проверки в секундах (3 мин = 180 сек)
     'monitoring_interval': 10,  # Интервал мониторинга активных ботов в секундах
     # Торговые настройки

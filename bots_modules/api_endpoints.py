@@ -1246,7 +1246,8 @@ CONFIG_NAMES = {
     # Auto Bot Configuration
     'enabled': 'Auto Bot включен',
     'max_concurrent': 'Максимум одновременных ботов',
-    'default_position_size': 'Размер позиции по умолчанию (USDT)',
+    'default_position_size': 'Размер позиции по умолчанию',
+    'default_position_mode': 'Режим размера позиции по умолчанию',
     'rsi_long_threshold': 'RSI порог для LONG',
     'rsi_short_threshold': 'RSI порог для SHORT',
     'rsi_time_filter_enabled': 'RSI Time Filter (фильтр по времени)',

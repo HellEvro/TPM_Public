@@ -1918,8 +1918,14 @@ class AITrainer:
                                     else:
                                         pnl_pct = ((entry_price - current_price) / entry_price) * 100
                                     
-                                    # Симулируем PnL в USDT (используем размер позиции из настроек)
-                                    position_size_usdt = DEFAULT_AUTO_BOT_CONFIG.get('default_position_size', 5)
+                                    # Симулируем PnL в USDT (учитываем режим размера позиции)
+                                    position_size_value = DEFAULT_AUTO_BOT_CONFIG.get('default_position_size', 5)
+                                    position_size_mode = DEFAULT_AUTO_BOT_CONFIG.get('default_position_mode', 'usdt')
+                                    if position_size_mode == 'percent':
+                                        reference_deposit = DEFAULT_AUTO_BOT_CONFIG.get('ai_reference_deposit_usdt', 1000)
+                                        position_size_usdt = reference_deposit * (position_size_value / 100)
+                                    else:
+                                        position_size_usdt = position_size_value
                                     pnl_usdt = position_size_usdt * (pnl_pct / 100)
                                     
                                     simulated_trade = {

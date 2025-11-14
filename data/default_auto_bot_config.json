@@ -12,6 +12,7 @@
   "rsi_exit_short_with_trend": 35,
   "rsi_exit_short_against_trend": 40,
   "default_position_size": 5,
+  "default_position_mode": "usdt",
   "check_interval": 180,
   "monitoring_interval": 10,
   "trading_enabled": true,

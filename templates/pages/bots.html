@@ -1202,9 +1202,15 @@
                         <div class="config-item">
                             <label class="config-label">
                                 <span class="label-icon">💰</span>
-                                <span class="label-text" data-translate="position_size_label">Размер позиции (USDT):</span>
+                                <span class="label-text" data-translate="position_size_label">Размер позиции:</span>
                             </label>
-                            <input type="number" id="defaultPositionSize" value="10" min="1" step="0.1" class="config-input" />
+                            <div class="config-input-with-unit position-size-control" style="display: flex; gap: 10px;">
+                                <input type="number" id="defaultPositionSize" value="10" min="1" step="0.1" class="config-input" />
+                                <select id="defaultPositionMode" class="config-select">
+                                    <option value="usdt" data-translate="usdt_option">💵 USDT</option>
+                                    <option value="percent" data-translate="percent_option">📊 % от депозита</option>
+                                </select>
+                            </div>
                         </div>
                         
                         <div class="config-item">

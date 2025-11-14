@@ -217,10 +217,7 @@ def save_individual_coin_settings(settings):
         "индивидуальные настройки монет"
     )
     if success:
-        logger.info(
-            " Индивидуальные настройки монет сохранены (%d записей)",
-            len(settings_to_save)
-        )
+        logger.info(f" Индивидуальные настройки монет сохранены ({len(settings_to_save)} записей)")
     return success
 
 
@@ -233,10 +230,7 @@ def load_individual_coin_settings():
     )
     if not data:
         return {}
-    logger.info(
-        " Загружено индивидуальных настроек монет: %d",
-        len(data)
-    )
+    logger.info(f" Загружено индивидуальных настроек монет: {len(data)}")
     return data
 
 

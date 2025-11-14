@@ -166,11 +166,13 @@ def init_bot_service():
                     with bots_data_lock:
                         auto_bot_config = bots_data['auto_bot_config']
                     
+                    default_volume_mode = auto_bot_config.get('default_position_mode', 'usdt')
                     bot_config = {
-                        'volume_mode': bot_data.get('volume_mode', 'usdt'),
+                        'volume_mode': bot_data.get('volume_mode', default_volume_mode),
                         'volume_value': bot_data.get('volume_value', auto_bot_config['default_position_size']),  # Fallback из конфига для старых ботов
                         'status': bot_data.get('status', 'paused')
                     }
+                    bot_config.setdefault('volume_mode', default_volume_mode)
                     
                     trading_bot = RealTradingBot(
                         symbol=bot_data['symbol'],
@@ -465,10 +467,11 @@ def create_bot(symbol, config=None, exchange_obj=None):
     incoming_config = config if isinstance(config, dict) else {}
 
     unique_id = f"{symbol}_{int(time.time())}"
+    default_volume_mode = auto_bot_config.get('default_position_mode', 'usdt')
     base_config = {
         'id': unique_id,
         'symbol': symbol,
-        'volume_mode': 'usdt',
+        'volume_mode': default_volume_mode,
         'volume_value': auto_bot_config.get('default_position_size'),
         'status': BOT_STATUS['RUNNING'],
         'entry_price': None,
@@ -509,7 +512,7 @@ def create_bot(symbol, config=None, exchange_obj=None):
     base_config['symbol'] = symbol
     base_config['status'] = BOT_STATUS['RUNNING']
     base_config.setdefault('created_at', datetime.now().isoformat())
-    base_config.setdefault('volume_mode', 'usdt')
+    base_config.setdefault('volume_mode', default_volume_mode)
     if base_config.get('volume_value') is None:
         base_config['volume_value'] = auto_bot_config.get('default_position_size')
 

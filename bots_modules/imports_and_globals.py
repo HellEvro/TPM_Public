@@ -684,10 +684,7 @@ def load_individual_coin_settings():
             _individual_coin_settings_state['last_mtime'] = os.path.getmtime(INDIVIDUAL_COIN_SETTINGS_FILE)
         except OSError:
             _individual_coin_settings_state['last_mtime'] = None
-        logger.info(
-            " ✅ Загружено индивидуальных настроек: %d",
-            len(normalized)
-        )
+        logger.info(f" ✅ Загружено индивидуальных настроек: {len(normalized)}")
         return deepcopy(normalized)
     except Exception as exc:
         logger.error(f" ❌ Ошибка загрузки индивидуальных настроек: {exc}")
@@ -787,11 +784,7 @@ def copy_individual_coin_settings_to_all(source_symbol, target_symbols=None, per
     if persist:
         save_individual_coin_settings()
 
-    logger.info(
-        " 📋 Настройки %s скопированы к %d монетам",
-        normalized_source,
-        copied
-    )
+    logger.info(f" 📋 Настройки {normalized_source} скопированы к {copied} монетам")
     return copied
 
 

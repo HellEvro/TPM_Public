@@ -203,6 +203,7 @@ class BotsManager {
                 '#rsiExitLong',
                 '#rsiExitShort',
                 '#defaultPositionSize',
+                '#defaultPositionMode',
                 '#autoBotMaxConcurrent',
                 '#autoBotRiskCap'
             ];
@@ -5524,6 +5525,9 @@ class BotsManager {
         this.logDebug('   system:', config.system);
         
         const autoBotConfig = config.autoBot || config;
+        if (!autoBotConfig.default_position_mode) {
+            autoBotConfig.default_position_mode = 'usdt';
+        }
         
         // ✅ Кэшируем конфигурацию Auto Bot для быстрого доступа (для updateCoinInfo и др.)
         this.cachedAutoBotConfig = autoBotConfig;
@@ -5602,6 +5606,11 @@ class BotsManager {
         if (positionSizeEl) {
             positionSizeEl.value = autoBotConfig.default_position_size || 10;
             console.log('[BotsManager] 💰 Размер позиции:', positionSizeEl.value);
+        }
+        const positionModeEl = document.getElementById('defaultPositionMode');
+        if (positionModeEl) {
+            positionModeEl.value = autoBotConfig.default_position_mode || 'usdt';
+            console.log('[BotsManager] 🔄 Режим размера позиции:', positionModeEl.value);
         }
         
         const checkIntervalEl = document.getElementById('checkInterval');
@@ -6147,6 +6156,9 @@ class BotsManager {
         
         // ✅ ГЛУБОКОЕ КОПИРОВАНИЕ КЭШИРОВАННОЙ КОНФИГУРАЦИИ
         const autoBotConfig = JSON.parse(JSON.stringify(this.cachedAutoBotConfig));
+        if (!autoBotConfig.default_position_mode) {
+            autoBotConfig.default_position_mode = 'usdt';
+        }
         
         // ✅ ПРИМЕНЯЕМ ИЗМЕНЕНИЯ ИЗ DOM ТОЛЬКО ДЛЯ ПОЛЕЙ, КОТОРЫЕ ПОЛЬЗОВАТЕЛЬ РЕАЛЬНО ИЗМЕНИЛ
         // Сравниваем значения из DOM с originalConfig, и если они отличаются - применяем
@@ -6325,6 +6337,11 @@ class BotsManager {
                 }
             });
             
+            const positionModeEl = document.getElementById('defaultPositionMode');
+            if (positionModeEl) {
+                applyDomChange('default_position_mode', () => positionModeEl.value || 'usdt');
+            }
+            
             // Строковые поля
             const scopeEl = document.getElementById('autoBotScope');
             if (scopeEl) {
@@ -6408,6 +6425,7 @@ class BotsManager {
                 rsi_exit_short_with_trend: config.autoBot.rsi_exit_short_with_trend,
                 rsi_exit_short_against_trend: config.autoBot.rsi_exit_short_against_trend,
                 default_position_size: config.autoBot.default_position_size,
+                default_position_mode: config.autoBot.default_position_mode,
                 check_interval: config.autoBot.check_interval
             };
             
@@ -6798,6 +6816,7 @@ class BotsManager {
                     rsi_exit_short_with_trend: 35,
                     rsi_exit_short_against_trend: 40,
                     default_position_size: 10,
+                    default_position_mode: 'usdt',
                     check_interval: 180,
                     max_loss_percent: 15.0,
                     take_profit_percent: 20.0,
