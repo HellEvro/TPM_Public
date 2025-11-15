@@ -18,6 +18,15 @@ from datetime import datetime
 
 from bots_modules.imports_and_globals import shutdown_flag
 
+try:
+    from bot_engine.filters import (
+        check_rsi_time_filter as engine_check_rsi_time_filter,
+        check_exit_scam_filter as engine_check_exit_scam_filter,
+    )
+except ImportError:
+    engine_check_rsi_time_filter = None
+    engine_check_exit_scam_filter = None
+
 logger = logging.getLogger('BotsService')
 
 # ✅ КЭШИРОВАНИЕ AI MANAGER для избежания повторных инициализаций
@@ -120,11 +129,13 @@ except ImportError as e:
 
 # Импорт функций для работы с делистинговыми монетами
 try:
-    from bots_modules.sync_and_cache import load_delisted_coins
+    from bots_modules.sync_and_cache import load_delisted_coins, ensure_exchange_initialized
 except ImportError as e:
-    print(f"Warning: Could not import delisting functions in filters: {e}")
-    def load_delisted_coins(): 
+    print(f"Warning: Could not import sync_and_cache helpers in filters: {e}")
+    def load_delisted_coins():
         return {"delisted_coins": {}}
+    def ensure_exchange_initialized():
+        return False
 
 # ❌ ОТКЛЮЧЕНО: optimal_ema перемещен в backup (используется заглушка из imports_and_globals)
 # Импорт функции optimal_ema из модуля
@@ -172,7 +183,7 @@ except ImportError:
         RSI_EXIT_SHORT_WITH_TREND = 35
         RSI_EXIT_SHORT_AGAINST_TREND = 40
 
-def check_rsi_time_filter(candles, rsi, signal):
+def _legacy_check_rsi_time_filter(candles, rsi, signal):
     """
     ГИБРИДНЫЙ ВРЕМЕННОЙ ФИЛЬТР RSI
     
@@ -392,6 +403,99 @@ def get_coin_candles_only(symbol, exchange_obj=None):
         
     except Exception as e:
         return None
+
+
+def check_rsi_time_filter(candles, rsi, signal):
+    """Обёртка над bot_engine.filters.check_rsi_time_filter с fallback на легаси-логику."""
+    try:
+        if engine_check_rsi_time_filter is None:
+            raise RuntimeError('engine filters unavailable')
+        auto_config = bots_data.get('auto_bot_config', {})
+        result = engine_check_rsi_time_filter(
+            candles,
+            rsi,
+            signal,
+            auto_config,
+            calculate_rsi_history_func=calculate_rsi_history,
+        )
+        return {
+            'allowed': bool(result.get('allowed')),
+            'reason': result.get('reason'),
+            'last_extreme_candles_ago': result.get('last_extreme_candles_ago'),
+            'calm_candles': result.get('calm_candles'),
+        }
+    except Exception as exc:
+        logger.error(f" Ошибка проверки временного фильтра: {exc}")
+        return _legacy_check_rsi_time_filter(candles, rsi, signal)
+
+
+def _run_exit_scam_ai_detection(symbol, candles):
+    """AI-анализ свечей на аномалии (reuse из легаси-логики)."""
+    try:
+        from bot_engine.bot_config import AIConfig
+    except ImportError:
+        return True
+
+    if not (AIConfig.AI_ENABLED and AIConfig.AI_ANOMALY_DETECTION_ENABLED):
+        return True
+
+    try:
+        ai_manager, ai_available = get_cached_ai_manager()
+        if not ai_available or not ai_manager or not ai_manager.anomaly_detector:
+            return True
+
+        anomaly_result = ai_manager.anomaly_detector.detect(candles)
+        if anomaly_result.get('is_anomaly'):
+            severity = anomaly_result.get('severity', 0)
+            anomaly_type = anomaly_result.get('anomaly_type', 'UNKNOWN')
+            if severity > AIConfig.AI_ANOMALY_BLOCK_THRESHOLD:
+                logger.warning(
+                    f"{symbol}: ❌ БЛОКИРОВКА (AI): "
+                    f"Обнаружена аномалия {anomaly_type} "
+                    f"(severity: {severity:.2%})"
+                )
+                return False
+            logger.warning(
+                f"{symbol}: ⚠️ ПРЕДУПРЕЖДЕНИЕ (AI): "
+                f"Аномалия {anomaly_type} "
+                f"(severity: {severity:.2%} - ниже порога {AIConfig.AI_ANOMALY_BLOCK_THRESHOLD:.2%})"
+            )
+    except ImportError as exc:
+        logger.debug(f"{symbol}: AI модуль не доступен: {exc}")
+    except Exception as exc:
+        logger.error(f"{symbol}: Ошибка AI проверки: {exc}")
+    return True
+
+
+def check_exit_scam_filter(symbol, coin_data):
+    """Унифицированный exit-scam фильтр с AI-анализом и fallback."""
+    try:
+        if engine_check_exit_scam_filter is None:
+            raise RuntimeError('engine filters unavailable')
+        auto_config = bots_data.get('auto_bot_config', {})
+        exchange_obj = get_exchange()
+        if not exchange_obj:
+            return False
+
+        base_allowed = engine_check_exit_scam_filter(
+            symbol,
+            coin_data,
+            auto_config,
+            exchange_obj,
+            ensure_exchange_initialized,
+        )
+
+        if not base_allowed:
+            return False
+
+        chart_response = exchange_obj.get_chart_data(symbol, '6h', '30d')
+        candles = chart_response.get('data', {}).get('candles', []) if chart_response and chart_response.get('success') else []
+        if candles:
+            return _run_exit_scam_ai_detection(symbol, candles)
+        return True
+    except Exception as exc:
+        logger.error(f"{symbol}: Ошибка проверки exit-scam (core): {exc}")
+        return _legacy_check_exit_scam_filter(symbol, coin_data)
 
 def get_coin_rsi_data(symbol, exchange_obj=None):
     """Получает RSI данные для одной монеты (6H таймфрейм)"""
@@ -1896,7 +2000,7 @@ def update_is_mature_flags_in_rsi_data():
     except Exception as e:
         logger.error(f"❌ Ошибка обновления флагов: {e}")
 
-def check_exit_scam_filter(symbol, coin_data):
+def _legacy_check_exit_scam_filter(symbol, coin_data):
     """
     EXIT SCAM ФИЛЬТР + AI ANOMALY DETECTION
     
