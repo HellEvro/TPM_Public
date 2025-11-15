@@ -217,6 +217,30 @@ def _apply_protection_state_to_bot_data(bot_data, state):
     bot_data['trailing_last_update_ts'] = state.trailing_last_update_ts
 
 
+def _snapshot_bots_for_protections():
+    """Возвращает копию автоконфига и ботов в позициях для обработки вне блокировки."""
+    with bots_data_lock:
+        auto_config = copy.deepcopy(bots_data.get('auto_bot_config', DEFAULT_AUTO_BOT_CONFIG))
+        bots_snapshot = {
+            symbol: copy.deepcopy(bot_data)
+            for symbol, bot_data in bots_data.get('bots', {}).items()
+            if bot_data.get('status') in ['in_position_long', 'in_position_short']
+        }
+    return auto_config, bots_snapshot
+
+
+def _update_bot_record(symbol, updates):
+    """Безопасно применяет изменения к bot_data, минимизируя время блокировки."""
+    if not updates:
+        return False
+    with bots_data_lock:
+        bot_data = bots_data['bots'].get(symbol)
+        if not bot_data:
+            return False
+        bot_data.update(updates)
+    return True
+
+
 def get_system_config_snapshot():
     """Возвращает текущие значения SystemConfig в формате, ожидаемом UI."""
     snapshot = {}
@@ -615,10 +639,15 @@ def save_bots_state():
         # ✅ ИСПРАВЛЕНИЕ: Используем таймаут для блокировки чтобы не висеть при остановке
         import threading
         
+        requester = threading.current_thread().name
         # Пытаемся захватить блокировку с таймаутом
         acquired = bots_data_lock.acquire(timeout=2.0)
         if not acquired:
-            logger.warning("[SAVE_STATE] ⚠️ Не удалось получить блокировку за 2 секунды - пропускаем сохранение")
+            active_threads = [t.name for t in threading.enumerate()[:10]]
+            logger.warning(
+                "[SAVE_STATE] ⚠️ Не удалось получить блокировку за 2 секунды - пропускаем сохранение "
+                f"(thread={requester}, active_threads={active_threads})"
+            )
             return False
         
         try:
@@ -1921,276 +1950,214 @@ def check_trading_rules_activation():
         return False
 
 def check_missing_stop_losses():
-    """Проверяет и устанавливает недостающие стоп-лоссы и трейлинг стопы для ботов
-    
-    КРИТИЧЕСКАЯ ФУНКЦИЯ: От работы этой функции зависит защита средств!
-    Если exchange недоступен - это КРИТИЧЕСКАЯ ОШИБКА, а не предупреждение!
-    """
+    """Проверяет и устанавливает недостающие стоп-лоссы и трейлинг стопы для ботов."""
     try:
-        # Шаг 1: Проверка и инициализация exchange - АГРЕССИВНЫЙ ПОДХОД
-        current_exchange = None
-        max_retries = 3
-        
-        for attempt in range(max_retries):
-            # Попытка 1: Получить через get_exchange()
-            try:
-                current_exchange = get_exchange()
-                if current_exchange:
-                    break
-            except (NameError, AttributeError) as e:
-                logger.debug(f" get_exchange() недоступен: {e}")
-            
-            # Попытка 2: Использовать глобальную переменную exchange
-            if not current_exchange:
-                try:
-                    current_exchange = exchange
-                    if current_exchange:
-                        break
-                except NameError:
-                    pass
-            
-            # Попытка 3: Попытаться инициализировать через ensure_exchange_initialized
-            if not current_exchange:
-                logger.error(f" ❌ КРИТИЧЕСКАЯ ОШИБКА: Exchange недоступен (попытка {attempt + 1}/{max_retries})")
-                if ensure_exchange_initialized():
-                    # После инициализации ВСЕГДА используем get_exchange() (не локальную переменную exchange!)
-                    # потому что set_exchange() обновляет _state.exchange, но не локальные переменные
-                    try:
-                        current_exchange = get_exchange()
-                        if current_exchange:
-                            logger.info(f" ✅ Exchange восстановлен после инициализации через get_exchange() (попытка {attempt + 1})")
-                            break
-                        else:
-                            logger.error(f" ❌ ensure_exchange_initialized() вернул True, но get_exchange() всё ещё None!")
-                    except Exception as e:
-                        logger.error(f" ❌ Ошибка получения exchange после инициализации: {e}")
-                else:
-                    logger.error(f" ❌ КРИТИЧЕСКАЯ ОШИБКА: ensure_exchange_initialized() вернул False (попытка {attempt + 1}/{max_retries})")
-            
-            # Если не получилось, ждем немного перед следующей попыткой
-            if attempt < max_retries - 1:
-                import time
-                time.sleep(0.5)
-        
-        # ФИНАЛЬНАЯ ПРОВЕРКА: Если exchange всё ещё недоступен - это КРИТИЧЕСКАЯ ОШИБКА
-        if not current_exchange:
-            logger.error(f" ❌ КРИТИЧЕСКАЯ ОШИБКА: Exchange объект недоступен после {max_retries} попыток!")
-            # Безопасная диагностика
-            try:
-                get_exchange_result = get_exchange()
-                logger.error(f" ❌ get_exchange() = {get_exchange_result}")
-            except Exception as e:
-                logger.error(f" ❌ get_exchange() недоступен: {e}")
-            try:
-                logger.error(f" ❌ exchange = {exchange}")
-            except Exception as e:
-                logger.error(f" ❌ exchange недоступен: {e}")
-            logger.error(f" ❌ СТОП-ЛОССЫ НЕ МОГУТ БЫТЬ УСТАНОВЛЕНЫ! Это критическая проблема безопасности!")
-            logger.error(f" ❌ Проверьте: 1) Ключи API корректны 2) Сеть доступна 3) Биржа работает")
+        if not ensure_exchange_initialized():
+            logger.error(" ❌ Биржа не инициализирована")
             return False
-        
-        logger.debug(f" ✅ Exchange получен успешно: {type(current_exchange)}")
-        from bots_modules.bot_class import NewTradingBot
-        
-        with bots_data_lock:
-            
-            # Получаем все позиции с биржи
-            try:
-                
-                positions_response = current_exchange.client.get_positions(
-                    category="linear",
-                    settleCoin="USDT"
-                )
-                
-                if positions_response.get('retCode') != 0:
-                    logger.error(f" ❌ КРИТИЧЕСКАЯ ОШИБКА получения позиций: {positions_response.get('retMsg')} (retCode={positions_response.get('retCode')})")
-                    return False
-                
-                exchange_positions = positions_response.get('result', {}).get('list', [])
-                
-            except Exception as e:
-                logger.error(f" ❌ Ошибка получения позиций с биржи: {e}")
-                return False
-            
-            updated_count = 0
-            failed_count = 0
-            
-            # Обрабатываем каждого бота в позиции
-            for symbol, bot_data in bots_data['bots'].items():
-                if bot_data.get('status') not in ['in_position_long', 'in_position_short']:
-                    continue
-                try:
-                    # Ищем позицию на бирже для этого символа
-                    pos = None
-                    for position in exchange_positions:
-                        pos_symbol = position.get('symbol', '').replace('USDT', '')
-                        if pos_symbol == symbol:
-                            pos = position
-                            break
-                    
-                    if not pos:
-                        logger.warning(f" ⚠️ Позиция {symbol} не найдена на бирже")
-                        continue
-                    
-                    position_size = float(pos.get('size', 0))
-                    if position_size <= 0:
-                        logger.warning(f" ⚠️ Позиция {symbol} закрыта на бирже")
-                        continue
-                    
-                    # Получаем данные позиции
-                    entry_price = float(pos.get('avgPrice', 0))
-                    current_price = float(pos.get('markPrice', 0))
-                    unrealized_pnl = float(pos.get('unrealisedPnl', 0))
-                    side = pos.get('side', '')
-                    position_idx = pos.get('positionIdx', 0)
-                    existing_stop_loss = pos.get('stopLoss', '')
-                    existing_trailing_stop = pos.get('trailingStop', '')
-                    existing_take_profit = pos.get('takeProfit', '')
-                    
-                    # Рассчитываем процент прибыли/убытка
-                    if side == 'Buy':  # LONG позиция
-                        profit_percent = ((current_price - entry_price) / entry_price) * 100
-                    else:  # SHORT позиция
-                        profit_percent = ((entry_price - current_price) / entry_price) * 100
-                    
-                    logger.info(f" 📊 {symbol}: PnL {profit_percent:.2f}%, текущая цена {current_price}, вход {entry_price}")
-                    
-                    # Импортируем состояние из Protection Engine для точного совпадения логики
-                    position_side = 'LONG' if side == 'Buy' else 'SHORT'
-                    position_qty = abs(_safe_float(pos.get('size'), 0.0) or 0.0)
-                    if position_qty <= 0:
-                        logger.warning(f" ⚠️ Позиция {symbol} имеет нулевой объём — пропуск")
-                        continue
 
-                    entry_timestamp = (
-                        _normalize_timestamp(bot_data.get('entry_timestamp'))
-                        or _normalize_timestamp(bot_data.get('position_start_time'))
-                        or _normalize_timestamp(pos.get('createdTime') or pos.get('updatedTime'))
-                    )
-                    runtime_config = dict(bot_data or {})
-                    runtime_config['entry_price'] = entry_price
-                    runtime_config['position_side'] = position_side
-                    runtime_config['position_size_coins'] = position_qty
-                    runtime_config['volume_value'] = runtime_config.get('volume_value') or (
-                        entry_price * position_qty if entry_price else None
-                    )
-                    if entry_timestamp:
-                        runtime_config['entry_timestamp'] = entry_timestamp
-                        runtime_config['position_start_time'] = _timestamp_to_iso(entry_timestamp)
+        current_exchange = get_exchange() or exchange
+        if not current_exchange:
+            logger.error(" ❌ Не удалось получить объект биржи")
+            return False
 
-                    bot_instance = NewTradingBot(symbol, config=runtime_config, exchange=current_exchange)
-                    bot_instance.entry_price = entry_price
-                    bot_instance.position_side = position_side
-                    bot_instance.position_size_coins = position_qty
-                    bot_instance.position_size = (entry_price * position_qty) if entry_price else bot_instance.position_size
-                    bot_instance.realized_pnl = _safe_float(pos.get('cumRealisedPnl') or pos.get('realisedPnl') or pos.get('realizedPnl'), 0.0)
-                    bot_instance.unrealized_pnl = unrealized_pnl
-                    if entry_timestamp:
-                        bot_instance.entry_timestamp = entry_timestamp
-                        bot_instance.position_start_time = datetime.fromtimestamp(entry_timestamp)
-
-                    decision = bot_instance._evaluate_protection_decision(current_price)
-                    config = bot_instance._get_effective_protection_config()
-                    _apply_protection_state_to_bot_data(bot_data, decision.state)
-
-                    bot_data['entry_price'] = entry_price
-                    bot_data['position_side'] = position_side
-                    bot_data['position_size_coins'] = position_qty
-                    bot_data['position_size'] = entry_price * position_qty if entry_price else bot_data.get('position_size')
-                    bot_data['realized_pnl'] = bot_instance.realized_pnl
-                    bot_data['unrealized_pnl'] = unrealized_pnl
-                    bot_data['current_price'] = current_price
-                    bot_data['leverage'] = _safe_float(pos.get('leverage'), bot_data.get('leverage', 1.0)) or 1.0
-                    if entry_timestamp:
-                        bot_data['entry_timestamp'] = entry_timestamp
-                        bot_data['position_start_time'] = _timestamp_to_iso(entry_timestamp)
-
-                    if decision.should_close:
-                        logger.warning(
-                            f" ⚠️ Protection Engine сигнализирует закрытие {symbol}: {decision.reason}"
-                        )
-
-                    # Синхронизируем существующие стопы/тейки из биржи
-                    if existing_stop_loss:
-                        bot_data['stop_loss_price'] = float(existing_stop_loss)
-                    if existing_take_profit:
-                        bot_data['take_profit_price'] = float(existing_take_profit)
-                    if existing_trailing_stop:
-                        bot_data['trailing_stop_price'] = float(existing_trailing_stop)
-
-                    desired_stop = _select_stop_loss_price(
-                        position_side,
-                        entry_price,
-                        current_price,
-                        config,
-                        bot_instance.break_even_stop_price,
-                        bot_instance.trailing_stop_price,
-                    )
-                    existing_stop_value = _safe_float(existing_stop_loss)
-                    if desired_stop and _needs_price_update(position_side, desired_stop, existing_stop_value):
-                        try:
-                            sl_response = current_exchange.update_stop_loss(
-                                symbol=symbol,
-                                stop_loss_price=desired_stop,
-                                position_side=position_side,
-                            )
-                            if sl_response and sl_response.get('success'):
-                                bot_data['stop_loss_price'] = desired_stop
-                                updated_count += 1
-                                logger.info(f" ✅ Стоп-лосс синхронизирован для {symbol}: {desired_stop:.6f}")
-                            else:
-                                failed_count += 1
-                                logger.error(f" ❌ Ошибка установки стоп-лосса для {symbol}: {sl_response}")
-                        except Exception as e:
-                            failed_count += 1
-                            logger.error(f" ❌ Ошибка установки стоп-лосса для {symbol}: {e}")
-
-                    desired_take = _select_take_profit_price(
-                        position_side,
-                        entry_price,
-                        config,
-                        bot_instance.trailing_take_profit_price,
-                    )
-                    existing_take_value = _safe_float(existing_take_profit)
-                    if desired_take and _needs_price_update(position_side, desired_take, existing_take_value):
-                        try:
-                            tp_response = current_exchange.update_take_profit(
-                                symbol=symbol,
-                                take_profit_price=desired_take,
-                                position_side=position_side,
-                            )
-                            if tp_response and tp_response.get('success'):
-                                bot_data['take_profit_price'] = desired_take
-                                updated_count += 1
-                                logger.info(f" ✅ Тейк-профит синхронизирован для {symbol}: {desired_take:.6f}")
-                            else:
-                                failed_count += 1
-                                logger.error(f" ❌ Ошибка установки тейк-профита для {symbol}: {tp_response}")
-                        except Exception as e:
-                            failed_count += 1
-                            logger.error(f" ❌ Ошибка установки тейк-профита для {symbol}: {e}")
-                    
-                    # Обновляем время последнего обновления
-                    bot_data['last_update'] = datetime.now().isoformat()
-                        
-                except Exception as e:
-                    logger.error(f" ❌ Ошибка обработки {symbol}: {e}")
-                    failed_count += 1
-                    continue
-            
-            if updated_count > 0 or failed_count > 0:
-                logger.info(f" ✅ Установка завершена: установлено {updated_count}, ошибок {failed_count}")
-                
-                # Сохраняем обновленные данные ботов в файл
-                if updated_count > 0:
-                    try:
-                        save_bots_state()
-                        logger.info(f" 💾 Сохранено состояние ботов в файл")
-                    except Exception as save_error:
-                        logger.error(f" ❌ Ошибка сохранения состояния ботов: {save_error}")
-            
+        auto_config, bots_snapshot = _snapshot_bots_for_protections()
+        if not bots_snapshot:
+            logger.debug(" ℹ️ Нет ботов в позиции для установки стопов")
             return True
-            
+
+        try:
+            positions_response = current_exchange.client.get_positions(
+                category="linear",
+                settleCoin="USDT"
+            )
+            if positions_response.get('retCode') != 0:
+                logger.error(
+                    f" ❌ КРИТИЧЕСКАЯ ОШИБКА получения позиций: "
+                    f"{positions_response.get('retMsg')} (retCode={positions_response.get('retCode')})"
+                )
+                return False
+            exchange_positions = {
+                position.get('symbol', '').replace('USDT', ''): position
+                for position in positions_response.get('result', {}).get('list', [])
+            }
+        except Exception as e:
+            logger.error(f" ❌ Ошибка получения позиций с биржи: {e}")
+            return False
+
+        from bots_modules.bot_class import NewTradingBot
+
+        updated_count = 0
+        failed_count = 0
+
+        for symbol, bot_snapshot in bots_snapshot.items():
+            try:
+                pos = exchange_positions.get(symbol)
+                if not pos:
+                    logger.warning(f" ⚠️ Позиция {symbol} не найдена на бирже")
+                    continue
+
+                position_size = _safe_float(pos.get('size'), 0.0) or 0.0
+                if position_size <= 0:
+                    logger.warning(f" ⚠️ Позиция {symbol} закрыта на бирже")
+                    continue
+
+                entry_price = _safe_float(pos.get('avgPrice'), 0.0)
+                current_price = _safe_float(pos.get('markPrice'), entry_price)
+                unrealized_pnl = _safe_float(pos.get('unrealisedPnl'), 0.0) or 0.0
+                side = pos.get('side', '')
+                position_idx = pos.get('positionIdx', 0)
+                existing_stop_loss = pos.get('stopLoss', '')
+                existing_trailing_stop = pos.get('trailingStop', '')
+                existing_take_profit = pos.get('takeProfit', '')
+
+                position_side = 'LONG' if side == 'Buy' else 'SHORT'
+                profit_percent = 0.0
+                if entry_price:
+                    if position_side == 'LONG':
+                        profit_percent = ((current_price - entry_price) / entry_price) * 100
+                    else:
+                        profit_percent = ((entry_price - current_price) / entry_price) * 100
+
+                logger.info(
+                    f" 📊 {symbol}: PnL {profit_percent:.2f}%, текущая {current_price}, вход {entry_price}"
+                )
+
+                runtime_config = copy.deepcopy(bot_snapshot)
+                runtime_config.setdefault('volume_value', runtime_config.get('position_size'))
+                if entry_price and position_size:
+                    runtime_config['position_size'] = entry_price * position_size
+                    runtime_config['position_size_coins'] = position_size
+                runtime_config['entry_price'] = runtime_config.get('entry_price') or entry_price
+                runtime_config['position_side'] = runtime_config.get('position_side') or position_side
+
+                entry_timestamp = (
+                    _normalize_timestamp(bot_snapshot.get('entry_timestamp'))
+                    or _normalize_timestamp(bot_snapshot.get('position_start_time'))
+                    or _normalize_timestamp(pos.get('createdTime') or pos.get('updatedTime'))
+                )
+                if entry_timestamp:
+                    runtime_config['entry_timestamp'] = entry_timestamp
+                    runtime_config['position_start_time'] = _timestamp_to_iso(entry_timestamp)
+
+                bot_instance = NewTradingBot(symbol, config=runtime_config, exchange=current_exchange)
+                bot_instance.entry_price = entry_price
+                bot_instance.position_side = position_side
+                bot_instance.position_size_coins = position_size
+                bot_instance.position_size = entry_price * position_size if entry_price else runtime_config.get('position_size')
+                bot_instance.realized_pnl = _safe_float(
+                    pos.get('cumRealisedPnl') or pos.get('realisedPnl') or pos.get('realizedPnl'), 0.0
+                ) or 0.0
+                bot_instance.unrealized_pnl = unrealized_pnl
+                if entry_timestamp:
+                    bot_instance.entry_timestamp = entry_timestamp
+                    bot_instance.position_start_time = datetime.fromtimestamp(entry_timestamp)
+
+                decision = bot_instance._evaluate_protection_decision(current_price)
+                protection_config = bot_instance._get_effective_protection_config()
+
+                updates = {
+                    'entry_price': entry_price,
+                    'position_side': position_side,
+                    'position_size_coins': position_size,
+                    'position_size': bot_instance.position_size,
+                    'realized_pnl': bot_instance.realized_pnl,
+                    'unrealized_pnl': unrealized_pnl,
+                    'current_price': current_price,
+                    'leverage': _safe_float(pos.get('leverage'), bot_snapshot.get('leverage', 1.0)) or 1.0,
+                    'last_update': datetime.now().isoformat(),
+                }
+                if entry_timestamp:
+                    updates['entry_timestamp'] = entry_timestamp
+                    updates['position_start_time'] = _timestamp_to_iso(entry_timestamp)
+
+                if existing_stop_loss:
+                    updates['stop_loss_price'] = _safe_float(existing_stop_loss)
+                if existing_take_profit:
+                    updates['take_profit_price'] = _safe_float(existing_take_profit)
+                if existing_trailing_stop:
+                    updates['trailing_stop_price'] = _safe_float(existing_trailing_stop)
+
+                _apply_protection_state_to_bot_data(updates, decision.state)
+
+                if decision.should_close:
+                    logger.warning(
+                        f" ⚠️ Protection Engine сигнализирует закрытие {symbol}: {decision.reason}"
+                    )
+
+                desired_stop = _select_stop_loss_price(
+                    position_side,
+                    entry_price,
+                    current_price,
+                    protection_config,
+                    bot_instance.break_even_stop_price,
+                    bot_instance.trailing_stop_price,
+                )
+                existing_stop_value = _safe_float(existing_stop_loss)
+
+                if desired_stop and _needs_price_update(position_side, desired_stop, existing_stop_value):
+                    try:
+                        sl_response = current_exchange.update_stop_loss(
+                            symbol=symbol,
+                            stop_loss_price=desired_stop,
+                            position_side=position_side,
+                        )
+                        if sl_response and sl_response.get('success'):
+                            updates['stop_loss_price'] = desired_stop
+                            updated_count += 1
+                            logger.info(f" ✅ Стоп-лосс синхронизирован для {symbol}: {desired_stop:.6f}")
+                        else:
+                            failed_count += 1
+                            logger.error(f" ❌ Ошибка установки стоп-лосса для {symbol}: {sl_response}")
+                    except Exception as e:
+                        failed_count += 1
+                        logger.error(f" ❌ Ошибка установки стоп-лосса для {symbol}: {e}")
+
+                desired_take = _select_take_profit_price(
+                    position_side,
+                    entry_price,
+                    protection_config,
+                    bot_instance.trailing_take_profit_price,
+                )
+                existing_take_value = _safe_float(existing_take_profit)
+
+                if desired_take and _needs_price_update(position_side, desired_take, existing_take_value):
+                    try:
+                        tp_response = current_exchange.update_take_profit(
+                            symbol=symbol,
+                            take_profit_price=desired_take,
+                            position_side=position_side,
+                        )
+                        if tp_response and tp_response.get('success'):
+                            updates['take_profit_price'] = desired_take
+                            updated_count += 1
+                            logger.info(f" ✅ Тейк-профит синхронизирован для {symbol}: {desired_take:.6f}")
+                        else:
+                            failed_count += 1
+                            logger.error(f" ❌ Ошибка установки тейк-профита для {symbol}: {tp_response}")
+                    except Exception as e:
+                        failed_count += 1
+                        logger.error(f" ❌ Ошибка установки тейк-профита для {symbol}: {e}")
+
+                if not _update_bot_record(symbol, updates):
+                    logger.debug(f" ℹ️ Бот {symbol} был удален из памяти до применения обновлений")
+
+            except Exception as e:
+                logger.error(f" ❌ Ошибка обработки {symbol}: {e}")
+                failed_count += 1
+                continue
+
+        if updated_count > 0 or failed_count > 0:
+            logger.info(f" ✅ Установка завершена: установлено {updated_count}, ошибок {failed_count}")
+            if updated_count > 0:
+                try:
+                    save_bots_state()
+                    logger.info(" 💾 Сохранено состояние ботов в файл")
+                except Exception as save_error:
+                    logger.error(f" ❌ Ошибка сохранения состояния ботов: {save_error}")
+
+        return True
+
     except Exception as e:
         logger.error(f" ❌ Ошибка установки стоп-лоссов: {e}")
         return False

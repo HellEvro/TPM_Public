@@ -212,6 +212,32 @@ class SystemConfig:
     
     # ⚡ ТРЕЙСИНГ: Включить детальное логирование КАЖДОЙ строки кода (для отладки зависаний)
     ENABLE_CODE_TRACING = False  # ⚠️ ВНИМАНИЕ: Сильно замедляет работу! Включать только для отладки!
+    TRACE_INCLUDE_KEYWORDS = [
+        'bots_modules',
+        'bot_engine',
+        'InfoBot',
+        'exchanges',
+        'scripts',
+        'launcher',
+    ]
+    TRACE_SKIP_KEYWORDS = [
+        'logging',
+        'threading',
+        'queue',
+        'socket',
+        'ssl',
+        'http',
+        'urllib',
+        'json',
+        'datetime',
+        'traceback',
+        'site-packages',
+        'AppData',
+        'Python3',
+    ]
+    TRACE_WRITE_TO_FILE = True
+    TRACE_LOG_FILE = 'logs/trace.log'
+    TRACE_MAX_LINE_LENGTH = 200
 
 # Настройки риск-менеджмента
 class RiskConfig:

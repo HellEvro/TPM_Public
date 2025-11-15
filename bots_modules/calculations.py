@@ -279,7 +279,7 @@ def calculate_ema(prices, period):
     
     return ema
 
-def analyze_trend_6h(symbol, exchange_obj=None):
+def analyze_trend_6h(symbol, exchange_obj=None, candles_data=None):
     """
     Анализирует тренд 6H на основе ПРОСТОГО АНАЛИЗА ЦЕНЫ (без EMA)
     
@@ -303,12 +303,14 @@ def analyze_trend_6h(symbol, exchange_obj=None):
         price_threshold = config.get('trend_price_change_threshold', 7)  # Порог изменения цены (3-15%)
         candles_threshold = config.get('trend_candles_threshold', 70)  # Порог процента свечей (50-80%)
         
-        chart_response = exchange_to_use.get_chart_data(symbol, '6h', '30d')
+        if candles_data is None:
+            chart_response = exchange_to_use.get_chart_data(symbol, '6h', '30d')
+            if not chart_response or not chart_response.get('success'):
+                return None
+            candles = chart_response['data']['candles']
+        else:
+            candles = candles_data
         
-        if not chart_response or not chart_response.get('success'):
-            return None
-        
-        candles = chart_response['data']['candles']
         if not candles or len(candles) < period:
             return None
         
