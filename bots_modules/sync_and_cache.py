@@ -108,6 +108,115 @@ SYSTEM_CONFIG_FIELD_MAP = {
 }
 
 
+def _safe_float(value, default=None):
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_timestamp(raw_value):
+    if raw_value is None:
+        return None
+    if isinstance(raw_value, (int, float)):
+        value = float(raw_value)
+        if value > 1e12:
+            return value / 1000.0
+        return value
+    if isinstance(raw_value, str):
+        raw_value = raw_value.strip()
+        if not raw_value:
+            return None
+        try:
+            return datetime.fromisoformat(raw_value.replace('Z', '')).timestamp()
+        except ValueError:
+            try:
+                return _normalize_timestamp(float(raw_value))
+            except ValueError:
+                return None
+    return None
+
+
+def _timestamp_to_iso(raw_value):
+    ts = _normalize_timestamp(raw_value)
+    if ts is None:
+        return None
+    return datetime.fromtimestamp(ts).isoformat()
+
+
+def _needs_price_update(position_side, desired_price, existing_price, tolerance=1e-6):
+    if desired_price is None:
+        return False
+    if existing_price is None:
+        return True
+    if (position_side or '').upper() == 'LONG':
+        return desired_price > existing_price + tolerance
+    return desired_price < existing_price - tolerance
+
+
+def _select_stop_loss_price(position_side, entry_price, current_price, config, break_even_price, trailing_price):
+    entry_price = _safe_float(entry_price)
+    current_price = _safe_float(current_price, entry_price)
+    stops = []
+
+    sl_percent = _safe_float(config.get('max_loss_percent', config.get('stop_loss_percent')), 0.0)
+    if sl_percent and sl_percent > 0 and entry_price:
+        if (position_side or '').upper() == 'LONG':
+            stops.append(entry_price * (1 - sl_percent / 100.0))
+        else:
+            stops.append(entry_price * (1 + sl_percent / 100.0))
+
+    if break_even_price is not None:
+        stops.append(_safe_float(break_even_price))
+    if trailing_price is not None:
+        stops.append(_safe_float(trailing_price))
+
+    stops = [price for price in stops if price is not None]
+    if not stops:
+        return None
+
+    if (position_side or '').upper() == 'LONG':
+        candidate = max(stops)
+        if current_price is not None:
+            candidate = min(candidate, current_price)
+    else:
+        candidate = min(stops)
+        if current_price is not None:
+            candidate = max(candidate, current_price)
+    return candidate
+
+
+def _select_take_profit_price(position_side, entry_price, config, trailing_take_price):
+    entry_price = _safe_float(entry_price)
+    trailing_take_price = _safe_float(trailing_take_price)
+    if trailing_take_price:
+        return trailing_take_price
+
+    tp_percent = _safe_float(config.get('take_profit_percent'), 0.0)
+    if not tp_percent or tp_percent <= 0 or not entry_price:
+        return None
+
+    if (position_side or '').upper() == 'LONG':
+        return entry_price * (1 + tp_percent / 100.0)
+    return entry_price * (1 - tp_percent / 100.0)
+
+
+def _apply_protection_state_to_bot_data(bot_data, state):
+    if not state or bot_data is None:
+        return
+
+    bot_data['max_profit_achieved'] = state.max_profit_percent
+    bot_data['break_even_activated'] = state.break_even_activated
+    bot_data['break_even_stop_price'] = state.break_even_stop_price
+    bot_data['trailing_active'] = state.trailing_active
+    bot_data['trailing_reference_price'] = state.trailing_reference_price
+    bot_data['trailing_stop_price'] = state.trailing_stop_price
+    bot_data['trailing_take_profit_price'] = state.trailing_take_profit_price
+    bot_data['trailing_last_update_ts'] = state.trailing_last_update_ts
+
+
 def get_system_config_snapshot():
     """Возвращает текущие значения SystemConfig в формате, ожидаемом UI."""
     snapshot = {}
@@ -1881,12 +1990,9 @@ def check_missing_stop_losses():
             return False
         
         logger.debug(f" ✅ Exchange получен успешно: {type(current_exchange)}")
+        from bots_modules.bot_class import NewTradingBot
         
         with bots_data_lock:
-            # Получаем конфигурацию трейлинг стопа
-            auto_config = bots_data.get('auto_bot_config', {})
-            trailing_activation = float(auto_config.get('trailing_stop_activation', 20.0))  # в %
-            trailing_distance = float(auto_config.get('trailing_stop_distance', 5.0))      # в %
             
             # Получаем все позиции с биржи
             try:
@@ -1949,35 +2055,89 @@ def check_missing_stop_losses():
                     
                     logger.info(f" 📊 {symbol}: PnL {profit_percent:.2f}%, текущая цена {current_price}, вход {entry_price}")
                     
-                    # Синхронизируем существующие стопы с биржи
+                    # Импортируем состояние из Protection Engine для точного совпадения логики
+                    position_side = 'LONG' if side == 'Buy' else 'SHORT'
+                    position_qty = abs(_safe_float(pos.get('size'), 0.0) or 0.0)
+                    if position_qty <= 0:
+                        logger.warning(f" ⚠️ Позиция {symbol} имеет нулевой объём — пропуск")
+                        continue
+
+                    entry_timestamp = (
+                        _normalize_timestamp(bot_data.get('entry_timestamp'))
+                        or _normalize_timestamp(bot_data.get('position_start_time'))
+                        or _normalize_timestamp(pos.get('createdTime') or pos.get('updatedTime'))
+                    )
+                    runtime_config = dict(bot_data or {})
+                    runtime_config['entry_price'] = entry_price
+                    runtime_config['position_side'] = position_side
+                    runtime_config['position_size_coins'] = position_qty
+                    runtime_config['volume_value'] = runtime_config.get('volume_value') or (
+                        entry_price * position_qty if entry_price else None
+                    )
+                    if entry_timestamp:
+                        runtime_config['entry_timestamp'] = entry_timestamp
+                        runtime_config['position_start_time'] = _timestamp_to_iso(entry_timestamp)
+
+                    bot_instance = NewTradingBot(symbol, config=runtime_config, exchange=current_exchange)
+                    bot_instance.entry_price = entry_price
+                    bot_instance.position_side = position_side
+                    bot_instance.position_size_coins = position_qty
+                    bot_instance.position_size = (entry_price * position_qty) if entry_price else bot_instance.position_size
+                    bot_instance.realized_pnl = _safe_float(pos.get('cumRealisedPnl') or pos.get('realisedPnl') or pos.get('realizedPnl'), 0.0)
+                    bot_instance.unrealized_pnl = unrealized_pnl
+                    if entry_timestamp:
+                        bot_instance.entry_timestamp = entry_timestamp
+                        bot_instance.position_start_time = datetime.fromtimestamp(entry_timestamp)
+
+                    decision = bot_instance._evaluate_protection_decision(current_price)
+                    config = bot_instance._get_effective_protection_config()
+                    _apply_protection_state_to_bot_data(bot_data, decision.state)
+
+                    bot_data['entry_price'] = entry_price
+                    bot_data['position_side'] = position_side
+                    bot_data['position_size_coins'] = position_qty
+                    bot_data['position_size'] = entry_price * position_qty if entry_price else bot_data.get('position_size')
+                    bot_data['realized_pnl'] = bot_instance.realized_pnl
+                    bot_data['unrealized_pnl'] = unrealized_pnl
+                    bot_data['current_price'] = current_price
+                    bot_data['leverage'] = _safe_float(pos.get('leverage'), bot_data.get('leverage', 1.0)) or 1.0
+                    if entry_timestamp:
+                        bot_data['entry_timestamp'] = entry_timestamp
+                        bot_data['position_start_time'] = _timestamp_to_iso(entry_timestamp)
+
+                    if decision.should_close:
+                        logger.warning(
+                            f" ⚠️ Protection Engine сигнализирует закрытие {symbol}: {decision.reason}"
+                        )
+
+                    # Синхронизируем существующие стопы/тейки из биржи
                     if existing_stop_loss:
                         bot_data['stop_loss_price'] = float(existing_stop_loss)
-                        logger.info(f" ✅ Синхронизирован стоп-лосс для {symbol}: {existing_stop_loss}")
-                    
+                    if existing_take_profit:
+                        bot_data['take_profit_price'] = float(existing_take_profit)
                     if existing_trailing_stop:
                         bot_data['trailing_stop_price'] = float(existing_trailing_stop)
-                        logger.info(f" ✅ Синхронизирован трейлинг стоп для {symbol}: {existing_trailing_stop}")
-                    
-                    # Логика установки стоп-лоссов/тейк-профитов
-                    bot_sl_percent = float(bot_data.get('max_loss_percent', auto_config.get('max_loss_percent', 15.0)) or 0.0)
-                    bot_tp_percent = float(bot_data.get('take_profit_percent', auto_config.get('take_profit_percent', 20.0)) or 0.0)
 
-                    if bot_sl_percent > 0 and not existing_stop_loss:
-                        if side == 'Buy':  # LONG
-                            stop_price = entry_price * (1 - bot_sl_percent / 100.0)
-                        else:  # SHORT
-                            stop_price = entry_price * (1 + bot_sl_percent / 100.0)
-
+                    desired_stop = _select_stop_loss_price(
+                        position_side,
+                        entry_price,
+                        current_price,
+                        config,
+                        bot_instance.break_even_stop_price,
+                        bot_instance.trailing_stop_price,
+                    )
+                    existing_stop_value = _safe_float(existing_stop_loss)
+                    if desired_stop and _needs_price_update(position_side, desired_stop, existing_stop_value):
                         try:
                             sl_response = current_exchange.update_stop_loss(
                                 symbol=symbol,
-                                stop_loss_price=stop_price,
-                                position_side='LONG' if side == 'Buy' else 'SHORT'
+                                stop_loss_price=desired_stop,
+                                position_side=position_side,
                             )
                             if sl_response and sl_response.get('success'):
-                                bot_data['stop_loss_price'] = stop_price
+                                bot_data['stop_loss_price'] = desired_stop
                                 updated_count += 1
-                                logger.info(f" ✅ Установлен стоп-лосс для {symbol}: {stop_price:.6f} ({bot_sl_percent}%)")
+                                logger.info(f" ✅ Стоп-лосс синхронизирован для {symbol}: {desired_stop:.6f}")
                             else:
                                 failed_count += 1
                                 logger.error(f" ❌ Ошибка установки стоп-лосса для {symbol}: {sl_response}")
@@ -1985,129 +2145,30 @@ def check_missing_stop_losses():
                             failed_count += 1
                             logger.error(f" ❌ Ошибка установки стоп-лосса для {symbol}: {e}")
 
-                    if existing_take_profit:
-                        bot_data['take_profit_price'] = float(existing_take_profit)
-                        logger.info(f" ✅ Синхронизирован тейк-профит для {symbol}: {existing_take_profit}")
-                    
-                    if bot_tp_percent > 0 and not existing_take_profit:
-                        if side == 'Buy':  # LONG
-                            take_price = entry_price * (1 + bot_tp_percent / 100.0)
-                        else:  # SHORT
-                            take_price = entry_price * (1 - bot_tp_percent / 100.0)
-
+                    desired_take = _select_take_profit_price(
+                        position_side,
+                        entry_price,
+                        config,
+                        bot_instance.trailing_take_profit_price,
+                    )
+                    existing_take_value = _safe_float(existing_take_profit)
+                    if desired_take and _needs_price_update(position_side, desired_take, existing_take_value):
                         try:
                             tp_response = current_exchange.update_take_profit(
                                 symbol=symbol,
-                                take_profit_price=take_price,
-                                position_side='LONG' if side == 'Buy' else 'SHORT'
+                                take_profit_price=desired_take,
+                                position_side=position_side,
                             )
                             if tp_response and tp_response.get('success'):
-                                bot_data['take_profit_price'] = take_price
+                                bot_data['take_profit_price'] = desired_take
                                 updated_count += 1
-                                logger.info(f" ✅ Установлен тейк-профит для {symbol}: {take_price:.6f} ({bot_tp_percent}%)")
+                                logger.info(f" ✅ Тейк-профит синхронизирован для {symbol}: {desired_take:.6f}")
                             else:
                                 failed_count += 1
                                 logger.error(f" ❌ Ошибка установки тейк-профита для {symbol}: {tp_response}")
                         except Exception as e:
                             failed_count += 1
                             logger.error(f" ❌ Ошибка установки тейк-профита для {symbol}: {e}")
-                    
-                    # Логика трейлинг стопа по марже
-                    else:
-                        realized_pnl = float(pos.get('cumRealisedPnl', pos.get('realizedPnl', 0)) or 0)
-                        leverage = float(pos.get('leverage', 1) or 1)
-                        bot_data['realized_pnl'] = realized_pnl
-                        bot_data['leverage'] = leverage
-                        bot_data['position_size_coins'] = position_size
-
-                        trailing_params = _compute_margin_based_trailing(
-                            side,
-                            entry_price,
-                            current_price,
-                            position_size,
-                            leverage,
-                            realized_pnl,
-                            profit_percent,
-                            bot_data.get('max_profit_achieved', 0),
-                            trailing_activation,
-                            trailing_distance,
-                            bot_data.get('trailing_max_profit_usdt', 0.0)
-                        )
-
-                        bot_data['trailing_activation_profit'] = trailing_params.get('activation_profit_usdt', 0.0)
-                        bot_data['trailing_activation_threshold'] = trailing_params.get('activation_threshold_usdt', 0.0)
-                        bot_data['trailing_locked_profit'] = trailing_params.get('locked_profit_usdt', 0.0)
-                        bot_data['margin_usdt'] = trailing_params.get('margin_usdt', 0.0)
-                        bot_data['trailing_active'] = trailing_params.get('active', False)
-                        bot_data['trailing_max_profit_usdt'] = trailing_params.get('profit_usdt_max', bot_data.get('trailing_max_profit_usdt', 0.0))
-                        bot_data['trailing_step_usdt'] = trailing_params.get('trailing_step_usdt', 0.0)
-                        bot_data['trailing_step_price'] = trailing_params.get('trailing_step_price', 0.0)
-                        bot_data['trailing_steps'] = trailing_params.get('steps', 0)
-
-                        if trailing_params.get('active') and trailing_params.get('stop_price'):
-                            desired_stop = trailing_params['stop_price']
-                            existing_stop_price = float(existing_stop_loss) if existing_stop_loss else None
-                            should_update_stop = False
-
-                            if side == 'Buy':
-                                if not existing_stop_price or desired_stop > existing_stop_price + 1e-6:
-                                    should_update_stop = True
-                            else:  # Short позиция
-                                if not existing_stop_price or desired_stop < existing_stop_price - 1e-6:
-                                    should_update_stop = True
-
-                            if should_update_stop:
-                                try:
-                                    trailing_result = current_exchange.client.set_trading_stop(
-                                        category="linear",
-                                        symbol=pos.get('symbol'),
-                                        positionIdx=position_idx,
-                                        stopLoss=str(desired_stop)
-                                    )
-
-                                    if trailing_result and trailing_result.get('retCode') == 0:
-                                        bot_data['trailing_stop_price'] = desired_stop
-                                        updated_count += 1
-                                        logger.info(
-                                            f" ✅ Trailing stop обновлен для {symbol}: цена {desired_stop}"
-                                        )
-                                    else:
-                                        logger.error(
-                                            f" ❌ Ошибка обновления trailing stop для {symbol}: "
-                                            f"{trailing_result.get('retMsg') if trailing_result else 'Unknown'}"
-                                        )
-                                        failed_count += 1
-                                except Exception as e:
-                                    logger.error(f" ❌ Ошибка API trailing stop для {symbol}: {e}")
-                                    failed_count += 1
-                            else:
-                                logger.debug(f" ℹ️ Trailing stop для {symbol} уже актуален")
-                        elif abs(realized_pnl) <= 0.0 and trailing_params.get('profit_usdt', 0.0) >= trailing_params.get('activation_threshold_usdt', 0.0):
-                            # Fallback на старую схему, если нет данных о комиссиях
-                            try:
-                                trailing_result = current_exchange.client.set_trading_stop(
-                                    category="linear",
-                                    symbol=pos.get('symbol'),
-                                    positionIdx=position_idx,
-                                    trailingStop=str(trailing_distance / 100)
-                                )
-
-                                if trailing_result and trailing_result.get('retCode') == 0:
-                                    bot_data['trailing_stop_price'] = trailing_distance / 100
-                                    updated_count += 1
-                                    logger.info(
-                                        f" ✅ Установлен fallback trailing stop для {symbol}: "
-                                        f"{trailing_distance / 100}%"
-                                    )
-                                else:
-                                    logger.error(
-                                        f" ❌ Ошибка установки fallback trailing stop для {symbol}: "
-                                        f"{trailing_result.get('retMsg') if trailing_result else 'Unknown'}"
-                                    )
-                                    failed_count += 1
-                            except Exception as e:
-                                logger.error(f" ❌ Ошибка API fallback trailing stop для {symbol}: {e}")
-                                failed_count += 1
                     
                     # Обновляем время последнего обновления
                     bot_data['last_update'] = datetime.now().isoformat()
