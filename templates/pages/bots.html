@@ -2434,6 +2434,31 @@
                         </div>
                     </div>
 
+                    <div class="ai-learning-section" style="margin-top: 24px;">
+                        <h3>🧠 Обучение AI</h3>
+                        <div class="ai-learning-grid" style="display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
+                            <div class="stat-card">
+                                <div class="stat-label">Последнее обучение</div>
+                                <div class="stat-value" id="aiLastTrainingTime">—</div>
+                                <div class="stat-detail" id="aiLastTrainingDuration">Длительность: —</div>
+                                <div class="stat-detail" id="aiLastTrainingSamples">Выборка: —</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Производительность AI</div>
+                                <div class="stat-value" id="aiOverallWinRate">—</div>
+                                <div class="stat-detail" id="aiOverallDecisions">Решений: —</div>
+                                <div class="stat-detail" id="aiOverallPnL">Total PnL: —</div>
+                            </div>
+                        </div>
+                        <div class="history-list" id="aiTrainingHistoryList" style="margin-top: 16px;">
+                            <div class="empty-history-state">
+                                <div class="empty-icon">🧠</div>
+                                <p>История обучения не найдена</p>
+                                <small>Запуски обучения AI появятся здесь</small>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="ai-optimizer-section" style="margin-top: 24px;">
                         <h3>🧬 Результаты оптимизатора</h3>
                         <div class="ai-optimizer-meta" style="display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">

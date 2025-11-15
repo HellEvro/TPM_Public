@@ -17,6 +17,21 @@ logger = logging.getLogger('AI.Integration')
 
 # Глобальный экземпляр AI системы
 _ai_system = None
+_ai_data_storage = None
+
+
+def _get_ai_data_storage():
+    """Ленивая инициализация AIDataStorage (может отсутствовать в некоторых сборках)."""
+    global _ai_data_storage
+    if _ai_data_storage is not None:
+        return _ai_data_storage
+    try:
+        from bot_engine.ai.ai_data_storage import AIDataStorage
+        _ai_data_storage = AIDataStorage()
+    except Exception as exc:
+        logger.debug(f"AIDataStorage недоступен: {exc}")
+        _ai_data_storage = None
+    return _ai_data_storage
 
 
 def get_ai_system():
@@ -312,21 +327,29 @@ def _track_ai_decision(symbol: str, direction: str, rsi: float, trend: str,
     """Отслеживает решение AI для последующего анализа"""
     try:
         decision_id = f"ai_{symbol}_{int(time.time() * 1000)}"
+        decision_payload = {
+            'id': decision_id,
+            'symbol': symbol,
+            'direction': direction,
+            'rsi': rsi,
+            'trend': trend,
+            'price': price,
+            'ai_signal': ai_signal,
+            'ai_confidence': ai_confidence,
+            'market_data': market_data.copy(),
+            'timestamp': datetime.now().isoformat(),
+            'status': 'PENDING'
+        }
         
         with _ai_decisions_lock:
-            _ai_decisions_tracking[decision_id] = {
-                'id': decision_id,
-                'symbol': symbol,
-                'direction': direction,
-                'rsi': rsi,
-                'trend': trend,
-                'price': price,
-                'ai_signal': ai_signal,
-                'ai_confidence': ai_confidence,
-                'market_data': market_data.copy(),
-                'timestamp': datetime.now().isoformat(),
-                'status': 'PENDING'
-            }
+            _ai_decisions_tracking[decision_id] = decision_payload
+
+        storage = _get_ai_data_storage()
+        if storage:
+            try:
+                storage.save_ai_decision(decision_id, decision_payload)
+            except Exception as storage_error:
+                logger.debug(f"⚠️ Не удалось сохранить решение AI в хранилище: {storage_error}")
         
         return decision_id
     except:
@@ -356,6 +379,18 @@ def update_ai_decision_result(decision_id: str, pnl: float, roi: float, is_succe
                         )
                 except Exception as save_error:
                     logger.debug(f"⚠️ Ошибка сохранения решения AI: {save_error}")
+        storage = _get_ai_data_storage()
+        if storage:
+            try:
+                storage.update_ai_decision(decision_id, {
+                    'status': 'SUCCESS' if is_successful else 'FAILED',
+                    'pnl': float(pnl) if pnl is not None else None,
+                    'roi': float(roi) if roi is not None else None,
+                    'updated_at': datetime.now().isoformat(),
+                    'closed_at': datetime.now().isoformat()
+                })
+            except Exception as storage_error:
+                logger.debug(f"⚠️ Ошибка обновления решения AI в хранилище: {storage_error}")
     except Exception as e:
         logger.debug(f"⚠️ Ошибка обновления результата решения AI: {e}")
 

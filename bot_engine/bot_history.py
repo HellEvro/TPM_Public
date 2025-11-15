@@ -8,6 +8,7 @@
 import os
 import json
 import threading
+import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 import logging
@@ -633,6 +634,11 @@ def create_demo_data() -> bool:
     try:
         import random
         from datetime import timedelta
+        try:
+            from bot_engine.ai.ai_data_storage import AIDataStorage
+            ai_storage = AIDataStorage()
+        except ImportError:
+            ai_storage = None
         
         symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'ADAUSDT', 'SOLUSDT']
         
@@ -641,7 +647,12 @@ def create_demo_data() -> bool:
         for i in range(20):
             symbol = random.choice(symbols)
             direction = random.choice(['LONG', 'SHORT'])
+            trend = random.choice(['UP', 'DOWN', 'NEUTRAL'])
             bot_id = f"demo_bot_{i}"
+            use_ai = random.random() < 0.5
+            ai_confidence = round(random.uniform(0.55, 0.95), 2) if use_ai else None
+            ai_decision_id = None
+            ai_signal = direction if use_ai else None
             
             # Запуск бота
             log_bot_start(bot_id, symbol, direction, {'mode': 'demo'})
@@ -650,11 +661,49 @@ def create_demo_data() -> bool:
             rsi = random.uniform(25, 75)
             price = random.uniform(1000, 50000)
             log_bot_signal(symbol, f"ENTER_{direction}", rsi, price)
+
+            if use_ai and ai_storage:
+                ai_decision_id = f"demo_ai_{symbol}_{int(time.time() * 1000)}_{random.randint(100,999)}"
+                decision_payload = {
+                    'id': ai_decision_id,
+                    'symbol': symbol,
+                    'direction': direction,
+                    'rsi': rsi,
+                    'trend': trend,
+                    'price': price,
+                    'ai_signal': ai_signal,
+                    'ai_confidence': ai_confidence,
+                    'timestamp': datetime.now().isoformat(),
+                    'status': 'PENDING',
+                    'market_data': {
+                        'rsi': rsi,
+                        'price': price,
+                        'direction': direction
+                    }
+                }
+                try:
+                    ai_storage.save_ai_decision(ai_decision_id, decision_payload)
+                except Exception as storage_error:
+                    logger.debug(f"⚠️ Не удалось сохранить демо-решение AI: {storage_error}")
+                    ai_decision_id = None
+                    use_ai = False
             
             # Открытие позиции
             entry_price = price
             size = random.uniform(0.001, 0.1)
-            log_position_opened(bot_id, symbol, direction, size, entry_price)
+            log_position_opened(
+                bot_id,
+                symbol,
+                direction,
+                size,
+                entry_price,
+                decision_source='AI' if use_ai else 'SCRIPT',
+                ai_decision_id=ai_decision_id,
+                ai_confidence=ai_confidence,
+                ai_signal=ai_signal,
+                rsi=rsi,
+                trend=trend
+            )
             
             # Закрытие позиции (80% сделок)
             if random.random() < 0.8:
@@ -663,9 +712,22 @@ def create_demo_data() -> bool:
                 roi = ((exit_price - entry_price) / entry_price * 100) if direction == 'LONG' else ((entry_price - exit_price) / entry_price * 100)
                 
                 log_position_closed(bot_id, symbol, direction, exit_price, pnl, roi, 
-                                  random.choice(['Stop Loss', 'Take Profit', 'Ручное закрытие']))
+                                  random.choice(['Stop Loss', 'Take Profit', 'Ручное закрытие']),
+                                  ai_decision_id=ai_decision_id)
                 
                 log_bot_stop(bot_id, symbol, 'Позиция закрыта', pnl)
+                
+                if use_ai and ai_decision_id and ai_storage:
+                    try:
+                        ai_storage.update_ai_decision(ai_decision_id, {
+                            'status': 'SUCCESS' if pnl > 0 else 'FAILED',
+                            'pnl': float(pnl),
+                            'roi': float(roi),
+                            'updated_at': datetime.now().isoformat(),
+                            'closed_at': datetime.now().isoformat()
+                        })
+                    except Exception as storage_error:
+                        logger.debug(f"⚠️ Не удалось обновить демо-решение AI: {storage_error}")
         
         logger.info("✅ Демо-данные созданы успешно!")
         return True
