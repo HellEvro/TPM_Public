@@ -1480,3 +1480,87 @@ class NewTradingBot:
             'current_price': getattr(self, 'current_price', None) or self.config.get('current_price')
         }
 
+    def _build_trading_bot_bridge_config(self):
+        """Формирует конфиг для TradingBot при ручном открытии позиции."""
+        try:
+            with bots_data_lock:
+                auto_config = dict(bots_data.get('auto_bot_config', {}))
+        except Exception:
+            auto_config = {}
+
+        config = {
+            'auto_managed': True,
+            'status': 'idle',
+            'volume_mode': self.volume_mode,
+            'volume_value': self.volume_value,
+            'max_loss_percent': self.config.get('max_loss_percent', auto_config.get('max_loss_percent', 10)),
+            'take_profit_percent': self.config.get('take_profit_percent', auto_config.get('take_profit_percent', 20)),
+            'break_even_protection': self.config.get('break_even_protection', auto_config.get('break_even_protection', True)),
+            'break_even_trigger': self.config.get('break_even_trigger', auto_config.get('break_even_trigger', 20)),
+            'trailing_stop_activation': self.config.get('trailing_stop_activation', auto_config.get('trailing_stop_activation', 30)),
+            'trailing_stop_distance': self.config.get('trailing_stop_distance', auto_config.get('trailing_stop_distance', 5)),
+            'trailing_take_distance': self.config.get('trailing_take_distance', auto_config.get('trailing_take_distance', 0.5)),
+            'trailing_update_interval': self.config.get('trailing_update_interval', auto_config.get('trailing_update_interval', 3)),
+        }
+
+        # Переносим дополнительные индивидуальные параметры, если они были сохранены в self.config
+        for key in ('rsi_exit_long_with_trend', 'rsi_exit_long_against_trend',
+                    'rsi_exit_short_with_trend', 'rsi_exit_short_against_trend',
+                    'entry_trend'):
+            if key in self.config:
+                config[key] = self.config[key]
+
+        return config
+
+    def enter_position(self, direction: str):
+        """
+        Открывает позицию через TradingBot, используя текущие настройки бота.
+        Args:
+            direction: 'LONG' или 'SHORT'
+        """
+        if not direction:
+            raise ValueError("Direction is required")
+
+        side = direction.upper()
+        if side not in ('LONG', 'SHORT'):
+            raise ValueError(f"Unsupported direction {direction}")
+
+        if not self.exchange:
+            raise RuntimeError("Exchange is not initialized")
+
+        try:
+            from bot_engine.trading_bot import TradingBot
+            from bot_engine.bot_config import BotStatus
+        except ImportError as e:
+            logger.error(f"[NEW_BOT_{self.symbol}] ❌ Не удалось импортировать TradingBot: {e}")
+            raise
+
+        bridge_config = self._build_trading_bot_bridge_config()
+
+        trading_bot = TradingBot(self.symbol, self.exchange, bridge_config)
+        result = trading_bot._enter_position(side)
+
+        if not result.get('success'):
+            error_msg = result.get('message') or result.get('error') or 'Unknown error'
+            logger.error(f"[NEW_BOT_{self.symbol}] ❌ Не удалось открыть позицию {side}: {error_msg}")
+            raise RuntimeError(error_msg)
+
+        # Обновляем состояние текущего бота
+        self.entry_price = result.get('entry_price')
+        self.position_side = side
+        self.position_size = result.get('quantity')
+        self.position_size_coins = result.get('quantity')
+        self.position_start_time = datetime.now()
+        self.entry_timestamp = datetime.now().timestamp()
+        target_status = BOT_STATUS['IN_POSITION_LONG'] if side == 'LONG' else BOT_STATUS['IN_POSITION_SHORT']
+        self.update_status(target_status, entry_price=self.entry_price, position_side=side)
+
+        try:
+            with bots_data_lock:
+                bots_data['bots'][self.symbol] = self.to_dict()
+        except Exception as save_error:
+            logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка сохранения состояния после входа: {save_error}")
+
+        logger.info(f"[NEW_BOT_{self.symbol}] ✅ Позиция {side} открыта: qty={self.position_size} price={self.entry_price}")
+        return result
+

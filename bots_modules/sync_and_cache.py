@@ -13,6 +13,7 @@ import json
 import time
 import threading
 import logging
+import importlib
 from datetime import datetime
 from pathlib import Path
 import copy
@@ -78,6 +79,41 @@ except ImportError as e:
     DEFAULT_CONFIG_FILE = 'data/default_auto_bot_config.json'
     def should_log_message(cat, msg, interval=60):
         return (True, msg)
+
+# Карта соответствия ключей UI и атрибутов SystemConfig
+SYSTEM_CONFIG_FIELD_MAP = {
+    'rsi_update_interval': 'RSI_UPDATE_INTERVAL',
+    'auto_save_interval': 'AUTO_SAVE_INTERVAL',
+    'debug_mode': 'DEBUG_MODE',
+    'auto_refresh_ui': 'AUTO_REFRESH_UI',
+    'refresh_interval': 'UI_REFRESH_INTERVAL',
+    'position_sync_interval': 'POSITION_SYNC_INTERVAL',
+    'inactive_bot_cleanup_interval': 'INACTIVE_BOT_CLEANUP_INTERVAL',
+    'inactive_bot_timeout': 'INACTIVE_BOT_TIMEOUT',
+    'stop_loss_setup_interval': 'STOP_LOSS_SETUP_INTERVAL',
+    'enhanced_rsi_enabled': 'ENHANCED_RSI_ENABLED',
+    'enhanced_rsi_require_volume_confirmation': 'ENHANCED_RSI_REQUIRE_VOLUME_CONFIRMATION',
+    'enhanced_rsi_require_divergence_confirmation': 'ENHANCED_RSI_REQUIRE_DIVERGENCE_CONFIRMATION',
+    'enhanced_rsi_use_stoch_rsi': 'ENHANCED_RSI_USE_STOCH_RSI',
+    'rsi_extreme_zone_timeout': 'RSI_EXTREME_ZONE_TIMEOUT',
+    'rsi_extreme_oversold': 'RSI_EXTREME_OVERSOLD',
+    'rsi_extreme_overbought': 'RSI_EXTREME_OVERBOUGHT',
+    'rsi_volume_confirmation_multiplier': 'RSI_VOLUME_CONFIRMATION_MULTIPLIER',
+    'rsi_divergence_lookback': 'RSI_DIVERGENCE_LOOKBACK',
+    'trend_confirmation_bars': 'TREND_CONFIRMATION_BARS',
+    'trend_min_confirmations': 'TREND_MIN_CONFIRMATIONS',
+    'trend_require_slope': 'TREND_REQUIRE_SLOPE',
+    'trend_require_price': 'TREND_REQUIRE_PRICE',
+    'trend_require_candles': 'TREND_REQUIRE_CANDLES'
+}
+
+
+def get_system_config_snapshot():
+    """Возвращает текущие значения SystemConfig в формате, ожидаемом UI."""
+    snapshot = {}
+    for key, attr in SYSTEM_CONFIG_FIELD_MAP.items():
+        snapshot[key] = getattr(SystemConfig, attr, None)
+    return snapshot
 
 
 def _compute_margin_based_trailing(side: str,
@@ -416,117 +452,43 @@ def load_process_state():
         return False
 
 def save_system_config(config_data):
-    """Сохраняет системные настройки в файл"""
+    """Сохраняет системные настройки напрямую в bot_config.py."""
     try:
-        with open(SYSTEM_CONFIG_FILE, 'w', encoding='utf-8') as f:
-            json.dump(config_data, f, indent=2, ensure_ascii=False)
-        
-        logger.debug(f"[SYSTEM_CONFIG] Сохранены настройки")
-        return True
-        
+        from bots_modules.config_writer import save_system_config_to_py
+
+        attrs_to_update = {}
+        for key, attr in SYSTEM_CONFIG_FIELD_MAP.items():
+            if key in config_data:
+                attrs_to_update[attr] = config_data[key]
+
+        if not attrs_to_update:
+            logger.debug("[SYSTEM_CONFIG] ⚠️ Нет параметров для сохранения")
+            return True
+
+        success = save_system_config_to_py(attrs_to_update)
+        if success:
+            logger.info("[SYSTEM_CONFIG] ✅ Настройки сохранены в bot_engine/bot_config.py")
+        return success
+
     except Exception as e:
         logger.error(f"[SYSTEM_CONFIG] ❌ Ошибка сохранения системных настроек: {e}")
         return False
 
+
 def load_system_config():
-    """Загружает системные настройки из файла"""
+    """Перезагружает SystemConfig из bot_config.py и применяет значения в память."""
     try:
-        logger.debug(f"[SYSTEM_CONFIG] Загрузка конфигурации из {SYSTEM_CONFIG_FILE}")
-        if os.path.exists(SYSTEM_CONFIG_FILE):
-            with open(SYSTEM_CONFIG_FILE, 'r', encoding='utf-8') as f:
-                config_data = json.load(f)
-                
-                # Применяем загруженные настройки к SystemConfig
-                if 'rsi_update_interval' in config_data:
-                    SystemConfig.RSI_UPDATE_INTERVAL = int(config_data['rsi_update_interval'])
-                
-                if 'auto_save_interval' in config_data:
-                    SystemConfig.AUTO_SAVE_INTERVAL = int(config_data['auto_save_interval'])
-                
-                if 'debug_mode' in config_data:
-                    SystemConfig.DEBUG_MODE = bool(config_data['debug_mode'])
-                
-                if 'auto_refresh_ui' in config_data:
-                    SystemConfig.AUTO_REFRESH_UI = bool(config_data['auto_refresh_ui'])
-                
-                if 'refresh_interval' in config_data:
-                    SystemConfig.UI_REFRESH_INTERVAL = int(config_data['refresh_interval'])
-                
-                # Загружаем интервалы синхронизации и очистки
-                # ✅ INACTIVE_BOT_TIMEOUT теперь в SystemConfig
-                
-                if 'stop_loss_setup_interval' in config_data:
-                    SystemConfig.STOP_LOSS_SETUP_INTERVAL = int(config_data['stop_loss_setup_interval'])
-                
-                if 'position_sync_interval' in config_data:
-                    SystemConfig.POSITION_SYNC_INTERVAL = int(config_data['position_sync_interval'])
-                
-                if 'inactive_bot_cleanup_interval' in config_data:
-                    SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL = int(config_data['inactive_bot_cleanup_interval'])
-                
-                if 'inactive_bot_timeout' in config_data:
-                    SystemConfig.INACTIVE_BOT_TIMEOUT = int(config_data['inactive_bot_timeout'])
-                
-                # Настройки улучшенного RSI
-                if 'enhanced_rsi_enabled' in config_data:
-                    SystemConfig.ENHANCED_RSI_ENABLED = bool(config_data['enhanced_rsi_enabled'])
-                
-                if 'enhanced_rsi_require_volume_confirmation' in config_data:
-                    SystemConfig.ENHANCED_RSI_REQUIRE_VOLUME_CONFIRMATION = bool(config_data['enhanced_rsi_require_volume_confirmation'])
-                
-                if 'enhanced_rsi_require_divergence_confirmation' in config_data:
-                    SystemConfig.ENHANCED_RSI_REQUIRE_DIVERGENCE_CONFIRMATION = bool(config_data['enhanced_rsi_require_divergence_confirmation'])
-                
-                if 'enhanced_rsi_use_stoch_rsi' in config_data:
-                    SystemConfig.ENHANCED_RSI_USE_STOCH_RSI = bool(config_data['enhanced_rsi_use_stoch_rsi'])
-                
-                if 'rsi_extreme_zone_timeout' in config_data:
-                    SystemConfig.RSI_EXTREME_ZONE_TIMEOUT = int(config_data['rsi_extreme_zone_timeout'])
-                
-                if 'rsi_extreme_oversold' in config_data:
-                    SystemConfig.RSI_EXTREME_OVERSOLD = int(config_data['rsi_extreme_oversold'])
-                
-                if 'rsi_extreme_overbought' in config_data:
-                    SystemConfig.RSI_EXTREME_OVERBOUGHT = int(config_data['rsi_extreme_overbought'])
-                
-                if 'rsi_volume_confirmation_multiplier' in config_data:
-                    SystemConfig.RSI_VOLUME_CONFIRMATION_MULTIPLIER = float(config_data['rsi_volume_confirmation_multiplier'])
-                
-                if 'rsi_divergence_lookback' in config_data:
-                    SystemConfig.RSI_DIVERGENCE_LOOKBACK = int(config_data['rsi_divergence_lookback'])
-                
-                # Параметры определения тренда
-                if 'trend_confirmation_bars' in config_data:
-                    SystemConfig.TREND_CONFIRMATION_BARS = int(config_data['trend_confirmation_bars'])
-                
-                if 'trend_min_confirmations' in config_data:
-                    SystemConfig.TREND_MIN_CONFIRMATIONS = int(config_data['trend_min_confirmations'])
-                
-                if 'trend_require_slope' in config_data:
-                    SystemConfig.TREND_REQUIRE_SLOPE = bool(config_data['trend_require_slope'])
-                
-                if 'trend_require_price' in config_data:
-                    SystemConfig.TREND_REQUIRE_PRICE = bool(config_data['trend_require_price'])
-                
-                if 'trend_require_candles' in config_data:
-                    SystemConfig.TREND_REQUIRE_CANDLES = bool(config_data['trend_require_candles'])
-                
-                # ❌ ОТКЛЮЧЕНО: Smart RSI Manager больше не используется
-                # Continuous Data Loader работает с фиксированным интервалом
-                
-                return True
-        else:
-            # Если файла нет, создаем его с текущими дефолтными значениями
-            default_config = {
-                'rsi_update_interval': SystemConfig.RSI_UPDATE_INTERVAL,
-                'auto_save_interval': SystemConfig.AUTO_SAVE_INTERVAL,
-                'debug_mode': SystemConfig.DEBUG_MODE,
-                'auto_refresh_ui': SystemConfig.AUTO_REFRESH_UI,
-                'refresh_interval': SystemConfig.UI_REFRESH_INTERVAL
-            }
-            save_system_config(default_config)
-            logger.debug(f"[SYSTEM_CONFIG] Создан новый файл с дефолтными значениями")
-            return True
+        bot_config_module = importlib.import_module('bot_engine.bot_config')
+        importlib.reload(bot_config_module)
+        file_system_config = bot_config_module.SystemConfig
+
+        for attr in SYSTEM_CONFIG_FIELD_MAP.values():
+            if hasattr(file_system_config, attr):
+                setattr(SystemConfig, attr, getattr(file_system_config, attr))
+
+        logger.info("[SYSTEM_CONFIG] ✅ Конфигурация перезагружена из bot_engine/bot_config.py")
+        return True
+
     except Exception as e:
         logger.error(f"[SYSTEM_CONFIG] ❌ Ошибка загрузки системных настроек: {e}")
         return False

@@ -158,6 +158,62 @@ class AITrainer:
         self._load_models()
         
         logger.info("✅ AITrainer инициализирован")
+
+    def _build_individual_settings(
+        self,
+        coin_rsi_params: Dict[str, float],
+        risk_params: Dict[str, float],
+        filter_params: Dict[str, Dict[str, Any]],
+        trend_params: Dict[str, Any],
+        maturity_params: Dict[str, Any],
+        ai_meta: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Собирает полный payload индивидуальных настроек для сохранения."""
+        rsi_time_filter = filter_params.get('rsi_time_filter', {})
+        exit_scam_filter = filter_params.get('exit_scam', {})
+
+        return {
+            'rsi_long_threshold': coin_rsi_params.get('oversold'),
+            'rsi_short_threshold': coin_rsi_params.get('overbought'),
+            'rsi_exit_long_with_trend': coin_rsi_params.get('exit_long_with_trend'),
+            'rsi_exit_long_against_trend': coin_rsi_params.get('exit_long_against_trend'),
+            'rsi_exit_short_with_trend': coin_rsi_params.get('exit_short_with_trend'),
+            'rsi_exit_short_against_trend': coin_rsi_params.get('exit_short_against_trend'),
+            'max_loss_percent': risk_params.get('max_loss_percent'),
+            'take_profit_percent': risk_params.get('take_profit_percent'),
+            'trailing_stop_activation': risk_params.get('trailing_stop_activation'),
+            'trailing_stop_distance': risk_params.get('trailing_stop_distance'),
+            'trailing_take_distance': risk_params.get('trailing_take_distance'),
+            'trailing_update_interval': risk_params.get('trailing_update_interval'),
+            'break_even_trigger': risk_params.get('break_even_trigger'),
+            'break_even_protection': risk_params.get('break_even_protection'),
+            'max_position_hours': risk_params.get('max_position_hours'),
+            'rsi_time_filter_enabled': rsi_time_filter.get('enabled'),
+            'rsi_time_filter_candles': rsi_time_filter.get('candles'),
+            'rsi_time_filter_upper': rsi_time_filter.get('upper'),
+            'rsi_time_filter_lower': rsi_time_filter.get('lower'),
+            'exit_scam_enabled': exit_scam_filter.get('enabled'),
+            'exit_scam_candles': exit_scam_filter.get('candles'),
+            'exit_scam_single_candle_percent': exit_scam_filter.get('single_candle_percent'),
+            'exit_scam_multi_candle_count': exit_scam_filter.get('multi_candle_count'),
+            'exit_scam_multi_candle_percent': exit_scam_filter.get('multi_candle_percent'),
+            'trend_detection_enabled': trend_params.get('trend_detection_enabled'),
+            'avoid_down_trend': trend_params.get('avoid_down_trend'),
+            'avoid_up_trend': trend_params.get('avoid_up_trend'),
+            'trend_analysis_period': trend_params.get('trend_analysis_period'),
+            'trend_price_change_threshold': trend_params.get('trend_price_change_threshold'),
+            'trend_candles_threshold': trend_params.get('trend_candles_threshold'),
+            'enable_maturity_check': maturity_params.get('enable_maturity_check'),
+            'min_candles_for_maturity': maturity_params.get('min_candles_for_maturity'),
+            'min_rsi_low': maturity_params.get('min_rsi_low'),
+            'max_rsi_high': maturity_params.get('max_rsi_high'),
+            'ai_trained': True,
+            'ai_win_rate': ai_meta.get('win_rate'),
+            'ai_rating': ai_meta.get('rating', 0),
+            'ai_trained_at': datetime.now().isoformat(),
+            'ai_trades_count': ai_meta.get('trades_count', 0),
+            'ai_total_pnl': ai_meta.get('total_pnl', 0.0),
+        }
     
     def _load_models(self):
         """Загрузить сохраненные модели"""
@@ -2258,14 +2314,7 @@ class AITrainer:
                                     )
                                     self._register_win_rate_success(symbol, symbol_win_rate)
                                     
-                                    # Формируем настройки в формате для bots.py (используем формат из bot_config.py)
-                                    individual_settings = {
-                                        'rsi_long_threshold': coin_rsi_params['oversold'],  # Вход в LONG при RSI <=
-                                        'rsi_short_threshold': coin_rsi_params['overbought'],  # Вход в SHORT при RSI >=
-                                        'rsi_exit_long_with_trend': coin_rsi_params['exit_long_with_trend'],
-                                        'rsi_exit_long_against_trend': coin_rsi_params['exit_long_against_trend'],
-                                        'rsi_exit_short_with_trend': coin_rsi_params['exit_short_with_trend'],
-                                        'rsi_exit_short_against_trend': coin_rsi_params['exit_short_against_trend'],
+                                    risk_payload = {
                                         'max_loss_percent': MAX_LOSS_PERCENT,
                                         'take_profit_percent': TAKE_PROFIT_PERCENT,
                                         'trailing_stop_activation': TRAILING_STOP_ACTIVATION,
@@ -2275,32 +2324,51 @@ class AITrainer:
                                         'break_even_trigger': BREAK_EVEN_TRIGGER,
                                         'break_even_protection': BREAK_EVEN_PROTECTION,
                                         'max_position_hours': MAX_POSITION_HOURS,
-                                        'rsi_time_filter_enabled': coin_rsi_time_filter_enabled,
-                                        'rsi_time_filter_candles': coin_rsi_time_filter_candles,
-                                        'rsi_time_filter_upper': coin_rsi_time_filter_upper,
-                                        'rsi_time_filter_lower': coin_rsi_time_filter_lower,
-                                        'exit_scam_enabled': coin_exit_scam_enabled,
-                                        'exit_scam_candles': coin_exit_scam_candles,
-                                        'exit_scam_single_candle_percent': coin_exit_scam_single_candle_percent,
-                                        'exit_scam_multi_candle_count': coin_exit_scam_multi_candle_count,
-                                        'exit_scam_multi_candle_percent': coin_exit_scam_multi_candle_percent,
+                                    }
+                                    filter_payload = {
+                                        'rsi_time_filter': {
+                                            'enabled': coin_rsi_time_filter_enabled,
+                                            'candles': coin_rsi_time_filter_candles,
+                                            'upper': coin_rsi_time_filter_upper,
+                                            'lower': coin_rsi_time_filter_lower,
+                                        },
+                                        'exit_scam': {
+                                            'enabled': coin_exit_scam_enabled,
+                                            'candles': coin_exit_scam_candles,
+                                            'single_candle_percent': coin_exit_scam_single_candle_percent,
+                                            'multi_candle_count': coin_exit_scam_multi_candle_count,
+                                            'multi_candle_percent': coin_exit_scam_multi_candle_percent,
+                                        },
+                                    }
+                                    trend_payload = {
                                         'trend_detection_enabled': coin_trend_detection_enabled,
                                         'avoid_down_trend': coin_avoid_down_trend,
                                         'avoid_up_trend': coin_avoid_up_trend,
                                         'trend_analysis_period': coin_trend_analysis_period,
                                         'trend_price_change_threshold': coin_trend_price_change_threshold,
                                         'trend_candles_threshold': coin_trend_candles_threshold,
+                                    }
+                                    maturity_payload = {
                                         'enable_maturity_check': coin_enable_maturity_check,
                                         'min_candles_for_maturity': coin_min_candles_for_maturity,
                                         'min_rsi_low': coin_min_rsi_low,
                                         'max_rsi_high': coin_max_rsi_high,
-                                        'ai_trained': True,
-                                        'ai_win_rate': symbol_win_rate,
-                                        'ai_rating': self.param_tracker.calculate_rating(symbol_win_rate, symbol_pnl, signal_score, trades_for_symbol) if self.param_tracker else 0,
-                                        'ai_trained_at': datetime.now().isoformat(),
-                                        'ai_trades_count': trades_for_symbol,
-                                        'ai_total_pnl': symbol_pnl
                                     }
+                                    ai_meta = {
+                                        'win_rate': symbol_win_rate,
+                                        'rating': self.param_tracker.calculate_rating(symbol_win_rate, symbol_pnl, signal_score, trades_for_symbol) if self.param_tracker else 0,
+                                        'total_pnl': symbol_pnl,
+                                        'trades_count': trades_for_symbol,
+                                    }
+
+                                    individual_settings = self._build_individual_settings(
+                                        coin_rsi_params=coin_rsi_params,
+                                        risk_params=risk_payload,
+                                        filter_params=filter_payload,
+                                        trend_params=trend_payload,
+                                        maturity_params=maturity_payload,
+                                        ai_meta=ai_meta,
+                                    )
                                     
                                     # ВАЖНО: Используем ТЕ ЖЕ функции что и bots.py для бесшовной интеграции
                                     # Сначала пробуем через прямой импорт (работает если bots.py запущен)

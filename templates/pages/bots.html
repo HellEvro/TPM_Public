@@ -2433,6 +2433,43 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="ai-optimizer-section" style="margin-top: 24px;">
+                        <h3>🧬 Результаты оптимизатора</h3>
+                        <div class="ai-optimizer-meta" style="display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+                            <div class="stat-card" style="min-height: 120px;">
+                                <div class="stat-label">Версия генома</div>
+                                <div class="stat-value" id="optimizerGenomeVersion">-</div>
+                                <div class="stat-detail" id="optimizerUpdatedAt">Обновлено: -</div>
+                            </div>
+                            <div class="stat-card" style="min-height: 120px;">
+                                <div class="stat-label">Max tests</div>
+                                <div class="stat-value" id="optimizerMaxTests">-</div>
+                                <div class="stat-detail" id="optimizerSymbolsCount">Оптимизировано монет: -</div>
+                            </div>
+                        </div>
+                        <div class="ai-optimizer-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 16px;">
+                            <div class="optimizer-card" style="background: var(--section-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px;">
+                                <h4>Глобальные параметры</h4>
+                                <div id="optimizerParamsList" class="optimizer-params-list" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+                                    <div class="empty-history-state">
+                                        <div class="empty-icon">🧮</div>
+                                        <p>Параметры оптимизатора ещё не получены</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="optimizer-card" style="background: var(--section-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px;">
+                                <h4>Топ монет по рейтингу</h4>
+                                <div id="optimizerTopSymbols" class="optimizer-top-list" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+                                    <div class="empty-history-state">
+                                        <div class="empty-icon">📉</div>
+                                        <p>Нет данных оптимизатора</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="optimizer-patterns" id="optimizerPatternsSummary" style="margin-top: 16px;"></div>
+                    </div>
                     
                     <div class="ai-decisions-section">
                         <h3>🤖 Решения AI</h3>

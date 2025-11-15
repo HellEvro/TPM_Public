@@ -15,6 +15,20 @@ from flask import Flask, request, jsonify
 
 logger = logging.getLogger('BotsService')
 
+
+def _load_json_file(file_path):
+    """Безопасно считывает JSON и возвращает (data, iso_timestamp)."""
+    if not os.path.exists(file_path):
+        return None, None
+    try:
+        with open(file_path, 'r', encoding='utf-8') as fp:
+            data = json.load(fp)
+        updated_at = datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
+        return data, updated_at
+    except Exception as exc:
+        logger.warning(f"[AI_OPTIMIZER] Не удалось прочитать {file_path}: {exc}")
+        return None, None
+
 # Импорт SystemConfig
 from bot_engine.bot_config import SystemConfig
 
@@ -36,16 +50,11 @@ import bots_modules.imports_and_globals as globals_module
 # Импорт RSI констант из bot_config
 # Enhanced RSI константы теперь в SystemConfig
 
-# Импорт констант интервалов
-try:
-    from bots_modules.sync_and_cache import SYSTEM_CONFIG_FILE
-except ImportError:
-    SYSTEM_CONFIG_FILE = 'data/system_config.json'
-
 # Импорт функций из других модулей
 try:
     from bots_modules.sync_and_cache import (
         update_bots_cache_data, save_system_config, load_system_config,
+        get_system_config_snapshot,
         save_auto_bot_config, save_bots_state, save_rsi_cache,
         save_process_state, restore_default_config, load_default_config
     )
@@ -83,6 +92,8 @@ except ImportError as e:
     def save_system_config(config):
         pass
     def load_system_config():
+        return {}
+    def get_system_config_snapshot():
         return {}
     def save_auto_bot_config():
         pass
@@ -1320,38 +1331,15 @@ def system_config():
     # Константы теперь в SystemConfig
     try:
         if request.method == 'GET':
+            try:
+                load_system_config()
+            except Exception as load_err:
+                logger.warning(f" ⚠️ Не удалось перезагрузить системную конфигурацию перед GET: {load_err}")
             return jsonify({
                 'success': True,
-                'config': {
-                    'rsi_update_interval': SystemConfig.RSI_UPDATE_INTERVAL,
-                    'auto_save_interval': SystemConfig.AUTO_SAVE_INTERVAL,
-                    'debug_mode': SystemConfig.DEBUG_MODE,
-                    'auto_refresh_ui': SystemConfig.AUTO_REFRESH_UI,
-                    'refresh_interval': SystemConfig.UI_REFRESH_INTERVAL,
-                    # Интервалы синхронизации и очистки
-                    'position_sync_interval': SystemConfig.POSITION_SYNC_INTERVAL,
-                    'inactive_bot_cleanup_interval': SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL,
-                    'inactive_bot_timeout': SystemConfig.INACTIVE_BOT_TIMEOUT,
-                    'stop_loss_setup_interval': SystemConfig.STOP_LOSS_SETUP_INTERVAL,
-                    # Настройки улучшенного RSI
-                    'enhanced_rsi_enabled': SystemConfig.ENHANCED_RSI_ENABLED,
-                    'enhanced_rsi_require_volume_confirmation': SystemConfig.ENHANCED_RSI_REQUIRE_VOLUME_CONFIRMATION,
-                    'enhanced_rsi_require_divergence_confirmation': SystemConfig.ENHANCED_RSI_REQUIRE_DIVERGENCE_CONFIRMATION,
-                    'enhanced_rsi_use_stoch_rsi': SystemConfig.ENHANCED_RSI_USE_STOCH_RSI,
-                    'rsi_extreme_zone_timeout': SystemConfig.RSI_EXTREME_ZONE_TIMEOUT,
-                    'rsi_extreme_oversold': SystemConfig.RSI_EXTREME_OVERSOLD,
-                    'rsi_extreme_overbought': SystemConfig.RSI_EXTREME_OVERBOUGHT,
-                    'rsi_volume_confirmation_multiplier': SystemConfig.RSI_VOLUME_CONFIRMATION_MULTIPLIER,
-                    'rsi_divergence_lookback': SystemConfig.RSI_DIVERGENCE_LOOKBACK,
-                    # Параметры определения тренда
-                    'trend_confirmation_bars': SystemConfig.TREND_CONFIRMATION_BARS,
-                    'trend_min_confirmations': SystemConfig.TREND_MIN_CONFIRMATIONS,
-                    'trend_require_slope': SystemConfig.TREND_REQUIRE_SLOPE,
-                    'trend_require_price': SystemConfig.TREND_REQUIRE_PRICE,
-                    'trend_require_candles': SystemConfig.TREND_REQUIRE_CANDLES
-                }
+                'config': get_system_config_snapshot()
             })
-        
+
         elif request.method == 'POST':
             data = request.get_json()
             if not data:
@@ -1492,9 +1480,6 @@ def system_config():
             SystemConfig.RSI_DIVERGENCE_LOOKBACK = new_value
             system_changes_count += 1
         
-        system_config_data = {}
-        saved_to_file = False
-
         # Параметры определения тренда
         if 'trend_confirmation_bars' in data:
             old_value = SystemConfig.TREND_CONFIRMATION_BARS
@@ -1531,65 +1516,22 @@ def system_config():
             SystemConfig.TREND_REQUIRE_CANDLES = new_value
             system_changes_count += 1
         
-            # КРИТИЧЕСКИ ВАЖНО: Сохраняем системные настройки в файл
-            # Сначала загружаем существующие настройки, чтобы не потерять другие поля
-            existing_config = {}
-            if os.path.exists(SYSTEM_CONFIG_FILE):
-                try:
-                    with open(SYSTEM_CONFIG_FILE, 'r', encoding='utf-8') as f:
-                        existing_config = json.load(f)
-                except Exception as e:
-                    logger.warning(f" ⚠️ Не удалось загрузить существующую конфигурацию: {e}")
-            
-            # Обновляем только измененные поля
-            system_config_data = existing_config.copy()
-            system_config_data.update({
-                'rsi_update_interval': SystemConfig.RSI_UPDATE_INTERVAL,
-                'auto_save_interval': SystemConfig.AUTO_SAVE_INTERVAL,
-                'debug_mode': SystemConfig.DEBUG_MODE,
-                'auto_refresh_ui': SystemConfig.AUTO_REFRESH_UI,
-                'refresh_interval': SystemConfig.UI_REFRESH_INTERVAL,
-                # Интервалы синхронизации и очистки
-                'position_sync_interval': SystemConfig.POSITION_SYNC_INTERVAL,
-                'inactive_bot_cleanup_interval': SystemConfig.INACTIVE_BOT_CLEANUP_INTERVAL,
-                'inactive_bot_timeout': SystemConfig.INACTIVE_BOT_TIMEOUT,
-                'stop_loss_setup_interval': SystemConfig.STOP_LOSS_SETUP_INTERVAL,
-                # Настройки улучшенного RSI
-                'enhanced_rsi_enabled': SystemConfig.ENHANCED_RSI_ENABLED,
-                'enhanced_rsi_require_volume_confirmation': SystemConfig.ENHANCED_RSI_REQUIRE_VOLUME_CONFIRMATION,
-                'enhanced_rsi_require_divergence_confirmation': SystemConfig.ENHANCED_RSI_REQUIRE_DIVERGENCE_CONFIRMATION,
-                'enhanced_rsi_use_stoch_rsi': SystemConfig.ENHANCED_RSI_USE_STOCH_RSI,
-                'rsi_extreme_zone_timeout': SystemConfig.RSI_EXTREME_ZONE_TIMEOUT,
-                'rsi_extreme_oversold': SystemConfig.RSI_EXTREME_OVERSOLD,
-                'rsi_extreme_overbought': SystemConfig.RSI_EXTREME_OVERBOUGHT,
-                'rsi_volume_confirmation_multiplier': SystemConfig.RSI_VOLUME_CONFIRMATION_MULTIPLIER,
-                'rsi_divergence_lookback': SystemConfig.RSI_DIVERGENCE_LOOKBACK,
-                # Параметры определения тренда
-                'trend_confirmation_bars': SystemConfig.TREND_CONFIRMATION_BARS,
-                'trend_min_confirmations': SystemConfig.TREND_MIN_CONFIRMATIONS,
-                'trend_require_slope': SystemConfig.TREND_REQUIRE_SLOPE,
-                'trend_require_price': SystemConfig.TREND_REQUIRE_PRICE,
-                'trend_require_candles': SystemConfig.TREND_REQUIRE_CANDLES
-            })
-            
-            saved_to_file = save_system_config(system_config_data)
-            
-            # Выводим итоговое сообщение
-            if changes_count > 0:
-                logger.info(f"✅ Изменено параметров: {changes_count}, конфигурация сохранена")
-            else:
-                logger.info("ℹ️  Изменений не обнаружено")
-            
-            # Выводим сообщение для system config
-            if system_changes_count > 0:
-                logger.info(f"✅ System config: изменено параметров: {system_changes_count}, конфигурация сохранена")
-            else:
-                logger.info("ℹ️  System config: изменений не обнаружено")
-            
-            if saved_to_file and (changes_count > 0 or system_changes_count > 0):
-                # Перезагружаем конфигурацию, чтобы применить изменения
-                load_system_config()
+        system_config_data = get_system_config_snapshot()
+        saved_to_file = save_system_config(system_config_data)
         
+        if changes_count > 0:
+            logger.info(f"✅ Изменено параметров: {changes_count}, конфигурация сохранена")
+        else:
+            logger.info("ℹ️  Изменений не обнаружено")
+        
+        if system_changes_count > 0:
+            logger.info(f"✅ System config: изменено параметров: {system_changes_count}, конфигурация сохранена")
+        else:
+            logger.info("ℹ️  System config: изменений не обнаружено")
+        
+        if saved_to_file and (changes_count > 0 or system_changes_count > 0):
+            load_system_config()
+
         return jsonify({
             'success': True,
             'message': 'Системные настройки обновлены и сохранены',
@@ -3484,6 +3426,58 @@ def get_ai_stats():
     except Exception as e:
         logger.error(f" Ошибка получения статистики AI: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bots_app.route('/api/ai/optimizer/results', methods=['GET'])
+def get_ai_optimizer_results():
+    """Возвращает последние результаты оптимизатора и лучшие параметры по монетам."""
+    try:
+        results_dir = os.path.join('data', 'ai', 'optimization_results')
+        optimized_path = os.path.join(results_dir, 'optimized_params.json')
+        trade_patterns_path = os.path.join(results_dir, 'trade_patterns.json')
+        best_params_path = os.path.join('data', 'ai', 'best_params_per_symbol.json')
+        genomes_path = os.path.join('data', 'ai', 'optimizer_genomes.json')
+
+        optimized_params, optimized_updated = _load_json_file(optimized_path)
+        trade_patterns, patterns_updated = _load_json_file(trade_patterns_path)
+        best_params, _ = _load_json_file(best_params_path)
+        genome_meta, genome_updated = _load_json_file(genomes_path)
+
+        top_symbols = []
+        if isinstance(best_params, dict):
+            for symbol, payload in best_params.items():
+                rating = payload.get('rating')
+                if rating is None:
+                    continue
+                top_symbols.append({
+                    'symbol': symbol,
+                    'rating': float(rating),
+                    'win_rate': float(payload.get('win_rate', 0.0) or 0.0),
+                    'total_pnl': float(payload.get('total_pnl', 0.0) or 0.0),
+                    'updated_at': payload.get('updated_at'),
+                })
+            top_symbols = sorted(top_symbols, key=lambda item: item['rating'], reverse=True)[:10]
+
+        metadata = {
+            'optimized_params_updated_at': optimized_updated,
+            'trade_patterns_updated_at': patterns_updated,
+            'genome_version': (genome_meta or {}).get('version'),
+            'genome_source': os.path.relpath(genomes_path) if os.path.exists(genomes_path) else None,
+            'max_tests': (genome_meta or {}).get('max_tests'),
+            'genome_updated_at': genome_updated,
+            'total_symbols_optimized': len(best_params) if isinstance(best_params, dict) else 0,
+        }
+
+        return jsonify({
+            'success': True,
+            'optimized_params': optimized_params,
+            'trade_patterns': trade_patterns,
+            'top_symbols': top_symbols,
+            'metadata': metadata,
+        })
+    except Exception as exc:
+        logger.error(f"[AI_OPTIMIZER] Ошибка получения результатов оптимизации: {exc}")
+        return jsonify({'success': False, 'error': str(exc)}), 500
 
 @bots_app.route('/api/ai/models', methods=['GET'])
 def get_ai_models():

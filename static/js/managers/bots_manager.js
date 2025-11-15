@@ -5514,7 +5514,8 @@ class BotsManager {
         // ✅ ВСЕГДА обновляем originalConfig при загрузке конфигурации из бэкенда
         // Это гарантирует, что после сохранения и перезагрузки конфигурации originalConfig синхронизирован
         this.originalConfig = {
-            autoBot: JSON.parse(JSON.stringify(autoBotConfig)) // Глубокое копирование
+            autoBot: JSON.parse(JSON.stringify(autoBotConfig)), // Глубокое копирование
+            system: JSON.parse(JSON.stringify(config.system || {}))
         };
         console.log(`[BotsManager] 💾 originalConfig обновлен из бэкенда для отслеживания изменений`);
         console.log(`[BotsManager] 🔍 originalConfig ключи:`, Object.keys(this.originalConfig.autoBot));
@@ -6340,7 +6341,16 @@ class BotsManager {
             position_sync_interval: parseInt(document.getElementById('positionSyncInterval')?.value) || 600,
             inactive_bot_cleanup_interval: parseInt(document.getElementById('inactiveBotCleanupInterval')?.value) || 600,
             inactive_bot_timeout: parseInt(document.getElementById('inactiveBotTimeout')?.value) || 600,
-            stop_loss_setup_interval: parseInt(document.getElementById('stopLossSetupInterval')?.value) || 300
+            stop_loss_setup_interval: parseInt(document.getElementById('stopLossSetupInterval')?.value) || 300,
+            enhanced_rsi_enabled: document.getElementById('enhancedRsiEnabled')?.checked || false,
+            enhanced_rsi_require_volume_confirmation: document.getElementById('enhancedRsiVolumeConfirm')?.checked || false,
+            enhanced_rsi_require_divergence_confirmation: document.getElementById('enhancedRsiDivergenceConfirm')?.checked || false,
+            enhanced_rsi_use_stoch_rsi: document.getElementById('enhancedRsiUseStochRsi')?.checked || false,
+            rsi_extreme_zone_timeout: parseInt(document.getElementById('rsiExtremeZoneTimeout')?.value) || 3,
+            rsi_extreme_oversold: parseInt(document.getElementById('rsiExtremeOversold')?.value) || 20,
+            rsi_extreme_overbought: parseInt(document.getElementById('rsiExtremeOverbought')?.value) || 80,
+            rsi_volume_confirmation_multiplier: parseFloat(document.getElementById('rsiVolumeMultiplier')?.value) || 1.2,
+            rsi_divergence_lookback: parseInt(document.getElementById('rsiDivergenceLookback')?.value) || 10
         };
         
         const result = {
@@ -6376,13 +6386,7 @@ class BotsManager {
         console.log('[BotsManager] 💾 Сохранение системных настроек...');
         try {
             const config = this.collectConfigurationData();
-            const systemSettings = {
-                rsi_update_interval: config.system.rsi_update_interval,
-                auto_save_interval: config.system.auto_save_interval,
-                debug_mode: config.system.debug_mode,
-                auto_refresh_ui: config.system.auto_refresh_ui,
-                refresh_interval: config.system.refresh_interval
-            };
+            const systemSettings = { ...config.system };
             
             await this.sendConfigUpdate('system-config', systemSettings, 'Системные настройки');
         } catch (error) {
@@ -6476,18 +6480,18 @@ class BotsManager {
         try {
             const config = this.collectConfigurationData();
             const enhancedRsi = {
-                enhanced_rsi_enabled: config.autoBot.enhanced_rsi_enabled,
-                enhanced_rsi_require_volume_confirmation: config.autoBot.enhanced_rsi_require_volume_confirmation,
-                enhanced_rsi_require_divergence_confirmation: config.autoBot.enhanced_rsi_require_divergence_confirmation,
-                enhanced_rsi_use_stoch_rsi: config.autoBot.enhanced_rsi_use_stoch_rsi,
-                rsi_extreme_zone_timeout: config.autoBot.rsi_extreme_zone_timeout,
-                rsi_extreme_oversold: config.autoBot.rsi_extreme_oversold,
-                rsi_extreme_overbought: config.autoBot.rsi_extreme_overbought,
-                rsi_volume_confirmation_multiplier: config.autoBot.rsi_volume_confirmation_multiplier,
-                rsi_divergence_lookback: config.autoBot.rsi_divergence_lookback
+                enhanced_rsi_enabled: config.system.enhanced_rsi_enabled,
+                enhanced_rsi_require_volume_confirmation: config.system.enhanced_rsi_require_volume_confirmation,
+                enhanced_rsi_require_divergence_confirmation: config.system.enhanced_rsi_require_divergence_confirmation,
+                enhanced_rsi_use_stoch_rsi: config.system.enhanced_rsi_use_stoch_rsi,
+                rsi_extreme_zone_timeout: config.system.rsi_extreme_zone_timeout,
+                rsi_extreme_oversold: config.system.rsi_extreme_oversold,
+                rsi_extreme_overbought: config.system.rsi_extreme_overbought,
+                rsi_volume_confirmation_multiplier: config.system.rsi_volume_confirmation_multiplier,
+                rsi_divergence_lookback: config.system.rsi_divergence_lookback
             };
             
-            await this.sendConfigUpdate('auto-bot', enhancedRsi, 'Enhanced RSI');
+            await this.sendConfigUpdate('system-config', enhancedRsi, 'Enhanced RSI');
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка сохранения Enhanced RSI:', error);
             this.showNotification('❌ Ошибка сохранения Enhanced RSI', 'error');
@@ -6587,14 +6591,18 @@ class BotsManager {
     }
     
     // ✅ ФИЛЬТРАЦИЯ ИЗМЕНЕННЫХ ПАРАМЕТРОВ
-    filterChangedParams(data) {
-        if (!this.originalConfig || !this.originalConfig.autoBot) {
+    filterChangedParams(data, configType = 'autoBot') {
+        const originalGroup = configType === 'system'
+            ? (this.originalConfig?.system)
+            : (this.originalConfig?.autoBot);
+
+        if (!originalGroup) {
             // Если нет исходной конфигурации, отправляем все данные
             console.log('[BotsManager] ⚠️ originalConfig не инициализирован, отправляем все параметры');
             return data;
         }
         
-        const original = this.originalConfig.autoBot;
+        const original = originalGroup;
         const filtered = {};
         let changedCount = 0;
         
@@ -6667,7 +6675,8 @@ class BotsManager {
         
         try {
             // ✅ ФИЛЬТРУЕМ ТОЛЬКО ИЗМЕНЕННЫЕ ПАРАМЕТРЫ
-            const filteredData = this.filterChangedParams(data);
+            const configType = endpoint === 'system-config' ? 'system' : 'autoBot';
+            const filteredData = this.filterChangedParams(data, configType);
             
             // Если нет изменений, не отправляем запрос
             if (Object.keys(filteredData).length === 0) {
@@ -6690,10 +6699,14 @@ class BotsManager {
                 console.log(`[BotsManager] ✅ ${sectionName} сохранены успешно`);
                 
                 // ✅ ОБНОВЛЯЕМ originalConfig после успешного сохранения
-                if (this.originalConfig && this.originalConfig.autoBot) {
+                if (this.originalConfig) {
                     // Обновляем только сохраненные параметры
                     for (const [key, value] of Object.entries(filteredData)) {
-                        this.originalConfig.autoBot[key] = value;
+                        if (configType === 'system') {
+                            this.originalConfig.system[key] = value;
+                        } else {
+                            this.originalConfig.autoBot[key] = value;
+                        }
                     }
                     console.log(`[BotsManager] 💾 originalConfig обновлен после сохранения ${sectionName}`);
                 }
@@ -8619,11 +8632,11 @@ class BotsManager {
      */
     async loadAIHistory() {
         try {
-            // Загружаем статистику AI vs скриптовые
-            await this.loadAIStats();
-            
-            // Загружаем решения AI
-            await this.loadAIDecisions();
+            await Promise.all([
+                this.loadAIStats(),
+                this.loadAIDecisions(),
+                this.loadAIOptimizerSummary()
+            ]);
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка загрузки AI истории:', error);
         }
@@ -8683,6 +8696,138 @@ class BotsManager {
             }
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка загрузки решений AI:', error);
+        }
+    }
+
+    /**
+     * Загружает результаты оптимизатора
+     */
+    async loadAIOptimizerSummary() {
+        const paramsContainer = document.getElementById('optimizerParamsList');
+        if (!paramsContainer) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/ai/optimizer/results`);
+            const data = await response.json();
+            if (data.success) {
+                this.displayAIOptimizerSummary(data);
+            } else {
+                this.displayAIOptimizerSummary(null);
+            }
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка загрузки результатов оптимизатора:', error);
+            this.displayAIOptimizerSummary(null);
+        }
+    }
+
+    /**
+     * Отображает результаты оптимизатора
+     */
+    displayAIOptimizerSummary(data) {
+        const paramsList = document.getElementById('optimizerParamsList');
+        const topList = document.getElementById('optimizerTopSymbols');
+        const patternsContainer = document.getElementById('optimizerPatternsSummary');
+        const genomeVersionEl = document.getElementById('optimizerGenomeVersion');
+        const updatedAtEl = document.getElementById('optimizerUpdatedAt');
+        const maxTestsEl = document.getElementById('optimizerMaxTests');
+        const symbolsCountEl = document.getElementById('optimizerSymbolsCount');
+
+        const metadata = data?.metadata || {};
+        if (genomeVersionEl) {
+            genomeVersionEl.textContent = metadata.genome_version || '—';
+        }
+        if (updatedAtEl) {
+            if (metadata.optimized_params_updated_at) {
+                updatedAtEl.textContent = `Обновлено: ${this.formatTimestamp(metadata.optimized_params_updated_at)}`;
+            } else {
+                updatedAtEl.textContent = 'Обновлено: —';
+            }
+        }
+        if (maxTestsEl) {
+            maxTestsEl.textContent = metadata.max_tests || '—';
+        }
+        if (symbolsCountEl) {
+            symbolsCountEl.textContent = `Оптимизировано монет: ${metadata.total_symbols_optimized || 0}`;
+        }
+
+        if (paramsList) {
+            const optimizedParams = data?.optimized_params;
+            if (optimizedParams && Object.keys(optimizedParams).length > 0) {
+                const formatValue = (value) => {
+                    if (typeof value === 'number') {
+                        return Number.isInteger(value) ? value.toString() : value.toFixed(2);
+                    }
+                    return value ?? '—';
+                };
+                paramsList.innerHTML = Object.entries(optimizedParams).map(([key, value]) => `
+                    <div class="optimizer-param" style="display:flex; justify-content:space-between; border-bottom:1px solid var(--border-color); padding:4px 0;">
+                        <span>${key}</span>
+                        <strong>${formatValue(value)}</strong>
+                    </div>
+                `).join('');
+            } else {
+                paramsList.innerHTML = `
+                    <div class="empty-history-state">
+                        <div class="empty-icon">🧮</div>
+                        <p>Параметры оптимизатора недоступны</p>
+                    </div>
+                `;
+            }
+        }
+
+        if (topList) {
+            const topSymbols = Array.isArray(data?.top_symbols) ? data.top_symbols : [];
+            if (topSymbols.length > 0) {
+                const html = topSymbols.map(item => `
+                    <div class="optimizer-symbol-item" style="border-bottom:1px solid var(--border-color); padding:6px 0;">
+                        <div class="symbol-header" style="display:flex; justify-content:space-between; align-items:center;">
+                            <strong>${item.symbol}</strong>
+                            <span class="symbol-rating">⭐ ${item.rating?.toFixed(2) || '0.00'}</span>
+                        </div>
+                        <div class="symbol-details" style="display:flex; gap:12px; font-size:12px; color:var(--text-muted,#888);">
+                            <span>Win Rate: ${item.win_rate?.toFixed(1) || '0.0'}%</span>
+                            <span>Total PnL: ${item.total_pnl >= 0 ? '+' : ''}${(item.total_pnl || 0).toFixed(2)} USDT</span>
+                        </div>
+                        ${item.updated_at ? `<small style="color:var(--text-muted,#888);">Обновлено: ${this.formatTimestamp(item.updated_at)}</small>` : ''}
+                    </div>
+                `).join('');
+                topList.innerHTML = html;
+            } else {
+                topList.innerHTML = `
+                    <div class="empty-history-state">
+                        <div class="empty-icon">📉</div>
+                        <p>Нет оптимизированных монет</p>
+                        <small>Запустите оптимизацию, чтобы увидеть результаты</small>
+                    </div>
+                `;
+            }
+        }
+
+        if (patternsContainer) {
+            const patterns = data?.trade_patterns;
+            if (patterns) {
+                const total = patterns.total_trades || 0;
+                const winRate = patterns.win_rate || patterns.profitable_trades && total
+                    ? (patterns.profitable_trades / total * 100)
+                    : 0;
+                patternsContainer.innerHTML = `
+                    <div class="optimizer-patterns-card" style="background:var(--section-bg); border:1px solid var(--border-color); border-radius:12px; padding:12px;">
+                        <div>Всего сделок: <strong>${total}</strong></div>
+                        <div>Прибыльных: <strong>${patterns.profitable_trades || 0}</strong></div>
+                        <div>Убыточных: <strong>${patterns.losing_trades || 0}</strong></div>
+                        <div>Win Rate: <strong>${winRate?.toFixed(1) || '0.0'}%</strong></div>
+                    </div>
+                `;
+            } else {
+                patternsContainer.innerHTML = `
+                    <div class="empty-history-state">
+                        <div class="empty-icon">📊</div>
+                        <p>Нет данных по паттернам</p>
+                    </div>
+                `;
+            }
         }
     }
     

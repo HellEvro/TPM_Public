@@ -7,6 +7,7 @@ import json
 import logging
 import time
 import threading
+import importlib
 from datetime import datetime
 
 logger = logging.getLogger('Storage')
@@ -280,14 +281,28 @@ def load_process_state():
 
 # System Config
 def save_system_config(config):
-    """Сохраняет системную конфигурацию"""
-    success = save_json_file(SYSTEM_CONFIG_FILE, config, "системная конфигурация")
-    if success:
-        logger.info(" Системная конфигурация сохранена")
-    return success
+    """Сохраняет системную конфигурацию в bot_config.py"""
+    try:
+        from bots_modules.config_writer import save_system_config_to_py
+        attrs = {}
+        for key, value in config.items():
+            attrs[key.upper()] = value
+        success = save_system_config_to_py(attrs)
+        if success:
+            logger.info(" Системная конфигурация сохранена (bot_config.py)")
+        return success
+    except Exception as e:
+        logger.error(f" Ошибка сохранения системной конфигурации: {e}")
+        return False
 
 
 def load_system_config():
-    """Загружает системную конфигурацию"""
-    return load_json_file(SYSTEM_CONFIG_FILE, description="системная конфигурация")
+    """Перезагружает SystemConfig из bot_config.py"""
+    try:
+        module = importlib.import_module('bot_engine.bot_config')
+        importlib.reload(module)
+        return module.SystemConfig
+    except Exception as e:
+        logger.error(f" Ошибка загрузки системной конфигурации: {e}")
+        return None
 

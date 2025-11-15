@@ -8,6 +8,18 @@ from typing import Dict, Any
 
 logger = logging.getLogger('ConfigWriter')
 
+
+def _format_python_value(value: Any) -> str:
+    """Возвращает строковое представление значения в синтаксисе Python."""
+    if isinstance(value, bool):
+        return 'True' if value else 'False'
+    if isinstance(value, str):
+        return repr(value)
+    if value is None:
+        return 'None'
+    return str(value)
+
+
 def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
     """
     Безопасно обновляет DEFAULT_AUTO_BOT_CONFIG в bot_config.py
@@ -91,23 +103,17 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
                     new_value = config[key]
                     
                     # Форматируем новое значение в Python-синтаксис
-                    if isinstance(new_value, bool):
-                        new_value_str = str(new_value)
-                    elif isinstance(new_value, str):
-                        new_value_str = f"'{new_value}'"
-                    elif isinstance(new_value, (int, float)):
-                        new_value_str = str(new_value)
-                    elif isinstance(new_value, list):
-                        new_value_str = str(new_value)
-                    else:
-                        new_value_str = str(new_value)
+                    new_value_str = _format_python_value(new_value)
                     
                     if old_value == new_value_str:
                         # Значение не изменилось — оставляем строку как есть и не шумим в логах
                         logger.debug(f"[CONFIG_WRITER] ↩️ {key}: без изменений ({old_value})")
                     else:
                         # Собираем обновленную строку
-                        updated_line = f"{indent}'{key}': {new_value_str}{comma}{comment}\n"
+                        comment_fragment = comment or ''
+                        if comment_fragment and not comment_fragment.startswith(' '):
+                            comment_fragment = f' {comment_fragment}'
+                        updated_line = f"{indent}'{key}': {new_value_str}{comma}{comment_fragment}\n"
                         # ✅ Логируем ключевые изменения
                         if key in ('trailing_stop_activation', 'trailing_stop_distance', 'break_even_trigger', 'avoid_down_trend', 'avoid_up_trend'):
                             logger.info(f"[CONFIG_WRITER] ✏️ {key}: {old_value} → {new_value_str}")
@@ -146,6 +152,72 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
         
     except Exception as e:
         logger.error(f"[CONFIG_WRITER] ❌ Ошибка сохранения конфигурации: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def save_system_config_to_py(config: Dict[str, Any]) -> bool:
+    """
+    Безопасно обновляет класс SystemConfig в bot_config.py.
+    config — словарь { 'ATTRIBUTE_NAME': value }.
+    """
+    try:
+        config_file = 'bot_engine/bot_config.py'
+        if not os.path.exists(config_file):
+            logger.error(f"[CONFIG_WRITER] ❌ Файл {config_file} не найден")
+            return False
+
+        with open(config_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        start_idx = None
+        end_idx = None
+        for i, line in enumerate(lines):
+            if line.strip().startswith('class SystemConfig'):
+                start_idx = i
+                break
+
+        if start_idx is None:
+            logger.error("[CONFIG_WRITER] ❌ Не найден класс SystemConfig")
+            return False
+
+        for j in range(start_idx + 1, len(lines)):
+            line = lines[j]
+            if line.startswith('class ') and not line.startswith('class SystemConfig'):
+                end_idx = j
+                break
+        if end_idx is None:
+            end_idx = len(lines)
+
+        updated_lines = lines[:start_idx + 1]
+
+        for i in range(start_idx + 1, end_idx):
+            line = lines[i]
+            match = re.match(r"^(\s+)([A-Z0-9_]+)\s*=\s*([^#\n]+)(.*)$", line)
+            if match:
+                indent, attr_name, old_value, comment = match.groups()
+                attr_name = attr_name.strip()
+                if attr_name in config:
+                    new_value = _format_python_value(config[attr_name])
+                    if old_value.strip() != new_value:
+                        comment_fragment = comment or ''
+                        if comment_fragment and not comment_fragment.startswith(' '):
+                            comment_fragment = f' {comment_fragment}'
+                        line = f"{indent}{attr_name} = {new_value}{comment_fragment}\n"
+                        logger.debug(f"[CONFIG_WRITER] ✏️ {attr_name}: {old_value.strip()} → {new_value}")
+            updated_lines.append(line)
+
+        updated_lines.extend(lines[end_idx:])
+
+        with open(config_file, 'w', encoding='utf-8') as f:
+            f.writelines(updated_lines)
+
+        logger.info("[CONFIG_WRITER] ✅ SystemConfig обновлен в bot_config.py")
+        return True
+
+    except Exception as e:
+        logger.error(f"[CONFIG_WRITER] ❌ Ошибка сохранения SystemConfig: {e}")
         import traceback
         traceback.print_exc()
         return False
