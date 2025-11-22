@@ -157,44 +157,57 @@ class BotsDatabase:
         if not os.path.exists(self.db_path):
             return True, None  # Нет БД - это нормально, будет создана
         
+        logger.debug("   [1/4] Проверка существования БД...")
+        
         try:
             # Сначала проверяем, не заблокирована ли БД другим процессом
             # Пытаемся простое подключение с коротким таймаутом
+            logger.debug("   [2/4] Проверка блокировки БД...")
             try:
                 test_conn = sqlite3.connect(self.db_path, timeout=1.0)
                 test_conn.close()
+                logger.debug("   [2/4] ✅ БД не заблокирована")
             except sqlite3.OperationalError as e:
                 if "locked" in str(e).lower():
                     # БД заблокирована - пропускаем проверку, чтобы не блокировать запуск
-                    logger.debug("ℹ️ БД заблокирована другим процессом, пропускаем проверку целостности")
+                    logger.debug("   [2/4] ⚠️ БД заблокирована другим процессом, пропускаем проверку целостности")
                     return True, None
                 raise
             
             # Синхронизируем WAL файлы перед проверкой (это может решить проблему зависания)
+            logger.debug("   [3/4] Подключение к БД и проверка режима журнала...")
             try:
                 conn = sqlite3.connect(self.db_path, timeout=5.0)
                 cursor = conn.cursor()
                 
                 # Проверяем режим журнала
+                logger.debug("   [3/4] Проверка режима журнала...")
                 cursor.execute("PRAGMA journal_mode")
                 journal_mode = cursor.fetchone()[0]
+                logger.debug(f"   [3/4] Режим журнала: {journal_mode}")
                 
                 # Если WAL режим - делаем checkpoint для синхронизации
                 if journal_mode.upper() == 'WAL':
+                    logger.debug("   [3/4] WAL режим обнаружен, выполнение checkpoint...")
                     try:
                         # Делаем пассивный checkpoint (не блокирует читателей)
                         cursor.execute("PRAGMA wal_checkpoint(PASSIVE)")
                         conn.commit()
-                    except Exception:
+                        logger.debug("   [3/4] ✅ Checkpoint выполнен")
+                    except Exception as e:
+                        logger.debug(f"   [3/4] ⚠️ Ошибка checkpoint (игнорируем): {e}")
                         pass  # Игнорируем ошибки checkpoint
                 
                 # Быстрая проверка целостности (быстрее чем integrity_check)
+                logger.debug("   [4/4] Выполнение PRAGMA quick_check...")
                 cursor.execute("PRAGMA busy_timeout = 2000")  # 2 секунды
                 cursor.execute("PRAGMA quick_check")
                 result = cursor.fetchone()[0]
+                logger.debug(f"   [4/4] ✅ Результат проверки: {result}")
                 conn.close()
                 
                 if result == "ok":
+                    logger.debug("   ✅ Проверка целостности БД завершена успешно")
                     return True, None
                 else:
                     # Есть проблемы - но не делаем полную проверку (она может быть очень долгой)
@@ -205,7 +218,7 @@ class BotsDatabase:
                 error_str = str(e).lower()
                 if "locked" in error_str:
                     # БД заблокирована - пропускаем проверку
-                    logger.debug("ℹ️ БД заблокирована, пропускаем проверку целостности")
+                    logger.debug("   [3/4] ⚠️ БД заблокирована, пропускаем проверку целостности")
                     return True, None
                 # Другие ошибки - считаем БД валидной, чтобы не блокировать запуск
                 logger.warning(f"⚠️ Ошибка проверки целостности БД: {e}, продолжаем работу...")
