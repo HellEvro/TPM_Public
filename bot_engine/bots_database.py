@@ -147,7 +147,7 @@ class BotsDatabase:
     
     def _check_integrity(self) -> Tuple[bool, Optional[str]]:
         """
-        Проверяет целостность БД с таймаутом
+        Проверяет целостность БД (быстрая проверка без блокировок)
         
         Returns:
             Tuple[bool, Optional[str]]: (is_ok, error_message)
@@ -158,61 +158,62 @@ class BotsDatabase:
             return True, None  # Нет БД - это нормально, будет создана
         
         try:
-            # Функция для выполнения проверки с таймаутом
-            def check_with_timeout():
-                conn = None
-                try:
-                    # Используем прямое подключение для проверки целостности (не через retry)
-                    conn = sqlite3.connect(self.db_path, timeout=10.0)  # Уменьшен таймаут
-                    cursor = conn.cursor()
+            # Сначала проверяем, не заблокирована ли БД другим процессом
+            # Пытаемся простое подключение с коротким таймаутом
+            try:
+                test_conn = sqlite3.connect(self.db_path, timeout=1.0)
+                test_conn.close()
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e).lower():
+                    # БД заблокирована - пропускаем проверку, чтобы не блокировать запуск
+                    logger.debug("ℹ️ БД заблокирована другим процессом, пропускаем проверку целостности")
+                    return True, None
+                raise
+            
+            # Синхронизируем WAL файлы перед проверкой (это может решить проблему зависания)
+            try:
+                conn = sqlite3.connect(self.db_path, timeout=5.0)
+                cursor = conn.cursor()
+                
+                # Проверяем режим журнала
+                cursor.execute("PRAGMA journal_mode")
+                journal_mode = cursor.fetchone()[0]
+                
+                # Если WAL режим - делаем checkpoint для синхронизации
+                if journal_mode.upper() == 'WAL':
+                    try:
+                        # Делаем пассивный checkpoint (не блокирует читателей)
+                        cursor.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                        conn.commit()
+                    except Exception:
+                        pass  # Игнорируем ошибки checkpoint
+                
+                # Быстрая проверка целостности (быстрее чем integrity_check)
+                cursor.execute("PRAGMA busy_timeout = 2000")  # 2 секунды
+                cursor.execute("PRAGMA quick_check")
+                result = cursor.fetchone()[0]
+                conn.close()
+                
+                if result == "ok":
+                    return True, None
+                else:
+                    # Есть проблемы - но не делаем полную проверку (она может быть очень долгой)
+                    logger.warning(f"⚠️ Обнаружены проблемы в БД: {result}")
+                    return False, result
                     
-                    # Быстрая проверка целостности (быстрее чем integrity_check)
-                    # Устанавливаем таймаут для операции
-                    cursor.execute("PRAGMA busy_timeout = 5000")  # 5 секунд
-                    cursor.execute("PRAGMA quick_check")
-                    result = cursor.fetchone()[0]
-                    return result
-                finally:
-                    if conn:
-                        conn.close()
-            
-            # Пытаемся выполнить проверку с таймаутом через threading
-            import threading
-            result_container = [None]
-            exception_container = [None]
-            
-            def run_check():
-                try:
-                    result_container[0] = check_with_timeout()
-                except Exception as e:
-                    exception_container[0] = e
-            
-            check_thread = threading.Thread(target=run_check, daemon=True)
-            check_thread.start()
-            check_thread.join(timeout=15.0)  # Максимум 15 секунд на проверку
-            
-            if check_thread.is_alive():
-                # Проверка зависла - пропускаем её
-                logger.warning("⚠️ Проверка целостности БД заняла слишком много времени, пропускаем...")
-                return True, None  # Считаем БД валидной, чтобы не блокировать запуск
-            
-            if exception_container[0]:
-                # В случае ошибки считаем БД валидной, чтобы не блокировать запуск
-                logger.warning(f"⚠️ Ошибка проверки целостности БД: {exception_container[0]}, продолжаем работу...")
+            except sqlite3.OperationalError as e:
+                error_str = str(e).lower()
+                if "locked" in error_str:
+                    # БД заблокирована - пропускаем проверку
+                    logger.debug("ℹ️ БД заблокирована, пропускаем проверку целостности")
+                    return True, None
+                # Другие ошибки - считаем БД валидной, чтобы не блокировать запуск
+                logger.warning(f"⚠️ Ошибка проверки целостности БД: {e}, продолжаем работу...")
                 return True, None
-            
-            result = result_container[0]
-            
-            if result == "ok":
-                return True, None
-            else:
-                # Есть проблемы - но не делаем полную проверку (она может быть очень долгой)
-                logger.warning(f"⚠️ Обнаружены проблемы в БД: {result}")
-                return False, result
                 
         except Exception as e:
             # В случае ошибки считаем БД валидной, чтобы не блокировать запуск
-            logger.warning(f"⚠️ Ошибка проверки целостности БД: {e}, продолжаем работу...")
+            logger.debug(f"ℹ️ Ошибка проверки целостности БД: {e}, продолжаем работу...")
             return True, None  # Возвращаем True, чтобы не блокировать запуск
     
     def _backup_database(self, max_retries: int = 3) -> Optional[str]:
