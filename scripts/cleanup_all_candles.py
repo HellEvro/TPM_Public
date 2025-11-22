@@ -181,27 +181,86 @@ def cleanup_ai_db_candles(db_path: str, max_candles_per_symbol: int = DEFAULT_MA
         logger.error(traceback.format_exc())
         return False
 
-def vacuum_database(db_path: str, db_name: str):
-    """Выполняет VACUUM для освобождения места"""
+def vacuum_database(db_path: str, db_name: str, skip_vacuum: bool = False):
+    """Выполняет VACUUM для освобождения места или альтернативные операции"""
+    if skip_vacuum:
+        logger.info("=" * 80)
+        logger.info(f"⏭️ Пропуск VACUUM для {db_name} (опция --skip-vacuum)")
+        logger.info("=" * 80)
+        return True
+    
     logger.info("=" * 80)
-    logger.info(f"⏳ Выполнение VACUUM для {db_name} (может занять много времени)...")
+    logger.info(f"⏳ Выполнение операций оптимизации для {db_name}...")
     logger.info("=" * 80)
     
     try:
-        start_vacuum_time = time.time()
-        conn = sqlite3.connect(str(db_path), timeout=300.0)  # Увеличенный timeout для VACUUM
+        conn = sqlite3.connect(str(db_path), timeout=30.0)
         cursor = conn.cursor()
+        
+        # Сначала делаем checkpoint для WAL файлов (быстрее и безопаснее)
+        logger.info(f"   [1/3] Выполнение PRAGMA wal_checkpoint(TRUNCATE)...")
+        try:
+            cursor.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            logger.info(f"   ✅ Checkpoint выполнен")
+        except Exception as e:
+            logger.warning(f"   ⚠️ Ошибка checkpoint: {e}")
+        
+        # Проверяем размер БД перед VACUUM
+        db_size_mb = Path(db_path).stat().st_size / (1024 * 1024)
+        logger.info(f"   [2/3] Размер БД перед оптимизацией: {db_size_mb:.2f} MB")
+        
+        # Если БД очень большая (>5 GB), предлагаем пропустить VACUUM
+        if db_size_mb > 5000:
+            logger.warning(f"   ⚠️ БД очень большая ({db_size_mb:.2f} MB), VACUUM может занять много времени!")
+            logger.warning(f"   💡 Рекомендуется запустить VACUUM отдельно или использовать --skip-vacuum")
+            logger.info(f"   [3/3] Пропуск VACUUM для {db_name} (БД слишком большая)")
+            conn.close()
+            return True
+        
+        # Выполняем VACUUM только для небольших БД
+        logger.info(f"   [3/3] Выполнение VACUUM (может занять время)...")
+        start_vacuum_time = time.time()
+        
+        # Устанавливаем увеличенный timeout
+        conn.close()
+        conn = sqlite3.connect(str(db_path), timeout=600.0)  # 10 минут для VACUUM
+        cursor = conn.cursor()
+        
         cursor.execute("VACUUM")
         conn.commit()
         conn.close()
+        
         end_vacuum_time = time.time()
-        logger.info(f"✅ VACUUM для {db_name} завершен за {end_vacuum_time - start_vacuum_time:.2f} секунд.")
+        elapsed_minutes = (end_vacuum_time - start_vacuum_time) / 60
+        
+        # Проверяем размер после VACUUM
+        new_db_size_mb = Path(db_path).stat().st_size / (1024 * 1024)
+        freed_mb = db_size_mb - new_db_size_mb
+        
+        logger.info(f"   ✅ VACUUM для {db_name} завершен за {elapsed_minutes:.1f} минут")
+        logger.info(f"   📊 Размер БД после оптимизации: {new_db_size_mb:.2f} MB")
+        if freed_mb > 0:
+            logger.info(f"   💾 Освобождено места: {freed_mb:.2f} MB")
+        
         return True
+    except sqlite3.OperationalError as e:
+        if "database is locked" in str(e).lower():
+            logger.warning(f"   ⚠️ БД заблокирована другим процессом, пропускаем VACUUM")
+            return False
+        logger.error(f"   ❌ Ошибка при выполнении VACUUM для {db_name}: {e}")
+        return False
     except Exception as e:
-        logger.error(f"❌ Ошибка при выполнении VACUUM для {db_name}: {e}")
+        logger.error(f"   ❌ Ошибка при выполнении VACUUM для {db_name}: {e}")
         return False
 
 def main():
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Очистка старых свечей из всех БД')
+    parser.add_argument('--skip-vacuum', action='store_true', 
+                       help='Пропустить VACUUM (рекомендуется для больших БД)')
+    args = parser.parse_args()
+    
     logger.info("=" * 80)
     logger.info("🧹 ЗАПУСК ОЧИСТКИ ВСЕХ СВЕЧЕЙ ИЗ ВСЕХ БД")
     logger.info("=" * 80)
@@ -218,6 +277,8 @@ def main():
     logger.info(f"📊 bots_data.db: {bots_db_path}")
     logger.info(f"📊 ai_data.db: {ai_db_path}")
     logger.info(f"📊 Максимум свечей на символ: {DEFAULT_MAX_CANDLES_PER_SYMBOL}")
+    if args.skip_vacuum:
+        logger.info(f"⏭️ VACUUM будет пропущен (--skip-vacuum)")
     logger.info("=" * 80)
     
     # Очистка bots_data.db
@@ -226,15 +287,17 @@ def main():
     # Очистка ai_data.db
     ai_success = cleanup_ai_db_candles(ai_db_path, DEFAULT_MAX_CANDLES_PER_SYMBOL)
     
-    # VACUUM для обеих БД
+    # VACUUM для обеих БД (или пропуск)
     if bots_success:
-        vacuum_database(bots_db_path, "bots_data.db")
+        vacuum_database(bots_db_path, "bots_data.db", skip_vacuum=args.skip_vacuum)
     
     if ai_success:
-        vacuum_database(ai_db_path, "ai_data.db")
+        vacuum_database(ai_db_path, "ai_data.db", skip_vacuum=args.skip_vacuum)
     
     logger.info("=" * 80)
     logger.info("🧹 ОЧИСТКА ЗАВЕРШЕНА")
+    if args.skip_vacuum:
+        logger.info("💡 Для полной оптимизации запустите VACUUM отдельно после закрытия всех соединений с БД")
     logger.info("=" * 80)
 
 if __name__ == '__main__':
