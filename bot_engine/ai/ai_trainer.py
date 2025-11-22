@@ -548,6 +548,90 @@ class AITrainer:
                 if db_trades:
                     # Конвертируем формат БД в формат для обучения
                     for trade in db_trades:
+                        # Получаем RSI и Trend данные (приоритет: entry_rsi/entry_trend > rsi/trend)
+                        rsi = trade.get('rsi')
+                        trend = trade.get('trend')
+                        
+                        # Если нет rsi/trend, пробуем entry_rsi/entry_trend (get_trades_for_training уже маппит их)
+                        if rsi is None:
+                            rsi = trade.get('entry_rsi')
+                        if trend is None:
+                            trend = trade.get('entry_trend')
+                        
+                        # Если все еще нет RSI/Trend, пытаемся рассчитать из рыночных данных
+                        # ВАЖНО: Это медленная операция, поэтому делаем только если действительно нужно
+                        if (rsi is None or trend is None):
+                            # Ленивая загрузка рыночных данных только если нужно
+                            if not hasattr(self, '_cached_market_data'):
+                                try:
+                                    self._cached_market_data = self._load_market_data() if hasattr(self, '_load_market_data') else {}
+                                except:
+                                    self._cached_market_data = {}
+                            
+                            market_data = self._cached_market_data
+                            if market_data:
+                                symbol = trade.get('symbol')
+                                entry_timestamp = trade.get('timestamp') or trade.get('entry_time')
+                                
+                                if symbol and entry_timestamp and symbol in market_data:
+                                    candles = market_data[symbol].get('candles', [])
+                                    if candles:
+                                        # Находим свечу, ближайшую к моменту входа
+                                        try:
+                                            if isinstance(entry_timestamp, str):
+                                                from datetime import datetime
+                                                entry_dt = datetime.fromisoformat(entry_timestamp.replace('Z', '+00:00'))
+                                                entry_ts = entry_dt.timestamp()
+                                            else:
+                                                entry_ts = float(entry_timestamp)
+                                            
+                                            # Ищем ближайшую свечу
+                                            closest_candle = None
+                                            min_diff = float('inf')
+                                            for candle in candles:
+                                                candle_ts = candle.get('timestamp', 0)
+                                                diff = abs(candle_ts - entry_ts)
+                                                if diff < min_diff:
+                                                    min_diff = diff
+                                                    closest_candle = candle
+                                            
+                                            if closest_candle:
+                                                # Рассчитываем RSI если нет
+                                                if rsi is None:
+                                                    # Используем последние 14 свечей для расчета RSI
+                                                    candle_idx = candles.index(closest_candle) if closest_candle in candles else len(candles) - 1
+                                                    rsi_window = min(14, candle_idx + 1)
+                                                    if rsi_window >= 14:
+                                                        closes = [c.get('close', 0) for c in candles[max(0, candle_idx-13):candle_idx+1]]
+                                                        if len(closes) == 14 and all(c > 0 for c in closes):
+                                                            gains = [max(0, closes[i] - closes[i-1]) for i in range(1, len(closes))]
+                                                            losses = [max(0, closes[i-1] - closes[i]) for i in range(1, len(closes))]
+                                                            avg_gain = sum(gains) / len(gains) if gains else 0
+                                                            avg_loss = sum(losses) / len(losses) if losses else 0
+                                                            if avg_loss > 0:
+                                                                rs = avg_gain / avg_loss
+                                                                rsi = 100 - (100 / (1 + rs))
+                                                            else:
+                                                                rsi = 100 if avg_gain > 0 else 50
+                                                
+                                                # Рассчитываем Trend если нет
+                                                if trend is None:
+                                                    candle_idx = candles.index(closest_candle) if closest_candle in candles else len(candles) - 1
+                                                    if candle_idx >= 26:
+                                                        closes = [c.get('close', 0) for c in candles[max(0, candle_idx-25):candle_idx+1]]
+                                                        if len(closes) >= 26 and all(c > 0 for c in closes):
+                                                            # EMA короткая (12) и длинная (26)
+                                                            ema_12 = sum(closes[-12:]) / 12
+                                                            ema_26 = sum(closes[-26:]) / 26
+                                                            if ema_12 > ema_26:
+                                                                trend = 'UP'
+                                                            elif ema_12 < ema_26:
+                                                                trend = 'DOWN'
+                                                            else:
+                                                                trend = 'NEUTRAL'
+                                        except Exception as enrich_error:
+                                            logger.debug(f"⚠️ Не удалось обогатить RSI/Trend для {symbol}: {enrich_error}")
+                        
                         # Преобразуем данные из БД в формат, ожидаемый AI
                         converted_trade = {
                             'id': f"db_{trade.get('symbol')}_{trade.get('timestamp', '')}",
@@ -561,8 +645,8 @@ class AITrainer:
                             'roi': trade.get('roi'),
                             'status': 'CLOSED',
                             'decision_source': trade.get('decision_source', 'SCRIPT'),
-                            'rsi': trade.get('rsi'),
-                            'trend': trade.get('trend'),
+                            'rsi': rsi,  # Используем обогащенное значение
+                            'trend': trend,  # Используем обогащенное значение
                             'close_timestamp': trade.get('close_timestamp') or trade.get('exit_time'),
                             'close_reason': trade.get('close_reason'),
                             'is_successful': trade.get('is_successful', False),
