@@ -1324,6 +1324,52 @@ class AIDatabase:
                     
                     logger.info("✅ Миграция data_service_status завершена: данные перенесены из JSON в нормализованные столбцы")
                     
+                    # Удаляем старую колонку status_json (SQLite не поддерживает DROP COLUMN, пересоздаем таблицу)
+                    try:
+                        # Создаем временную таблицу с новой структурой
+                        cursor.execute("""
+                            CREATE TABLE data_service_status_new (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                service_name TEXT NOT NULL UNIQUE,
+                                last_collection TEXT,
+                                trades_count INTEGER DEFAULT 0,
+                                candles_count INTEGER DEFAULT 0,
+                                ready INTEGER DEFAULT 0,
+                                history_loaded INTEGER DEFAULT 0,
+                                timestamp TEXT,
+                                extra_status_json TEXT,
+                                updated_at TEXT NOT NULL
+                            )
+                        """)
+                        
+                        # Копируем данные из старой таблицы в новую
+                        cursor.execute("""
+                            INSERT INTO data_service_status_new (
+                                id, service_name, last_collection, trades_count, candles_count,
+                                ready, history_loaded, timestamp, extra_status_json, updated_at
+                            )
+                            SELECT 
+                                id, service_name, last_collection, trades_count, candles_count,
+                                ready, history_loaded, timestamp, extra_status_json, updated_at
+                            FROM data_service_status
+                        """)
+                        
+                        # Удаляем старую таблицу
+                        cursor.execute("DROP TABLE data_service_status")
+                        
+                        # Переименовываем новую таблицу
+                        cursor.execute("ALTER TABLE data_service_status_new RENAME TO data_service_status")
+                        
+                        # Восстанавливаем индексы
+                        cursor.execute("CREATE INDEX IF NOT EXISTS idx_data_service_name ON data_service_status(service_name)")
+                        cursor.execute("CREATE INDEX IF NOT EXISTS idx_data_service_updated_at ON data_service_status(updated_at)")
+                        
+                        conn.commit()
+                        logger.info("✅ Колонка status_json удалена из data_service_status")
+                    except Exception as drop_error:
+                        logger.warning(f"⚠️ Не удалось удалить колонку status_json: {drop_error}")
+                        # Продолжаем работу - данные уже мигрированы
+                    
             except sqlite3.OperationalError:
                 # Колонка status_json не существует - значит уже мигрировано или новая структура
                 logger.debug("ℹ️ data_service_status уже в нормализованном формате")
@@ -5690,30 +5736,16 @@ class AIDatabase:
                 
                 extra_status_json = json.dumps(extra_status, ensure_ascii=False) if extra_status else None
                 
-                # Проверяем, есть ли старая структура с status_json
-                try:
-                    cursor.execute("SELECT status_json FROM data_service_status LIMIT 1")
-                    # Старая структура - используем её для обратной совместимости
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO data_service_status (
-                            service_name, status_json, updated_at
-                        ) VALUES (?, ?, ?)
-                    """, (
-                        service_name,
-                        json.dumps(status, ensure_ascii=False),
-                        now
-                    ))
-                except sqlite3.OperationalError:
-                    # Новая нормализованная структура
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO data_service_status (
-                            service_name, last_collection, trades_count, candles_count,
-                            ready, history_loaded, timestamp, extra_status_json, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
+                # ВСЕГДА используем нормализованную структуру (старая колонка status_json должна быть удалена миграцией)
+                cursor.execute("""
+                    INSERT OR REPLACE INTO data_service_status (
                         service_name, last_collection, trades_count, candles_count,
-                        ready, history_loaded, timestamp, extra_status_json, now
-                    ))
+                        ready, history_loaded, timestamp, extra_status_json, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    service_name, last_collection, trades_count, candles_count,
+                    ready, history_loaded, timestamp, extra_status_json, now
+                ))
                 
                 conn.commit()
                 return cursor.lastrowid

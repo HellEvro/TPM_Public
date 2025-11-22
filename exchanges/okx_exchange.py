@@ -1,6 +1,6 @@
 from .base_exchange import BaseExchange
 import ccxt
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import traceback
 import pandas as pd
@@ -158,6 +158,7 @@ class OkxExchange(BaseExchange):
             all_closed_pnl = []
             
             end_time = int(time.time() * 1000)
+            end_dt = datetime.fromtimestamp(end_time / 1000)
             
             # Определяем диапазон дат в зависимости от периода
             if period == 'custom' and start_date and end_date:
@@ -178,15 +179,30 @@ class OkxExchange(BaseExchange):
                     logger.error(f"Error parsing custom dates: {e}")
                     start_time = end_time - (7 * 24 * 60 * 60 * 1000)
             elif period == 'day':
-                start_time = end_time - (24 * 60 * 60 * 1000)
+                # Начало текущего дня (00:00:00)
+                day_start = end_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+                start_time = int(day_start.timestamp() * 1000)
             elif period == 'week':
-                start_time = end_time - (7 * 24 * 60 * 60 * 1000)
+                # Начало текущей недели (понедельник 00:00:00)
+                days_since_monday = end_dt.weekday()  # 0 = понедельник, 6 = воскресенье
+                week_start = end_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+                week_start = week_start - timedelta(days=days_since_monday)
+                start_time = int(week_start.timestamp() * 1000)
             elif period == 'month':
-                start_time = end_time - (30 * 24 * 60 * 60 * 1000)
+                # Начало текущего месяца (1-е число 00:00:00)
+                month_start = end_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                start_time = int(month_start.timestamp() * 1000)
             elif period == 'half_year':
-                start_time = end_time - (180 * 24 * 60 * 60 * 1000)
+                # Начало текущего полугодия (январь или июль, 1-е число 00:00:00)
+                if end_dt.month <= 6:
+                    half_year_start = end_dt.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                else:
+                    half_year_start = end_dt.replace(month=7, day=1, hour=0, minute=0, second=0, microsecond=0)
+                start_time = int(half_year_start.timestamp() * 1000)
             elif period == 'year':
-                start_time = end_time - (365 * 24 * 60 * 60 * 1000)
+                # Начало текущего года (1 января 00:00:00)
+                year_start = end_dt.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                start_time = int(year_start.timestamp() * 1000)
             else:  # period == 'all'
                 start_time = end_time - (730 * 24 * 60 * 60 * 1000)  # 2 года
             

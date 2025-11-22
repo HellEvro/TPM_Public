@@ -38,7 +38,7 @@ import os
 import threading
 import time
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Optional, Any, Tuple, List
 from contextlib import contextmanager
@@ -771,24 +771,40 @@ class AppDatabase:
                 
                 # Определяем временной диапазон
                 now = int(time.time() * 1000)  # миллисекунды
+                now_dt = datetime.fromtimestamp(now / 1000)
                 
                 if period == 'all':
                     period_start = 0
                     period_end = now
                 elif period == 'day':
-                    period_start = now - 24 * 60 * 60 * 1000
+                    # Начало текущего дня (00:00:00)
+                    day_start = now_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+                    period_start = int(day_start.timestamp() * 1000)
                     period_end = now
                 elif period == 'week':
-                    period_start = now - 7 * 24 * 60 * 60 * 1000
+                    # Начало текущей недели (понедельник 00:00:00)
+                    days_since_monday = now_dt.weekday()  # 0 = понедельник, 6 = воскресенье
+                    week_start = now_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+                    week_start = week_start - timedelta(days=days_since_monday)
+                    period_start = int(week_start.timestamp() * 1000)
                     period_end = now
                 elif period == 'month':
-                    period_start = now - 30 * 24 * 60 * 60 * 1000
+                    # Начало текущего месяца (1-е число 00:00:00)
+                    month_start = now_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                    period_start = int(month_start.timestamp() * 1000)
                     period_end = now
                 elif period == 'half_year':
-                    period_start = now - 180 * 24 * 60 * 60 * 1000
+                    # Начало текущего полугодия (январь или июль, 1-е число 00:00:00)
+                    if now_dt.month <= 6:
+                        half_year_start = now_dt.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                    else:
+                        half_year_start = now_dt.replace(month=7, day=1, hour=0, minute=0, second=0, microsecond=0)
+                    period_start = int(half_year_start.timestamp() * 1000)
                     period_end = now
                 elif period == 'year':
-                    period_start = now - 365 * 24 * 60 * 60 * 1000
+                    # Начало текущего года (1 января 00:00:00)
+                    year_start = now_dt.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                    period_start = int(year_start.timestamp() * 1000)
                     period_end = now
                 elif period == 'custom':
                     # Парсим даты

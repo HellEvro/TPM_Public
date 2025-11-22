@@ -477,9 +477,14 @@ class DatabaseConnection:
         except:
             return []
     
-    def get_table_data(self, table_name: str, limit: int = 1000, offset: int = 0) -> Tuple[List[Dict], int]:
+    def get_table_data(self, table_name: str, limit: Optional[int] = 1000, offset: int = 0) -> Tuple[List[Dict], int]:
         """
         Получает данные из таблицы с пагинацией
+        
+        Args:
+            table_name: Имя таблицы
+            limit: Количество записей (None или 0 = все записи)
+            offset: Смещение для пагинации
         
         Returns:
             (rows, total_count) - данные и общее количество записей
@@ -494,8 +499,14 @@ class DatabaseConnection:
             cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
             total_count = cursor.fetchone()[0]
             
-            # Получаем данные с лимитом
-            cursor.execute(f"SELECT * FROM {table_name} LIMIT ? OFFSET ?", (limit, offset))
+            # Получаем данные с лимитом или без него
+            if limit is None or limit == 0:
+                # Загружаем все записи
+                cursor.execute(f"SELECT * FROM {table_name}")
+            else:
+                # Загружаем с пагинацией
+                cursor.execute(f"SELECT * FROM {table_name} LIMIT ? OFFSET ?", (limit, offset))
+            
             rows = cursor.fetchall()
             
             # Конвертируем в список словарей
@@ -534,6 +545,22 @@ class DatabaseGUI(tk.Tk):
         # Хранилище всех загруженных данных для фильтрации
         self.all_table_data: List[Dict] = []
         self.all_table_columns: List[str] = []
+        
+        # Пагинация
+        self.current_page = 1
+        self.records_per_page = 100  # По умолчанию
+        self.total_records = 0
+        self.total_pages = 1
+        
+        # Настройки (будут загружены из файла)
+        self.settings_file = ROOT / "data" / "database_gui_settings.json"
+        self.settings = self._load_settings()
+        
+        # Применяем настройки
+        if 'records_per_page' in self.settings:
+            self.records_per_page = self.settings.get('records_per_page', 100)
+        if 'geometry' in self.settings:
+            self.geometry(self.settings.get('geometry', '1400x900'))
         
         # Создаем интерфейс
         self._build_ui()
@@ -823,6 +850,40 @@ class DatabaseGUI(tk.Tk):
         # Привязываем поиск при вводе
         self.search_var.trace_add('write', lambda *args: self._filter_table_data())
         
+        # Фильтр количества записей
+        records_filter_frame = ttk.Frame(search_frame)
+        records_filter_frame.pack(side=tk.LEFT, padx=8)
+        
+        ttk.Label(records_filter_frame, text="Записей:", font=('Segoe UI', 9)).pack(side=tk.LEFT, padx=2)
+        
+        # Выпадающий список с предустановленными значениями
+        records_per_page_str = 'Все' if self.records_per_page == 0 else str(self.records_per_page)
+        if records_per_page_str not in ['10', '50', '100', '500', '1000', 'Все']:
+            records_per_page_str = str(self.records_per_page)
+        self.records_per_page_var = tk.StringVar(value=records_per_page_str)
+        records_combo = ttk.Combobox(
+            records_filter_frame,
+            textvariable=self.records_per_page_var,
+            values=['10', '50', '100', '500', '1000', 'Все'],
+            width=8,
+            state='readonly'
+        )
+        records_combo.pack(side=tk.LEFT, padx=2)
+        records_combo.bind('<<ComboboxSelected>>', self._on_records_per_page_changed)
+        
+        # Поле для ввода произвольного количества
+        self.custom_records_var = tk.StringVar()
+        custom_records_entry = ttk.Entry(
+            records_filter_frame,
+            textvariable=self.custom_records_var,
+            width=8
+        )
+        custom_records_entry.pack(side=tk.LEFT, padx=2)
+        custom_records_entry.bind('<Return>', self._on_custom_records_entered)
+        custom_records_entry.bind('<FocusOut>', self._on_custom_records_entered)
+        
+        ttk.Label(records_filter_frame, text="(вручную)", font=('Segoe UI', 8), foreground='gray').pack(side=tk.LEFT, padx=2)
+        
         ttk.Button(
             search_frame,
             text="Очистить",
@@ -886,10 +947,55 @@ class DatabaseGUI(tk.Tk):
         
         self.data_tree = data_tree
         
-        # Информация о записях
-        records_info = ttk.Label(tables_frame, text="Записей: 0", font=('Segoe UI', 9))
-        records_info.pack(padx=8, pady=4)
+        # Информация о записях и пагинация
+        pagination_frame = ttk.Frame(tables_frame)
+        pagination_frame.pack(fill=tk.X, padx=8, pady=4)
+        
+        records_info = ttk.Label(pagination_frame, text="Записей: 0", font=('Segoe UI', 9))
+        records_info.pack(side=tk.LEFT, padx=4)
         self.records_info = records_info
+        
+        # Пагинация
+        pagination_controls = ttk.Frame(pagination_frame)
+        pagination_controls.pack(side=tk.RIGHT, padx=4)
+        
+        ttk.Button(
+            pagination_controls,
+            text="◀◀",
+            command=lambda: self._go_to_page(1),
+            width=3
+        ).pack(side=tk.LEFT, padx=1)
+        
+        ttk.Button(
+            pagination_controls,
+            text="◀",
+            command=self._prev_page,
+            width=3
+        ).pack(side=tk.LEFT, padx=1)
+        
+        self.page_info_var = tk.StringVar(value="Стр. 1/1")
+        page_info_label = ttk.Label(pagination_controls, textvariable=self.page_info_var, font=('Segoe UI', 9))
+        page_info_label.pack(side=tk.LEFT, padx=4)
+        
+        # Поле для ввода номера страницы
+        self.page_entry_var = tk.StringVar()
+        page_entry = ttk.Entry(pagination_controls, textvariable=self.page_entry_var, width=5)
+        page_entry.pack(side=tk.LEFT, padx=2)
+        page_entry.bind('<Return>', self._on_page_entered)
+        
+        ttk.Button(
+            pagination_controls,
+            text="▶",
+            command=self._next_page,
+            width=3
+        ).pack(side=tk.LEFT, padx=1)
+        
+        ttk.Button(
+            pagination_controls,
+            text="▶▶",
+            command=lambda: self._go_to_page(self.total_pages),
+            width=3
+        ).pack(side=tk.LEFT, padx=1)
         
         self.panels['tables'] = tables_frame
         
@@ -1257,10 +1363,19 @@ class DatabaseGUI(tk.Tk):
             self.data_tree.heading(col, text=col)
             self.data_tree.column(col, width=150, minwidth=100)
         
-        # Загружаем данные
-        rows, total_count = self.db_conn.get_table_data(table_name)
+        # Сбрасываем пагинацию при загрузке новой таблицы
+        self.current_page = 1
         
-        # Сохраняем все данные для фильтрации
+        # Загружаем данные с пагинацией
+        limit = self.records_per_page if self.records_per_page > 0 else None
+        offset = (self.current_page - 1) * self.records_per_page if self.records_per_page > 0 else 0
+        rows, total_count = self.db_conn.get_table_data(table_name, limit=limit, offset=offset)
+        
+        # Сохраняем общее количество записей
+        self.total_records = total_count
+        self.total_pages = max(1, (total_count + self.records_per_page - 1) // self.records_per_page) if self.records_per_page > 0 else 1
+        
+        # Сохраняем загруженные данные
         self.all_table_data = rows
         self.all_table_columns = columns
         
@@ -1269,6 +1384,9 @@ class DatabaseGUI(tk.Tk):
         
         # Отображаем данные (с учетом текущего фильтра)
         self._display_filtered_data()
+        
+        # Обновляем пагинацию
+        self._update_pagination_info()
         
         # Обновляем статус
         self._update_status(f"Загружено {len(rows)} записей из таблицы '{table_name}' (всего: {total_count})", "success")
@@ -1317,12 +1435,14 @@ class DatabaseGUI(tk.Tk):
             self.data_tree.insert("", tk.END, values=values)
         
         # Обновляем информацию о записях
-        total_count = len(self.all_table_data)
+        total_count = self.total_records
         shown_count = len(filtered_rows)
         if search_text:
             self.records_info.config(text=f"Записей: {total_count} (найдено: {shown_count})")
         else:
-            self.records_info.config(text=f"Записей: {total_count} (показано: {shown_count})")
+            start_record = (self.current_page - 1) * self.records_per_page + 1 if self.records_per_page > 0 else 1
+            end_record = min(start_record + len(filtered_rows) - 1, total_count) if self.records_per_page > 0 else total_count
+            self.records_info.config(text=f"Записей: {total_count} (показано: {start_record}-{end_record})")
     
     def _clear_search(self):
         """Очищает поле поиска"""
@@ -1543,8 +1663,113 @@ class DatabaseGUI(tk.Tk):
         self._auto_discover_databases()
         self._update_status("Список баз данных обновлен", "success")
     
+    def _prev_page(self):
+        """Переход на предыдущую страницу"""
+        if self.current_page > 1:
+            self.current_page -= 1
+            self._load_table_data()
+    
+    def _next_page(self):
+        """Переход на следующую страницу"""
+        if self.current_page < self.total_pages:
+            self.current_page += 1
+            self._load_table_data()
+    
+    def _go_to_page(self, page: int):
+        """Переход на указанную страницу"""
+        if 1 <= page <= self.total_pages:
+            self.current_page = page
+            self._load_table_data()
+    
+    def _on_page_entered(self, event=None):
+        """Обработчик ввода номера страницы"""
+        try:
+            page = int(self.page_entry_var.get())
+            self._go_to_page(page)
+        except ValueError:
+            self.page_entry_var.set(str(self.current_page))
+    
+    def _update_pagination_info(self):
+        """Обновляет информацию о пагинации"""
+        self.page_info_var.set(f"Стр. {self.current_page}/{self.total_pages}")
+        self.page_entry_var.set(str(self.current_page))
+    
+    def _on_records_per_page_changed(self, event=None):
+        """Обработчик изменения количества записей на странице"""
+        value = self.records_per_page_var.get()
+        if value == 'Все':
+            self.records_per_page = 0  # 0 означает "все записи"
+        else:
+            try:
+                self.records_per_page = int(value)
+            except ValueError:
+                self.records_per_page = 100
+        
+        self.current_page = 1
+        self._save_settings()
+        self._load_table_data()
+    
+    def _on_custom_records_entered(self, event=None):
+        """Обработчик ввода произвольного количества записей"""
+        try:
+            value = int(self.custom_records_var.get())
+            if value > 0:
+                self.records_per_page = value
+                self.records_per_page_var.set(str(value))
+                self.current_page = 1
+                self._save_settings()
+                self._load_table_data()
+        except ValueError:
+            self.custom_records_var.set("")
+    
+    def _load_settings(self) -> Dict:
+        """Загружает настройки из файла"""
+        if not self.settings_file.exists():
+            return {}
+        
+        try:
+            with open(self.settings_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Ошибка загрузки настроек: {e}")
+            return {}
+    
+    def _save_settings(self):
+        """Сохраняет настройки в файл"""
+        try:
+            # Создаем директорию если её нет
+            self.settings_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Сохраняем текущие настройки
+            self.settings = {
+                'records_per_page': self.records_per_page,
+                'geometry': self.geometry(),
+                'panels': {}  # TODO: сохранять положение панелей
+            }
+            
+            # Сохраняем положение панелей
+            for panel_name, panel in self.panels.items():
+                if hasattr(panel, 'canvas_id') and panel.canvas_id:
+                    try:
+                        coords = self.main_canvas.coords(panel.canvas_id)
+                        size = self.main_canvas.itemcget(panel.canvas_id, 'width'), self.main_canvas.itemcget(panel.canvas_id, 'height')
+                        self.settings['panels'][panel_name] = {
+                            'x': float(coords[0]) if coords and len(coords) > 0 else 0,
+                            'y': float(coords[1]) if coords and len(coords) > 1 else 0,
+                            'width': float(size[0]) if size[0] != '' else 300,
+                            'height': float(size[1]) if size[1] != '' else 200
+                        }
+                    except:
+                        pass
+            
+            with open(self.settings_file, 'w', encoding='utf-8') as f:
+                json.dump(self.settings, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Ошибка сохранения настроек: {e}")
+    
     def on_closing(self):
         """Обработчик закрытия окна"""
+        self._save_settings()
         if self.db_conn:
             self.db_conn.disconnect()
         self.destroy()

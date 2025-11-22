@@ -5,7 +5,7 @@ import requests.exceptions
 import requests
 import time
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 import sys
 try:
     from app.config import (  # type: ignore
@@ -433,6 +433,7 @@ class BybitExchange(BaseExchange):
             
             # Получаем текущее время
             end_time = int(time.time() * 1000)
+            end_dt = datetime.fromtimestamp(end_time / 1000)
             
             # Определяем диапазон дат в зависимости от периода
             # Максимальный период для Bybit API - 2 года (730 дней)
@@ -479,19 +480,34 @@ class BybitExchange(BaseExchange):
                     period_start = end_time - (547 * 24 * 60 * 60 * 1000)
                     period_end = end_time
             elif period == 'day':
-                period_start = end_time - (24 * 60 * 60 * 1000)
+                # Начало текущего дня (00:00:00)
+                day_start = end_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+                period_start = int(day_start.timestamp() * 1000)
                 period_end = end_time
             elif period == 'week':
-                period_start = end_time - (7 * 24 * 60 * 60 * 1000)
+                # Начало текущей недели (понедельник 00:00:00)
+                days_since_monday = end_dt.weekday()  # 0 = понедельник, 6 = воскресенье
+                week_start = end_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+                week_start = week_start - timedelta(days=days_since_monday)
+                period_start = int(week_start.timestamp() * 1000)
                 period_end = end_time
             elif period == 'month':
-                period_start = end_time - (30 * 24 * 60 * 60 * 1000)
+                # Начало текущего месяца (1-е число 00:00:00)
+                month_start = end_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                period_start = int(month_start.timestamp() * 1000)
                 period_end = end_time
             elif period == 'half_year':
-                period_start = end_time - (180 * 24 * 60 * 60 * 1000)
+                # Начало текущего полугодия (январь или июль, 1-е число 00:00:00)
+                if end_dt.month <= 6:
+                    half_year_start = end_dt.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                else:
+                    half_year_start = end_dt.replace(month=7, day=1, hour=0, minute=0, second=0, microsecond=0)
+                period_start = int(half_year_start.timestamp() * 1000)
                 period_end = end_time
             elif period == 'year':
-                period_start = end_time - (365 * 24 * 60 * 60 * 1000)
+                # Начало текущего года (1 января 00:00:00)
+                year_start = end_dt.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                period_start = int(year_start.timestamp() * 1000)
                 period_end = end_time
             else:  # period == 'all'
                 # Для 'all' получаем данные за последние 1.5 года (максимум для Bybit API - 2 года)

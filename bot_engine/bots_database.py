@@ -1354,24 +1354,22 @@ class BotsDatabase:
                             logger.info("🗑️ Старая таблица bots_state удалена (данные мигрированы в нормализованные таблицы)")
                         except Exception as drop_error:
                             logger.warning(f"⚠️ Не удалось удалить старую таблицу bots_state: {drop_error}")
+                        
+                        # ВСЕГДА пытаемся удалить старую таблицу bots_state после миграции
+                        try:
+                            cursor.execute("DROP TABLE IF EXISTS bots_state")
+                            logger.info("🗑️ Старая таблица bots_state удалена после миграции")
+                        except Exception:
+                            pass  # Игнорируем ошибки - возможно таблица уже удалена
                     else:
                         logger.debug("ℹ️ Данные bots уже мигрированы")
                         
-                        # Проверяем, есть ли еще старая таблица bots_state и удаляем её
+                        # ВСЕГДА удаляем старую таблицу bots_state - данные уже в нормализованных таблицах
                         try:
                             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='bots_state'")
                             if cursor.fetchone():
-                                # Проверяем, что в ней нет данных или только старые данные
-                                cursor.execute("SELECT COUNT(*) FROM bots_state")
-                                old_count = cursor.fetchone()[0]
-                                if old_count > 0:
-                                    # Проверяем, что данные действительно мигрированы
-                                    cursor.execute("SELECT COUNT(*) FROM bots")
-                                    new_count = cursor.fetchone()[0]
-                                    if new_count > 0:
-                                        # Данные мигрированы - удаляем старую таблицу
-                                        cursor.execute("DROP TABLE IF EXISTS bots_state")
-                                        logger.info("🗑️ Старая таблица bots_state удалена (данные уже были мигрированы)")
+                                cursor.execute("DROP TABLE IF EXISTS bots_state")
+                                logger.info("🗑️ Старая таблица bots_state удалена (данные мигрированы в таблицы bots и auto_bot_config)")
                         except Exception as cleanup_error:
                             logger.debug(f"⚠️ Ошибка очистки старой таблицы bots_state: {cleanup_error}")
                         
