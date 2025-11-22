@@ -71,26 +71,16 @@ def vacuum_db_safe(db_path: str):
         if free_percent < 5:
             print(f"\n⚠️ Мало свободного места ({free_percent:.1f}%)")
             print(f"   VACUUM может не дать значительного эффекта")
-            response = input("   Продолжить? (y/n): ")
-            if response.lower() != 'y':
-                return False
+            print(f"   💡 Рекомендуется сначала запустить очистку свечей")
         
         if db_size_before > 10 * 1024**3:  # >10 GB
             print(f"\n⚠️ БД очень большая ({db_size_before / (1024**3):.2f} GB)")
             print(f"   VACUUM может занять ОЧЕНЬ много времени (возможно, часы)")
-            print(f"   Убедитесь, что:")
-            print(f"   1. Все программы, использующие БД, закрыты")
-            print(f"   2. У вас есть достаточно времени")
-            print(f"   3. Есть свободное место на диске (нужно ~2x размера БД)")
-            response = input("   Продолжить? (y/n): ")
-            if response.lower() != 'y':
-                return False
+            print(f"   ⏳ Начинаю выполнение...")
         
     except Exception as e:
         print(f"⚠️ Ошибка при проверке БД: {e}")
-        response = input("   Продолжить? (y/n): ")
-        if response.lower() != 'y':
-            return False
+        print(f"   ⏳ Продолжаю выполнение VACUUM...")
     
     # Выполняем checkpoint перед VACUUM
     print(f"\n⏳ [1/3] Выполнение PRAGMA wal_checkpoint(TRUNCATE)...")
@@ -154,7 +144,6 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='Безопасный VACUUM для больших БД')
     parser.add_argument('db_path', nargs='?', help='Путь к БД')
-    parser.add_argument('--force', action='store_true', help='Пропустить подтверждения')
     args = parser.parse_args()
     
     if args.db_path:
@@ -163,11 +152,6 @@ if __name__ == '__main__':
         db_path = os.environ.get('BOTS_DB_PATH')
         if not db_path:
             db_path = str(PROJECT_ROOT / 'data' / 'bots_data.db')
-    
-    if args.force:
-        # Для автоматизации можно использовать --force
-        import sys
-        sys.stdin = open(os.devnull, 'r')
     
     vacuum_db_safe(db_path)
 
