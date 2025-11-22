@@ -1,0 +1,3449 @@
+/* СТРАНИЦА БОТОВ - ДИЗАЙН СОГЛАСНО ТЗ */
+
+/* Основной контейнер страницы ботов */
+.bots-page {
+    height: calc(100vh - 180px);
+    background: var(--bg-primary);
+    color: var(--text-color);
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ТАБЫ НАВИГАЦИИ */
+.bots-tabs {
+    display: flex;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 20px;
+    flex-shrink: 0;
+}
+
+.bots-tab-btn {
+    padding: 12px 24px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    border-bottom: 2px solid transparent;
+}
+
+.bots-tab-btn:hover {
+    color: var(--text-color);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.bots-tab-btn.active {
+    color: var(--blue-color);
+    border-bottom-color: var(--blue-color);
+    background: rgba(79, 172, 254, 0.1);
+}
+
+/* КОНТЕНТ ТАБОВ */
+.bots-tab-content {
+    flex: 1;
+    overflow: hidden;
+    display: none;
+}
+
+.bots-tab-content.active {
+    display: flex;
+    flex-direction: column;
+}
+
+/* СТАТУС СЕРВИСА */
+.service-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    margin-bottom: 8px;
+    font-size: 11px;
+}
+
+.status-indicator {
+    font-size: 12px;
+    color: #ffd700;
+}
+
+.status-indicator.online {
+    color: #4caf50;
+}
+
+.status-indicator.offline {
+    color: #f44336;
+}
+
+/* =============== ТАБ 1: УПРАВЛЕНИЕ =============== */
+
+.management-layout {
+    height: 100%;
+    display: grid;
+    grid-template-columns: 320px 1fr 280px;  /* Левая панель | Центр | Правая панель */
+    gap: 16px;
+    padding: 16px;
+    overflow: hidden;
+    min-height: 0;
+    box-sizing: border-box;
+}
+
+/* ЛЕВАЯ ПАНЕЛЬ - МОНЕТЫ */
+.coins-panel {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.panel-header {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+}
+
+.title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.panel-header h3 {
+    margin: 0;
+    color: var(--text-color);
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.status-dot {
+    font-size: 12px;
+    color: #4caf50;
+}
+
+.search-row {
+    margin-bottom: 0;
+}
+
+.search-input-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.search-input {
+    width: 100%;
+    max-width: 100%;
+    padding: 6px 35px 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--input-bg);
+    color: var(--text-color);
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--blue-color);
+    box-shadow: 0 0 0 2px rgba(79, 172, 254, 0.2);
+}
+
+.clear-search-btn {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: #ffffff;
+    color: #000000;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 18px;
+    font-weight: bold;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    opacity: 0.9;
+    z-index: 10;
+    min-width: 24px;
+    min-height: 24px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.clear-search-btn:hover {
+    background: #ff4444;
+    color: white;
+    opacity: 1;
+    transform: translateY(-50%) scale(1.1);
+    box-shadow: 0 2px 6px rgba(255, 68, 68, 0.4);
+}
+
+.clear-search-btn:active {
+    transform: translateY(-50%) scale(0.9);
+}
+
+/* ФИЛЬТРЫ RSI */
+.rsi-filters-container {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.rsi-filter-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.rsi-filter-btn:hover {
+    background: var(--hover-bg);
+    border-color: var(--blue-color);
+    transform: translateY(-1px);
+}
+
+.rsi-filter-btn.active {
+    background: var(--blue-color);
+    color: white;
+    border-color: var(--blue-color);
+    box-shadow: 0 2px 8px rgba(79, 172, 254, 0.3);
+}
+
+/* Специальные цвета для фильтров */
+.rsi-filter-btn.buy-filter.active {
+    background: #10b981;
+    border-color: #10b981;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.rsi-filter-btn.sell-filter.active {
+    background: #ef4444;
+    border-color: #ef4444;
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+}
+
+.rsi-filter-btn.trend-up-filter.active {
+    background: #059669;
+    border-color: #059669;
+    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.3);
+}
+
+.rsi-filter-btn.trend-down-filter.active {
+    background: #dc2626;
+    border-color: #dc2626;
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+}
+
+/* СПИСОК МОНЕТ */
+.coins-list-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.coins-list {
+    flex: 1;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+}
+
+.coins-list li {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    color: var(--text-color);
+    font-size: 13px;
+}
+
+.coins-list li:hover {
+    background-color: var(--hover-bg);
+}
+
+.coins-list li.selected {
+    background-color: var(--blue-color);
+    color: white;
+}
+
+/* RSI ЗОННЫЕ ПОДСВЕТКИ */
+.coins-list li.buy-zone {
+    border-left: 4px solid var(--green-color);
+    background-color: rgba(16, 185, 129, 0.1);
+}
+
+.coins-list li.sell-zone {
+    border-left: 4px solid var(--red-color);
+    background-color: rgba(239, 68, 68, 0.1);
+}
+
+.coins-list li.trend-up {
+    border-right: 3px solid var(--green-color);
+}
+
+.coins-list li.trend-down {
+    border-right: 3px solid var(--red-color);
+}
+
+.coin-item-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.coin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2px;
+}
+
+.coin-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.coin-symbol {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.coin-rsi {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.coin-rsi.buy-zone {
+    background-color: var(--green-color);
+    color: white;
+}
+
+.coin-rsi.sell-zone {
+    background-color: var(--red-color);
+    color: white;
+}
+
+.coin-details {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.coin-trend {
+    font-weight: 500;
+}
+
+.coin-trend.UP {
+    color: var(--green-color);
+}
+
+.coin-trend.DOWN {
+    color: var(--red-color);
+}
+
+/* Стили для внешних ссылок на биржу */
+.external-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: all 0.2s ease;
+    border-radius: 3px;
+    padding: 2px;
+}
+
+.external-link:hover {
+    color: var(--blue-color);
+    background: rgba(79, 172, 254, 0.1);
+    transform: scale(1.1);
+}
+
+.external-link svg {
+    width: 12px;
+    height: 12px;
+    stroke-width: 2;
+}
+
+.coins-counter {
+    padding: 8px 12px;
+    background: var(--bg-primary);
+    border-top: 1px solid var(--border-color);
+    font-size: 11px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+/* ЦЕНТРАЛЬНАЯ ПАНЕЛЬ - УПРАВЛЕНИЕ БОТОМ */
+.bot-control-panel {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.select-coin-prompt {
+    padding: 60px 20px;
+    text-align: center;
+    color: var(--text-muted);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    background: linear-gradient(135deg, rgba(79, 172, 254, 0.05), rgba(79, 172, 254, 0.02));
+}
+
+.prompt-icon {
+    font-size: 48px;
+    margin-bottom: 20px;
+    opacity: 0.7;
+}
+
+.select-coin-prompt h3 {
+    margin: 0 0 12px 0;
+    color: var(--text-color);
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.select-coin-prompt p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.4;
+    max-width: 280px;
+}
+
+.bot-control {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    overflow-y: auto;
+}
+
+/* ИНФОРМАЦИЯ О МОНЕТЕ */
+.coin-info h2 {
+    margin: 0 0 12px 0;
+    color: var(--text-color);
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.coin-data-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.data-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.data-item .label {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+[data-theme="light"] .data-item .label {
+    color: var(--text-muted) !important;
+}
+
+.data-item .value {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+/* Стили для статуса бота в светлой теме */
+[data-theme="light"] .data-item .value {
+    color: var(--text-color);
+}
+
+/* Специальные стили для статуса бота */
+.data-item #selectedCoinBotStatus {
+    color: var(--text-color);
+    font-weight: 600;
+}
+
+[data-theme="light"] .data-item #selectedCoinBotStatus {
+    color: var(--text-color);
+}
+
+/* Если статус активен - добавляем зеленый цвет */
+.data-item #selectedCoinBotStatus.active-status {
+    color: var(--green-color) !important;
+}
+
+[data-theme="light"] .data-item #selectedCoinBotStatus.active-status {
+    color: var(--green-color) !important;
+}
+
+.rsi-indicator.buy-zone {
+    color: var(--green-color);
+}
+
+.rsi-indicator.sell-zone {
+    color: var(--red-color);
+}
+
+.trend-indicator.UP {
+    color: var(--green-color);
+}
+
+.trend-indicator.DOWN {
+    color: var(--red-color);
+}
+
+.signal-indicator.ENTER_LONG {
+    color: var(--green-color);
+    font-weight: 700;
+}
+
+.signal-indicator.ENTER_SHORT {
+    color: var(--red-color);
+    font-weight: 700;
+}
+
+/* СТАТУС И УПРАВЛЕНИЕ БОТОМ */
+.bot-status-section h3 {
+    margin: 0 0 12px 0;
+    color: var(--text-color);
+    font-size: 16px;
+}
+
+.bot-status-display {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin-bottom: 12px;
+}
+
+.bot-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-primary {
+    background: var(--blue-color);
+    color: white;
+}
+
+.btn-success {
+    background: var(--green-color);
+    color: white;
+}
+
+.btn-danger {
+    background: var(--red-color);
+    color: white;
+}
+
+.btn-warning {
+    background: #ff9800;
+    color: white;
+}
+
+.btn-info {
+    background: #17a2b8;
+    color: white;
+}
+
+.btn-orange {
+    background: #ff6b35;
+    color: white;
+}
+
+.btn:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+/* НАСТРОЙКИ БОТА */
+.bot-settings-section h3 {
+    margin: 0 0 12px 0;
+    color: var(--text-color);
+    font-size: 16px;
+}
+
+.setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.setting-item label {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.setting-item select,
+.setting-item input {
+    padding: 6px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-primary);
+    color: var(--text-color);
+    font-size: 12px;
+    width: 120px;
+}
+
+.setting-item select option {
+    background: var(--bg-primary);
+    color: var(--text-color);
+    padding: 6px;
+}
+
+/* =============== ТАБ 2: ФИЛЬТРЫ =============== */
+
+/* Секция поиска монет */
+.search-section {
+    grid-column: 1 / -1; /* Занимает всю ширину */
+    margin-bottom: 30px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 20px;
+    overflow: hidden; /* Предотвращаем выход за границы */
+}
+
+.search-header h3 {
+    margin: 0 0 8px 0;
+    color: var(--text-color);
+    font-size: 18px;
+}
+
+.search-description {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-bottom: 16px;
+}
+
+.search-controls {
+    margin-bottom: 16px;
+}
+
+.search-input-filters {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 12px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-color);
+    font-size: 16px;
+    transition: all 0.2s ease;
+}
+
+.search-input-filters:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.search-results {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+}
+
+.search-prompt {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+}
+
+.search-prompt p {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+}
+
+.search-prompt small {
+    font-size: 14px;
+    opacity: 0.7;
+}
+
+.search-result-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    transition: background 0.2s ease;
+}
+
+.search-result-item:last-child {
+    border-bottom: none;
+}
+
+.search-result-item:hover {
+    background: var(--bg-tertiary);
+}
+
+.search-result-info {
+    flex: 1;
+}
+
+.search-result-symbol {
+    font-weight: 600;
+    color: var(--text-color);
+    font-size: 14px;
+}
+
+.search-result-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-search-white, .btn-search-black, .btn-search-remove {
+    padding: 4px 12px;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-search-white {
+    background: #27ae60;
+    color: white;
+}
+
+.btn-search-white:hover {
+    background: #229954;
+    transform: translateY(-1px);
+}
+
+.btn-search-black {
+    background: #e74c3c;
+    color: white;
+}
+
+.btn-search-black:hover {
+    background: #c0392b;
+    transform: translateY(-1px);
+}
+
+.btn-search-remove {
+    background: #f39c12;
+    color: white;
+}
+
+.btn-search-remove:hover {
+    background: #e67e22;
+    transform: translateY(-1px);
+}
+
+.btn-search-white:disabled, .btn-search-black:disabled, .btn-search-remove:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.search-result-status {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.search-result-status.in-whitelist {
+    color: #27ae60;
+}
+
+.search-result-status.in-blacklist {
+    color: #e74c3c;
+}
+
+.search-result-status.highlight-flash {
+    animation: flash-highlight 1s ease-in-out;
+}
+
+@keyframes flash-highlight {
+    0% { background-color: transparent; }
+    50% { background-color: rgba(255, 255, 0, 0.5); }
+    100% { background-color: transparent; }
+}
+
+/* Кнопки фильтров в блоке управления */
+.filter-controls-section {
+    margin-top: 16px;
+    padding: 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.filter-controls-section h4 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    color: var(--text-color);
+}
+
+.filter-controls-buttons {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.btn-filter-white {
+    background: linear-gradient(135deg, #27ae60, #2ecc71);
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-filter-white:hover {
+    background: linear-gradient(135deg, #229954, #27ae60);
+    transform: translateY(-1px);
+}
+
+.btn-filter-black {
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-filter-black:hover {
+    background: linear-gradient(135deg, #c0392b, #a93226);
+    transform: translateY(-1px);
+}
+
+.btn-filter-remove {
+    background: linear-gradient(135deg, #f39c12, #e67e22);
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-filter-remove:hover {
+    background: linear-gradient(135deg, #e67e22, #d35400);
+    transform: translateY(-1px);
+}
+
+.filter-status {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.filter-status-text {
+    font-weight: 500;
+}
+
+.filter-status-text.in-whitelist {
+    color: #27ae60;
+}
+
+.filter-status-text.in-blacklist {
+    color: #e74c3c;
+}
+
+/* Умные фильтры в поиске */
+.smart-filter-controls {
+    margin: 8px 0;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.smart-filter-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.found-count {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.smart-filter-buttons {
+    display: flex;
+    gap: 6px;
+}
+
+.btn-sm {
+    padding: 4px 8px;
+    font-size: 11px;
+}
+
+/* Встроенный статус бота в секции сделок */
+.bot-status-inline {
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.bot-controls-inline .btn {
+    min-width: auto;
+    flex: none;
+}
+
+/* Элементы списков фильтров */
+.filter-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    margin-bottom: 4px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.filter-item:hover {
+    background: var(--bg-secondary);
+    border-color: var(--border-hover);
+}
+
+.filter-item-symbol {
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.filter-item-remove {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.filter-item-remove:hover {
+    background: #c0392b;
+}
+
+.empty-filter-state {
+    text-align: center;
+    padding: 24px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.empty-filter-state p {
+    margin: 0 0 4px 0;
+    font-size: 14px;
+}
+
+.empty-filter-state small {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+.filters-layout {
+    padding: 20px;
+    overflow-y: auto;
+    height: 100%;
+}
+
+.filters-header {
+    margin-bottom: 30px;
+}
+
+.filters-header h2 {
+    margin: 0 0 8px 0;
+    color: var(--text-color);
+    font-size: 24px;
+}
+
+.filters-header p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.filters-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+}
+
+.filter-section {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.filter-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.filter-header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: var(--text-color);
+}
+
+.filter-count {
+    background: var(--bg-primary);
+    color: var(--text-color);
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.filter-description {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-bottom: 16px;
+    line-height: 1.4;
+}
+
+.filter-list {
+    min-height: 200px;
+    border: 1px dashed var(--border-color);
+    border-radius: 6px;
+    padding: 16px;
+}
+
+.empty-filter-state {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 40px 20px;
+}
+
+.empty-filter-state p {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+}
+
+.empty-filter-state small {
+    font-size: 12px;
+}
+
+/* AUTO BOT КОНФИГУРАЦИЯ */
+.auto-bot-config {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.auto-bot-config h3 {
+    margin: 0 0 20px 0;
+    color: var(--text-color);
+    font-size: 18px;
+}
+
+.config-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+/* Старый стиль удален - теперь используем вертикальную компоновку */
+
+.config-item label {
+    font-size: 14px;
+    color: var(--text-color);
+    font-weight: 500;
+}
+
+.config-item input,
+.config-item select {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--input-bg);
+    color: var(--text-color);
+    font-size: 14px;
+    width: 120px;
+}
+
+/* TOGGLE SWITCH */
+.toggle {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 24px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: var(--blue-color);
+}
+
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+
+/* =============== ТАБ 3: КОНФИГУРАЦИЯ =============== */
+
+.config-layout {
+    padding: 24px;
+    overflow-y: auto;
+    height: 100%;
+    background: linear-gradient(135deg, rgba(79, 172, 254, 0.02), rgba(79, 172, 254, 0.01));
+}
+
+.config-header {
+    margin-bottom: 32px;
+    text-align: center;
+}
+
+.config-header h2 {
+    margin: 0 0 8px 0;
+    color: var(--text-color);
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.config-header p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 16px;
+}
+
+.config-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+/* Поля ввода с единицами измерения */
+.config-input-with-unit {
+    display: flex;
+    align-items: center;
+    position: relative;
+    margin-bottom: 6px;
+}
+
+.config-input-with-unit .config-input {
+    flex: 1;
+    padding-right: 50px;
+}
+
+.input-unit {
+    position: absolute;
+    right: 12px;
+    color: #666;
+    font-size: 0.9em;
+    pointer-events: none;
+}
+
+/* Помощь по настройкам */
+.config-help {
+    display: block;
+    color: #888;
+    font-size: 0.8em;
+    margin-top: 6px;
+    margin-bottom: 0;
+    line-height: 1.4;
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 4px;
+    border-left: 2px solid #555;
+}
+
+/* Кнопки выбора области действия */
+.config-scope-buttons {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.scope-btn {
+    background: var(--button-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    padding: 10px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.85em;
+    white-space: nowrap;
+    text-align: center;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px;
+}
+
+.scope-btn:hover {
+    background: var(--hover-bg, var(--button-bg));
+    border-color: var(--blue-color);
+    opacity: 0.9;
+}
+
+.scope-btn.active {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    border-color: #007bff;
+    color: white;
+}
+
+/* Улучшенные стили для полей ввода */
+.config-input {
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    padding: 10px 12px;
+    border-radius: 6px;
+    width: 100%;
+    font-size: 0.95em;
+    transition: border-color 0.2s ease;
+}
+
+.config-input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+}
+
+.config-input:invalid {
+    border-color: #dc3545;
+}
+
+/* Стили для числовых полей */
+.config-input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+.config-input[type="number"]::-webkit-outer-spin-button,
+.config-input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.config-section {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+}
+
+.section-header {
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 12px;
+}
+
+.section-header h3 {
+    margin: 0 0 8px 0;
+    color: var(--text-color);
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.section-description {
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.config-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+}
+
+.config-divider {
+    grid-column: 1 / -1;
+    height: 1px;
+    background: var(--border-color);
+    margin: 4px 0 8px;
+    opacity: 0.6;
+}
+
+.config-subsection-title {
+    grid-column: 1 / -1;
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-color);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-top: 4px;
+}
+
+.config-item {
+    display: flex;
+    flex-direction: column;
+    padding: 18px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    min-height: fit-content;
+    gap: 2px;
+}
+
+.config-item:hover {
+    border-color: var(--blue-color);
+    box-shadow: 0 2px 8px rgba(79, 172, 254, 0.1);
+}
+
+.config-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.break-even-config .config-row .toggle-switch {
+    margin-right: 4px;
+}
+
+.break-even-trigger-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.break-even-trigger-label {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.config-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: var(--text-color);
+    font-weight: 500;
+    margin-bottom: 8px;
+    flex: 1;
+}
+
+.label-icon {
+    font-size: 16px;
+}
+
+.label-text {
+    line-height: 1.3;
+}
+
+.config-input,
+.config-select {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-color);
+    font-size: 14px;
+    width: 120px;
+    transition: all 0.2s ease;
+}
+
+.config-select option {
+    background: var(--bg-primary);
+    color: var(--text-color);
+    padding: 8px;
+}
+
+.config-input:focus,
+.config-select:focus {
+    outline: none;
+    border-color: var(--blue-color);
+    box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
+}
+
+/* Подсказки конфигурации */
+.config-help {
+    display: block;
+    margin-top: 5px;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: italic;
+    line-height: 1.3;
+    opacity: 0.8;
+}
+
+/* Дублированные настройки Auto Bot на вкладке управления */
+.auto-bot-settings-duplicate {
+    margin-top: 20px;
+    padding: 15px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.auto-bot-settings-duplicate h4 {
+    margin: 0 0 15px 0;
+    color: var(--accent-color);
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.auto-bot-settings-duplicate .setting-item {
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    min-height: 32px;
+}
+
+.auto-bot-settings-duplicate .setting-item:last-child {
+    margin-bottom: 0;
+}
+
+.auto-bot-settings-duplicate label {
+    font-size: 12px;
+    font-weight: 500;
+    flex: 1;
+    min-width: 140px;
+    color: var(--text-color);
+    line-height: 1.4;
+    word-wrap: break-word;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.auto-bot-settings-duplicate input[type="number"] {
+    width: 70px;
+    padding: 6px 8px;
+    font-size: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-primary);
+    color: var(--text-color);
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.auto-bot-settings-duplicate input[type="checkbox"] {
+    margin: 0;
+    flex-shrink: 0;
+    transform: scale(1.1);
+}
+
+/* Специальные стили для переключателей */
+.auto-bot-settings-duplicate .setting-item label:has(input[type="checkbox"]) {
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+    min-width: auto;
+}
+
+/* Адаптивность для небольших экранов */
+@media (max-width: 768px) {
+    .auto-bot-settings-duplicate .setting-item {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+    
+    .auto-bot-settings-duplicate label {
+        min-width: auto;
+        text-align: left;
+    }
+    
+    .auto-bot-settings-duplicate input[type="number"] {
+        width: 100%;
+        max-width: 120px;
+        align-self: flex-end;
+    }
+}
+
+/* Панель информации о торговом счете */
+.account-info-panel {
+    margin-top: 15px;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.account-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    margin-bottom: 8px;
+    text-align: left;
+}
+
+.account-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.account-stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    padding: 2px 0;
+    line-height: 1.4;
+}
+
+.account-stat .stat-label {
+    color: var(--text-color);
+    font-weight: normal;
+}
+
+.account-stat .stat-value {
+    color: var(--text-color);
+    font-weight: 600;
+    text-align: right;
+}
+
+.account-stat .stat-value.positive {
+    color: #22c55e;
+}
+
+.account-stat .stat-value.negative {
+    color: #ef4444;
+}
+
+.account-error {
+    color: #ef4444;
+    font-size: 12px;
+    text-align: center;
+    padding: 8px 0;
+}
+
+.config-actions {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 32px;
+    padding: 24px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.config-save-btn,
+.config-reset-btn,
+.config-test-btn {
+    padding: 12px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    border: none;
+}
+
+.config-save-btn {
+    background: var(--green-color);
+    color: white;
+}
+
+.config-save-btn:hover {
+    background: #059669;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.config-reset-btn {
+    background: var(--red-color);
+    color: white;
+}
+
+.config-reset-btn:hover {
+    background: #dc2626;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.config-test-btn {
+    background: var(--blue-color);
+    color: white;
+}
+
+.config-test-btn:hover {
+    background: #2563eb;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(79, 172, 254, 0.3);
+}
+
+/* =============== ТАБ 4: АКТИВНЫЕ БОТЫ =============== */
+
+.active-bots-layout {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    overflow: hidden;
+}
+
+.active-bots-header {
+    flex-shrink: 0;
+    margin-bottom: 20px;
+}
+
+.active-bots-header h2 {
+    margin: 0 0 12px 0;
+    color: var(--text-color);
+    font-size: 24px;
+}
+
+.bots-stats {
+    display: flex;
+    gap: 20px;
+}
+
+.stat-item {
+    padding: 8px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.stat-item span {
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.active-bots-list {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.empty-bots-state {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 40px 20px;
+}
+
+.empty-bots-state p {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+}
+
+.empty-bots-state small {
+    font-size: 14px;
+}
+
+/* Принудительные стили для лучшей читаемости */
+.bots-page select,
+.bots-page input[type="number"],
+.bots-page input[type="text"],
+.config-select,
+.config-input,
+#autoBotScope,
+#checkInterval,
+#volumeModeSelect {
+    background: var(--bg-secondary) !important;
+    color: var(--text-color) !important;
+    border: 1px solid var(--border-color) !important;
+}
+
+.bots-page select option,
+.config-select option,
+#autoBotScope option,
+#checkInterval option,
+#volumeModeSelect option {
+    background: var(--bg-secondary) !important;
+    color: var(--text-color) !important;
+}
+
+/* Стили для темной темы */
+[data-theme="dark"] .bots-page select,
+[data-theme="dark"] .bots-page input[type="number"],
+[data-theme="dark"] .bots-page input[type="text"],
+[data-theme="dark"] .config-select,
+[data-theme="dark"] .config-input,
+[data-theme="dark"] #autoBotScope,
+[data-theme="dark"] #checkInterval,
+[data-theme="dark"] #volumeModeSelect {
+    background: #2a2a2a !important;
+    color: #ffffff !important;
+    border: 1px solid #404040 !important;
+}
+
+[data-theme="dark"] .bots-page select option,
+[data-theme="dark"] .config-select option,
+[data-theme="dark"] #autoBotScope option,
+[data-theme="dark"] #checkInterval option,
+[data-theme="dark"] #volumeModeSelect option {
+    background: #2a2a2a !important;
+    color: #ffffff !important;
+}
+
+/* Стили для светлой темы */
+[data-theme="light"] .bots-page select,
+[data-theme="light"] .bots-page input[type="number"],
+[data-theme="light"] .bots-page input[type="text"],
+[data-theme="light"] .config-select,
+[data-theme="light"] .config-input,
+[data-theme="light"] #autoBotScope,
+[data-theme="light"] #checkInterval,
+[data-theme="light"] #volumeModeSelect {
+    background: #ffffff !important;
+    color: #1a1a1a !important;
+    border: 1px solid #e0e0e0 !important;
+}
+
+[data-theme="light"] .bots-page select option,
+[data-theme="light"] .config-select option,
+[data-theme="light"] #autoBotScope option,
+[data-theme="light"] #checkInterval option,
+[data-theme="light"] #volumeModeSelect option {
+    background: #ffffff !important;
+    color: #1a1a1a !important;
+}
+
+/* Глобальные стили для всех select в боте - максимальная специфичность */
+body .bots-page select,
+body .bots-page .config-select,
+body .bots-page .setting-item select,
+body .bots-page #autoBotScope,
+body .bots-page #checkInterval,
+body .bots-page #volumeModeSelect,
+body .bots-page #rsiLongThreshold,
+body .bots-page #rsiShortThreshold,
+body .bots-page #rsiExitLong,
+body .bots-page #rsiExitShort,
+body .bots-page #defaultPositionSize,
+body .bots-page #autoBotMaxConcurrent,
+body .bots-page #autoBotRiskCap {
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    appearance: none !important;
+    background: var(--input-bg) !important;
+    color: var(--text-color) !important;
+    border: 1px solid var(--border-color) !important;
+    padding: 8px 12px !important;
+    border-radius: 6px !important;
+    font-size: 14px !important;
+}
+
+body .bots-page select option,
+body .bots-page .config-select option {
+    background: var(--input-bg) !important;
+    color: var(--text-color) !important;
+    padding: 8px !important;
+}
+
+/* Стили для input полей */
+body .bots-page input[type="number"],
+body .bots-page input[type="text"],
+body .bots-page .config-input {
+    background: var(--input-bg) !important;
+    color: var(--text-color) !important;
+    border: 1px solid var(--border-color) !important;
+    padding: 8px 12px !important;
+    border-radius: 6px !important;
+}
+
+/* =============== ПРАВАЯ ПАНЕЛЬ - АКТИВНЫЕ БОТЫ =============== */
+
+.active-bots-sidebar {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.active-bots-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--border-color);
+    background: linear-gradient(135deg, rgba(79, 172, 254, 0.1), rgba(79, 172, 254, 0.05));
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.active-bots-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.stat-badge {
+    background: var(--blue-color);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    min-width: 20px;
+    text-align: center;
+}
+
+.auto-bot-toggle {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(79, 172, 254, 0.03);
+}
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 24px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+    background-color: var(--blue-color);
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(20px);
+}
+
+.toggle-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.active-bots-list-container {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.empty-active-bots {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.empty-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.empty-active-bots p {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+    color: var(--text-color);
+    font-weight: 500;
+}
+
+.empty-active-bots small {
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.active-bots-scroll-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+.bot-card {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: all 0.2s ease;
+    overflow: hidden;
+}
+
+.bot-card:hover {
+    background: var(--hover-bg);
+    border-color: var(--blue-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.bot-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.bot-header h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+    min-width: 0;
+    word-break: break-word;
+}
+
+.bot-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+    white-space: nowrap;
+    gap: 4px;
+}
+
+.bot-status.running,
+.bot-status.active,
+.bot-status.in_position_long,
+.bot-status.in_position_short,
+.bot-status.status-active {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--green-color);
+}
+
+.bot-status.paused,
+.bot-status.idle,
+.bot-status.status-paused,
+.bot-status.status-stopped {
+    background: rgba(250, 204, 21, 0.15);
+    color: #f59e0b;
+}
+
+.bot-status.stopped,
+.bot-status.error,
+.bot-status.status-deleting,
+.bot-status.status-stopping {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--red-color);
+}
+
+.bot-details {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.bot-details p {
+    margin: 0;
+    line-height: 1.4;
+}
+
+.bot-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    color: var(--text-color);
+    font-size: 12px;
+}
+
+.bot-metrics-item {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 6px 8px;
+    min-width: 80px;
+    text-align: center;
+    box-sizing: border-box;
+}
+
+.bot-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+}
+
+.bot-actions .btn,
+.bot-actions button {
+    flex: 1 1 120px;
+    max-width: 100%;
+    min-height: 32px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 6px;
+    white-space: nowrap;
+}
+
+.bot-actions .btn:only-child,
+.bot-actions button:only-child {
+    flex: 0 1 auto;
+}
+
+.bot-actions .btn-danger,
+.bot-actions .btn.stop-bot-btn {
+    background: var(--red-color);
+    color: #ffffff;
+}
+
+.bot-actions .btn-success,
+.bot-actions .btn.start-bot-btn {
+    background: var(--green-color);
+    color: #ffffff;
+}
+
+.bot-actions .btn-secondary,
+.bot-actions .btn.delete-bot-btn {
+    background: #6b7280;
+    color: #ffffff;
+}
+
+.active-bot-item {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    transition: all 0.2s ease;
+}
+
+.active-bot-item:hover {
+    background: var(--hover-bg);
+    border-color: var(--blue-color);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.bot-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.bot-symbol {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-color);
+}
+
+.bot-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+}
+
+.bot-status-dot.paused {
+    background: #f59e0b;
+}
+
+.bot-status-dot.error {
+    background: #ef4444;
+}
+
+.bot-item-details {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.bot-item-controls {
+    display: flex;
+    gap: 4px;
+}
+
+.bot-quick-btn {
+    padding: 4px 8px;
+    border: none;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 500;
+}
+
+.bot-quick-btn.pause {
+    background: #f59e0b;
+    color: white;
+}
+
+.bot-quick-btn.stop {
+    background: #ef4444;
+    color: white;
+}
+
+.bot-quick-btn.delete {
+    background: #6b7280;
+    color: white;
+}
+
+.bot-quick-btn:hover {
+    opacity: 0.8;
+    transform: scale(1.05);
+}
+
+.active-bots-summary {
+    padding: 16px;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-primary);
+}
+
+.summary-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.summary-item:last-child {
+    margin-bottom: 0;
+}
+
+.summary-label {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.summary-value {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.summary-value.positive {
+    color: var(--green-color);
+}
+
+.summary-value.negative {
+    color: var(--red-color);
+}
+
+/* Адаптивность для маленьких экранов */
+@media (max-width: 1400px) {
+    .management-layout {
+        grid-template-columns: 300px 1fr 260px;
+    }
+}
+
+/* Альбомный режим - ширина больше высоты, показываем правый блок */
+@media (max-width: 1200px) and (min-aspect-ratio: 1/1) {
+    .management-layout {
+        grid-template-columns: 280px 1fr 240px;
+    }
+    
+    .active-bots-sidebar {
+        display: block;
+    }
+}
+
+/* Портретный режим - высота больше ширины, скрываем правый блок */
+@media (max-width: 1200px) and (max-aspect-ratio: 1/1) {
+    .management-layout {
+        grid-template-columns: 280px 1fr;
+    }
+    
+    .active-bots-sidebar {
+        display: none;
+    }
+}
+
+@media (max-width: 1200px) {
+    .management-layout {
+        grid-template-columns: 280px 1fr;
+    }
+    
+    .active-bots-sidebar {
+        display: none;
+    }
+    
+    .filters-content {
+        grid-template-columns: 1fr;
+    }
+    
+    .config-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .config-item {
+        padding: 12px;
+    }
+    
+    .config-scope-buttons {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    
+    .scope-btn {
+        width: 100%;
+        min-height: 45px;
+    }
+    
+    .config-help {
+        font-size: 0.75em;
+        padding: 3px 6px;
+    }
+}
+
+/* ========================================
+   МАССОВЫЕ ОПЕРАЦИИ С БОТАМИ
+   ======================================== */
+
+.bulk-bot-controls {
+    background: var(--section-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    margin: 10px 0;
+    transition: all 0.3s ease;
+}
+
+.bulk-controls-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.bulk-controls-title {
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.bulk-controls-count {
+    font-size: 0.8em;
+    color: var(--text-muted, var(--text-color));
+    background: var(--button-bg);
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+.bulk-controls-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.bulk-controls-buttons .btn {
+    flex: 1;
+    min-width: 90px;
+    font-size: 0.85em;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.bulk-controls-buttons .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* ========================================
+   УВЕДОМЛЕНИЯ О СОХРАНЕНИИ КОНФИГУРАЦИИ
+   ======================================== */
+
+.config-save-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, #28a745, #20c997);
+    color: white;
+    padding: 15px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(40, 167, 69, 0.3);
+    z-index: 1000;
+    transform: translateX(400px);
+    transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    min-width: 300px;
+    max-width: 400px;
+}
+
+.config-save-notification.show {
+    transform: translateX(0);
+}
+
+.config-save-notification.error {
+    background: linear-gradient(135deg, #dc3545, #e74c3c);
+    box-shadow: 0 4px 20px rgba(220, 53, 69, 0.3);
+}
+
+.config-notification-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.config-notification-title {
+    font-weight: 600;
+    font-size: 1em;
+}
+
+.config-notification-close {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.2em;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.config-notification-close:hover {
+    opacity: 1;
+}
+
+.config-notification-body {
+    font-size: 0.9em;
+    line-height: 1.4;
+}
+
+.config-changes-list {
+    margin-top: 8px;
+    font-size: 0.85em;
+    opacity: 0.9;
+}
+
+.config-changes-list ul {
+    margin: 5px 0;
+    padding-left: 20px;
+}
+
+.config-changes-list li {
+    margin: 2px 0;
+}
+
+/* Enhanced RSI Warning Indicators */
+.enhanced-warning {
+    display: inline-block;
+    margin-right: 4px;
+    font-size: 14px;
+    cursor: help;
+}
+
+.warning-extreme-oversold,
+.warning-extreme-overbought {
+    animation: warning-pulse 2s infinite;
+}
+
+@keyframes warning-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.warning-oversold {
+    color: #10b981;
+}
+
+.warning-overbought {
+    color: #ef4444;
+}
+
+/* Enhanced Signal Info */
+.enhanced-info {
+    display: flex;
+    gap: 2px;
+    margin-top: 2px;
+    font-size: 11px;
+}
+
+.enhanced-info span {
+    display: inline-block;
+    cursor: help;
+}
+
+.extreme-duration {
+    color: #f59e0b;
+    font-weight: 500;
+}
+
+.confirmation-volume {
+    color: #3b82f6;
+}
+
+.confirmation-divergence {
+    color: #8b5cf6;
+}
+
+.confirmation-stoch {
+    color: #06b6d4;
+}
+
+/* СТИЛИ ДЛЯ СЕКЦИИ СДЕЛОК */
+.trades-info {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 15px;
+    margin: 15px 0;
+}
+
+.trades-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.trade-item {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 12px;
+    transition: all 0.2s ease;
+}
+
+.trade-item:hover {
+    border-color: var(--blue-color);
+    background: rgba(79, 172, 254, 0.05);
+}
+
+.trade-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.trade-side {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.trade-side.long {
+    color: #4caf50;
+}
+
+.trade-side.short {
+    color: #f44336;
+}
+
+.trade-status {
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.trade-status.active {
+    background: #4caf50;
+    color: white;
+}
+
+.trade-status.closed {
+    background: #9e9e9e;
+    color: white;
+}
+
+.trade-details {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.trade-detail-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.trade-detail-label {
+    color: var(--text-muted);
+}
+
+.trade-detail-value {
+    color: var(--text-color);
+    font-weight: 500;
+}
+
+.trade-detail-value.positive {
+    color: #4caf50;
+}
+
+.trade-detail-value.negative {
+    color: #f44336;
+}
+
+.trade-pnl {
+    grid-column: 1 / -1;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+}
+
+.trade-pnl.positive {
+    color: #4caf50;
+}
+
+.trade-pnl.negative {
+    color: #f44336;
+}
+
+.no-trades {
+    text-align: center;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 20px;
+}
+
+/* ========================================
+   СТИЛИ ДЛЯ ИСТОРИИ БОТОВ
+   ======================================== */
+
+/* Основной контейнер истории */
+.history-layout {
+    padding: 20px;
+    height: 100%;
+    overflow-y: auto;
+    background: var(--bg-primary);
+}
+
+.history-header {
+    margin-bottom: 24px;
+    text-align: center;
+}
+
+.history-header h2 {
+    color: var(--text-color);
+    font-size: 24px;
+    font-weight: 600;
+    margin: 0 0 8px 0;
+}
+
+.history-header p {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin: 0;
+}
+
+/* Фильтры истории */
+.history-filters {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    align-items: end;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.filter-group label {
+    color: var(--text-color);
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.filter-group select {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text-color);
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.filter-group select:focus {
+    outline: none;
+    border-color: var(--blue-color);
+    box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
+}
+
+.filter-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.filter-actions .btn {
+    padding: 10px 16px;
+    font-size: 13px;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+/* Статистика истории */
+.history-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.stat-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: all 0.2s ease;
+}
+
+.stat-card:hover {
+    border-color: var(--blue-color);
+    box-shadow: 0 4px 12px rgba(79, 172, 254, 0.1);
+}
+
+.stat-icon {
+    font-size: 24px;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(79, 172, 254, 0.1);
+    border-radius: 12px;
+    color: var(--blue-color);
+}
+
+.stat-content {
+    flex: 1;
+}
+
+.stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin-bottom: 4px;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Контент истории */
+.history-content {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+/* Подтабы истории */
+.history-tabs {
+    display: flex;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.history-tab-btn {
+    flex: 1;
+    padding: 16px 20px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    border-bottom: 2px solid transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.history-tab-btn:hover {
+    color: var(--text-color);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.history-tab-btn.active {
+    color: var(--blue-color);
+    border-bottom-color: var(--blue-color);
+    background: rgba(79, 172, 254, 0.1);
+}
+
+/* Контент подтабов */
+.history-tab-content {
+    display: none;
+    padding: 20px;
+    min-height: 400px;
+}
+
+.history-tab-content.active {
+    display: block;
+}
+
+/* Список истории */
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* Элементы истории */
+.history-item {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px;
+    transition: all 0.2s ease;
+}
+
+.history-item:hover {
+    border-color: var(--blue-color);
+    box-shadow: 0 4px 12px rgba(79, 172, 254, 0.1);
+}
+
+.history-item-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.history-icon {
+    font-size: 18px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(79, 172, 254, 0.1);
+    border-radius: 8px;
+    color: var(--blue-color);
+}
+
+.history-symbol {
+    font-weight: 600;
+    color: var(--text-color);
+    font-size: 14px;
+}
+
+.history-time {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--bg-secondary);
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+.history-item-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.history-action {
+    font-weight: 500;
+    color: var(--text-color);
+    font-size: 14px;
+}
+
+.history-reason {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+/* Специфичные стили для типов истории */
+.trade-item .history-trade-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.trade-side {
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.trade-side.long {
+    background: rgba(76, 175, 80, 0.2);
+    color: #4CAF50;
+}
+
+.trade-side.short {
+    background: rgba(244, 67, 54, 0.2);
+    color: #f44336;
+}
+
+.trade-price {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: var(--text-color);
+}
+
+.trade-pnl {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.trade-pnl.positive {
+    color: #4CAF50;
+}
+
+.trade-pnl.negative {
+    color: #f44336;
+}
+
+.signal-item .history-signal-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.signal-type {
+    padding: 4px 8px;
+    background: rgba(255, 193, 7, 0.2);
+    color: #FFC107;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.signal-rsi {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: var(--text-color);
+}
+
+.signal-decision {
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--bg-secondary);
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+/* Пустое состояние */
+.empty-history-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+}
+
+.empty-history-state .empty-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.empty-history-state p {
+    font-size: 16px;
+    font-weight: 500;
+    margin: 0 0 8px 0;
+}
+
+.empty-history-state small {
+    font-size: 14px;
+    opacity: 0.7;
+}
+
+/* Кнопки управления историей */
+.history-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-color);
+}
+
+.history-actions .btn {
+    padding: 12px 24px;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+/* Анимации */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.history-item {
+    animation: fadeInUp 0.3s ease;
+}
+
+.stat-card {
+    animation: fadeInUp 0.3s ease;
+}
+
+/* Адаптивность для истории на мобильных */
+@media (max-width: 768px) {
+    .history-layout {
+        padding: 16px;
+    }
+    
+    .history-filters {
+        grid-template-columns: 1fr;
+        padding: 16px;
+    }
+    
+    .history-stats {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+    
+    .stat-card {
+        padding: 16px;
+        flex-direction: column;
+        text-align: center;
+        gap: 12px;
+    }
+    
+    .stat-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+    }
+    
+    .stat-value {
+        font-size: 18px;
+    }
+    
+    .history-tabs {
+        flex-direction: column;
+    }
+    
+    .history-tab-btn {
+        padding: 12px 16px;
+        justify-content: flex-start;
+    }
+    
+    .history-item {
+        padding: 12px;
+    }
+    
+    .history-item-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .history-time {
+        margin-left: 0;
+        align-self: flex-end;
+    }
+    
+    .trade-item .history-trade-info,
+    .signal-item .history-signal-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .history-actions {
+        flex-direction: column;
+    }
+    
+    .history-actions .btn {
+        width: 100%;
+    }
+}
+
+/* === СТИЛИ ДЛЯ НОВЫХ СТАТУСОВ БОТОВ === */
+.bot-status {
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: all 0.3s ease;
+}
+
+/* Статус "Запуск..." */
+.status-starting {
+    background: rgba(79, 172, 254, 0.2);
+    color: #4facfe;
+    border: 1px solid rgba(79, 172, 254, 0.3);
+    animation: pulse 1.5s infinite;
+}
+
+/* Статус "Активен" */
+.status-active {
+    background: rgba(76, 175, 80, 0.2);
+    color: #4CAF50;
+    border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+/* Статус "Остановка..." */
+.status-stopping {
+    background: rgba(255, 152, 0, 0.2);
+    color: #FF9800;
+    border: 1px solid rgba(255, 152, 0, 0.3);
+    animation: pulse 1.5s infinite;
+}
+
+/* Статус "Остановлен" */
+.status-stopped {
+    background: rgba(158, 158, 158, 0.2);
+    color: #9E9E9E;
+    border: 1px solid rgba(158, 158, 158, 0.3);
+}
+
+/* Статус "Удаление..." */
+.status-deleting {
+    background: rgba(244, 67, 54, 0.2);
+    color: #f44336;
+    border: 1px solid rgba(244, 67, 54, 0.3);
+    animation: pulse 1.5s infinite;
+}
+
+/* Анимация пульсации для процессов */
+@keyframes pulse {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.7;
+        transform: scale(1.05);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Стили для светлой темы */
+[data-theme="light"] .status-starting {
+    background: rgba(79, 172, 254, 0.1);
+    color: #1976d2;
+    border-color: rgba(79, 172, 254, 0.2);
+}
+
+[data-theme="light"] .status-active {
+    background: rgba(76, 175, 80, 0.1);
+    color: #388e3c;
+    border-color: rgba(76, 175, 80, 0.2);
+}
+
+[data-theme="light"] .status-stopping {
+    background: rgba(255, 152, 0, 0.1);
+    color: #f57c00;
+    border-color: rgba(255, 152, 0, 0.2);
+}
+
+[data-theme="light"] .status-stopped {
+    background: rgba(158, 158, 158, 0.1);
+    color: #616161;
+    border-color: rgba(158, 158, 158, 0.2);
+}
+
+[data-theme="light"] .status-deleting {
+    background: rgba(244, 67, 54, 0.1);
+    color: #d32f2f;
+    border-color: rgba(244, 67, 54, 0.2);
+}
+
+/* СТИЛИ ДЛЯ НОВЫХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ БОТОМ */
+
+/* Блок информации о блокировке монеты */
+.coin-blocking-info {
+    background: rgba(244, 67, 54, 0.1);
+    border: 1px solid rgba(244, 67, 54, 0.3);
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.coin-blocking-info h3 {
+    color: #f44336;
+    margin: 0 0 10px 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.blocking-reasons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.blocking-reason {
+    background: rgba(244, 67, 54, 0.05);
+    border-left: 3px solid #f44336;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    color: var(--text-color);
+}
+
+.blocking-reason.warning {
+    border-left-color: #ff9800;
+    background: rgba(255, 152, 0, 0.05);
+}
+
+.blocking-reason.info {
+    border-left-color: #2196f3;
+    background: rgba(33, 150, 243, 0.05);
+}
+
+/* Элементы управления ботом */
+.bot-control-elements {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.bot-control-elements h3 {
+    color: var(--text-color);
+    margin: 0 0 15px 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* Статус бота */
+.bot-status-info {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
+    padding: 15px;
+    background: var(--input-bg);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.status-item {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    color: var(--text-color);
+    padding: 4px 0;
+}
+
+.status-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-value {
+    font-size: 14px;
+    color: var(--text-color);
+    font-weight: 600;
+}
+
+/* Стили для справочника статусов */
+.status-guide {
+    margin-top: 20px;
+}
+
+.status-category {
+    margin-bottom: 20px;
+}
+
+.status-category h4 {
+    color: var(--text-color);
+    margin-bottom: 10px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.status-items {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.status-items .status-item {
+    color: var(--text-color);
+    font-size: 13px;
+    padding: 6px 0;
+}
+
+.status-text {
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+/* Кнопки управления ботом */
+.bot-control-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.bot-control-buttons .btn {
+    flex: 1;
+    min-width: 120px;
+    padding: 10px 15px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+/* Информация о позиции */
+.position-info {
+    background: var(--input-bg);
+    border-radius: 6px;
+    padding: 15px;
+    border: 1px solid var(--border-color);
+}
+
+.position-info h4 {
+    color: var(--text-color);
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.position-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+.position-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.position-detail .label {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.position-detail .value {
+    font-size: 13px;
+    color: var(--text-color);
+    font-weight: 600;
+}
+
+/* Адаптивность */
+@media (max-width: 1200px) {
+    .bot-status-info {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .bot-status-info {
+        grid-template-columns: 1fr;
+    }
+    
+    .bot-control-buttons {
+        flex-direction: column;
+    }
+    
+    .bot-control-buttons .btn {
+        min-width: auto;
+    }
+}
+
+/* СТИЛИ ДЛЯ ВРЕМЕННОГО ФИЛЬТРА RSI */
+.time-filter-info {
+    display: inline-block;
+    margin-left: 4px;
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+.time-filter-blocked {
+    color: #ff6b6b;
+    animation: pulse 2s infinite;
+}
+
+.time-filter-active {
+    color: #51cf66;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+}
