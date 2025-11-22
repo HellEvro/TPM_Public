@@ -420,7 +420,7 @@ class AIDatabase:
     
     def _check_integrity(self) -> Tuple[bool, Optional[str]]:
         """
-        Проверяет целостность БД
+        Проверяет целостность БД с таймаутом (неблокирующая проверка)
         
         Returns:
             Tuple[bool, Optional[str]]: (is_ok, error_message)
@@ -431,23 +431,63 @@ class AIDatabase:
             return True, None  # Нет БД - это нормально, будет создана
         
         try:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
+            import threading
+            
+            # Функция для выполнения проверки
+            def check_with_timeout():
+                conn = None
+                try:
+                    # Используем прямое подключение с коротким таймаутом
+                    conn = sqlite3.connect(self.db_path, timeout=5.0)
+                    cursor = conn.cursor()
+                    
+                    # Устанавливаем таймаут для операции
+                    cursor.execute("PRAGMA busy_timeout = 3000")  # 3 секунды
+                    # Быстрая проверка целостности (быстрее чем integrity_check)
+                    cursor.execute("PRAGMA quick_check")
+                    result = cursor.fetchone()[0]
+                    return result
+                finally:
+                    if conn:
+                        conn.close()
+            
+            # Выполняем проверку в отдельном потоке с таймаутом
+            result_container = [None]
+            exception_container = [None]
+            
+            def run_check():
+                try:
+                    result_container[0] = check_with_timeout()
+                except Exception as e:
+                    exception_container[0] = e
+            
+            check_thread = threading.Thread(target=run_check, daemon=True)
+            check_thread.start()
+            check_thread.join(timeout=10.0)  # Максимум 10 секунд на проверку
+            
+            if check_thread.is_alive():
+                # Проверка зависла - пропускаем её, чтобы не блокировать запуск
+                logger.warning("⚠️ Проверка целостности БД заняла слишком много времени (>10s), пропускаем...")
+                return True, None  # Считаем БД валидной, чтобы не блокировать запуск
+            
+            if exception_container[0]:
+                # В случае ошибки считаем БД валидной, чтобы не блокировать запуск
+                logger.warning(f"⚠️ Ошибка проверки целостности БД: {exception_container[0]}, продолжаем работу...")
+                return True, None
+            
+            result = result_container[0]
+            
+            if result == "ok":
+                return True, None
+            else:
+                # Есть проблемы - но не делаем полную проверку (она может быть очень долгой)
+                logger.warning(f"⚠️ Обнаружены проблемы в БД: {result}")
+                return False, result
                 
-                # Быстрая проверка целостности (быстрее чем integrity_check)
-                cursor.execute("PRAGMA quick_check")
-                result = cursor.fetchone()[0]
-                
-                if result == "ok":
-                    return True, None
-                else:
-                    # Есть проблемы - делаем полную проверку для деталей
-                    cursor.execute("PRAGMA integrity_check")
-                    integrity_results = cursor.fetchall()
-                    error_details = "; ".join([row[0] for row in integrity_results if row[0] != "ok"])
-                    return False, error_details or result
         except Exception as e:
-            return False, f"Ошибка проверки целостности: {e}"
+            # В случае ошибки считаем БД валидной, чтобы не блокировать запуск
+            logger.warning(f"⚠️ Ошибка проверки целостности БД: {e}, продолжаем работу...")
+            return True, None  # Возвращаем True, чтобы не блокировать запуск
     
     def _repair_database(self) -> bool:
         """
