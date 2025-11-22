@@ -4891,7 +4891,7 @@ class AIDatabase:
     
     def save_candles(self, symbol: str, candles: List[Dict], timeframe: str = '6h') -> int:
         """
-        Сохраняет свечи для символа в БД
+        Сохраняет свечи для символа в БД с ограничением количества
         
         Args:
             symbol: Символ монеты
@@ -4907,8 +4907,30 @@ class AIDatabase:
         try:
             now = datetime.now().isoformat()
             saved_count = 0
+            
+            # ОГРАНИЧЕНИЕ: Максимум 5000 свечей на символ для предотвращения раздувания БД
+            MAX_CANDLES_PER_SYMBOL = 5000
+            
             with self._get_connection() as conn:
                 cursor = conn.cursor()
+                
+                # Сортируем свечи по времени и берем только последние MAX_CANDLES_PER_SYMBOL
+                candles_sorted = sorted(candles, key=lambda x: x.get('time', 0))
+                candles_to_save = candles_sorted[-MAX_CANDLES_PER_SYMBOL:]
+                
+                if len(candles_sorted) > MAX_CANDLES_PER_SYMBOL:
+                    logger.debug(f"📊 {symbol}: Ограничено до {MAX_CANDLES_PER_SYMBOL} свечей (было {len(candles_sorted)})")
+                
+                # Удаляем старые свечи для этого символа и таймфрейма, оставляя только последние MAX_CANDLES_PER_SYMBOL
+                # Сначала получаем время последней свечи, которую мы хотим сохранить
+                if candles_to_save:
+                    min_time_to_keep = min(c.get('time') for c in candles_to_save if c.get('time'))
+                    # Удаляем все свечи старше минимального времени из новых
+                    cursor.execute("""
+                        DELETE FROM candles_history 
+                        WHERE symbol = ? AND timeframe = ? AND candle_time < ?
+                    """, (symbol, timeframe, min_time_to_keep))
+                
                 # Используем INSERT OR IGNORE для пропуска дубликатов
                 cursor.executemany("""
                     INSERT OR IGNORE INTO candles_history (
@@ -4926,9 +4948,30 @@ class AIDatabase:
                         float(candle['volume']),
                         now
                     )
-                    for candle in candles
+                    for candle in candles_to_save
                 ])
                 saved_count = cursor.rowcount
+                
+                # Дополнительная проверка: если после вставки свечей больше MAX, удаляем самые старые
+                cursor.execute("""
+                    SELECT COUNT(*) FROM candles_history 
+                    WHERE symbol = ? AND timeframe = ?
+                """, (symbol, timeframe))
+                total_count = cursor.fetchone()[0]
+                
+                if total_count > MAX_CANDLES_PER_SYMBOL:
+                    # Удаляем самые старые свечи, оставляя только последние MAX_CANDLES_PER_SYMBOL
+                    cursor.execute("""
+                        DELETE FROM candles_history
+                        WHERE id IN (
+                            SELECT id FROM candles_history
+                            WHERE symbol = ? AND timeframe = ?
+                            ORDER BY candle_time ASC
+                            LIMIT ?
+                        )
+                    """, (symbol, timeframe, total_count - MAX_CANDLES_PER_SYMBOL))
+                    logger.debug(f"🗑️ {symbol}: Удалено {total_count - MAX_CANDLES_PER_SYMBOL} старых свечей (было {total_count})")
+                
                 conn.commit()
             return saved_count
         except Exception as e:

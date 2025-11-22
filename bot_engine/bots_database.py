@@ -4297,13 +4297,31 @@ class BotsDatabase:
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                             """, row)
                         
-                        # Восстанавливаем данные свечей
+                        # Восстанавливаем данные свечей С ОГРАНИЧЕНИЕМ
+                        # Группируем по cache_id и ограничиваем количество
+                        MAX_CANDLES_PER_SYMBOL = 5000
+                        candles_by_cache = {}
                         for row in old_candles_data:
-                            cursor.execute("""
-                                INSERT INTO candles_cache_data 
-                                (cache_id, time, open, high, low, close, volume)
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
-                            """, row)
+                            cache_id = row[0]
+                            if cache_id not in candles_by_cache:
+                                candles_by_cache[cache_id] = []
+                            candles_by_cache[cache_id].append(row)
+                        
+                        # Вставляем только последние MAX_CANDLES_PER_SYMBOL для каждого cache_id
+                        for cache_id, rows in candles_by_cache.items():
+                            # Сортируем по времени (второй элемент - time)
+                            rows_sorted = sorted(rows, key=lambda x: x[1] if len(x) > 1 else 0)
+                            rows_to_insert = rows_sorted[-MAX_CANDLES_PER_SYMBOL:]
+                            
+                            if len(rows_sorted) > MAX_CANDLES_PER_SYMBOL:
+                                logger.debug(f"   📊 Миграция: Ограничено до {MAX_CANDLES_PER_SYMBOL} свечей для cache_id={cache_id} (было {len(rows_sorted)})")
+                            
+                            for row in rows_to_insert:
+                                cursor.execute("""
+                                    INSERT INTO candles_cache_data 
+                                    (cache_id, time, open, high, low, close, volume)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                                """, row)
                         
                         conn.commit()
                         logger.info("✅ Таблица candles_cache пересоздана без колонки candles_json")
