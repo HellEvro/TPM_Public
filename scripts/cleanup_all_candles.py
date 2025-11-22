@@ -29,7 +29,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from utils.color_logger import setup_color_logging
 
 # Настройка логирования
-setup_color_logging(log_level=logging.INFO)
+setup_color_logging(console_log_levels=['+INFO', '+WARNING', '+ERROR'])
 logger = logging.getLogger('CleanupAllCandles')
 
 DEFAULT_MAX_CANDLES_PER_SYMBOL = 5000  # Оставляем 5000 последних свечей
