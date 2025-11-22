@@ -199,12 +199,52 @@ class BotsDatabase:
                         pass  # Игнорируем ошибки checkpoint
                 
                 # Быстрая проверка целостности (быстрее чем integrity_check)
-                logger.debug("   [4/4] Выполнение PRAGMA quick_check...")
+                logger.debug("   [4/4] Подготовка к проверке целостности...")
+                
+                # Получаем информацию о БД перед проверкой
+                try:
+                    cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
+                    table_count = cursor.fetchone()[0]
+                    logger.debug(f"   [4/4] Количество таблиц в БД: {table_count}")
+                except Exception as e:
+                    logger.debug(f"   [4/4] ⚠️ Не удалось получить количество таблиц: {e}")
+                
+                try:
+                    # Получаем размер БД
+                    db_size = os.path.getsize(self.db_path) / (1024 * 1024)  # MB
+                    logger.debug(f"   [4/4] Размер БД: {db_size:.2f} MB")
+                except Exception as e:
+                    logger.debug(f"   [4/4] ⚠️ Не удалось получить размер БД: {e}")
+                
+                # Устанавливаем таймаут для операции
+                logger.debug("   [4/4] Установка PRAGMA busy_timeout = 2000...")
                 cursor.execute("PRAGMA busy_timeout = 2000")  # 2 секунды
-                cursor.execute("PRAGMA quick_check")
-                result = cursor.fetchone()[0]
-                logger.debug(f"   [4/4] ✅ Результат проверки: {result}")
+                logger.debug("   [4/4] ✅ busy_timeout установлен")
+                
+                # Выполняем проверку целостности с таймером
+                import time
+                logger.debug("   [4/4] ⏳ Начинаю выполнение PRAGMA quick_check...")
+                start_time = time.time()
+                
+                try:
+                    cursor.execute("PRAGMA quick_check")
+                    elapsed = time.time() - start_time
+                    logger.debug(f"   [4/4] ⏱️ PRAGMA quick_check выполнен за {elapsed:.2f} секунд")
+                    
+                    result = cursor.fetchone()[0]
+                    logger.debug(f"   [4/4] 📊 Результат проверки получен: {result[:100] if len(str(result)) > 100 else result}")
+                    
+                    if result == "ok":
+                        logger.debug(f"   [4/4] ✅ Проверка целостности пройдена успешно (заняло {elapsed:.2f}s)")
+                    else:
+                        logger.warning(f"   [4/4] ⚠️ Обнаружены проблемы в БД: {result[:200]}")
+                except Exception as e:
+                    elapsed = time.time() - start_time
+                    logger.error(f"   [4/4] ❌ Ошибка при выполнении PRAGMA quick_check (после {elapsed:.2f}s): {e}")
+                    raise
+                
                 conn.close()
+                logger.debug("   [4/4] ✅ Соединение с БД закрыто")
                 
                 if result == "ok":
                     logger.debug("   ✅ Проверка целостности БД завершена успешно")
