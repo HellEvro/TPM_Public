@@ -32,7 +32,7 @@ from utils.color_logger import setup_color_logging
 setup_color_logging(console_log_levels=['+INFO', '+WARNING', '+ERROR'])
 logger = logging.getLogger('CleanupAllCandles')
 
-DEFAULT_MAX_CANDLES_PER_SYMBOL = 5000  # Оставляем 5000 последних свечей
+DEFAULT_MAX_CANDLES_PER_SYMBOL = 1000  # Оставляем 1000 последних свечей (~250 дней для 6h свечей)
 
 def cleanup_bots_db_candles(db_path: str, max_candles_per_symbol: int = DEFAULT_MAX_CANDLES_PER_SYMBOL):
     """Очистка candles_cache_data в bots_data.db"""
@@ -77,17 +77,27 @@ def cleanup_bots_db_candles(db_path: str, max_candles_per_symbol: int = DEFAULT_
             
             # Определяем, какие свечи нужно удалить
             # Оставляем последние N свечей, удаляя более старые
+            # Оптимизированный запрос: сначала находим минимальное время для сохранения
             cursor.execute(f"""
-                DELETE FROM candles_cache_data
-                WHERE id IN (
-                    SELECT id FROM candles_cache_data
+                SELECT MIN(time) FROM (
+                    SELECT time FROM candles_cache_data
                     WHERE cache_id = ?
                     ORDER BY time DESC
-                    LIMIT -1 OFFSET {max_candles_per_symbol}
+                    LIMIT {max_candles_per_symbol}
                 )
             """, (cache_id,))
             
-            deleted_count = cursor.rowcount
+            result = cursor.fetchone()
+            if result and result[0]:
+                min_time_to_keep = result[0]
+                # Удаляем все свечи старше минимального времени
+                cursor.execute("""
+                    DELETE FROM candles_cache_data
+                    WHERE cache_id = ? AND time < ?
+                """, (cache_id, min_time_to_keep))
+                deleted_count = cursor.rowcount
+            else:
+                deleted_count = 0
             total_deleted_candles += deleted_count
             logger.info(f"   🗑️ Удалено {deleted_count} старых свечей для символа {symbol}.")
             

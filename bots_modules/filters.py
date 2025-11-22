@@ -1315,71 +1315,15 @@ def load_all_coins_candles_fast():
         except Exception as cache_error:
             logger.warning(f"⚠️ Ошибка сохранения кэша: {cache_error}")
         
-        # ✅ ДОПОЛНИТЕЛЬНО: Сохраняем свечи в БД с НАРАЩИВАНИЕМ данных
-        # Каждый раунд добавляет новые свечи к существующим, накапливая историю
+        # ✅ Сохраняем свечи в БД БЕЗ накопления!
+        # Запрашивается только 30 дней (~120 свечей), поэтому НЕ нужно накапливать старые данные
+        # save_candles_cache() сам удалит старые свечи и вставит только новые
         try:
-            from bot_engine.storage import load_candles_cache, save_candles_cache
+            from bot_engine.storage import save_candles_cache
             
-            # Загружаем существующий кэш из БД
-            db_cache = load_candles_cache()
-            
-            # ✅ НАРАЩИВАЕМ данные: объединяем старые и новые свечи
-            updated_count = 0
-            total_candles_added = 0
-            
-            for symbol, candle_data in candles_cache.items():
-                new_candles = candle_data.get('candles', [])
-                if not new_candles:
-                    continue
-                
-                # Получаем существующие свечи для этой монеты
-                existing_data = db_cache.get(symbol, {})
-                existing_candles = existing_data.get('candles', [])
-                
-                # ✅ ОБЪЕДИНЯЕМ: создаем словарь для быстрого поиска по timestamp
-                candles_dict = {}
-                
-                # Добавляем существующие свечи
-                for candle in existing_candles:
-                    timestamp = candle.get('timestamp') or candle.get('time') or candle.get('openTime')
-                    if timestamp:
-                        candles_dict[timestamp] = candle
-                
-                # Добавляем/обновляем новыми свечами (новые перезаписывают старые)
-                for candle in new_candles:
-                    timestamp = candle.get('timestamp') or candle.get('time') or candle.get('openTime')
-                    if timestamp:
-                        candles_dict[timestamp] = candle
-                
-                # Преобразуем обратно в список и сортируем по времени
-                merged_candles = list(candles_dict.values())
-                merged_candles.sort(key=lambda x: x.get('timestamp') or x.get('time') or x.get('openTime') or 0)
-                
-                # Ограничиваем максимальное количество свечей (например, последние 10000)
-                max_candles = 10000
-                if len(merged_candles) > max_candles:
-                    merged_candles = merged_candles[-max_candles:]
-                    logger.debug(f"Обрезано до {max_candles} свечей для {symbol}")
-                
-                # Обновляем кэш для этой монеты
-                old_count = len(existing_candles)
-                new_count = len(merged_candles)
-                added_count = new_count - old_count
-                
-                db_cache[symbol] = {
-                    'candles': merged_candles,
-                    'timeframe': candle_data.get('timeframe', '6h'),
-                    'timestamp': datetime.now().isoformat(),
-                    'count': new_count,
-                    'last_update': datetime.now().isoformat()
-                }
-                
-                updated_count += 1
-                total_candles_added += added_count
-            
-            # Сохраняем обновленный кэш в БД
-            if save_candles_cache(db_cache):
-                logger.info(f"💾 Кэш накоплен в БД: {updated_count} монет, +{total_candles_added} новых свечей")
+            # Просто сохраняем текущие свечи - save_candles_cache() сам ограничит до 1000 и удалит старые
+            if save_candles_cache(candles_cache):
+                logger.info(f"💾 Кэш свечей сохранен в БД: {len(candles_cache)} монет")
             
         except Exception as db_error:
             logger.warning(f"⚠️ Ошибка сохранения в БД кэша: {db_error}")

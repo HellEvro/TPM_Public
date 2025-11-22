@@ -546,6 +546,9 @@ class DatabaseGUI(tk.Tk):
         self.all_table_data: List[Dict] = []
         self.all_table_columns: List[str] = []
         
+        # Хранилище для связи item_id -> db_path в дереве БД
+        self.db_tree_items: Dict[str, Dict] = {}
+        
         # Пагинация
         self.current_page = 1
         self.records_per_page = 100  # По умолчанию
@@ -727,8 +730,11 @@ class DatabaseGUI(tk.Tk):
         
         self.db_tree = db_tree
         
-        # Привязываем двойной клик к открытию БД
-        db_tree.bind("<Double-1>", lambda e: self._open_database_from_tree())
+        # Привязываем клики
+        db_tree.bind("<Double-1>", lambda e: self._on_tree_item_double_click())
+        db_tree.bind("<Button-1>", lambda e: self._on_tree_item_click())
+        db_tree.bind("<Button-3>", lambda e: self._on_tree_item_right_click(e))  # Правый клик для контекстного меню
+        db_tree.bind("<<TreeviewOpen>>", lambda e: self._on_tree_item_expand())  # Раскрытие узла
         
         # Информация о текущей БД
         info_frame = ttk.LabelFrame(left_frame, text="Информация о БД", padding=8, style='TPanel.TLabelframe')
@@ -1175,6 +1181,9 @@ class DatabaseGUI(tk.Tk):
         # Добавляем БД в дерево
         root_id = self.db_tree.insert("", tk.END, text="Проект", open=True)
         
+        # Хранилище для связи item_id -> db_path
+        self.db_tree_items = {}  # item_id -> {'type': 'db'|'table', 'db_path': str, 'table_name': str|None}
+        
         for db in databases:
             exists = db.get('exists', True)
             if exists:
@@ -1187,25 +1196,191 @@ class DatabaseGUI(tk.Tk):
                 root_id,
                 tk.END,
                 text=display_text,
-                values=(db['path'], db['relative_path'], '1' if exists else '0')
+                values=(db['path'], db['relative_path'], '1' if exists else '0', 'db')
             )
+            
+            # Сохраняем информацию о БД
+            self.db_tree_items[item_id] = {
+                'type': 'db',
+                'db_path': db['path'],
+                'table_name': None,
+                'exists': exists
+            }
+            
+            # Добавляем placeholder для таблиц (чтобы можно было раскрыть)
+            if exists:
+                placeholder_id = self.db_tree.insert(
+                    item_id,
+                    tk.END,
+                    text="Загрузка таблиц...",
+                    values=('', '', '', 'placeholder')
+                )
+                self.db_tree_items[placeholder_id] = {
+                    'type': 'placeholder',
+                    'db_path': db['path'],
+                    'table_name': None
+                }
             
             # Визуально выделяем несуществующие файлы (серым цветом)
             if not exists:
                 self.db_tree.set(item_id, 'exists', '0')
     
-    def _open_database_from_tree(self):
-        """Открывает БД из дерева (двойной клик)"""
+    def _on_tree_item_click(self):
+        """Обработчик клика на элемент дерева"""
         selection = self.db_tree.selection()
         if not selection:
             return
         
         item = selection[0]
-        values = self.db_tree.item(item, "values")
+        item_info = self.db_tree_items.get(item)
         
-        if values:
-            db_path = values[0]
+        if not item_info:
+            return
+        
+        # Если кликнули на таблицу - открываем её
+        if item_info['type'] == 'table':
+            db_path = item_info['db_path']
+            table_name = item_info['table_name']
+            
+            # Открываем БД если она не открыта
+            if not self.db_conn or self.db_conn.db_path != db_path:
+                self._open_database(db_path)
+            
+            # Выбираем таблицу
+            if self.db_conn:
+                self.table_var.set(table_name)
+                self.current_table = table_name
+                self._load_table_data()
+    
+    def _on_tree_item_double_click(self):
+        """Обработчик двойного клика на элемент дерева"""
+        selection = self.db_tree.selection()
+        if not selection:
+            return
+        
+        item = selection[0]
+        item_info = self.db_tree_items.get(item)
+        
+        if not item_info:
+            return
+        
+        # Если двойной клик на БД - открываем её
+        if item_info['type'] == 'db':
+            db_path = item_info['db_path']
             self._open_database(db_path)
+        # Если двойной клик на таблицу - открываем её данные
+        elif item_info['type'] == 'table':
+            self._on_tree_item_click()
+    
+    def _on_tree_item_expand(self, event=None):
+        """Обработчик раскрытия узла БД - загружает таблицы"""
+        # Получаем раскрытый элемент из события
+        item = self.db_tree.focus()
+        if not item:
+            # Пробуем найти раскрытый элемент другим способом
+            for item_id in self.db_tree_items.keys():
+                try:
+                    if self.db_tree.item(item_id, 'open'):
+                        item = item_id
+                        break
+                except:
+                    continue
+        
+        if not item:
+            return
+        
+        item_info = self.db_tree_items.get(item)
+        
+        # Если это БД - загружаем таблицы
+        if item_info and item_info['type'] == 'db':
+            db_path = item_info['db_path']
+            # Проверяем, есть ли уже загруженные таблицы
+            has_tables = False
+            for child in self.db_tree.get_children(item):
+                child_info = self.db_tree_items.get(child)
+                if child_info and child_info['type'] == 'table':
+                    has_tables = True
+                    break
+                elif child_info and child_info['type'] == 'placeholder':
+                    # Удаляем placeholder
+                    self.db_tree.delete(child)
+                    if child in self.db_tree_items:
+                        del self.db_tree_items[child]
+            
+            # Загружаем таблицы если их еще нет
+            if not has_tables:
+                self._load_tables_into_tree(item, db_path)
+    
+    def _load_tables_into_tree(self, db_item_id, db_path: str):
+        """Загружает таблицы в дерево для указанной БД"""
+        try:
+            # Подключаемся к БД
+            temp_conn = DatabaseConnection(db_path)
+            temp_conn.connect()
+            
+            # Получаем список таблиц
+            tables = temp_conn.get_tables()
+            
+            # Удаляем старые дочерние элементы (если есть)
+            for child in self.db_tree.get_children(db_item_id):
+                child_info = self.db_tree_items.get(child)
+                if child_info and child_info['type'] == 'table':
+                    self.db_tree.delete(child)
+                    if child in self.db_tree_items:
+                        del self.db_tree_items[child]
+            
+            # Добавляем таблицы
+            for table_name in tables:
+                table_item_id = self.db_tree.insert(
+                    db_item_id,
+                    tk.END,
+                    text=f"📋 {table_name}",
+                    values=(db_path, table_name, '', 'table')
+                )
+                
+                self.db_tree_items[table_item_id] = {
+                    'type': 'table',
+                    'db_path': db_path,
+                    'table_name': table_name
+                }
+            
+            temp_conn.disconnect()
+            
+        except Exception as e:
+            self._update_status(f"Ошибка загрузки таблиц: {e}", "error")
+    
+    def _on_tree_item_right_click(self, event):
+        """Обработчик правого клика - показывает контекстное меню"""
+        # Определяем элемент под курсором
+        item = self.db_tree.identify_row(event.y)
+        if not item:
+            return
+        
+        item_info = self.db_tree_items.get(item)
+        if not item_info:
+            return
+        
+        # Создаем контекстное меню
+        menu = tk.Menu(self, tearoff=0)
+        
+        if item_info['type'] == 'table':
+            # Меню для таблицы
+            menu.add_command(label="Открыть таблицу", command=lambda: self._on_tree_item_click())
+            menu.add_separator()
+            menu.add_command(label="Редактировать таблицу", command=lambda: self._edit_table(item_info))
+            menu.add_command(label="Удалить таблицу", command=lambda: self._delete_table(item_info))
+        elif item_info['type'] == 'db':
+            # Меню для БД
+            menu.add_command(label="Открыть БД", command=lambda: self._open_database(item_info['db_path']))
+            menu.add_separator()
+            menu.add_command(label="Добавить таблицу", command=lambda: self._create_table(item_info))
+            menu.add_command(label="Обновить список таблиц", command=lambda: self._refresh_tables_in_tree(item))
+        
+        # Показываем меню
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
     
     def _open_external_database(self):
         """Открывает внешнюю БД через диалог выбора файла"""
@@ -1269,6 +1444,9 @@ class DatabaseGUI(tk.Tk):
         
         # Обновляем список БД (чтобы обновился статус "не создана" -> "существует")
         self._auto_discover_databases()
+        
+        # Обновляем таблицы в дереве для открытой БД
+        self._refresh_tables_for_opened_db(db_path)
     
     def _update_database_info(self):
         """Обновляет информацию о текущей БД"""
@@ -1663,6 +1841,127 @@ class DatabaseGUI(tk.Tk):
         self._auto_discover_databases()
         self._update_status("Список баз данных обновлен", "success")
     
+    def _refresh_tables_in_tree(self, db_item_id):
+        """Обновляет список таблиц в дереве для указанной БД"""
+        item_info = self.db_tree_items.get(db_item_id)
+        if not item_info or item_info['type'] != 'db':
+            return
+        
+        db_path = item_info['db_path']
+        self._load_tables_into_tree(db_item_id, db_path)
+        self._update_status("Список таблиц обновлен", "success")
+    
+    def _create_table(self, db_info: Dict):
+        """Создает новую таблицу"""
+        db_path = db_info['db_path']
+        
+        # Открываем БД если она не открыта
+        if not self.db_conn or self.db_conn.db_path != db_path:
+            self._open_database(db_path)
+        
+        if not self.db_conn:
+            self._update_status("Ошибка: Не удалось открыть базу данных", "error")
+            return
+        
+        # Открываем диалог создания таблицы
+        TableDialog(self, self.db_conn, mode='create', callback=self._on_table_created)
+    
+    def _edit_table(self, table_info: Dict):
+        """Редактирует таблицу"""
+        db_path = table_info['db_path']
+        table_name = table_info['table_name']
+        
+        # Открываем БД если она не открыта
+        if not self.db_conn or self.db_conn.db_path != db_path:
+            self._open_database(db_path)
+        
+        if not self.db_conn:
+            self._update_status("Ошибка: Не удалось открыть базу данных", "error")
+            return
+        
+        # Получаем схему таблицы
+        schema = self.db_conn.get_table_schema(table_name)
+        if not schema:
+            self._update_status(f"Ошибка: Не удалось получить схему таблицы '{table_name}'", "error")
+            return
+        
+        # Открываем диалог редактирования таблицы
+        TableDialog(self, self.db_conn, mode='edit', table_name=table_name, schema=schema, callback=self._on_table_modified)
+    
+    def _delete_table(self, table_info: Dict):
+        """Удаляет таблицу"""
+        db_path = table_info['db_path']
+        table_name = table_info['table_name']
+        
+        # Подтверждение
+        if not messagebox.askyesno(
+            "Подтверждение удаления",
+            f"Вы уверены, что хотите удалить таблицу '{table_name}'?\n\n"
+            f"Это действие необратимо! Все данные в таблице будут потеряны."
+        ):
+            self._update_status("Удаление таблицы отменено", "info")
+            return
+        
+        # Открываем БД если она не открыта
+        if not self.db_conn or self.db_conn.db_path != db_path:
+            self._open_database(db_path)
+        
+        if not self.db_conn:
+            self._update_status("Ошибка: Не удалось открыть базу данных", "error")
+            return
+        
+        # Удаляем таблицу
+        query = f"DROP TABLE IF EXISTS {table_name}"
+        results, error = self.db_conn.execute_query(query)
+        
+        if error:
+            self._update_status(f"Ошибка удаления таблицы: {error}", "error")
+        else:
+            self._update_status(f"Таблица '{table_name}' удалена", "success")
+            # Обновляем список таблиц в дереве
+            self._refresh_tables_after_modification(db_path)
+            # Обновляем список таблиц в комбобоксе
+            self._load_tables_list()
+    
+    def _on_table_created(self, table_name: str):
+        """Обработчик создания таблицы"""
+        self._update_status(f"Таблица '{table_name}' создана", "success")
+        # Обновляем список таблиц
+        if self.db_conn:
+            self._refresh_tables_after_modification(self.db_conn.db_path)
+            self._load_tables_list()
+    
+    def _on_table_modified(self, table_name: str):
+        """Обработчик изменения таблицы"""
+        self._update_status(f"Таблица '{table_name}' изменена", "success")
+        # Обновляем список таблиц
+        if self.db_conn:
+            self._refresh_tables_after_modification(self.db_conn.db_path)
+            self._load_tables_list()
+            # Перезагружаем данные если это текущая таблица
+            if self.current_table == table_name:
+                self._load_table_data()
+    
+    def _refresh_tables_for_opened_db(self, db_path: str):
+        """Обновляет таблицы в дереве для открытой БД"""
+        # Находим элемент БД в дереве
+        for item_id, item_info in self.db_tree_items.items():
+            if item_info['type'] == 'db' and item_info['db_path'] == db_path:
+                # Раскрываем узел если он закрыт
+                if not self.db_tree.item(item_id, 'open'):
+                    self.db_tree.item(item_id, open=True)
+                # Загружаем таблицы
+                self._load_tables_into_tree(item_id, db_path)
+                break
+    
+    def _refresh_tables_after_modification(self, db_path: str):
+        """Обновляет список таблиц в дереве после изменения"""
+        # Находим элемент БД в дереве
+        for item_id, item_info in self.db_tree_items.items():
+            if item_info['type'] == 'db' and item_info['db_path'] == db_path:
+                self._load_tables_into_tree(item_id, db_path)
+                break
+    
     def _prev_page(self):
         """Переход на предыдущую страницу"""
         if self.current_page > 1:
@@ -2007,6 +2306,321 @@ class RecordDialog(tk.Toplevel):
                     parent._update_status("Запись сохранена", "success")
             if self.callback:
                 self.callback()
+            self.destroy()
+
+
+class TableDialog(tk.Toplevel):
+    """Диалог для создания/редактирования таблицы"""
+    
+    def __init__(self, parent, db_conn: DatabaseConnection, mode: str = 'create', table_name: str = None, schema: List[Dict] = None, callback=None):
+        super().__init__(parent)
+        
+        self.db_conn = db_conn
+        self.mode = mode
+        self.table_name = table_name
+        self.schema = schema or []
+        self.callback = callback
+        
+        self.title(f"{'Редактирование' if mode == 'edit' else 'Создание'} таблицы")
+        self.geometry("700x600")
+        self.resizable(True, True)
+        
+        # Переменные для полей
+        self.table_name_var = tk.StringVar(value=table_name or "")
+        self.columns_data = []  # Список словарей с данными колонок
+        
+        # Если редактирование - загружаем существующие колонки
+        if mode == 'edit' and schema:
+            for col in schema:
+                self.columns_data.append({
+                    'name': col['name'],
+                    'type': col['type'],
+                    'notnull': col['notnull'],
+                    'dflt_value': col['dflt_value'],
+                    'pk': col['pk']
+                })
+        
+        # Создаем интерфейс
+        self._build_ui()
+        
+        # Фокусируемся на этом окне
+        self.transient(parent)
+        self.grab_set()
+    
+    def _build_ui(self):
+        """Создает интерфейс диалога"""
+        main_frame = ttk.Frame(self, padding=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Название таблицы
+        name_frame = ttk.Frame(main_frame)
+        name_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(name_frame, text="Название таблицы:", font=('Segoe UI', 9, 'bold')).pack(side=tk.LEFT, padx=5)
+        name_entry = ttk.Entry(name_frame, textvariable=self.table_name_var, width=30, font=('Segoe UI', 9))
+        name_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        
+        if self.mode == 'edit':
+            name_entry.config(state='readonly')
+        
+        # Колонки
+        columns_label = ttk.Label(main_frame, text="Колонки:", font=('Segoe UI', 9, 'bold'))
+        columns_label.pack(anchor=tk.W, pady=(10, 5))
+        
+        # Контейнер с прокруткой для колонок
+        canvas_frame = ttk.Frame(main_frame)
+        canvas_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        canvas = tk.Canvas(canvas_frame, bg='white')
+        scrollbar = ttk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Заголовки колонок
+        headers_frame = ttk.Frame(scrollable_frame)
+        headers_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        ttk.Label(headers_frame, text="Название", font=('Segoe UI', 8, 'bold'), width=15).grid(row=0, column=0, padx=2)
+        ttk.Label(headers_frame, text="Тип", font=('Segoe UI', 8, 'bold'), width=12).grid(row=0, column=1, padx=2)
+        ttk.Label(headers_frame, text="NOT NULL", font=('Segoe UI', 8, 'bold'), width=8).grid(row=0, column=2, padx=2)
+        ttk.Label(headers_frame, text="PK", font=('Segoe UI', 8, 'bold'), width=5).grid(row=0, column=3, padx=2)
+        ttk.Label(headers_frame, text="По умолчанию", font=('Segoe UI', 8, 'bold'), width=15).grid(row=0, column=4, padx=2)
+        ttk.Label(headers_frame, text="", font=('Segoe UI', 8, 'bold'), width=5).grid(row=0, column=5, padx=2)
+        
+        self.columns_frame = scrollable_frame
+        self.columns_widgets = []  # Список виджетов для каждой колонки
+        
+        # Загружаем существующие колонки или добавляем одну пустую
+        if self.columns_data:
+            for col_data in self.columns_data:
+                self._add_column_row(col_data)
+        else:
+            self._add_column_row()
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Привязываем прокрутку колесом мыши
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
+        # Кнопки управления колонками
+        buttons_frame = ttk.Frame(main_frame)
+        buttons_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Button(
+            buttons_frame,
+            text="+ Добавить колонку",
+            command=self._add_column_row,
+            style='TDefault.TButton'
+        ).pack(side=tk.LEFT, padx=5)
+        
+        # Кнопки сохранения/отмены
+        save_frame = ttk.Frame(main_frame)
+        save_frame.pack(fill=tk.X, pady=10)
+        
+        ttk.Button(
+            save_frame,
+            text="Сохранить",
+            command=self._save_table,
+            style='TPrimary.TButton'
+        ).pack(side=tk.RIGHT, padx=5)
+        
+        ttk.Button(
+            save_frame,
+            text="Отмена",
+            command=self.destroy,
+            style='TDefault.TButton'
+        ).pack(side=tk.RIGHT, padx=5)
+    
+    def _add_column_row(self, col_data: Dict = None):
+        """Добавляет строку для редактирования колонки"""
+        row_frame = ttk.Frame(self.columns_frame)
+        row_frame.pack(fill=tk.X, padx=5, pady=2)
+        
+        widgets = {}
+        
+        # Название
+        name_var = tk.StringVar(value=col_data.get('name', '') if col_data else '')
+        name_entry = ttk.Entry(row_frame, textvariable=name_var, width=15)
+        name_entry.grid(row=0, column=0, padx=2, sticky="ew")
+        widgets['name'] = name_var
+        
+        # Тип
+        type_var = tk.StringVar(value=col_data.get('type', 'TEXT') if col_data else 'TEXT')
+        type_combo = ttk.Combobox(
+            row_frame,
+            textvariable=type_var,
+            values=['TEXT', 'INTEGER', 'REAL', 'BLOB', 'NUMERIC', 'BOOLEAN', 'DATE', 'DATETIME'],
+            width=12,
+            state='readonly'
+        )
+        type_combo.grid(row=0, column=1, padx=2, sticky="ew")
+        widgets['type'] = type_var
+        
+        # NOT NULL
+        notnull_var = tk.BooleanVar(value=col_data.get('notnull', False) if col_data else False)
+        notnull_check = ttk.Checkbutton(row_frame, variable=notnull_var)
+        notnull_check.grid(row=0, column=2, padx=2)
+        widgets['notnull'] = notnull_var
+        
+        # PRIMARY KEY
+        pk_var = tk.BooleanVar(value=col_data.get('pk', False) if col_data else False)
+        pk_check = ttk.Checkbutton(row_frame, variable=pk_var)
+        pk_check.grid(row=0, column=3, padx=2)
+        widgets['pk'] = pk_var
+        
+        # По умолчанию
+        default_var = tk.StringVar(value=str(col_data.get('dflt_value', '')) if col_data and col_data.get('dflt_value') else '')
+        default_entry = ttk.Entry(row_frame, textvariable=default_var, width=15)
+        default_entry.grid(row=0, column=4, padx=2, sticky="ew")
+        widgets['default'] = default_var
+        
+        # Кнопка удаления
+        def remove_row():
+            row_frame.destroy()
+            self.columns_widgets.remove(widgets)
+        
+        remove_btn = ttk.Button(row_frame, text="×", command=remove_row, width=3)
+        remove_btn.grid(row=0, column=5, padx=2)
+        
+        # Настраиваем веса колонок
+        row_frame.columnconfigure(0, weight=1)
+        row_frame.columnconfigure(4, weight=1)
+        
+        self.columns_widgets.append(widgets)
+    
+    def _save_table(self):
+        """Сохраняет таблицу"""
+        table_name = self.table_name_var.get().strip()
+        
+        if not table_name:
+            messagebox.showerror("Ошибка", "Введите название таблицы")
+            return
+        
+        # Проверяем валидность названия таблицы
+        if not table_name.replace('_', '').isalnum():
+            messagebox.showerror("Ошибка", "Название таблицы может содержать только буквы, цифры и подчеркивания")
+            return
+        
+        # Собираем данные колонок
+        columns = []
+        pk_columns = []
+        
+        for widgets in self.columns_widgets:
+            col_name = widgets['name'].get().strip()
+            if not col_name:
+                continue  # Пропускаем пустые колонки
+            
+            col_type = widgets['type'].get()
+            notnull = widgets['notnull'].get()
+            pk = widgets['pk'].get()
+            default = widgets['default'].get().strip()
+            
+            # Формируем определение колонки
+            col_def = f"{col_name} {col_type}"
+            
+            if pk:
+                col_def += " PRIMARY KEY"
+                pk_columns.append(col_name)
+            
+            if notnull and not pk:
+                col_def += " NOT NULL"
+            
+            if default:
+                # Экранируем значение по умолчанию
+                if col_type in ['TEXT', 'VARCHAR', 'CHAR']:
+                    default = f"'{default.replace("'", "''")}'"
+                col_def += f" DEFAULT {default}"
+            
+            columns.append(col_def)
+        
+        if not columns:
+            messagebox.showerror("Ошибка", "Добавьте хотя бы одну колонку")
+            return
+        
+        # Формируем SQL запрос
+        if self.mode == 'create':
+            query = f"CREATE TABLE {table_name} (\n    {',\n    '.join(columns)}\n)"
+        else:
+            # Для редактирования - показываем предупреждение
+            if messagebox.askyesno(
+                "Внимание",
+                "Редактирование таблицы через ALTER TABLE ограничено.\n\n"
+                "Можно только:\n"
+                "- Добавить новую колонку\n"
+                "- Переименовать таблицу\n\n"
+                "Для изменения существующих колонок рекомендуется:\n"
+                "1. Создать новую таблицу с нужной структурой\n"
+                "2. Скопировать данные\n"
+                "3. Удалить старую таблицу\n"
+                "4. Переименовать новую\n\n"
+                "Продолжить с добавлением колонок?"
+            ):
+                # Добавляем только новые колонки (упрощенная версия)
+                new_columns = []
+                existing_column_names = [col['name'] for col in self.schema]
+                
+                for widgets in self.columns_widgets:
+                    col_name = widgets['name'].get().strip()
+                    if not col_name or col_name in existing_column_names:
+                        continue
+                    
+                    col_type = widgets['type'].get()
+                    notnull = widgets['notnull'].get()
+                    default = widgets['default'].get().strip()
+                    
+                    col_def = f"{col_name} {col_type}"
+                    if notnull:
+                        col_def += " NOT NULL"
+                    if default:
+                        if col_type in ['TEXT', 'VARCHAR', 'CHAR']:
+                            default = f"'{default.replace("'", "''")}'"
+                        col_def += f" DEFAULT {default}"
+                    
+                    new_columns.append(col_def)
+                
+                if not new_columns:
+                    messagebox.showinfo("Информация", "Нет новых колонок для добавления")
+                    return
+                
+                # Выполняем ALTER TABLE для каждой новой колонки
+                for col_def in new_columns:
+                    alter_query = f"ALTER TABLE {table_name} ADD COLUMN {col_def}"
+                    results, error = self.db_conn.execute_query(alter_query)
+                    if error:
+                        messagebox.showerror("Ошибка", f"Ошибка добавления колонки:\n{error}")
+                        return
+                
+                # Обновляем статус
+                if hasattr(self.master, '_update_status'):
+                    self.master._update_status(f"В таблицу '{table_name}' добавлены колонки", "success")
+                
+                if self.callback:
+                    self.callback(table_name)
+                self.destroy()
+                return
+        
+        # Выполняем запрос
+        results, error = self.db_conn.execute_query(query)
+        
+        if error:
+            messagebox.showerror("Ошибка", f"Ошибка создания таблицы:\n{error}")
+        else:
+            # Обновляем статус в родительском окне
+            if hasattr(self.master, '_update_status'):
+                self.master._update_status(f"Таблица '{table_name}' {'создана' if self.mode == 'create' else 'изменена'}", "success")
+            
+            if self.callback:
+                self.callback(table_name)
             self.destroy()
 
 

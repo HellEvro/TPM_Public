@@ -4908,8 +4908,9 @@ class AIDatabase:
             now = datetime.now().isoformat()
             saved_count = 0
             
-            # ОГРАНИЧЕНИЕ: Максимум 5000 свечей на символ для предотвращения раздувания БД
-            MAX_CANDLES_PER_SYMBOL = 5000
+            # ОГРАНИЧЕНИЕ: Максимум 1000 свечей на символ для предотвращения раздувания БД
+            # 1000 свечей = ~250 дней истории - более чем достаточно (запрашивается только 30 дней)
+            MAX_CANDLES_PER_SYMBOL = 1000
             
             with self._get_connection() as conn:
                 cursor = conn.cursor()
