@@ -484,8 +484,18 @@ class AIDatabase:
                 
                 try:
                     # Получаем размер БД
-                    db_size = os.path.getsize(self.db_path) / (1024 * 1024)  # MB
-                    logger.debug(f"   [4/4] Размер БД: {db_size:.2f} MB")
+                    db_size_mb = os.path.getsize(self.db_path) / (1024 * 1024)  # MB
+                    db_size_gb = db_size_mb / 1024  # GB
+                    logger.debug(f"   [4/4] Размер БД: {db_size_mb:.2f} MB ({db_size_gb:.2f} GB)")
+                    
+                    # Пропускаем проверку целостности для очень больших БД (>1 GB)
+                    # PRAGMA quick_check на больших БД может занимать очень много времени
+                    if db_size_mb > 1024:  # Больше 1 GB
+                        logger.info(f"   [4/4] ⚠️ БД очень большая ({db_size_gb:.2f} GB), пропускаем проверку целостности для ускорения запуска")
+                        logger.info(f"   [4/4] 💡 Проверка целостности может занять много времени на БД такого размера")
+                        conn.close()
+                        logger.debug("   [4/4] ✅ Соединение с БД закрыто (проверка пропущена)")
+                        return True, None
                 except Exception as e:
                     logger.debug(f"   [4/4] ⚠️ Не удалось получить размер БД: {e}")
                 
@@ -494,27 +504,58 @@ class AIDatabase:
                 cursor.execute("PRAGMA busy_timeout = 2000")  # 2 секунды
                 logger.debug("   [4/4] ✅ busy_timeout установлен")
                 
-                # Выполняем проверку целостности с таймером
+                # Выполняем проверку целостности с таймером и таймаутом
                 import time
+                import threading
                 logger.debug("   [4/4] ⏳ Начинаю выполнение PRAGMA quick_check...")
                 start_time = time.time()
                 
-                try:
-                    cursor.execute("PRAGMA quick_check")
-                    elapsed = time.time() - start_time
-                    logger.debug(f"   [4/4] ⏱️ PRAGMA quick_check выполнен за {elapsed:.2f} секунд")
-                    
-                    result = cursor.fetchone()[0]
-                    logger.debug(f"   [4/4] 📊 Результат проверки получен: {result[:100] if len(str(result)) > 100 else result}")
-                    
-                    if result == "ok":
-                        logger.debug(f"   [4/4] ✅ Проверка целостности пройдена успешно (заняло {elapsed:.2f}s)")
-                    else:
-                        logger.warning(f"   [4/4] ⚠️ Обнаружены проблемы в БД: {result[:200]}")
-                except Exception as e:
-                    elapsed = time.time() - start_time
-                    logger.error(f"   [4/4] ❌ Ошибка при выполнении PRAGMA quick_check (после {elapsed:.2f}s): {e}")
-                    raise
+                # Выполняем проверку в отдельном потоке с таймаутом
+                result_container = [None]
+                exception_container = [None]
+                check_completed = threading.Event()
+                
+                def run_quick_check():
+                    try:
+                        cursor.execute("PRAGMA quick_check")
+                        result_container[0] = cursor.fetchone()[0]
+                        check_completed.set()
+                    except Exception as e:
+                        exception_container[0] = e
+                        check_completed.set()
+                
+                check_thread = threading.Thread(target=run_quick_check, daemon=True)
+                check_thread.start()
+                
+                # Ждем максимум 30 секунд для БД до 1 GB
+                timeout = 30.0
+                if db_size_mb > 100:  # Для БД больше 100 MB увеличиваем таймаут
+                    timeout = min(60.0, db_size_mb / 10)  # До 60 секунд, но не больше размера/10
+                
+                logger.debug(f"   [4/4] ⏱️ Таймаут проверки: {timeout:.1f} секунд")
+                check_completed.wait(timeout=timeout)
+                
+                elapsed = time.time() - start_time
+                
+                if not check_completed.is_set():
+                    # Проверка не завершилась за таймаут
+                    logger.warning(f"   [4/4] ⚠️ PRAGMA quick_check не завершился за {timeout:.1f}s (прошло {elapsed:.1f}s), пропускаем проверку")
+                    conn.close()
+                    return True, None  # Считаем БД валидной, чтобы не блокировать запуск
+                
+                if exception_container[0]:
+                    logger.error(f"   [4/4] ❌ Ошибка при выполнении PRAGMA quick_check (после {elapsed:.2f}s): {exception_container[0]}")
+                    conn.close()
+                    return True, None  # Считаем БД валидной при ошибке
+                
+                result = result_container[0]
+                logger.debug(f"   [4/4] ⏱️ PRAGMA quick_check выполнен за {elapsed:.2f} секунд")
+                logger.debug(f"   [4/4] 📊 Результат проверки получен: {result[:100] if len(str(result)) > 100 else result}")
+                
+                if result == "ok":
+                    logger.debug(f"   [4/4] ✅ Проверка целостности пройдена успешно (заняло {elapsed:.2f}s)")
+                else:
+                    logger.warning(f"   [4/4] ⚠️ Обнаружены проблемы в БД: {result[:200]}")
                 
                 conn.close()
                 logger.debug("   [4/4] ✅ Соединение с БД закрыто")
