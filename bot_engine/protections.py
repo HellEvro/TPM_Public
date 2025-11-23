@@ -41,6 +41,7 @@ class ProtectionState:
     notional_usdt: Optional[float] = None
     max_profit_percent: float = 0.0
     break_even_activated: bool = False
+    break_even_stop_set: bool = False  # Флаг, что break-even стоп уже установлен на бирже (устанавливается один раз)
     break_even_stop_price: Optional[float] = None
     trailing_active: bool = False
     trailing_reference_price: Optional[float] = None
