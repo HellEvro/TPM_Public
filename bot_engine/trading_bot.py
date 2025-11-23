@@ -689,8 +689,8 @@ class TradingBot:
                 )
                 
                 if not filters_allowed:
-                    self.logger.error(f" {self.symbol}: 🚫 БЛОКИРОВКА: Фильтры заблокировали вход в {side} позицию!")
-                    self.logger.error(f" {self.symbol}: Причина блокировки: {filters_reason}")
+                    self.logger.warning(f" {self.symbol}: 🚫 БЛОКИРОВКА: Фильтры заблокировали вход в {side} позицию!")
+                    self.logger.warning(f" {self.symbol}: Причина блокировки: {filters_reason}")
                     return {
                         'success': False,
                         'error': 'filters_blocked',

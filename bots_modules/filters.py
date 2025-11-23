@@ -1825,7 +1825,12 @@ def process_auto_bot_signals(exchange_obj=None):
                 created_bots += 1
                 
             except Exception as e:
-                logger.error(f" ❌ Ошибка создания бота для {symbol}: {e}")
+                # Блокировка фильтрами - это нормальная работа системы, логируем как WARNING
+                error_str = str(e)
+                if 'заблокирован фильтрами' in error_str or 'filters_blocked' in error_str:
+                    logger.warning(f" ⚠️ Ошибка создания бота для {symbol}: {e}")
+                else:
+                    logger.error(f" ❌ Ошибка создания бота для {symbol}: {e}")
         
         if created_bots > 0:
             logger.info(f" ✅ Создано {created_bots} новых ботов")

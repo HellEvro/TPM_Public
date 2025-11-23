@@ -2162,7 +2162,11 @@ class NewTradingBot:
 
         if not result.get('success'):
             error_msg = result.get('message') or result.get('error') or 'Unknown error'
-            logger.error(f"[NEW_BOT_{self.symbol}] ❌ Не удалось открыть позицию {side}: {error_msg}")
+            # Блокировка фильтрами - это нормальная работа системы, логируем как WARNING
+            if result.get('error') == 'filters_blocked' or 'заблокирован фильтрами' in error_msg:
+                logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось открыть позицию {side}: {error_msg}")
+            else:
+                logger.error(f"[NEW_BOT_{self.symbol}] ❌ Не удалось открыть позицию {side}: {error_msg}")
             raise RuntimeError(error_msg)
 
         # ✅ КРИТИЧНО: Получаем тренд на момент входа для правильного определения порога выхода
