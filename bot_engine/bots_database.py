@@ -3382,9 +3382,59 @@ class BotsDatabase:
                     
                     extra_stats_json = json.dumps(extra_stats) if extra_stats else None
                     
-                    # Удаляем старые записи (оставляем только последний кэш)
-                    cursor.execute("DELETE FROM rsi_cache_coins")
-                    cursor.execute("DELETE FROM rsi_cache")
+                    # ⚠️ КРИТИЧНО: Используем DROP TABLE + CREATE TABLE вместо DELETE для гарантированной очистки
+                    # DELETE может не удалить все записи из-за блокировок, WAL режима или других проблем
+                    logger.debug("🗑️ Удаляем таблицы RSI кэша для полной очистки (DROP TABLE)...")
+                    cursor.execute("DROP TABLE IF EXISTS rsi_cache_coins")
+                    cursor.execute("DROP TABLE IF EXISTS rsi_cache")
+                    
+                    # Создаем таблицы заново
+                    cursor.execute("""
+                        CREATE TABLE rsi_cache (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            timestamp TEXT NOT NULL,
+                            total_coins INTEGER DEFAULT 0,
+                            successful_coins INTEGER DEFAULT 0,
+                            failed_coins INTEGER DEFAULT 0,
+                            extra_stats_json TEXT,
+                            created_at TEXT NOT NULL
+                        )
+                    """)
+                    cursor.execute("""
+                        CREATE TABLE rsi_cache_coins (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            cache_id INTEGER NOT NULL,
+                            symbol TEXT NOT NULL,
+                            rsi6h REAL,
+                            trend6h TEXT,
+                            rsi_zone TEXT,
+                            signal TEXT,
+                            price REAL,
+                            change24h REAL,
+                            last_update TEXT,
+                            blocked_by_scope INTEGER DEFAULT 0,
+                            has_existing_position INTEGER DEFAULT 0,
+                            is_mature INTEGER DEFAULT 1,
+                            blocked_by_exit_scam INTEGER DEFAULT 0,
+                            blocked_by_rsi_time INTEGER DEFAULT 0,
+                            trading_status TEXT,
+                            is_delisting INTEGER DEFAULT 0,
+                            trend_analysis_json TEXT,
+                            enhanced_rsi_json TEXT,
+                            time_filter_info_json TEXT,
+                            exit_scam_info_json TEXT,
+                            extra_coin_data_json TEXT,
+                            FOREIGN KEY (cache_id) REFERENCES rsi_cache(id) ON DELETE CASCADE
+                        )
+                    """)
+                    
+                    # Восстанавливаем индексы
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rsi_cache_timestamp ON rsi_cache(timestamp)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rsi_cache_created ON rsi_cache(created_at)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rsi_cache_coins_cache_id ON rsi_cache_coins(cache_id)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rsi_cache_coins_symbol ON rsi_cache_coins(symbol)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rsi_cache_coins_rsi6h ON rsi_cache_coins(rsi6h)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rsi_cache_coins_signal ON rsi_cache_coins(signal)")
                     
                     # Вставляем метаданные кэша
                     cursor.execute("""
@@ -3603,9 +3653,61 @@ class BotsDatabase:
             with self.lock:
                 with self._get_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("DELETE FROM rsi_cache")
+                    # ⚠️ КРИТИЧНО: Используем DROP TABLE + CREATE TABLE вместо DELETE для гарантированной очистки
+                    logger.debug("🗑️ Удаляем таблицы RSI кэша для полной очистки (DROP TABLE)...")
+                    cursor.execute("DROP TABLE IF EXISTS rsi_cache_coins")
+                    cursor.execute("DROP TABLE IF EXISTS rsi_cache")
+                    
+                    # Создаем таблицы заново
+                    cursor.execute("""
+                        CREATE TABLE rsi_cache (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            timestamp TEXT NOT NULL,
+                            total_coins INTEGER DEFAULT 0,
+                            successful_coins INTEGER DEFAULT 0,
+                            failed_coins INTEGER DEFAULT 0,
+                            extra_stats_json TEXT,
+                            created_at TEXT NOT NULL
+                        )
+                    """)
+                    cursor.execute("""
+                        CREATE TABLE rsi_cache_coins (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            cache_id INTEGER NOT NULL,
+                            symbol TEXT NOT NULL,
+                            rsi6h REAL,
+                            trend6h TEXT,
+                            rsi_zone TEXT,
+                            signal TEXT,
+                            price REAL,
+                            change24h REAL,
+                            last_update TEXT,
+                            blocked_by_scope INTEGER DEFAULT 0,
+                            has_existing_position INTEGER DEFAULT 0,
+                            is_mature INTEGER DEFAULT 1,
+                            blocked_by_exit_scam INTEGER DEFAULT 0,
+                            blocked_by_rsi_time INTEGER DEFAULT 0,
+                            trading_status TEXT,
+                            is_delisting INTEGER DEFAULT 0,
+                            trend_analysis_json TEXT,
+                            enhanced_rsi_json TEXT,
+                            time_filter_info_json TEXT,
+                            exit_scam_info_json TEXT,
+                            extra_coin_data_json TEXT,
+                            FOREIGN KEY (cache_id) REFERENCES rsi_cache(id) ON DELETE CASCADE
+                        )
+                    """)
+                    
+                    # Восстанавливаем индексы
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rsi_cache_timestamp ON rsi_cache(timestamp)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rsi_cache_created ON rsi_cache(created_at)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rsi_cache_coins_cache_id ON rsi_cache_coins(cache_id)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rsi_cache_coins_symbol ON rsi_cache_coins(symbol)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rsi_cache_coins_rsi6h ON rsi_cache_coins(rsi6h)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rsi_cache_coins_signal ON rsi_cache_coins(signal)")
+                    
                     conn.commit()
-            logger.info("✅ RSI кэш очищен в БД")
+            logger.info("✅ RSI кэш очищен в БД (DROP TABLE)")
             return True
         except Exception as e:
             logger.error(f"❌ Ошибка очистки RSI кэша: {e}")
@@ -4182,13 +4284,32 @@ class BotsDatabase:
                 with self._get_connection() as conn:
                     cursor = conn.cursor()
                     
-                    # Удаляем старые записи
-                    cursor.execute("DELETE FROM maturity_check_cache")
-                    
-                    # Получаем created_at из существующей записи или используем текущее время
+                    # ⚠️ КРИТИЧНО: Используем DROP TABLE + CREATE TABLE вместо DELETE для гарантированной очистки
+                    # Сохраняем created_at перед удалением таблицы
                     cursor.execute("SELECT created_at FROM maturity_check_cache LIMIT 1")
                     existing = cursor.fetchone()
                     created_at = existing[0] if existing else now
+                    
+                    logger.debug("🗑️ Удаляем таблицу maturity_check_cache для полной очистки (DROP TABLE)...")
+                    cursor.execute("DROP TABLE IF EXISTS maturity_check_cache")
+                    
+                    # Создаем таблицу заново
+                    cursor.execute("""
+                        CREATE TABLE maturity_check_cache (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            coins_count INTEGER NOT NULL,
+                            min_candles INTEGER,
+                            min_rsi_low INTEGER,
+                            max_rsi_high INTEGER,
+                            extra_config_json TEXT,
+                            updated_at TEXT NOT NULL,
+                            created_at TEXT NOT NULL
+                        )
+                    """)
+                    
+                    # Восстанавливаем индексы
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_maturity_check_cache_updated ON maturity_check_cache(updated_at)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_maturity_check_cache_created ON maturity_check_cache(created_at)")
                     
                     # Вставляем новую запись в нормализованном формате
                     cursor.execute("""

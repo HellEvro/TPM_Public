@@ -4963,18 +4963,38 @@ class AIDatabase:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # ⚠️ КРИТИЧНО: Удаляем ВСЕ старые свечи для символов из батча одним запросом (TRUNCATE-подход)
-                # Это намного быстрее, чем удалять по каждому символу отдельно
+                # ⚠️ КРИТИЧНО: Удаляем ВСЕ старые свечи для символов из батча одним запросом
+                # Используем DELETE, так как candles_history - это история, а не кэш, и там могут быть данные для других символов
+                # Но для гарантированной очистки используем более агрессивный подход
                 symbols_list = list(candles_data.keys())
                 placeholders = ','.join(['?'] * len(symbols_list))
+                
+                # Проверяем количество перед удалением
+                cursor.execute(f"SELECT COUNT(*) FROM candles_history WHERE symbol IN ({placeholders}) AND timeframe = ?", symbols_list + [timeframe])
+                old_count = cursor.fetchone()[0]
+                
+                # Удаляем старые свечи для символов из батча
                 cursor.execute(f"""
                     DELETE FROM candles_history 
                     WHERE symbol IN ({placeholders}) AND timeframe = ?
                 """, symbols_list + [timeframe])
                 deleted_total = cursor.rowcount
                 
-                if deleted_total > 0:
-                    logger.debug(f"🗑️ Удалено {deleted_total:,} старых свечей для {len(symbols_list)} символов (TRUNCATE-подход)")
+                # ⚠️ КРИТИЧНО: Проверяем, что DELETE действительно удалил все записи
+                cursor.execute(f"SELECT COUNT(*) FROM candles_history WHERE symbol IN ({placeholders}) AND timeframe = ?", symbols_list + [timeframe])
+                count_after_delete = cursor.fetchone()[0]
+                
+                if count_after_delete > 0:
+                    logger.warning(f"⚠️ DELETE не удалил все записи! Осталось {count_after_delete:,} записей. Пытаемся удалить еще раз...")
+                    # Пытаемся удалить еще раз
+                    cursor.execute(f"DELETE FROM candles_history WHERE symbol IN ({placeholders}) AND timeframe = ?", symbols_list + [timeframe])
+                    cursor.execute(f"SELECT COUNT(*) FROM candles_history WHERE symbol IN ({placeholders}) AND timeframe = ?", symbols_list + [timeframe])
+                    final_count = cursor.fetchone()[0]
+                    if final_count > 0:
+                        logger.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА! После повторного DELETE осталось {final_count:,} записей для символов из батча!")
+                
+                if old_count > 0:
+                    logger.debug(f"🗑️ Удалено {deleted_total:,} старых свечей для {len(symbols_list)} символов (было {old_count:,}, осталось {count_after_delete:,})")
                 
                 # Собираем все свечи для пакетной вставки
                 all_candles_to_insert = []
