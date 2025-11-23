@@ -2572,7 +2572,8 @@ def create_new_bot(symbol, config=None, exchange_obj=None):
             'created_at': datetime.now().isoformat(),
             'opened_by_autobot': True,
             'volume_mode': default_volume_mode,
-            'volume_value': default_volume  # ✅ ИСПРАВЛЕНО: используем значение из конфига
+            'volume_value': default_volume,  # ✅ ИСПРАВЛЕНО: используем значение из конфига
+            'leverage': auto_bot_config.get('leverage', 1)  # ✅ Добавляем leverage из глобального конфига
         }
 
         individual_settings = get_individual_coin_settings(symbol)
@@ -2585,6 +2586,8 @@ def create_new_bot(symbol, config=None, exchange_obj=None):
         bot_config.setdefault('volume_mode', default_volume_mode)
         if bot_config.get('volume_value') is None:
             bot_config['volume_value'] = default_volume
+        if bot_config.get('leverage') is None:
+            bot_config['leverage'] = auto_bot_config.get('leverage', 1)  # ✅ Fallback для leverage
         
         # Создаем бота
         new_bot = NewTradingBot(symbol, bot_config, exchange_to_use)

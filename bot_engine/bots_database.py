@@ -4667,11 +4667,37 @@ class BotsDatabase:
                             # ⚠️ КРИТИЧНО: Кэш должен ПОЛНОСТЬЮ ПЕРЕЗАПИСЫВАТЬСЯ, а не накапливаться!
                             # ВСЕГДА удаляем ВСЕ старые свечи для этого символа перед вставкой новых
                             # Это гарантирует, что старые неиспользуемые данные всегда удаляются
+                            
+                            # Сначала проверяем, сколько старых записей есть
+                            cursor.execute("SELECT COUNT(*) FROM candles_cache_data WHERE cache_id = ?", (cache_id,))
+                            old_count_before = cursor.fetchone()[0]
+                            
+                            # Удаляем ВСЕ старые свечи
                             cursor.execute("""
                                 DELETE FROM candles_cache_data 
                                 WHERE cache_id = ?
                             """, (cache_id,))
                             deleted_old_count = cursor.rowcount
+                            
+                            # Проверяем, что удаление сработало
+                            cursor.execute("SELECT COUNT(*) FROM candles_cache_data WHERE cache_id = ?", (cache_id,))
+                            old_count_after = cursor.fetchone()[0]
+                            
+                            # Логируем если было много старых записей или удаление не сработало
+                            if old_count_before > 1000:
+                                logger.warning(f"⚠️ {symbol}: Обнаружено накопление! Было {old_count_before:,} свечей, удалено {deleted_old_count:,}, осталось {old_count_after}")
+                            
+                            if old_count_after > 0:
+                                logger.error(f"❌ {symbol}: КРИТИЧЕСКАЯ ОШИБКА! DELETE не удалил все старые свечи! Осталось {old_count_after} записей после DELETE!")
+                                # Пытаемся удалить еще раз принудительно
+                                cursor.execute("DELETE FROM candles_cache_data WHERE cache_id = ?", (cache_id,))
+                                deleted_again = cursor.rowcount
+                                cursor.execute("SELECT COUNT(*) FROM candles_cache_data WHERE cache_id = ?", (cache_id,))
+                                final_count = cursor.fetchone()[0]
+                                if final_count > 0:
+                                    logger.error(f"❌ {symbol}: КРИТИЧЕСКАЯ ПРОБЛЕМА! После повторного DELETE осталось {final_count} записей! Возможна проблема с БД или транзакцией!")
+                                else:
+                                    logger.warning(f"⚠️ {symbol}: Повторное удаление успешно удалило оставшиеся {deleted_again} записей")
                             
                             # ОГРАНИЧЕНИЕ: Сохраняем только последние N свечей для каждого символа
                             # Это предотвращает раздувание БД до огромных размеров
@@ -4710,13 +4736,38 @@ class BotsDatabase:
                                 ])
                                 
                                 inserted_count = cursor.rowcount
-                                # ⚡ УБРАНО ИЗБЫТОЧНОЕ ЛОГИРОВАНИЕ: логируем только при реальных изменениях
-                                # if deleted_old_count > 0:
-                                #     logger.debug(f"   🔄 {symbol}: Перезаписан кэш (удалено {deleted_old_count} старых, вставлено {inserted_count} новых)")
-                                # else:
-                                #     logger.debug(f"   💾 {symbol}: Сохранено {inserted_count} свечей в кэш")
+                                
+                                # Проверяем финальное количество после вставки
+                                cursor.execute("SELECT COUNT(*) FROM candles_cache_data WHERE cache_id = ?", (cache_id,))
+                                final_count = cursor.fetchone()[0]
+                                
+                                # Логируем если количество не соответствует ожидаемому
+                                if final_count != inserted_count:
+                                    logger.error(f"❌ {symbol}: НЕСООТВЕТСТВИЕ! Вставлено {inserted_count}, но в БД {final_count} записей! Возможна проблема с транзакцией или дубликатами!")
+                                
+                                if final_count > MAX_CANDLES_PER_SYMBOL:
+                                    logger.error(f"❌ {symbol}: ПРЕВЫШЕН ЛИМИТ! В БД {final_count} свечей, должно быть ≤{MAX_CANDLES_PER_SYMBOL}!")
                     
+                    # КРИТИЧНО: Коммитим транзакцию ПЕРЕД проверкой финального состояния
                     conn.commit()
+                    
+                    # Проверяем финальное состояние после коммита
+                    cursor.execute("""
+                        SELECT cache_id, COUNT(*) as cnt 
+                        FROM candles_cache_data 
+                        GROUP BY cache_id 
+                        HAVING cnt > 1000
+                        ORDER BY cnt DESC 
+                        LIMIT 10
+                    """)
+                    problematic_symbols = cursor.fetchall()
+                    if problematic_symbols:
+                        logger.error(f"❌ КРИТИЧЕСКАЯ ПРОБЛЕМА! Обнаружены символы с превышением лимита после коммита:")
+                        for cache_id, cnt in problematic_symbols:
+                            cursor.execute("SELECT symbol FROM candles_cache WHERE id = ?", (cache_id,))
+                            symbol_row = cursor.fetchone()
+                            symbol_name = symbol_row[0] if symbol_row else f"cache_id={cache_id}"
+                            logger.error(f"   ❌ {symbol_name}: {cnt:,} свечей (лимит: 1000)")
             
             logger.debug(f"💾 Кэш свечей сохранен в БД ({len(candles_cache)} символов)")
             return True

@@ -170,7 +170,8 @@ def init_bot_service():
                     bot_config = {
                         'volume_mode': bot_data.get('volume_mode', default_volume_mode),
                         'volume_value': bot_data.get('volume_value', auto_bot_config['default_position_size']),  # Fallback из конфига для старых ботов
-                        'status': bot_data.get('status', 'paused')
+                        'status': bot_data.get('status', 'paused'),
+                        'leverage': bot_data.get('leverage', auto_bot_config.get('leverage', 1))  # ✅ Добавляем leverage
                     }
                     bot_config.setdefault('volume_mode', default_volume_mode)
                     

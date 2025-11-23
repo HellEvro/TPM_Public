@@ -82,6 +82,7 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
         
         # ✅ Логируем ключевые значения, которые будут сохранены
         logger.info(f"[CONFIG_WRITER] 🔍 Сохраняемые значения:")
+        logger.info(f"  leverage: {config.get('leverage')}")
         logger.info(f"  trailing_stop_activation: {config.get('trailing_stop_activation')}")
         logger.info(f"  trailing_stop_distance: {config.get('trailing_stop_distance')}")
         logger.info(f"  break_even_trigger: {config.get('break_even_trigger')}")
@@ -151,12 +152,76 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
                     # Всегда добавляем запятую перед комментарием
                     updated_line = f"{indent}'{key}': {new_value_str},{comment_str}\n"
                     # ✅ Логируем ключевые изменения
-                    if key in ('trailing_stop_activation', 'trailing_stop_distance', 'break_even_trigger', 'avoid_down_trend', 'avoid_up_trend', 'limit_orders_entry_enabled', 'limit_orders_percent_steps', 'limit_orders_margin_amounts'):
+                    if key in ('leverage', 'trailing_stop_activation', 'trailing_stop_distance', 'break_even_trigger', 'avoid_down_trend', 'avoid_up_trend', 'limit_orders_entry_enabled', 'limit_orders_percent_steps', 'limit_orders_margin_amounts'):
                         logger.info(f"[CONFIG_WRITER] ✏️ {key}: {old_normalized[:50]}... → {new_normalized[:50]}...")
                     else:
                         logger.debug(f"[CONFIG_WRITER] ✏️ {key}: {old_normalized[:50]}... → {new_normalized[:50]}...")
             
             updated_lines.append(updated_line)
+        
+        # ✅ КРИТИЧЕСКИ ВАЖНО: Добавляем ключи из config, которых нет в файле
+        # Собираем все ключи, которые уже есть в файле
+        existing_keys = set()
+        for i in range(start_idx + 1, end_idx + 1):
+            line = lines[i]
+            line_without_comment = re.sub(r'\s*#.*$', '', line).rstrip()
+            key_match = re.match(r"^(\s*)'([^']+)':\s*", line_without_comment)
+            if key_match:
+                existing_keys.add(key_match.group(2))
+        
+        # ✅ ГАРАНТИРУЕМ, что leverage всегда есть в конфиге
+        if 'leverage' not in config:
+            logger.warning(f"[CONFIG_WRITER] ⚠️ leverage отсутствует в config, устанавливаем значение по умолчанию: 1")
+            config['leverage'] = 1
+        
+        # Добавляем недостающие ключи перед закрывающей скобкой
+        # Находим последнюю строку перед закрывающей скобкой
+        last_config_line_idx = len(updated_lines) - 1
+        for i in range(len(updated_lines) - 1, -1, -1):
+            if updated_lines[i].strip() == '}':
+                last_config_line_idx = i - 1
+                break
+        
+        # Получаем отступ из последней строки конфига
+        last_line = updated_lines[last_config_line_idx] if last_config_line_idx >= 0 else '    '
+        indent_match = re.match(r'^(\s*)', last_line)
+        indent = indent_match.group(1) if indent_match else '    '
+        
+        # Добавляем недостающие ключи
+        missing_keys = []
+        for key in config.keys():
+            if key not in existing_keys:
+                missing_keys.append(key)
+        
+        if missing_keys:
+            logger.info(f"[CONFIG_WRITER] ➕ Добавляем недостающие ключи: {missing_keys}")
+            if 'leverage' in missing_keys:
+                logger.warning(f"[CONFIG_WRITER] ⚠️ leverage отсутствовал в файле! Добавляем обратно.")
+            # Добавляем запятую к последней строке, если её нет
+            if last_config_line_idx >= 0 and not updated_lines[last_config_line_idx].rstrip().endswith(','):
+                updated_lines[last_config_line_idx] = updated_lines[last_config_line_idx].rstrip() + ',\n'
+            
+            # Добавляем новые ключи (leverage первым, если он отсутствует)
+            sorted_keys = sorted(missing_keys)
+            if 'leverage' in sorted_keys:
+                sorted_keys.remove('leverage')
+                sorted_keys.insert(0, 'leverage')  # leverage всегда первым
+            
+            for key in sorted_keys:
+                value = config[key]
+                value_str = _format_python_value(value)
+                # Определяем комментарий на основе ключа
+                comment = ''
+                if key == 'leverage':
+                    comment = '  # ✅ Кредитное плечо (1-125x)'
+                elif key == 'default_position_size':
+                    comment = '  # Базовый размер позиции (в единицах согласно default_position_mode)'
+                elif key == 'default_position_mode':
+                    comment = '  # Режим расчета: usdt | percent'
+                
+                new_line = f"{indent}'{key}': {value_str},{comment}\n"
+                updated_lines.insert(last_config_line_idx + 1, new_line)
+                last_config_line_idx += 1
         
         # Добавляем все строки после блока конфигурации
         updated_lines.extend(lines[end_idx + 1:])
@@ -175,6 +240,7 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
                 importlib.reload(bot_engine.bot_config)
                 from bot_engine.bot_config import DEFAULT_AUTO_BOT_CONFIG
                 logger.info(f"[CONFIG_WRITER] ✅ Проверка сохраненных значений:")
+                logger.info(f"  leverage: {DEFAULT_AUTO_BOT_CONFIG.get('leverage')}")
                 logger.info(f"  trailing_stop_activation: {DEFAULT_AUTO_BOT_CONFIG.get('trailing_stop_activation')}")
                 logger.info(f"  trailing_stop_distance: {DEFAULT_AUTO_BOT_CONFIG.get('trailing_stop_distance')}")
                 logger.info(f"  break_even_trigger: {DEFAULT_AUTO_BOT_CONFIG.get('break_even_trigger')}")
