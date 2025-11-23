@@ -1107,10 +1107,28 @@ class NewTradingBot:
         # 4. Если флаг False И стопа нет на бирже - устанавливаем стоп
         if not force:
             try:
-                position = self.exchange.get_position(self.symbol)
+                # Получаем все позиции и находим нужную по символу
+                positions = self.exchange.get_positions()
+                if isinstance(positions, tuple):
+                    positions_list = positions[0] if positions else []
+                else:
+                    positions_list = positions if positions else []
+                
+                position = None
+                for pos in positions_list:
+                    pos_symbol = pos.get('symbol', '').replace('USDT', '')
+                    if pos_symbol == self.symbol:
+                        # Проверяем сторону позиции
+                        pos_side = pos.get('side', '')
+                        expected_side = 'Long' if self.position_side == 'LONG' else 'Short' if self.position_side == 'SHORT' else ''
+                        if pos_side == expected_side and abs(float(pos.get('size', 0))) > 0:
+                            position = pos
+                            break
+                
                 if position:
                     exchange_stop_loss = position.get('stop_loss') or position.get('stopLoss') or position.get('stopLossPrice')
-                    if exchange_stop_loss:
+                    # Проверяем, что stop_loss не пустая строка и не None
+                    if exchange_stop_loss and str(exchange_stop_loss).strip():
                         try:
                             existing_stop = float(exchange_stop_loss)
                             tolerance = abs(stop_price * 0.001)  # 0.1% tolerance

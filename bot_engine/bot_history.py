@@ -796,14 +796,24 @@ class BotHistoryManager:
         matching_trade_snapshot: Optional[Dict[str, Any]] = None
         
         # Пробуем найти соответствующую сделку для получения информации об источнике решения
+        # Также проверяем, не была ли позиция уже закрыта ранее
+        already_closed = False
         with self.lock:
             for trade in reversed(self.trades):
-                if trade['bot_id'] == bot_id and trade['symbol'] == symbol and trade['status'] == 'OPEN':
-                    decision_source = trade.get('decision_source', 'SCRIPT')
-                    ai_decision_id = trade.get('ai_decision_id') or ai_decision_id
-                    ai_confidence = trade.get('ai_confidence')
-                    matching_trade_snapshot = trade.copy()
-                    break
+                if trade['bot_id'] == bot_id and trade['symbol'] == symbol:
+                    if trade['status'] == 'OPEN':
+                        decision_source = trade.get('decision_source', 'SCRIPT')
+                        ai_decision_id = trade.get('ai_decision_id') or ai_decision_id
+                        ai_confidence = trade.get('ai_confidence')
+                        matching_trade_snapshot = trade.copy()
+                        break
+                    elif trade['status'] == 'CLOSED':
+                        # Позиция уже была закрыта ранее - не пересчитываем PnL
+                        already_closed = True
+                        decision_source = trade.get('decision_source', 'SCRIPT')
+                        ai_decision_id = trade.get('ai_decision_id') or ai_decision_id
+                        ai_confidence = trade.get('ai_confidence')
+                        break
         
         original_pnl_input = pnl
         original_roi_input = roi
@@ -849,7 +859,9 @@ class BotHistoryManager:
         recalculated_pnl = pnl
         recalculated_roi = roi
         recalculated = False
-        if entry_price_for_calc and exit_price_for_calc and entry_price_for_calc > 0 and calc_direction in ('LONG', 'SHORT'):
+        # Пересчитываем PnL только если позиция еще не была закрыта ранее
+        # Это предотвращает повторный пересчет при синхронизации с биржей
+        if not already_closed and entry_price_for_calc and exit_price_for_calc and entry_price_for_calc > 0 and calc_direction in ('LONG', 'SHORT'):
             if calc_direction == 'LONG':
                 roi_fraction = (exit_price_for_calc - entry_price_for_calc) / entry_price_for_calc
             else:
@@ -874,6 +886,9 @@ class BotHistoryManager:
                 recalculated = True
             pnl = recalculated_pnl
             roi = recalculated_roi
+        elif already_closed:
+            # Позиция уже была закрыта - используем переданные значения без пересчета
+            logger.debug(f"[BOT_HISTORY] ⏭️ Позиция {symbol} уже была закрыта ранее, пропускаем пересчет PnL")
         
         entry = {
             'id': f"close_{bot_id}_{datetime.now().timestamp()}",
