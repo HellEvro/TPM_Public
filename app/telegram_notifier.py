@@ -137,6 +137,11 @@ class TelegramNotifier:
             self.logger.info("Telegram notifications disabled - skipping message")
             return
         
+        # Проверяем наличие необходимых параметров
+        if not self.bot_token or not self.chat_id:
+            self.logger.warning("Telegram bot_token or chat_id not configured - skipping message")
+            return
+        
         # Логируем попытку отправки
         self.logger.info(f"Attempting to send Telegram message: {message[:100]}...")
         
@@ -148,15 +153,46 @@ class TelegramNotifier:
                 "parse_mode": parse_mode
             }
             
-            response = requests.post(url, data=data)
+            response = requests.post(url, data=data, timeout=10)
             
             if response.ok:
                 self.logger.info(f"Telegram message sent successfully to chat {self.chat_id}")
             else:
-                self.logger.error(f"Failed to send message: {response.text}")
+                # ✅ ИСПРАВЛЕНО: Парсим JSON ответ для получения детальной информации об ошибке
+                try:
+                    error_data = response.json()
+                    error_code = error_data.get('error_code', response.status_code)
+                    description = error_data.get('description', response.text)
+                    
+                    # Определяем причину ошибки
+                    if error_code == 404:
+                        if 'chat not found' in description.lower():
+                            error_reason = f"Chat ID {self.chat_id} not found. Bot may not be added to the chat or chat_id is incorrect."
+                        elif 'bot not found' in description.lower() or 'invalid token' in description.lower():
+                            error_reason = f"Bot token is invalid or bot was deleted. Check TELEGRAM_BOT_TOKEN in config."
+                        else:
+                            error_reason = f"Resource not found (404): {description}"
+                    elif error_code == 401:
+                        error_reason = f"Unauthorized (401): Bot token is invalid. Check TELEGRAM_BOT_TOKEN in config."
+                    elif error_code == 400:
+                        error_reason = f"Bad Request (400): {description}. Check message format or chat_id."
+                    else:
+                        error_reason = f"Error {error_code}: {description}"
+                    
+                    self.logger.error(f"Failed to send Telegram message: {error_reason}")
+                    self.logger.debug(f"Full response: {response.text}")
+                except (ValueError, KeyError):
+                    # Если не удалось распарсить JSON, используем текст ответа
+                    self.logger.error(f"Failed to send message: {response.text} (Status: {response.status_code})")
             
+        except requests.exceptions.Timeout:
+            self.logger.error("Timeout while sending Telegram message (10s)")
+        except requests.exceptions.ConnectionError:
+            self.logger.error("Connection error while sending Telegram message. Check internet connection.")
         except Exception as e:
             self.logger.error(f"Error sending message: {str(e)}")
+            import traceback
+            self.logger.debug(traceback.format_exc())
 
     def send_error(self, error):
         if not TELEGRAM_NOTIFY.get('ERRORS', False):
