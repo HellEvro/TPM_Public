@@ -413,6 +413,11 @@ class InfoBotManager(tk.Tk):
 
         ttk.Label(git_frame, text="Статус репозитория:").grid(row=0, column=0, sticky="w")
         ttk.Label(git_frame, textvariable=self.git_status_var).grid(row=0, column=1, sticky="w")
+        
+        git_buttons = ttk.Frame(git_frame)
+        git_buttons.grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        ttk.Button(git_buttons, text="Проверить Git", command=self.check_git_status).pack(side=tk.LEFT)
+        ttk.Button(git_buttons, text="Получить обновления", command=self.sync_with_remote).pack(side=tk.LEFT, padx=(8, 0))
 
         license_frame = ttk.LabelFrame(main, text="3. Лицензия и ключи (опционально)", padding=10)
         license_frame.grid(row=5, column=0, sticky="new", padx=4, pady=4)
@@ -1188,6 +1193,38 @@ class InfoBotManager(tk.Tk):
                     PYTHON_EXECUTABLE = _detect_python_executable()
 
             self._run_task("delete_venv", button, "Удаление окружения", worker)
+
+    def check_git_status(self, button: Optional[ttk.Button] = None) -> None:
+        """Ручная проверка статуса Git репозитория (та же проверка, что и при запуске)"""
+        if not shutil.which("git"):
+            messagebox.showwarning("Git не найден", "Git не установлен. Установите Git для работы с репозиторием.")
+            self.git_status_var.set("git не найден (обновления недоступны)")
+            return
+        
+        def worker() -> None:
+            self.log("[git] Начинаю полную проверку Git репозитория...", channel="system")
+            try:
+                # Выполняем ту же проверку, что и при запуске приложения
+                # 1. Проверяем и инициализируем репозиторий (если нужно)
+                self.ensure_git_repository()
+                
+                # 2. Обновляем статус репозитория
+                self.update_git_status()
+                
+                # 3. Настраиваем upstream (если нужно)
+                self._configure_git_upstream()
+                
+                # 4. Показываем последние коммиты (если есть)
+                self._run_git_log_preview()
+                
+                self.log("[git] Полная проверка Git завершена", channel="system")
+            except Exception as exc:  # pylint: disable=broad-except
+                self.log(f"[git] Ошибка при проверке Git: {exc}", channel="system")
+            finally:
+                # Обновляем статус в UI
+                self.after(0, self.update_git_status)
+        
+        self._run_task("git_check", button, "Проверка Git", worker)
 
     def sync_with_remote(self, button: Optional[ttk.Button] = None) -> None:
         if not shutil.which("git"):
