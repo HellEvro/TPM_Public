@@ -72,6 +72,7 @@ stats = db.get_database_stats()
 import sqlite3
 import json
 import os
+import stat
 import threading
 import time
 import shutil
@@ -139,6 +140,18 @@ class BotsDatabase:
         except OSError as e:
             logger.error(f"❌ Ошибка создания директории для БД: {e}")
             raise
+        
+        # Проверяем и исправляем права доступа к файлу БД, если он существует
+        if os.path.exists(db_path):
+            try:
+                # Убираем атрибут "только для чтения" если он установлен
+                file_stat = os.stat(db_path)
+                if not (file_stat.st_mode & stat.S_IWUSR):
+                    logger.warning(f"⚠️ Файл БД имеет атрибут только для чтения, исправляем...")
+                    os.chmod(db_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH)
+                    logger.info(f"✅ Права доступа к файлу БД исправлены")
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось проверить/исправить права доступа к БД: {e}")
         
         # Инициализируем базу данных
         self._init_database()
@@ -604,6 +617,31 @@ class BotsDatabase:
                                 raise
                         else:
                             raise
+                    
+                    # КРИТИЧНО: Обработка ошибки "attempt to write a readonly database"
+                    elif "readonly" in error_str or "read-only" in error_str or "read only" in error_str:
+                        conn.rollback()
+                        conn.close()
+                        logger.error(f"❌ КРИТИЧНО: БД открыта в режиме только для чтения: {self.db_path}")
+                        logger.error(f"❌ Ошибка: {e}")
+                        logger.warning("🔧 Попытка исправления прав доступа...")
+                        if attempt == 0:
+                            # Пытаемся исправить права доступа
+                            try:
+                                if os.path.exists(self.db_path):
+                                    # Убираем атрибут "только для чтения"
+                                    os.chmod(self.db_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH)
+                                    logger.info("✅ Права доступа к файлу БД исправлены, повторяем операцию...")
+                                    time.sleep(0.5)  # Небольшая задержка перед повтором
+                                    continue
+                                else:
+                                    logger.error("❌ Файл БД не существует")
+                                    raise
+                            except Exception as fix_error:
+                                logger.error(f"❌ Не удалось исправить права доступа к БД: {fix_error}")
+                                raise
+                        else:
+                            raise
                     else:
                         # Другие OperationalError - не повторяем
                         conn.rollback()
@@ -681,6 +719,29 @@ class BotsDatabase:
                     else:
                         logger.warning(f"⚠️ БД заблокирована при подключении после {max_retries} попыток")
                         raise
+                
+                # КРИТИЧНО: Обработка ошибки "attempt to write a readonly database" при подключении
+                elif "readonly" in error_str or "read-only" in error_str or "read only" in error_str:
+                    logger.error(f"❌ КРИТИЧНО: БД открыта в режиме только для чтения при подключении: {self.db_path}")
+                    logger.error(f"❌ Ошибка: {e}")
+                    logger.warning("🔧 Попытка исправления прав доступа...")
+                    if attempt == 0:
+                        # Пытаемся исправить права доступа
+                        try:
+                            if os.path.exists(self.db_path):
+                                # Убираем атрибут "только для чтения"
+                                os.chmod(self.db_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH)
+                                logger.info("✅ Права доступа к файлу БД исправлены, повторяем подключение...")
+                                time.sleep(0.5)  # Небольшая задержка перед повтором
+                                continue
+                            else:
+                                logger.error("❌ Файл БД не существует")
+                                raise
+                        except Exception as fix_error:
+                            logger.error(f"❌ Не удалось исправить права доступа к БД: {fix_error}")
+                            raise
+                    else:
+                        raise
                 else:
                     # Другие ошибки - не повторяем
                     raise
@@ -721,6 +782,18 @@ class BotsDatabase:
         # Не нужно создавать пустой файл через touch() - это создает невалидную БД
         
         with self._get_connection() as conn:
+            # После создания БД проверяем и исправляем права доступа
+            if not db_exists and os.path.exists(self.db_path):
+                try:
+                    # Убеждаемся, что файл имеет права на запись
+                    file_stat = os.stat(self.db_path)
+                    if not (file_stat.st_mode & stat.S_IWUSR):
+                        logger.warning(f"⚠️ Новый файл БД имеет атрибут только для чтения, исправляем...")
+                        os.chmod(self.db_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH)
+                        logger.info(f"✅ Права доступа к новому файлу БД установлены")
+                except Exception as e:
+                    logger.warning(f"⚠️ Не удалось установить права доступа к новому файлу БД: {e}")
+            
             cursor = conn.cursor()
             
             # ==================== ТАБЛИЦА: МЕТАДАННЫЕ БД (создаем ПЕРВОЙ) ====================
