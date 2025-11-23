@@ -323,8 +323,11 @@ class InfoBotManager(tk.Tk):
         self._ensure_utf8_console()
 
         self.env_status_var = tk.StringVar()
+        self.venv_enabled_var = tk.BooleanVar()
         self.git_status_var = tk.StringVar()
         self.license_status_var = tk.StringVar()
+        # Проверяем текущее состояние venv (если .venv существует, значит включен)
+        self.venv_enabled_var.set(VENV_DIR.exists())
         self.update_environment_status()
         self.ensure_git_repository()
         self.update_git_status(initial=True)
@@ -408,8 +411,20 @@ class InfoBotManager(tk.Tk):
         ttk.Label(venv_frame, text="Статус:").grid(row=0, column=0, sticky="w")
         ttk.Label(venv_frame, textvariable=self.env_status_var).grid(row=0, column=1, sticky="w")
         
+        venv_control_frame = ttk.Frame(venv_frame)
+        venv_control_frame.grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        
+        # Переключатель включения/отключения venv
+        venv_toggle = ttk.Checkbutton(
+            venv_control_frame,
+            text="Использовать виртуальное окружение",
+            variable=self.venv_enabled_var,
+            command=self.toggle_venv
+        )
+        venv_toggle.pack(side=tk.LEFT)
+        
         venv_buttons = ttk.Frame(venv_frame)
-        venv_buttons.grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        venv_buttons.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
         ttk.Button(venv_buttons, text="Обновить venv", command=self.update_venv).pack(side=tk.LEFT)
         git_frame = ttk.LabelFrame(main, text="2. Обновления из Git", padding=10)
         git_frame.grid(row=3, column=0, sticky="new", padx=4, pady=4)

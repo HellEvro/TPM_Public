@@ -7280,7 +7280,22 @@ class BotsManager {
             if (response.ok) {
                 const responseData = await response.json();
                 console.log(`[BotsManager] ✅ ${sectionName} сохранены успешно, ответ сервера:`, responseData);
-                this.showNotification(`✅ ${sectionName} сохранены успешно`, 'success');
+                
+                // ✅ Проверяем количество изменений из ответа сервера
+                const changesCount = responseData.changes_count || 0;
+                if (changesCount === 0) {
+                    // Нет изменений - показываем соответствующее сообщение
+                    this.showNotification(`ℹ️ Нет изменений в настройках`, 'info');
+                } else {
+                    // Есть изменения - показываем детальное сообщение из сервера
+                    const message = responseData.message || `✅ ${sectionName} сохранены успешно`;
+                    this.showNotification(message, 'success');
+                    
+                    // ✅ Логируем только измененные параметры
+                    if (responseData.changed_params && responseData.changed_params.length > 0) {
+                        console.log(`[BotsManager] 📋 Измененные параметры (${changesCount}):`, responseData.changed_params);
+                    }
+                }
                 console.log(`[BotsManager] 🔔 Уведомление отправлено для ${sectionName}`);
                 
                 // ✅ ОБНОВЛЯЕМ originalConfig после успешного сохранения
