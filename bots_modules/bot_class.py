@@ -1020,45 +1020,35 @@ class NewTradingBot:
         # ✅ Берем по модулю (обычно отрицательный из-за комиссий при открытии)
         fee_usdt = abs(realized_pnl_usdt)
         
-        # ✅ ИСПРАВЛЕНО: Если нет реализованного PnL (комиссий), не устанавливаем стоп
-        # Стоп должен рассчитываться только на основе РЕАЛИЗОВАННОГО PnL*2.5
-        if fee_usdt <= 0:
-            return None
+        price = float(current_price) if current_price is not None else None
         
-        # ✅ Защищаем от комиссий в размере abs(realized_pnl) * 2.5
+        # ✅ СТРОГАЯ ЛОГИКА: Защищаем от комиссий в размере abs(realized_pnl) * 2.5
+        # Если realized_pnl = 0, то fee_usdt = 0, и protected_profit_per_coin = 0, стоп будет на entry_price
         protected_profit_usdt = fee_usdt * self.BREAK_EVEN_FEE_MULTIPLIER
         
         # Преобразуем защищаемую прибыль (USDT) в цену на монету
         protected_profit_per_coin = protected_profit_usdt / quantity if quantity > 0 else 0.0
-        # ✅ ИСПРАВЛЕНО: Если защищаемая прибыль <= 0, не устанавливаем стоп
-        if protected_profit_per_coin <= 0:
-            return None
-
-        price = float(current_price) if current_price is not None else None
 
         if self.position_side == 'LONG':
             # ✅ Для LONG: стоп на уровне entry_price + protected_profit_per_coin
-            # Это означает, что мы защищаем прибыль в размере realized_pnl * 2.5
+            # Если realized_pnl = 0, то protected_profit_per_coin = 0, стоп = entry_price (базовая защита)
+            # Если есть realized_pnl, стоп = entry_price + (realized_pnl * 2.5 / quantity)
             stop_price = entry_price + protected_profit_per_coin
             if price:
                 # Не устанавливаем стоп выше текущей цены
                 stop_price = min(stop_price, price)
-            # ✅ ИСПРАВЛЕНО: Минимально стоп должен быть ВЫШЕ уровня входа
-            # Если стоп равен или очень близок к entry_price, не устанавливаем его
-            tolerance = 1e-6
-            if stop_price <= entry_price + tolerance:
-                return None
+            # Минимально стоп не ниже уровня входа (базовая защита)
+            stop_price = max(stop_price, entry_price)
         else:  # SHORT
             # ✅ Для SHORT: стоп на уровне entry_price - protected_profit_per_coin
+            # Если realized_pnl = 0, то protected_profit_per_coin = 0, стоп = entry_price (базовая защита)
+            # Если есть realized_pnl, стоп = entry_price - (realized_pnl * 2.5 / quantity)
             stop_price = entry_price - protected_profit_per_coin
             if price:
-                # Не устанавливаем стоп ниже текущей цены
+                # Не устанавливаем стоп ниже текущей цены (для SHORT стоп выше текущей цены = убыток)
                 stop_price = max(stop_price, price)
-            # ✅ ИСПРАВЛЕНО: Максимально стоп должен быть НИЖЕ уровня входа
-            # Если стоп равен или очень близок к entry_price, не устанавливаем его
-            tolerance = 1e-6
-            if stop_price >= entry_price - tolerance:
-                return None
+            # Максимально стоп не выше уровня входа (базовая защита для SHORT)
+            stop_price = min(stop_price, entry_price)
 
         return stop_price
 
