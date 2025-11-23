@@ -34,45 +34,6 @@ if TYPE_CHECKING:
     def main(*args: Any, **kwargs: Any) -> Any: ...
 
 
-# Патч для перенаправления data_service.json в БД
-def _patch_ai_system_update_data_status():
-    """
-    Патчит метод _update_data_status в классе AISystem для сохранения в БД вместо файла
-    """
-    try:
-        # Импортируем helper для работы с БД
-        from bot_engine.ai.data_service_status_helper import update_data_service_status_in_db
-        
-        # Получаем класс AISystem из защищенного модуля
-        if hasattr(_protected_module, 'AISystem'):
-            AISystem = _protected_module.AISystem
-            
-            # Сохраняем оригинальный метод (на случай если понадобится)
-            original_update_data_status = AISystem._update_data_status
-            
-            # Заменяем метод на версию, которая сохраняет в БД
-            def patched_update_data_status(self, **kwargs):
-                """Патченная версия _update_data_status - сохраняет в БД вместо файла"""
-                try:
-                    update_data_service_status_in_db(**kwargs)
-                except Exception as e:
-                    # В случае ошибки пробуем оригинальный метод (fallback)
-                    try:
-                        original_update_data_status(self, **kwargs)
-                    except:
-                        pass
-            
-            # Применяем патч
-            AISystem._update_data_status = patched_update_data_status
-            
-    except Exception as e:
-        # Если патч не удался, продолжаем работу без него
-        pass
-
-# Применяем патч ПЕРЕД импортом глобальных переменных
-_patch_ai_system_update_data_status()
-
-
 _globals = globals()
 _skip = {'__name__', '__doc__', '__package__', '__loader__', '__spec__', '__file__'}
 
