@@ -1212,14 +1212,22 @@ class NewTradingBot:
                     self.break_even_stop_price = None
                     logger.info(f"[NEW_BOT_{self.symbol}] 🛡️ Защита безубыточности деактивирована (отключена в конфиге)")
 
-            # Для trailing используем процент изменения цены (как в других функциях)
-            self._update_trailing_stops(current_price, price_change_percent)
+            # ✅ ИСПРАВЛЕНО: Для trailing используем profit_percent (процент от стоимости сделки) для активации
+            # Это аналогично break-even защите - триггер активации должен быть процентом от стоимости сделки
+            self._update_trailing_stops(current_price, profit_percent, price_change_percent)
 
         except Exception as e:
             logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка обновления защитных механизмов: {e}")
 
-    def _update_trailing_stops(self, current_price: float, profit_percent: float) -> Dict[str, Optional[str]]:
-        """Обновляет трейлинг-стоп и резервный трейлинг-тейк. Возвращает решение о закрытии позиции."""
+    def _update_trailing_stops(self, current_price: float, profit_percent: float, price_change_percent: float = None) -> Dict[str, Optional[str]]:
+        """
+        Обновляет трейлинг-стоп и резервный трейлинг-тейк. Возвращает решение о закрытии позиции.
+        
+        Args:
+            current_price: Текущая цена
+            profit_percent: Процент прибыли от стоимости сделки (используется для активации)
+            price_change_percent: Процент изменения цены (для обратной совместимости и логирования)
+        """
         result = {'should_close': False, 'reason': None}
 
         try:
@@ -1249,14 +1257,35 @@ class NewTradingBot:
         now_ts = time.time()
         tolerance = 1e-8
 
+        # ✅ ИСПРАВЛЕНО: Используем profit_percent (процент от стоимости сделки) для проверки активации
+        # Это аналогично break-even защите - триггер активации должен быть процентом от стоимости сделки
         if activation > 0 and profit_percent < activation and not self.trailing_active:
             self.trailing_reference_price = self._safe_float(self.trailing_reference_price, entry_price)
+            # ✅ ОТЛАДКА: Логируем проверку активации
+            logger.debug(
+                f"[NEW_BOT_{self.symbol}] 🔍 Trailing проверка активации: "
+                f"profit={profit_percent:.2f}%, activation={activation:.2f}%, "
+                f"trailing_active={self.trailing_active}"
+            )
             return result
 
+        # ✅ ИСПРАВЛЕНО: Активируем trailing, если profit_percent >= activation
+        # Аналогично break-even - если прибыль достигла триггера, активируем защиту
         if not self.trailing_active:
-            self.trailing_active = True
-            self.trailing_reference_price = current_price
-            logger.info(f"[NEW_BOT_{self.symbol}] 🌀 Trailing активирован (profit={profit_percent:.2f}%)")
+            if activation > 0 and profit_percent >= activation:
+                self.trailing_active = True
+                self.trailing_reference_price = current_price
+                logger.info(
+                    f"[NEW_BOT_{self.symbol}] 🌀 Trailing активирован "
+                    f"(прибыль {profit_percent:.2f}% >= триггер {activation:.2f}%)"
+                )
+            else:
+                # ✅ ОТЛАДКА: Логируем, почему trailing не активирован
+                logger.debug(
+                    f"[NEW_BOT_{self.symbol}] 🔍 Trailing не активирован: "
+                    f"profit={profit_percent:.2f}%, activation={activation:.2f}%"
+                )
+                return result
         else:
             reference = self._safe_float(self.trailing_reference_price, entry_price)
             if self.position_side == 'LONG':
