@@ -5,6 +5,11 @@
 Вся рабочая логика находится в bot_engine/ai/_ai_launcher.pyc
 """
 
+# ⚠️ КРИТИЧНО: Устанавливаем переменную окружения для идентификации процесса ai.py
+# Это гарантирует, что функции из filters.py будут сохранять свечи в ai_data.db, а не в bots_data.db
+import os
+os.environ['INFOBOT_AI_PROCESS'] = 'true'
+
 # Настройка логирования ПЕРЕД импортом защищенного модуля
 import logging
 try:

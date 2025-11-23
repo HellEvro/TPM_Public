@@ -1318,12 +1318,54 @@ def load_all_coins_candles_fast():
         # ✅ Сохраняем свечи в БД БЕЗ накопления!
         # Запрашивается только 30 дней (~120 свечей), поэтому НЕ нужно накапливать старые данные
         # save_candles_cache() сам удалит старые свечи и вставит только новые
+        # ⚠️ КРИТИЧНО: Проверяем, запущен ли процесс как ai.py - если да, НЕ сохраняем в bots_data.db!
         try:
-            from bot_engine.storage import save_candles_cache
+            import sys
+            import os
+            # Более надежная проверка: смотрим имя скрипта, модуль __main__ и переменные окружения
+            script_name = os.path.basename(sys.argv[0]) if sys.argv else ''
+            main_file = None
+            try:
+                if hasattr(sys.modules.get('__main__', None), '__file__') and sys.modules['__main__'].__file__:
+                    main_file = str(sys.modules['__main__'].__file__)
+            except:
+                pass
             
-            # Просто сохраняем текущие свечи - save_candles_cache() сам ограничит до 1000 и удалит старые
-            if save_candles_cache(candles_cache):
-                logger.info(f"💾 Кэш свечей сохранен в БД: {len(candles_cache)} монет")
+            # Проверяем по имени скрипта, аргументам, файлу __main__ и переменной окружения
+            is_ai_process = (
+                'ai.py' in script_name.lower() or 
+                any('ai.py' in str(arg).lower() for arg in sys.argv) or
+                (main_file and 'ai.py' in main_file.lower()) or
+                os.environ.get('INFOBOT_AI_PROCESS', '').lower() == 'true'
+            )
+            
+            if is_ai_process:
+                # Если это процесс ai.py - сохраняем ТОЛЬКО в ai_data.db, НЕ в bots_data.db!
+                logger.debug("🔍 Обнаружен процесс ai.py - сохраняем свечи только в ai_data.db")
+                try:
+                    from bot_engine.ai.ai_database import get_ai_database
+                    ai_db = get_ai_database()
+                    if ai_db:
+                        # Преобразуем формат для ai_database
+                        saved_count = 0
+                        for symbol, candle_data in candles_cache.items():
+                            if isinstance(candle_data, dict):
+                                candles = candle_data.get('candles', [])
+                                if candles:
+                                    ai_db.save_candles(symbol, candles, timeframe='6h')
+                                    saved_count += 1
+                        logger.info(f"💾 Свечи сохранены в ai_data.db: {saved_count} монет (процесс ai.py)")
+                    else:
+                        logger.warning("⚠️ AI Database недоступна, свечи не сохранены")
+                except Exception as ai_db_error:
+                    logger.warning(f"⚠️ Ошибка сохранения в ai_data.db: {ai_db_error}")
+            else:
+                # Это процесс bots.py - сохраняем в bots_data.db
+                from bot_engine.storage import save_candles_cache
+                
+                # Просто сохраняем текущие свечи - save_candles_cache() сам ограничит до 1000 и удалит старые
+                if save_candles_cache(candles_cache):
+                    logger.info(f"💾 Кэш свечей сохранен в bots_data.db: {len(candles_cache)} монет (процесс bots.py)")
             
         except Exception as db_error:
             logger.warning(f"⚠️ Ошибка сохранения в БД кэша: {db_error}")

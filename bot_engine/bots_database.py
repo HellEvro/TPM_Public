@@ -4372,21 +4372,30 @@ class BotsDatabase:
                             MAX_CANDLES_PER_SYMBOL = 1000  # Максимум 1000 свечей на символ (~250 дней для 6h свечей)
                             
                             # Сортируем свечи по времени и берем только последние MAX_CANDLES_PER_SYMBOL
-                            if len(candles) > MAX_CANDLES_PER_SYMBOL:
-                                candles_sorted = sorted(candles, key=lambda x: x.get('time', 0))
-                                candles = candles_sorted[-MAX_CANDLES_PER_SYMBOL:]
+                            candles_sorted = sorted(candles, key=lambda x: x.get('time', 0))
+                            candles_to_save = candles_sorted[-MAX_CANDLES_PER_SYMBOL:]
+                            
+                            if len(candles_sorted) > MAX_CANDLES_PER_SYMBOL:
                                 logger.debug(f"   📊 {symbol}: Ограничено до {MAX_CANDLES_PER_SYMBOL} свечей (было {len(candles_sorted)})")
                             
-                            # Удаляем старые свечи для этого символа
-                            cursor.execute("DELETE FROM candles_cache_data WHERE cache_id = ?", (cache_id,))
-                            
-                            # Вставляем свечи в нормализованную таблицу
-                            for candle in candles:
+                            # ⚡ ОПТИМИЗИРОВАННОЕ УДАЛЕНИЕ: удаляем только старые свечи (быстро с индексом)
+                            # Используем индекс idx_candles_cache_data_cache_time для быстрого поиска
+                            if candles_to_save:
+                                min_time_to_keep = min(c.get('time') for c in candles_to_save if c.get('time'))
+                                # Удаляем все свечи старше минимального времени из новых
                                 cursor.execute("""
-                                    INSERT INTO candles_cache_data 
-                                    (cache_id, time, open, high, low, close, volume)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                                """, (
+                                    DELETE FROM candles_cache_data 
+                                    WHERE cache_id = ? AND time < ?
+                                """, (cache_id, min_time_to_keep))
+                            
+                            # ⚡ ОПТИМИЗИРОВАННАЯ ВСТАВКА: используем executemany вместо цикла
+                            # Используем INSERT OR IGNORE для пропуска дубликатов
+                            cursor.executemany("""
+                                INSERT OR IGNORE INTO candles_cache_data 
+                                (cache_id, time, open, high, low, close, volume)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """, [
+                                (
                                     cache_id,
                                     candle.get('time'),
                                     candle.get('open'),
@@ -4394,7 +4403,24 @@ class BotsDatabase:
                                     candle.get('low'),
                                     candle.get('close'),
                                     candle.get('volume', 0)
-                                ))
+                                )
+                                for candle in candles_to_save
+                            ])
+                            
+                            # ⚡ ОПТИМИЗИРОВАННАЯ ПРОВЕРКА: удаляем лишние свечи БЕЗ COUNT(*)
+                            # Используем один запрос для удаления всех записей кроме последних MAX_CANDLES_PER_SYMBOL
+                            cursor.execute("""
+                                DELETE FROM candles_cache_data
+                                WHERE id IN (
+                                    SELECT id FROM candles_cache_data
+                                    WHERE cache_id = ?
+                                    ORDER BY time ASC
+                                    LIMIT (SELECT MAX(0, COUNT(*) - ?) FROM candles_cache_data WHERE cache_id = ?)
+                                )
+                            """, (cache_id, MAX_CANDLES_PER_SYMBOL, cache_id))
+                            deleted_count = cursor.rowcount
+                            if deleted_count > 0:
+                                logger.debug(f"   🗑️ {symbol}: Удалено {deleted_count} старых свечей (осталось ≤{MAX_CANDLES_PER_SYMBOL})")
                     
                     conn.commit()
             
