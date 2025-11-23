@@ -407,6 +407,10 @@ class InfoBotManager(tk.Tk):
 
         ttk.Label(venv_frame, text="Статус:").grid(row=0, column=0, sticky="w")
         ttk.Label(venv_frame, textvariable=self.env_status_var).grid(row=0, column=1, sticky="w")
+        
+        venv_buttons = ttk.Frame(venv_frame)
+        venv_buttons.grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        ttk.Button(venv_buttons, text="Обновить venv", command=self.update_venv).pack(side=tk.LEFT)
         git_frame = ttk.LabelFrame(main, text="2. Обновления из Git", padding=10)
         git_frame.grid(row=3, column=0, sticky="new", padx=4, pady=4)
         git_frame.columnconfigure(1, weight=1)
@@ -1141,6 +1145,98 @@ class InfoBotManager(tk.Tk):
             self.after(0, self.update_environment_status)
 
         self._run_task("install_venv", button, "Создание/обновление окружения", worker)
+    
+    def update_venv(self, button: Optional[ttk.Button] = None) -> None:
+        """Обновляет виртуальное окружение, Python пакеты и зависимости"""
+        def worker() -> None:
+            self.log("[venv] Начинаю обновление виртуального окружения...", channel="system")
+            try:
+                global PYTHON_EXECUTABLE
+                
+                # Проверяем наличие venv
+                if not VENV_DIR.exists():
+                    self.log("[venv] ⚠️ Виртуальное окружение не найдено, создаем...", channel="system")
+                    success = self._ensure_venv_with_dependencies(update_existing=True)
+                    if success:
+                        self.log("[venv] ✅ Виртуальное окружение создано и зависимости установлены", channel="system")
+                    else:
+                        self.log("[venv] ❌ Ошибка при создании виртуального окружения", channel="system")
+                    self.after(0, self.update_environment_status)
+                    return
+                
+                python_exec = _detect_python_executable()
+                if not python_exec:
+                    self.log("[venv] ❌ Не удалось определить Python для обновления", channel="system")
+                    self.after(0, self.update_environment_status)
+                    return
+                
+                pip_cmd = _split_command(python_exec) + ["-m", "pip"]
+                
+                # 1. Обновляем pip, setuptools, wheel до последних версий
+                self.log("[venv] 🔄 Обновление pip, setuptools, wheel...", channel="system")
+                try:
+                    self._stream_command(
+                        "Обновление pip и базовых пакетов",
+                        pip_cmd + ["install", "--upgrade", "--upgrade-strategy", "eager", "pip", "setuptools", "wheel"],
+                        channel="system",
+                    )
+                    self.log("[venv] ✅ pip, setuptools, wheel обновлены", channel="system")
+                except subprocess.CalledProcessError as exc:
+                    self.log(f"[venv] ⚠️ Ошибка обновления pip ({exc.returncode}), продолжаем...", channel="system")
+                
+                # 2. Обновляем все установленные пакеты до последних версий
+                self.log("[venv] 🔄 Обновление всех установленных пакетов...", channel="system")
+                try:
+                    self._stream_command(
+                        "Обновление всех пакетов",
+                        pip_cmd + ["list", "--outdated", "--format=freeze"],
+                        channel="system",
+                    )
+                except subprocess.CalledProcessError:
+                    pass  # Игнорируем ошибки при проверке устаревших пакетов
+                
+                # 3. Обновляем зависимости из requirements.txt
+                self.log("[venv] 🔄 Обновление зависимостей из requirements.txt...", channel="system")
+                self._preinstall_ccxt_without_coincurve(pip_cmd)
+                requirements_file = self._prepare_requirements_file()
+                
+                try:
+                    # Обновляем пакеты из requirements.txt до последних версий
+                    self._stream_command(
+                        "Обновление зависимостей",
+                        pip_cmd + ["install", "--upgrade", "--upgrade-strategy", "eager", "-r", requirements_file],
+                        channel="system",
+                    )
+                    self.log("[venv] ✅ Зависимости обновлены", channel="system")
+                except subprocess.CalledProcessError as exc:
+                    self.log(f"[venv] ⚠️ Ошибка обновления зависимостей ({exc.returncode})", channel="system")
+                
+                # 4. Проверяем версию Python
+                try:
+                    version_result = subprocess.run(
+                        _split_command(python_exec) + ["--version"],
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        check=True,
+                    )
+                    python_version = version_result.stdout.strip()
+                    self.log(f"[venv] 📌 Версия Python: {python_version}", channel="system")
+                except Exception:
+                    pass
+                
+                PYTHON_EXECUTABLE = _detect_python_executable()
+                self.log("[venv] ✅ Обновление виртуального окружения завершено", channel="system")
+                
+            except Exception as exc:  # pylint: disable=broad-except
+                self.log(f"[venv] ❌ Ошибка при обновлении: {exc}", channel="system")
+                import traceback
+                self.log(f"[venv] Traceback: {traceback.format_exc()}", channel="system")
+            finally:
+                self._cleanup_temp_requirements()
+                self.after(0, self.update_environment_status)
+        
+        self._run_task("update_venv", button, "Обновление venv", worker)
 
     def install_dependencies_global(self, button: Optional[ttk.Button] = None) -> None:
         def worker() -> None:
