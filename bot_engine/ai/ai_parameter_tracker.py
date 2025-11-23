@@ -390,6 +390,10 @@ class AIParameterTracker:
         """
         import random
         
+        # Получаем статистику использования для диагностики
+        stats = self.get_usage_stats()
+        usage_percentage = stats.get('usage_percentage', 0.0)
+        
         # Загружаем заблокированные параметры если нужно их избегать
         blocked_params = []
         blocking_patterns = {}
@@ -402,19 +406,34 @@ class AIParameterTracker:
                     top_reasons = ", ".join([f"{r}: {c}" for r, c in blocking_patterns['top_blocking_reasons']])
                     logger.debug(f"   🔍 Топ причин блокировок: {top_reasons}")
         
-        # Пробуем найти неиспользованную комбинацию (до 200 попыток, больше чем раньше)
-        max_attempts = 200
-        for attempt in range(max_attempts):
-            # Генерируем случайные параметры
+        # Адаптивное количество попыток в зависимости от заполненности
+        if usage_percentage < 50:
+            max_attempts = 200
+        elif usage_percentage < 80:
+            max_attempts = 500  # Увеличиваем при высокой заполненности
+        else:
+            max_attempts = 1000  # Еще больше при очень высокой заполненности
+        
+        # Сначала пробуем систематический перебор вокруг базовых параметров
+        # Это более эффективно чем чисто случайный поиск
+        systematic_attempts = min(100, max_attempts // 2)
+        for attempt in range(systematic_attempts):
+            # Генерируем параметры с систематической вариацией
+            # Используем attempt для создания более разнообразных комбинаций
+            offset1 = (attempt % 7) - 3  # -3 до 3
+            offset2 = ((attempt // 7) % 7) - 3
+            offset3 = ((attempt // 49) % 5) - 2
+            offset4 = ((attempt // 245) % 5) - 2
+            
             rsi_params = {
                 'oversold': max(20, min(35, 
-                    base_params.get('oversold', 29) + random.randint(-variation_range, variation_range))),
+                    base_params.get('oversold', 29) + offset1)),
                 'overbought': max(65, min(80,
-                    base_params.get('overbought', 71) + random.randint(-variation_range, variation_range))),
+                    base_params.get('overbought', 71) + offset2)),
                 'exit_long_with_trend': max(55, min(70,
-                    base_params.get('exit_long_with_trend', 65) + random.randint(-5, 5))),
+                    base_params.get('exit_long_with_trend', 65) + offset3)),
                 'exit_long_against_trend': max(50, min(65,
-                    base_params.get('exit_long_against_trend', 60) + random.randint(-5, 5))),
+                    base_params.get('exit_long_against_trend', 60) + offset4)),
                 'exit_short_with_trend': max(25, min(40,
                     base_params.get('exit_short_with_trend', 35) + random.randint(-5, 5))),
                 'exit_short_against_trend': max(30, min(45,
@@ -432,8 +451,51 @@ class AIParameterTracker:
             
             return rsi_params
         
-        # Если не нашли за max_attempts попыток - возвращаем None
-        logger.warning(f"⚠️ Не удалось найти неиспользованные параметры за {max_attempts} попыток")
+        # Если систематический поиск не дал результата, пробуем случайный
+        # Ослабляем проверку на заблокированные параметры если заполненность высокая
+        strict_blocked_check = avoid_blocked and usage_percentage < 70
+        
+        for attempt in range(systematic_attempts, max_attempts):
+            # Генерируем случайные параметры с большей вариацией
+            rsi_params = {
+                'oversold': max(20, min(35, 
+                    base_params.get('oversold', 29) + random.randint(-variation_range * 2, variation_range * 2))),
+                'overbought': max(65, min(80,
+                    base_params.get('overbought', 71) + random.randint(-variation_range * 2, variation_range * 2))),
+                'exit_long_with_trend': max(55, min(70,
+                    base_params.get('exit_long_with_trend', 65) + random.randint(-8, 8))),
+                'exit_long_against_trend': max(50, min(65,
+                    base_params.get('exit_long_against_trend', 60) + random.randint(-8, 8))),
+                'exit_short_with_trend': max(25, min(40,
+                    base_params.get('exit_short_with_trend', 35) + random.randint(-8, 8))),
+                'exit_short_against_trend': max(30, min(45,
+                    base_params.get('exit_short_against_trend', 40) + random.randint(-8, 8)))
+            }
+            
+            # Проверяем, использовались ли эти параметры
+            if self.is_params_used(rsi_params):
+                continue
+            
+            # Проверяем, похожи ли на заблокированные (только если строгая проверка)
+            if strict_blocked_check and blocked_params:
+                if self._is_params_similar_to_blocked(rsi_params, blocked_params):
+                    continue  # Пропускаем похожие на заблокированные
+            
+            return rsi_params
+        
+        # Если не нашли за max_attempts попыток - пробуем найти любые параметры (даже использованные)
+        # но с хорошим рейтингом, если параметры почти исчерпаны
+        if usage_percentage > 80:
+            logger.debug(f"💡 Параметры почти исчерпаны ({usage_percentage:.1f}%), ищем лучшие использованные параметры")
+            best_params = self.get_best_params(limit=10, min_win_rate=0.0)
+            if best_params:
+                # Возвращаем лучшие параметры (даже если использовались)
+                best = best_params[0]
+                logger.debug(f"✅ Используем лучшие параметры (Win Rate: {best.get('win_rate', 0):.1f}%, Рейтинг: {best.get('rating', 0):.1f})")
+                return best.get('rsi_params')
+        
+        # Если все попытки не удались - возвращаем None
+        logger.warning(f"⚠️ Не удалось найти неиспользованные параметры за {max_attempts} попыток (использовано {stats.get('used_combinations', 0)}/{stats.get('total_combinations', 0)} комбинаций, {usage_percentage:.1f}%)")
         return None
     
     def reset_used_params(self, confirm: bool = False):
