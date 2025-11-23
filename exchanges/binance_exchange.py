@@ -1071,3 +1071,71 @@ class BinanceExchange(BaseExchange):
                 'available_balance': 0.0,
                 'realized_pnl': 0.0
             }
+    
+    def set_leverage(self, symbol, leverage):
+        """
+        Устанавливает кредитное плечо для символа
+        
+        Args:
+            symbol (str): Символ торговой пары (например, 'BTC')
+            leverage (int): Значение плеча (например, 5 для x5)
+            
+        Returns:
+            dict: Результат установки плеча с полями:
+                - success (bool): Успешность операции
+                - message (str): Сообщение о результате
+        """
+        try:
+            # Проверяем валидность плеча
+            leverage = int(leverage)
+            if leverage < 1 or leverage > 125:
+                return {
+                    'success': False,
+                    'message': f'Недопустимое значение плеча: {leverage}. Допустимый диапазон: 1-125'
+                }
+            
+            binance_symbol = f"{symbol}USDT"
+            
+            # Получаем текущее плечо
+            current_leverage = None
+            try:
+                positions = self.client.futures_position_information(symbol=binance_symbol)
+                if positions:
+                    current_leverage = float(positions[0].get('leverage', 1))
+            except Exception as e:
+                logger.warning(f"[BINANCE] ⚠️ Не удалось получить текущее плечо: {e}")
+            
+            # Если плечо уже установлено на нужное значение, пропускаем
+            if current_leverage and int(current_leverage) == leverage:
+                logger.debug(f"[BINANCE] ✅ {symbol}: Плечо уже установлено на {leverage}x")
+                return {
+                    'success': True,
+                    'message': f'Плечо уже установлено на {leverage}x'
+                }
+            
+            # Устанавливаем плечо через API Binance
+            response = self.client.futures_change_leverage(
+                symbol=binance_symbol,
+                leverage=leverage
+            )
+            
+            if response and response.get('leverage'):
+                logger.info(f"[BINANCE] ✅ {symbol}: Плечо установлено на {leverage}x")
+                return {
+                    'success': True,
+                    'message': f'Плечо успешно установлено на {leverage}x'
+                }
+            else:
+                error_msg = response.get('msg', 'Unknown error') if response else 'No response'
+                logger.error(f"[BINANCE] ❌ {symbol}: Ошибка установки плеча: {error_msg}")
+                return {
+                    'success': False,
+                    'message': f'Ошибка установки плеча: {error_msg}'
+                }
+                
+        except Exception as e:
+            logger.error(f"[BINANCE] ❌ {symbol}: Ошибка установки плеча: {e}")
+            return {
+                'success': False,
+                'message': f'Ошибка установки плеча: {str(e)}'
+            }

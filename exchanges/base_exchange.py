@@ -171,3 +171,19 @@ class BaseExchange(ABC):
         """
         # По умолчанию возвращаем пустой список - каждая биржа может переопределить
         return []
+    
+    def set_leverage(self, symbol, leverage):
+        """
+        Устанавливает кредитное плечо для символа (опциональный метод)
+        
+        Args:
+            symbol (str): Символ торговой пары (например, 'BTC')
+            leverage (int): Значение плеча (например, 5 для x5)
+            
+        Returns:
+            dict: Результат установки плеча с полями:
+                - success (bool): Успешность операции
+                - message (str): Сообщение о результате
+        """
+        # По умолчанию возвращаем ошибку - каждая биржа должна переопределить
+        return {'success': False, 'message': 'set_leverage not implemented for this exchange'}

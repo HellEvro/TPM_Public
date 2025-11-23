@@ -113,6 +113,11 @@ class BybitExchange(BaseExchange):
         self._wallet_balance_cache_ttl_error = 300  # Кэш на 5 минут при сетевых ошибках
         self._last_network_error_time = 0
         self._network_error_count = 0
+        
+        # Кэш для режима позиции (чтобы не спамить запросами)
+        self._position_mode_cache = None
+        self._position_mode_cache_time = 0
+        self._position_mode_cache_ttl = 300  # Кэш на 5 минут (режим позиции меняется редко)
     
     def _setup_connection_pool(self):
         """Настраивает пул соединений для requests и pybit"""
@@ -866,6 +871,18 @@ class BybitExchange(BaseExchange):
             # Определяем сторону для закрытия (противоположную текущей позиции)
             close_side = "Sell" if side == "Long" else "Buy"
             
+            # ✅ КРИТИЧНО: Определяем positionIdx в зависимости от режима позиции
+            # В One-Way Mode: position_idx = 0 (для обеих сторон)
+            # В Hedge Mode: position_idx = 1 (LONG), position_idx = 2 (SHORT)
+            position_mode = self._get_position_mode(symbol)
+            if position_mode == 'One-Way':
+                position_idx = 0
+                logger.debug(f"[BYBIT] {symbol}: One-Way mode, используем position_idx=0 для закрытия")
+            else:
+                # Hedge mode
+                position_idx = 1 if side == "Long" or side.upper() == "LONG" else 2
+                logger.debug(f"[BYBIT] {symbol}: Hedge mode, используем position_idx={position_idx} для закрытия {side}")
+            
             # Базовые параметры ордера
             order_params = {
                 "category": "linear",
@@ -874,7 +891,7 @@ class BybitExchange(BaseExchange):
                 "orderType": order_type.upper(),  # Важно: используем верхний регистр
                 "qty": str(size),
                 "reduceOnly": True,
-                "positionIdx": 1 if side == "Long" else 2
+                "positionIdx": position_idx
             }
 
             # Добавляем цену для лимитных ордеров
@@ -1806,6 +1823,111 @@ class BybitExchange(BaseExchange):
                 "error": f"Exception: {str(e)}"
             }
 
+    def _get_position_mode(self, symbol):
+        """
+        Получает текущий режим позиции для символа с биржи.
+        
+        Returns:
+            str: 'One-Way' или 'Hedge', или None если не удалось определить
+        """
+        # Проверяем кэш
+        current_time = time.time()
+        if (self._position_mode_cache is not None and 
+            current_time - self._position_mode_cache_time < self._position_mode_cache_ttl):
+            return self._position_mode_cache
+        
+        try:
+            # Сначала пробуем использовать метод get_position_mode если он доступен (самый надежный способ)
+            try:
+                if hasattr(self.client, 'get_position_mode'):
+                    mode_response = self.client.get_position_mode(category="linear", symbol=f"{symbol}USDT")
+                    if mode_response.get('retCode') == 0:
+                        result = mode_response.get('result', {})
+                        # Bybit API возвращает mode как число: 0 = One-Way, 1 = Hedge
+                        mode_value = result.get('mode')
+                        if mode_value == 0:
+                            mode = 'One-Way'
+                        elif mode_value == 1:
+                            mode = 'Hedge'
+                        else:
+                            # Fallback на строковое значение
+                            mode = result.get('mode', 'One-Way')
+                            if isinstance(mode, str):
+                                mode = 'Hedge' if 'Hedge' in mode or 'hedge' in mode.lower() else 'One-Way'
+                            else:
+                                mode = 'Hedge' if mode else 'One-Way'
+                        
+                        # Сохраняем в кэш
+                        self._position_mode_cache = mode
+                        self._position_mode_cache_time = current_time
+                        logger.debug(f"[BYBIT_BOT] Режим позиции для {symbol} (через API): {mode}")
+                        return mode
+            except Exception as e:
+                logger.debug(f"[BYBIT_BOT] Метод get_position_mode недоступен или вернул ошибку: {e}")
+            
+            # Fallback: проверяем через позиции
+            try:
+                # Пробуем получить позицию для символа
+                pos_response = self.client.get_positions(
+                    category="linear",
+                    symbol=f"{symbol}USDT"
+                )
+                
+                if pos_response.get('retCode') == 0 and pos_response.get('result', {}).get('list'):
+                    pos_list = pos_response['result']['list']
+                    if pos_list:
+                        # Если в ответе есть positionIdx и он не 0, значит Hedge mode
+                        # Если positionIdx отсутствует или равен 0, значит One-Way mode
+                        position_idx = pos_list[0].get('positionIdx')
+                        if position_idx is not None and position_idx != 0:
+                            # В Hedge mode positionIdx может быть 1 (LONG) или 2 (SHORT)
+                            mode = 'Hedge'
+                        else:
+                            # В One-Way mode positionIdx должен быть 0 или отсутствовать
+                            mode = 'One-Way'
+                        
+                        # Сохраняем в кэш
+                        self._position_mode_cache = mode
+                        self._position_mode_cache_time = current_time
+                        logger.debug(f"[BYBIT_BOT] Режим позиции для {symbol} (через позиции): {mode}")
+                        return mode
+                    
+                    # Если позиций нет для этого символа, пробуем проверить другие символы
+                    # (режим позиции обычно одинаковый для всех символов в категории)
+                    all_pos_response = self.client.get_positions(category="linear", limit=10)
+                    if all_pos_response.get('retCode') == 0 and all_pos_response.get('result', {}).get('list'):
+                        all_pos_list = all_pos_response['result']['list']
+                        for pos in all_pos_list:
+                            if abs(float(pos.get('size', 0))) > 0:  # Только активные позиции
+                                position_idx = pos.get('positionIdx')
+                                if position_idx is not None and position_idx != 0:
+                                    mode = 'Hedge'
+                                    # Сохраняем в кэш
+                                    self._position_mode_cache = mode
+                                    self._position_mode_cache_time = current_time
+                                    logger.debug(f"[BYBIT_BOT] Режим позиции (определен через другие позиции): {mode}")
+                                    return mode
+                                else:
+                                    mode = 'One-Way'
+                                    # Сохраняем в кэш
+                                    self._position_mode_cache = mode
+                                    self._position_mode_cache_time = current_time
+                                    logger.debug(f"[BYBIT_BOT] Режим позиции (определен через другие позиции): {mode}")
+                                    return mode
+            except Exception as e:
+                logger.debug(f"[BYBIT_BOT] Не удалось определить режим позиции через позиции: {e}")
+            
+            # Если не удалось определить, используем значение из конфига как fallback
+            mode = self.position_mode if hasattr(self, 'position_mode') else 'Hedge'
+            logger.warning(f"[BYBIT_BOT] ⚠️ Не удалось определить режим позиции для {symbol}, используем fallback: {mode}")
+            return mode
+            
+        except Exception as e:
+            logger.warning(f"[BYBIT_BOT] ⚠️ Ошибка при получении режима позиции для {symbol}: {e}")
+            # Fallback на значение из конфига
+            mode = self.position_mode if hasattr(self, 'position_mode') else 'Hedge'
+            return mode
+
     @with_timeout(15)  # 15 секунд таймаут для размещения ордера
     def place_order(self, symbol, side, quantity, order_type='market', price=None,
                     take_profit=None, stop_loss=None, max_loss_percent=None, quantity_is_usdt=True,
@@ -1868,21 +1990,36 @@ class BybitExchange(BaseExchange):
             # Конвертируем side для ботов
             if side.upper() == 'LONG':
                 bybit_side = 'Buy'
-                position_idx = 1
+                position_side = 'LONG'
             elif side.upper() == 'SHORT':
                 bybit_side = 'Sell'
-                position_idx = 2
+                position_side = 'SHORT'
             elif side.upper() == 'BUY':
                 bybit_side = 'Buy'
-                position_idx = 1
+                position_side = 'LONG'
             elif side.upper() == 'SELL':
                 bybit_side = 'Sell'
-                position_idx = 2
+                position_side = 'SHORT'
             else:
                 return {
                     'success': False,
                     'message': f'Неизвестная сторона ордера: {side}'
                 }
+            
+            # ✅ КРИТИЧНО: Определяем position_idx в зависимости от режима позиции
+            # В One-Way Mode: position_idx = 0 (для обеих сторон)
+            # В Hedge Mode: position_idx = 1 (LONG), position_idx = 2 (SHORT)
+            position_mode = self._get_position_mode(symbol)
+            if position_mode == 'One-Way':
+                position_idx = 0
+                logger.debug(f"[BYBIT_BOT] {symbol}: One-Way mode, используем position_idx=0")
+            else:
+                # Hedge mode
+                if position_side == 'LONG':
+                    position_idx = 1
+                else:  # SHORT
+                    position_idx = 2
+                logger.debug(f"[BYBIT_BOT] {symbol}: Hedge mode, используем position_idx={position_idx} для {position_side}")
             
             # ⚡ Для LINEAR фьючерсов используем marketUnit='quoteCoin' для указания суммы в USDT
             # ✅ marketUnit='quoteCoin' работает ТОЛЬКО для MARKET ордеров, НО Bybit проверяет кратность монет!
@@ -2117,13 +2254,22 @@ class BybitExchange(BaseExchange):
         try:
             logger.info(f"[BYBIT_BOT] Обновление Take Profit: {symbol} → {take_profit_price:.6f} (side: {position_side})")
             
-            # Определяем positionIdx в зависимости от режима и направления позиции
-            # В Hedge Mode: 1 = LONG (Buy), 2 = SHORT (Sell)
-            # В One-Way Mode: 0 = обе стороны
-            if position_side:
-                position_idx = 1 if position_side.upper() == 'LONG' else 2
+            # ✅ КРИТИЧНО: Определяем positionIdx в зависимости от режима позиции
+            # В One-Way Mode: position_idx = 0 (для обеих сторон)
+            # В Hedge Mode: position_idx = 1 (LONG), position_idx = 2 (SHORT)
+            position_mode = self._get_position_mode(symbol)
+            if position_mode == 'One-Way':
+                position_idx = 0
+                logger.debug(f"[BYBIT_BOT] {symbol}: One-Way mode, используем position_idx=0 для TP")
             else:
-                position_idx = 0  # One-way mode fallback
+                # Hedge mode
+                if position_side:
+                    position_idx = 1 if position_side.upper() == 'LONG' else 2
+                else:
+                    # Если side не указан, пытаемся определить из позиции
+                    position_idx = 0  # Fallback
+                    logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Hedge mode, но side не указан, используем position_idx=0")
+                logger.debug(f"[BYBIT_BOT] {symbol}: Hedge mode, используем position_idx={position_idx} для TP")
             
             # Параметры для обновления TP (используем Trading Stop API)
             tp_params = {
@@ -2228,11 +2374,22 @@ class BybitExchange(BaseExchange):
         try:
             logger.info(f"[BYBIT_BOT] Обновление Stop Loss: {symbol} → {stop_loss_price:.6f} (side: {position_side})")
             
-            # Определяем positionIdx в зависимости от режима и направления позиции
-            if position_side:
-                position_idx = 1 if position_side.upper() == 'LONG' else 2
+            # ✅ КРИТИЧНО: Определяем positionIdx в зависимости от режима позиции
+            # В One-Way Mode: position_idx = 0 (для обеих сторон)
+            # В Hedge Mode: position_idx = 1 (LONG), position_idx = 2 (SHORT)
+            position_mode = self._get_position_mode(symbol)
+            if position_mode == 'One-Way':
+                position_idx = 0
+                logger.debug(f"[BYBIT_BOT] {symbol}: One-Way mode, используем position_idx=0 для SL")
             else:
-                position_idx = 0  # One-way mode fallback
+                # Hedge mode
+                if position_side:
+                    position_idx = 1 if position_side.upper() == 'LONG' else 2
+                else:
+                    # Если side не указан, пытаемся определить из позиции
+                    position_idx = 0  # Fallback
+                    logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Hedge mode, но side не указан, используем position_idx=0")
+                logger.debug(f"[BYBIT_BOT] {symbol}: Hedge mode, используем position_idx={position_idx} для SL")
             
             # Параметры для обновления SL (используем Trading Stop API)
             sl_params = {
@@ -2312,11 +2469,22 @@ class BybitExchange(BaseExchange):
         try:
             logger.info(f"[BYBIT_BOT] Установка Stop Loss по ROI: {symbol} → {roi_percent}% (side: {position_side})")
             
-            # Определяем positionIdx в зависимости от режима и направления позиции
-            if position_side:
-                position_idx = 1 if position_side.upper() == 'LONG' else 2
+            # ✅ КРИТИЧНО: Определяем positionIdx в зависимости от режима позиции
+            # В One-Way Mode: position_idx = 0 (для обеих сторон)
+            # В Hedge Mode: position_idx = 1 (LONG), position_idx = 2 (SHORT)
+            position_mode = self._get_position_mode(symbol)
+            if position_mode == 'One-Way':
+                position_idx = 0
+                logger.debug(f"[BYBIT_BOT] {symbol}: One-Way mode, используем position_idx=0 для SL по ROI")
             else:
-                position_idx = 0  # One-way mode fallback
+                # Hedge mode
+                if position_side:
+                    position_idx = 1 if position_side.upper() == 'LONG' else 2
+                else:
+                    # Если side не указан, пытаемся определить из позиции
+                    position_idx = 0  # Fallback
+                    logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Hedge mode, но side не указан, используем position_idx=0")
+                logger.debug(f"[BYBIT_BOT] {symbol}: Hedge mode, используем position_idx={position_idx} для SL по ROI")
             
             # Параметры для установки SL по ROI
             # Bybit API: slSize - размер стопа в % (отрицательный для стоп-лосса)
@@ -2425,3 +2593,73 @@ class BybitExchange(BaseExchange):
         except Exception as e:
             logger.error(f"[BYBIT_BOT] ❌ Ошибка получения открытых ордеров для {symbol}: {e}")
             return []
+    
+    def set_leverage(self, symbol, leverage):
+        """
+        Устанавливает кредитное плечо для символа
+        
+        Args:
+            symbol (str): Символ торговой пары (например, 'BTC')
+            leverage (int): Значение плеча (например, 5 для x5)
+            
+        Returns:
+            dict: Результат установки плеча с полями:
+                - success (bool): Успешность операции
+                - message (str): Сообщение о результате
+        """
+        try:
+            # Проверяем валидность плеча
+            leverage = int(leverage)
+            if leverage < 1 or leverage > 125:
+                return {
+                    'success': False,
+                    'message': f'Недопустимое значение плеча: {leverage}. Допустимый диапазон: 1-125'
+                }
+            
+            # Получаем текущее плечо
+            current_leverage = None
+            try:
+                pos_response = self.client.get_positions(category="linear", symbol=f"{symbol}USDT")
+                if pos_response.get('retCode') == 0 and pos_response.get('result', {}).get('list'):
+                    pos_list = pos_response['result']['list']
+                    if pos_list:
+                        current_leverage = float(pos_list[0].get('leverage', 10))
+            except Exception as e:
+                logger.warning(f"[BYBIT_BOT] ⚠️ Не удалось получить текущее плечо: {e}")
+            
+            # Если плечо уже установлено на нужное значение, пропускаем
+            if current_leverage and int(current_leverage) == leverage:
+                logger.debug(f"[BYBIT_BOT] ✅ {symbol}: Плечо уже установлено на {leverage}x")
+                return {
+                    'success': True,
+                    'message': f'Плечо уже установлено на {leverage}x'
+                }
+            
+            # Устанавливаем плечо через API Bybit
+            response = self.client.set_leverage(
+                category="linear",
+                symbol=f"{symbol}USDT",
+                buyLeverage=str(leverage),
+                sellLeverage=str(leverage)
+            )
+            
+            if response.get('retCode') == 0:
+                logger.info(f"[BYBIT_BOT] ✅ {symbol}: Плечо установлено на {leverage}x")
+                return {
+                    'success': True,
+                    'message': f'Плечо успешно установлено на {leverage}x'
+                }
+            else:
+                error_msg = response.get('retMsg', 'Unknown error')
+                logger.error(f"[BYBIT_BOT] ❌ {symbol}: Ошибка установки плеча: {error_msg}")
+                return {
+                    'success': False,
+                    'message': f'Ошибка установки плеча: {error_msg}'
+                }
+                
+        except Exception as e:
+            logger.error(f"[BYBIT_BOT] ❌ {symbol}: Ошибка установки плеча: {e}")
+            return {
+                'success': False,
+                'message': f'Ошибка установки плеча: {str(e)}'
+            }
