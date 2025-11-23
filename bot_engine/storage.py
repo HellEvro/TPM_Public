@@ -491,11 +491,16 @@ def save_candles_cache(candles_cache: Dict) -> bool:
         
         if is_ai_process:
             # Получаем стек вызовов для диагностики
-            stack = ''.join(traceback.format_stack()[-5:-1])
+            stack = ''.join(traceback.format_stack()[-8:-1])
+            logger.error("=" * 80)
             logger.error("🚫 КРИТИЧЕСКАЯ БЛОКИРОВКА: ai.py пытается записать в bots_data.db через save_candles_cache()!")
-            logger.error(f"🚫 script_name={script_name}, main_file={main_file}, env={os.environ.get('INFOBOT_AI_PROCESS', '')}")
+            logger.error(f"🚫 script_name={script_name}")
+            logger.error(f"🚫 main_file={main_file}")
+            logger.error(f"🚫 env INFOBOT_AI_PROCESS={os.environ.get('INFOBOT_AI_PROCESS', 'НЕ УСТАНОВЛЕНО')}")
+            logger.error(f"🚫 sys.argv={sys.argv}")
             logger.error(f"🚫 Стек вызовов:\n{stack}")
             logger.error("🚫 Используйте ai_database.save_candles() вместо этого!")
+            logger.error("=" * 80)
             return False
     
     db = _get_bots_database()

@@ -1368,6 +1368,7 @@ class DatabaseGUI(tk.Tk):
             menu.add_command(label="Открыть таблицу", command=lambda: self._on_tree_item_click())
             menu.add_separator()
             menu.add_command(label="Редактировать таблицу", command=lambda: self._edit_table(item_info))
+            menu.add_command(label="Обнулить таблицу", command=lambda: self._truncate_table(item_info))
             menu.add_command(label="Удалить таблицу", command=lambda: self._delete_table(item_info))
         elif item_info['type'] == 'db':
             # Меню для БД
@@ -1887,6 +1888,92 @@ class DatabaseGUI(tk.Tk):
         
         # Открываем диалог редактирования таблицы
         TableDialog(self, self.db_conn, mode='edit', table_name=table_name, schema=schema, callback=self._on_table_modified)
+    
+    def _truncate_table(self, table_info: Dict):
+        """Обнуляет таблицу (удаляет все данные, пересоздавая таблицу)"""
+        db_path = table_info['db_path']
+        table_name = table_info['table_name']
+        
+        # Подтверждение
+        if not messagebox.askyesno(
+            "Подтверждение обнуления",
+            f"Вы уверены, что хотите обнулить таблицу '{table_name}'?\n\n"
+            f"Все данные в таблице будут удалены, но структура таблицы сохранится.\n"
+            f"Это действие необратимо!"
+        ):
+            self._update_status("Обнуление таблицы отменено", "info")
+            return
+        
+        # Открываем БД если она не открыта
+        if not self.db_conn or self.db_conn.db_path != db_path:
+            self._open_database(db_path)
+        
+        if not self.db_conn:
+            self._update_status("Ошибка: Не удалось открыть базу данных", "error")
+            return
+        
+        self._update_status(f"Обнуление таблицы '{table_name}'...", "info")
+        
+        try:
+            # Получаем схему таблицы
+            schema = self.db_conn.get_table_schema(table_name)
+            if not schema:
+                self._update_status(f"Ошибка: Не удалось получить схему таблицы '{table_name}'", "error")
+                return
+            
+            # Получаем CREATE TABLE запрос из sqlite_master
+            cursor = self.db_conn.conn.cursor()
+            cursor.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+                (table_name,)
+            )
+            create_sql = cursor.fetchone()
+            
+            if not create_sql or not create_sql[0]:
+                self._update_status(f"Ошибка: Не удалось получить CREATE TABLE запрос для '{table_name}'", "error")
+                return
+            
+            create_table_sql = create_sql[0]
+            
+            # Формируем SQL для пересоздания таблицы
+            # 1. Сохраняем имя таблицы
+            # 2. Удаляем таблицу
+            # 3. Создаем таблицу заново с той же структурой
+            
+            # Выполняем в транзакции
+            self.db_conn.conn.execute("BEGIN TRANSACTION")
+            
+            try:
+                # Удаляем таблицу
+                drop_query = f"DROP TABLE {table_name}"
+                self.db_conn.conn.execute(drop_query)
+                
+                # Создаем таблицу заново
+                # Заменяем имя таблицы в CREATE TABLE запросе на случай если оно изменилось
+                self.db_conn.conn.execute(create_table_sql)
+                
+                # Коммитим транзакцию
+                self.db_conn.conn.commit()
+                
+                self._update_status(f"Таблица '{table_name}' обнулена (все данные удалены)", "success")
+                
+                # Обновляем список таблиц в дереве
+                self._refresh_tables_after_modification(db_path)
+                
+                # Обновляем список таблиц в комбобоксе
+                self._load_tables_list()
+                
+                # Если это текущая таблица - перезагружаем данные
+                if self.current_table == table_name:
+                    self._load_table_data()
+                
+            except Exception as e:
+                # Откатываем транзакцию при ошибке
+                self.db_conn.conn.rollback()
+                raise e
+                
+        except Exception as e:
+            self._update_status(f"Ошибка обнуления таблицы: {e}", "error")
     
     def _delete_table(self, table_info: Dict):
         """Удаляет таблицу"""
