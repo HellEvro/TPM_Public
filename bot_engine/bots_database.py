@@ -4707,6 +4707,23 @@ class BotsDatabase:
                         # Колонка candles_json не существует - значит структура правильная
                         pass
                     
+                    # ⚠️ КРИТИЧНО: Кэш должен ПОЛНОСТЬЮ ПЕРЕЗАПИСЫВАТЬСЯ, а не накапливаться!
+                    # Используем TRUNCATE-подход: удаляем ВСЕ свечи из таблицы перед вставкой новых
+                    # Это намного быстрее, чем удалять по каждому символу отдельно
+                    cursor.execute("SELECT COUNT(*) FROM candles_cache_data")
+                    old_total_count = cursor.fetchone()[0]
+                    
+                    # Удаляем ВСЕ старые свечи (эквивалент TRUNCATE в SQLite)
+                    cursor.execute("DELETE FROM candles_cache_data")
+                    deleted_total_count = cursor.rowcount
+                    
+                    if old_total_count > 0:
+                        logger.debug(f"🗑️ Удалено {deleted_total_count:,} старых свечей из кэша (TRUNCATE)")
+                    
+                    # Теперь вставляем новые свечи для всех символов
+                    all_candles_to_insert = []
+                    MAX_CANDLES_PER_SYMBOL = 1000  # Максимум 1000 свечей на символ (~250 дней для 6h свечей)
+                    
                     for symbol, cache_data in candles_cache.items():
                         candles = cache_data.get('candles', [])
                         timeframe = cache_data.get('timeframe', '6h')
@@ -4740,45 +4757,6 @@ class BotsDatabase:
                         if cache_row:
                             cache_id = cache_row[0]
                             
-                            # ⚠️ КРИТИЧНО: Кэш должен ПОЛНОСТЬЮ ПЕРЕЗАПИСЫВАТЬСЯ, а не накапливаться!
-                            # ВСЕГДА удаляем ВСЕ старые свечи для этого символа перед вставкой новых
-                            # Это гарантирует, что старые неиспользуемые данные всегда удаляются
-                            
-                            # Сначала проверяем, сколько старых записей есть
-                            cursor.execute("SELECT COUNT(*) FROM candles_cache_data WHERE cache_id = ?", (cache_id,))
-                            old_count_before = cursor.fetchone()[0]
-                            
-                            # ⚠️ КРИТИЧНО: Удаляем ВСЕ старые свечи ПЕРЕД вставкой новых
-                            # Это должно выполняться в той же транзакции!
-                            cursor.execute("""
-                                DELETE FROM candles_cache_data 
-                                WHERE cache_id = ?
-                            """, (cache_id,))
-                            deleted_old_count = cursor.rowcount
-                            
-                            # ⚠️ КРИТИЧНО: Проверяем, что удаление сработало СРАЗУ после DELETE
-                            cursor.execute("SELECT COUNT(*) FROM candles_cache_data WHERE cache_id = ?", (cache_id,))
-                            old_count_after = cursor.fetchone()[0]
-                            
-                            # Если после DELETE остались записи - это КРИТИЧЕСКАЯ ОШИБКА!
-                            if old_count_after > 0:
-                                logger.error(f"❌ {symbol}: КРИТИЧЕСКАЯ ОШИБКА! DELETE не удалил все записи! Осталось {old_count_after} записей!")
-                                # Пытаемся удалить еще раз принудительно
-                                cursor.execute("DELETE FROM candles_cache_data WHERE cache_id = ?", (cache_id,))
-                                deleted_again = cursor.rowcount
-                                cursor.execute("SELECT COUNT(*) FROM candles_cache_data WHERE cache_id = ?", (cache_id,))
-                                final_after_delete = cursor.fetchone()[0]
-                                if final_after_delete > 0:
-                                    logger.critical(f"❌ {symbol}: КРИТИЧЕСКАЯ ПРОБЛЕМА! После повторного DELETE осталось {final_after_delete} записей! Возможна проблема с БД или транзакцией!")
-                                    # Откатываем транзакцию для этого символа
-                                    raise Exception(f"DELETE не работает для {symbol}! Осталось {final_after_delete} записей после двух попыток DELETE!")
-                                else:
-                                    logger.warning(f"⚠️ {symbol}: Повторное удаление успешно удалило оставшиеся {deleted_again} записей")
-                            
-                            # Логируем если было много старых записей
-                            if old_count_before > 1000:
-                                logger.warning(f"⚠️ {symbol}: Обнаружено накопление! Было {old_count_before:,} свечей, удалено {deleted_old_count:,}, осталось {old_count_after}")
-                            
                             # ОГРАНИЧЕНИЕ: Сохраняем только последние N свечей для каждого символа
                             # Это предотвращает раздувание БД до огромных размеров
                             # 1000 свечей = ~250 дней истории (6h свечи) - более чем достаточно для всех нужд:
@@ -4786,7 +4764,6 @@ class BotsDatabase:
                             # - Зрелость: 200-500 свечей
                             # - AI обучение: 300-500 свечей
                             # - Запрашивается только 30 дней (~120 свечей)
-                            MAX_CANDLES_PER_SYMBOL = 1000  # Максимум 1000 свечей на символ (~250 дней для 6h свечей)
                             
                             # Сортируем свечи по времени и берем только последние MAX_CANDLES_PER_SYMBOL
                             candles_sorted = sorted(candles, key=lambda x: x.get('time', 0))
@@ -4795,39 +4772,30 @@ class BotsDatabase:
                             if len(candles_sorted) > MAX_CANDLES_PER_SYMBOL:
                                 logger.debug(f"   📊 {symbol}: Ограничено до {MAX_CANDLES_PER_SYMBOL} свечей (было {len(candles_sorted)})")
                             
-                            # ⚡ ОПТИМИЗИРОВАННАЯ ВСТАВКА: используем executemany вместо цикла
-                            # ⚠️ КРИТИЧНО: Используем INSERT OR REPLACE для предотвращения дубликатов
-                            # Старые свечи уже удалены, но на случай параллельных вызовов используем OR REPLACE
-                            if candles_to_save:
-                                cursor.executemany("""
-                                    INSERT OR REPLACE INTO candles_cache_data 
-                                    (cache_id, time, open, high, low, close, volume)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                                """, [
-                                    (
-                                        cache_id,
-                                        candle.get('time'),
-                                        candle.get('open'),
-                                        candle.get('high'),
-                                        candle.get('low'),
-                                        candle.get('close'),
-                                        candle.get('volume', 0)
-                                    )
-                                    for candle in candles_to_save
-                                ])
-                                
-                                inserted_count = cursor.rowcount
-                                
-                                # Проверяем финальное количество после вставки
-                                cursor.execute("SELECT COUNT(*) FROM candles_cache_data WHERE cache_id = ?", (cache_id,))
-                                final_count = cursor.fetchone()[0]
-                                
-                                # Логируем если количество не соответствует ожидаемому
-                                if final_count != inserted_count:
-                                    logger.error(f"❌ {symbol}: НЕСООТВЕТСТВИЕ! Вставлено {inserted_count}, но в БД {final_count} записей! Возможна проблема с транзакцией или дубликатами!")
-                                
-                                if final_count > MAX_CANDLES_PER_SYMBOL:
-                                    logger.error(f"❌ {symbol}: ПРЕВЫШЕН ЛИМИТ! В БД {final_count} свечей, должно быть ≤{MAX_CANDLES_PER_SYMBOL}!")
+                            # Добавляем свечи в общий список для пакетной вставки
+                            for candle in candles_to_save:
+                                all_candles_to_insert.append((
+                                    cache_id,
+                                    candle.get('time'),
+                                    candle.get('open'),
+                                    candle.get('high'),
+                                    candle.get('low'),
+                                    candle.get('close'),
+                                    candle.get('volume', 0)
+                                ))
+                    
+                    # ⚡ ОПТИМИЗИРОВАННАЯ ПАКЕТНАЯ ВСТАВКА: вставляем все свечи одним запросом
+                    # ⚠️ КРИТИЧНО: Используем INSERT OR REPLACE для предотвращения дубликатов
+                    # (на случай если UNIQUE constraint еще не применен)
+                    if all_candles_to_insert:
+                        cursor.executemany("""
+                            INSERT OR REPLACE INTO candles_cache_data 
+                            (cache_id, time, open, high, low, close, volume)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, all_candles_to_insert)
+                        
+                        inserted_total_count = cursor.rowcount
+                        logger.debug(f"💾 Вставлено {inserted_total_count:,} новых свечей в кэш ({len(candles_cache)} символов)")
                     
                     # ⚠️ КРИТИЧНО: Коммитим транзакцию СРАЗУ после DELETE+INSERT
                     # Это гарантирует, что изменения применены и не будет дубликатов

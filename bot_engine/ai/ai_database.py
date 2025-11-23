@@ -4950,71 +4950,82 @@ class AIDatabase:
         Returns:
             Словарь {symbol: saved_count}
         """
-        # ⚡ ОПТИМИЗАЦИЯ: Проверка общего количества свечей выполняется редко (раз в 100 вызовов)
-        # Это предотвращает заторможенность при частых вызовах
-        if not hasattr(self, '_batch_save_counter'):
-            self._batch_save_counter = 0
-        if not hasattr(self, '_last_cleanup_time'):
-            self._last_cleanup_time = 0
+        # ⚡ ОПТИМИЗАЦИЯ: При батч-сохранении используем TRUNCATE-подход для всех символов в батче
+        # Удаляем старые свечи для всех символов из батча одним запросом, затем вставляем новые
+        if not candles_data:
+            return {}
         
-        self._batch_save_counter += 1
-        should_check = (
-            self._batch_save_counter % 100 == 0 or  # Каждый 100-й вызов
-            (time.time() - self._last_cleanup_time) > 3600  # Или раз в час
-        )
-        
-        # Защита от переполнения: проверяем общее количество свечей в БД (только при необходимости)
-        if should_check:
-            try:
-                total_candles = self.count_candles()
-                MAX_TOTAL_CANDLES = 1_000_000  # Максимум 1 миллион свечей в БД (1000 монет × 1000 свечей)
-                if total_candles > MAX_TOTAL_CANDLES:
-                    logger.warning(f"⚠️ ai_data.db содержит {total_candles:,} свечей (лимит: {MAX_TOTAL_CANDLES:,}). Очистка старых данных...")
-                    # ⚡ ОПТИМИЗИРОВАННАЯ ОЧИСТКА: удаляем лишние свечи БЕЗ COUNT(*) для каждого символа
-                    with self._get_connection() as conn:
-                        cursor = conn.cursor()
-                        # Получаем список всех символов
-                        cursor.execute("SELECT DISTINCT symbol FROM candles_history WHERE timeframe = ?", (timeframe,))
-                        symbols = [row[0] for row in cursor.fetchall()]
-                        
-                        deleted_total = 0
-                        for symbol in symbols:
-                            # Удаляем лишние свечи эффективным способом
-                            cursor.execute("""
-                                DELETE FROM candles_history
-                                WHERE id IN (
-                                    SELECT id FROM candles_history
-                                    WHERE symbol = ? AND timeframe = ?
-                                    ORDER BY candle_time ASC
-                                    LIMIT (SELECT MAX(0, COUNT(*) - 1000) FROM candles_history WHERE symbol = ? AND timeframe = ?)
-                                )
-                            """, (symbol, timeframe, symbol, timeframe))
-                            deleted_count = cursor.rowcount
-                            if deleted_count > 0:
-                                deleted_total += deleted_count
-                        
-                        conn.commit()
-                        if deleted_total > 0:
-                            logger.info(f"🗑️ Удалено {deleted_total:,} старых свечей из ai_data.db")
-                        self._last_cleanup_time = time.time()
-            except Exception as cleanup_error:
-                logger.warning(f"⚠️ Ошибка проверки/очистки ai_data.db: {cleanup_error}")
-        
-        # Сохраняем свечи (каждый save_candles() сам ограничивает до 1000 на символ)
-        results = {}
-        for symbol, candles in candles_data.items():
-            results[symbol] = self.save_candles(symbol, candles, timeframe)
-        
-        # Логируем итоговую статистику только при проверке
-        if should_check:
-            try:
-                final_count = self.count_candles()
-                unique_symbols = len(set(candles_data.keys()))
-                logger.debug(f"📊 ai_data.db: {final_count:,} свечей для {unique_symbols} монет после сохранения")
-            except:
-                pass
-        
-        return results
+        try:
+            now = datetime.now().isoformat()
+            MAX_CANDLES_PER_SYMBOL = 1000
+            saved_counts = {}
+            
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # ⚠️ КРИТИЧНО: Удаляем ВСЕ старые свечи для символов из батча одним запросом (TRUNCATE-подход)
+                # Это намного быстрее, чем удалять по каждому символу отдельно
+                symbols_list = list(candles_data.keys())
+                placeholders = ','.join(['?'] * len(symbols_list))
+                cursor.execute(f"""
+                    DELETE FROM candles_history 
+                    WHERE symbol IN ({placeholders}) AND timeframe = ?
+                """, symbols_list + [timeframe])
+                deleted_total = cursor.rowcount
+                
+                if deleted_total > 0:
+                    logger.debug(f"🗑️ Удалено {deleted_total:,} старых свечей для {len(symbols_list)} символов (TRUNCATE-подход)")
+                
+                # Собираем все свечи для пакетной вставки
+                all_candles_to_insert = []
+                
+                for symbol, candles in candles_data.items():
+                    if not candles:
+                        saved_counts[symbol] = 0
+                        continue
+                    
+                    # Сортируем свечи по времени и берем только последние MAX_CANDLES_PER_SYMBOL
+                    candles_sorted = sorted(candles, key=lambda x: x.get('time', 0))
+                    candles_to_save = candles_sorted[-MAX_CANDLES_PER_SYMBOL:]
+                    
+                    if len(candles_sorted) > MAX_CANDLES_PER_SYMBOL:
+                        logger.debug(f"📊 {symbol}: Ограничено до {MAX_CANDLES_PER_SYMBOL} свечей (было {len(candles_sorted)})")
+                    
+                    # Добавляем свечи в общий список для пакетной вставки
+                    for candle in candles_to_save:
+                        all_candles_to_insert.append((
+                            symbol, timeframe,
+                            int(candle.get('time', 0)),
+                            float(candle.get('open', 0)),
+                            float(candle.get('high', 0)),
+                            float(candle.get('low', 0)),
+                            float(candle.get('close', 0)),
+                            float(candle.get('volume', 0)),
+                            now
+                        ))
+                    
+                    saved_counts[symbol] = len(candles_to_save)
+                
+                # ⚡ ОПТИМИЗИРОВАННАЯ ПАКЕТНАЯ ВСТАВКА: вставляем все свечи одним запросом
+                if all_candles_to_insert:
+                    cursor.executemany("""
+                        INSERT INTO candles_history (
+                            symbol, timeframe, candle_time, open_price, high_price,
+                            low_price, close_price, volume, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, all_candles_to_insert)
+                    inserted_total = cursor.rowcount
+                    logger.debug(f"💾 Вставлено {inserted_total:,} новых свечей в ai_data.db ({len(symbols_list)} символов)")
+                
+                conn.commit()
+            
+            return saved_counts
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка батч-сохранения свечей: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return {}
     
     def get_candles(self, symbol: str, timeframe: str = '6h', 
                     limit: Optional[int] = None,
