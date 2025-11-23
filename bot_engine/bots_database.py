@@ -4963,6 +4963,44 @@ class BotsDatabase:
                     now, now
                 ))
                 
+                # ⚠️ КРИТИЧНО: Периодически удаляем старые записи, чтобы предотвратить раздувание БД
+                # Проверяем каждые 100 вставок (чтобы не замедлять работу)
+                import random
+                if random.randint(1, 100) == 1:  # 1% вероятность
+                    try:
+                        # Удаляем закрытые сделки старше 1 года
+                        one_year_ago_ts = (datetime.now().timestamp() - 365 * 24 * 3600) * 1000
+                        cursor.execute("""
+                            DELETE FROM bot_trades_history
+                            WHERE status = 'CLOSED' 
+                            AND exit_timestamp IS NOT NULL 
+                            AND exit_timestamp < ?
+                        """, (one_year_ago_ts,))
+                        deleted_count = cursor.rowcount
+                        if deleted_count > 0:
+                            logger.debug(f"🗑️ Очистка bot_trades_history: удалено {deleted_count} старых закрытых сделок (старше 1 года)")
+                        
+                        # Также ограничиваем общее количество записей (максимум 100,000)
+                        cursor.execute("SELECT COUNT(*) FROM bot_trades_history")
+                        total_count = cursor.fetchone()[0]
+                        MAX_TRADES_HISTORY = 100_000
+                        if total_count > MAX_TRADES_HISTORY:
+                            # Удаляем самые старые закрытые сделки
+                            cursor.execute("""
+                                DELETE FROM bot_trades_history
+                                WHERE id IN (
+                                    SELECT id FROM bot_trades_history
+                                    WHERE status = 'CLOSED'
+                                    ORDER BY exit_timestamp ASC, created_at ASC
+                                    LIMIT ?
+                                )
+                            """, (total_count - MAX_TRADES_HISTORY,))
+                            deleted_count = cursor.rowcount
+                            if deleted_count > 0:
+                                logger.info(f"🗑️ Очистка bot_trades_history: удалено {deleted_count} старых сделок (лимит: {MAX_TRADES_HISTORY:,})")
+                    except Exception as cleanup_error:
+                        logger.warning(f"⚠️ Ошибка очистки bot_trades_history: {cleanup_error}")
+                
                 conn.commit()
                 return cursor.lastrowid
         except Exception as e:
