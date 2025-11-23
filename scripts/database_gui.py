@@ -1899,7 +1899,8 @@ class DatabaseGUI(tk.Tk):
             "Подтверждение обнуления",
             f"Вы уверены, что хотите обнулить таблицу '{table_name}'?\n\n"
             f"Все данные в таблице будут удалены, но структура таблицы сохранится.\n"
-            f"Это действие необратимо!"
+            f"Это действие необратимо!\n\n"
+            f"Для больших таблиц операция может занять некоторое время."
         ):
             self._update_status("Обнуление таблицы отменено", "info")
             return
@@ -1912,68 +1913,97 @@ class DatabaseGUI(tk.Tk):
             self._update_status("Ошибка: Не удалось открыть базу данных", "error")
             return
         
-        self._update_status(f"Обнуление таблицы '{table_name}'...", "info")
+        # Запускаем операцию в отдельном потоке с диалогом прогресса
+        self._truncate_table_async(db_path, table_name)
+    
+    def _truncate_table_async(self, db_path: str, table_name: str):
+        """Обнуляет таблицу в отдельном потоке"""
+        # Создаем диалог прогресса
+        progress_dialog = TruncateProgressDialog(self, table_name)
+        progress_dialog.update()
         
-        try:
-            # Получаем схему таблицы
-            schema = self.db_conn.get_table_schema(table_name)
-            if not schema:
-                self._update_status(f"Ошибка: Не удалось получить схему таблицы '{table_name}'", "error")
-                return
-            
-            # Получаем CREATE TABLE запрос из sqlite_master
-            cursor = self.db_conn.conn.cursor()
-            cursor.execute(
-                "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
-                (table_name,)
-            )
-            create_sql = cursor.fetchone()
-            
-            if not create_sql or not create_sql[0]:
-                self._update_status(f"Ошибка: Не удалось получить CREATE TABLE запрос для '{table_name}'", "error")
-                return
-            
-            create_table_sql = create_sql[0]
-            
-            # Формируем SQL для пересоздания таблицы
-            # 1. Сохраняем имя таблицы
-            # 2. Удаляем таблицу
-            # 3. Создаем таблицу заново с той же структурой
-            
-            # Выполняем в транзакции
-            self.db_conn.conn.execute("BEGIN TRANSACTION")
-            
+        def truncate_worker():
+            """Рабочий поток для обнуления таблицы"""
             try:
-                # Удаляем таблицу
-                drop_query = f"DROP TABLE {table_name}"
-                self.db_conn.conn.execute(drop_query)
+                # Создаем отдельное подключение для фонового потока
+                temp_conn = sqlite3.connect(db_path, timeout=300.0)  # Увеличиваем timeout для больших операций
+                temp_conn.execute("PRAGMA journal_mode=WAL")  # Используем WAL для лучшей производительности
+                temp_conn.execute("PRAGMA synchronous=NORMAL")  # Ускоряем запись
                 
-                # Создаем таблицу заново
-                # Заменяем имя таблицы в CREATE TABLE запросе на случай если оно изменилось
-                self.db_conn.conn.execute(create_table_sql)
+                cursor = temp_conn.cursor()
                 
-                # Коммитим транзакцию
-                self.db_conn.conn.commit()
+                # Обновляем прогресс
+                self.after(0, lambda: progress_dialog.update_status("Получение структуры таблицы..."))
                 
-                self._update_status(f"Таблица '{table_name}' обнулена (все данные удалены)", "success")
+                # Получаем CREATE TABLE запрос
+                cursor.execute(
+                    "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+                    (table_name,)
+                )
+                create_sql = cursor.fetchone()
                 
-                # Обновляем список таблиц в дереве
-                self._refresh_tables_after_modification(db_path)
+                if not create_sql or not create_sql[0]:
+                    raise Exception(f"Не удалось получить CREATE TABLE запрос для '{table_name}'")
                 
-                # Обновляем список таблиц в комбобоксе
+                # Для очень больших таблиц используем DELETE FROM вместо DROP/CREATE
+                # Это быстрее, так как не требует пересоздания индексов
+                self.after(0, lambda: progress_dialog.update_status("Удаление данных из таблицы..."))
+                
+                # Выполняем в транзакции
+                temp_conn.execute("BEGIN IMMEDIATE TRANSACTION")
+                
+                try:
+                    # Используем DELETE FROM для больших таблиц (быстрее чем DROP)
+                    delete_query = f"DELETE FROM {table_name}"
+                    cursor.execute(delete_query)
+                    
+                    # Обновляем прогресс
+                    self.after(0, lambda: progress_dialog.update_status("Завершение операции..."))
+                    
+                    # Коммитим транзакцию
+                    temp_conn.commit()
+                    
+                    temp_conn.close()
+                    
+                    # Закрываем диалог и обновляем UI в главном потоке
+                    self.after(0, lambda: progress_dialog.close())
+                    self.after(0, lambda: self._truncate_table_completed(db_path, table_name, None))
+                    
+                except Exception as e:
+                    temp_conn.rollback()
+                    temp_conn.close()
+                    raise e
+                    
+            except Exception as e:
+                error_msg = str(e)
+                # Закрываем диалог и обновляем UI в главном потоке
+                self.after(0, lambda: progress_dialog.close())
+                self.after(0, lambda: self._truncate_table_completed(db_path, table_name, error_msg))
+        
+        # Запускаем поток
+        thread = threading.Thread(target=truncate_worker, daemon=True)
+        thread.start()
+        
+        # Диалог будет закрыт автоматически после завершения операции
+    
+    def _truncate_table_completed(self, db_path: str, table_name: str, error: Optional[str]):
+        """Обработчик завершения обнуления таблицы"""
+        if error:
+            self._update_status(f"Ошибка обнуления таблицы: {error}", "error")
+            messagebox.showerror("Ошибка", f"Не удалось обнулить таблицу '{table_name}':\n{error}")
+        else:
+            self._update_status(f"Таблица '{table_name}' обнулена (все данные удалены)", "success")
+            
+            # Обновляем список таблиц в дереве
+            self._refresh_tables_after_modification(db_path)
+            
+            # Обновляем список таблиц в комбобоксе
+            if self.db_conn and self.db_conn.db_path == db_path:
                 self._load_tables_list()
                 
                 # Если это текущая таблица - перезагружаем данные
                 if self.current_table == table_name:
                     self._load_table_data()
-                
-            except Exception as e:
-                # Откатываем транзакцию при ошибке
-                self.db_conn.conn.rollback()
-                raise e
-                
-        except Exception as e:
-            self._update_status(f"Ошибка обнуления таблицы: {e}", "error")
     
     def _delete_table(self, table_info: Dict):
         """Удаляет таблицу"""
@@ -2709,6 +2739,95 @@ class TableDialog(tk.Toplevel):
             if self.callback:
                 self.callback(table_name)
             self.destroy()
+
+
+class TruncateProgressDialog(tk.Toplevel):
+    """Диалог прогресса для обнуления таблицы"""
+    
+    def __init__(self, parent, table_name: str):
+        super().__init__(parent)
+        
+        self.table_name = table_name
+        self.is_closed = False
+        
+        self.title(f"Обнуление таблицы: {table_name}")
+        self.geometry("500x150")
+        self.resizable(False, False)
+        
+        # Центрируем окно
+        self.transient(parent)
+        self.grab_set()
+        
+        # Запрещаем закрытие во время операции
+        self.protocol("WM_DELETE_WINDOW", lambda: None)
+        
+        # Создаем интерфейс
+        self._build_ui()
+        
+        # Центрируем окно
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() // 2) - (self.winfo_width() // 2)
+        y = (self.winfo_screenheight() // 2) - (self.winfo_height() // 2)
+        self.geometry(f"+{x}+{y}")
+    
+    def _build_ui(self):
+        """Создает интерфейс диалога"""
+        main_frame = ttk.Frame(self, padding=20)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Заголовок
+        title_label = ttk.Label(
+            main_frame,
+            text=f"Обнуление таблицы: {self.table_name}",
+            font=('Segoe UI', 10, 'bold')
+        )
+        title_label.pack(pady=(0, 10))
+        
+        # Статус
+        self.status_label = ttk.Label(
+            main_frame,
+            text="Подготовка...",
+            font=('Segoe UI', 9)
+        )
+        self.status_label.pack(pady=5)
+        
+        # Прогресс-бар
+        self.progress = ttk.Progressbar(
+            main_frame,
+            mode='indeterminate',
+            length=400
+        )
+        self.progress.pack(pady=10)
+        self.progress.start(10)
+        
+        # Информация
+        info_label = ttk.Label(
+            main_frame,
+            text="Пожалуйста, подождите. Операция может занять некоторое время...",
+            font=('Segoe UI', 8),
+            foreground='gray'
+        )
+        info_label.pack(pady=5)
+    
+    def update_status(self, message: str):
+        """Обновляет статус операции"""
+        if not self.is_closed:
+            try:
+                self.status_label.config(text=message)
+                self.update()
+            except:
+                pass  # Окно уже закрыто
+    
+    def close(self):
+        """Закрывает диалог"""
+        if not self.is_closed:
+            self.is_closed = True
+            try:
+                self.progress.stop()
+                self.grab_release()
+                self.destroy()
+            except:
+                pass
 
 
 def main():

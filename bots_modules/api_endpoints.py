@@ -2526,17 +2526,9 @@ def auto_bot_config():
             logger.info(f" 📝 Изменение конфигурации Auto Bot")
         
         if request.method == 'GET':
-            # ✅ КРИТИЧЕСКИ ВАЖНО: Принудительно перезагружаем модуль и конфигурацию
-            # Это гарантирует, что UI всегда получает актуальные данные из файла
+            # ✅ Загружаем конфигурацию (с кэшированием внутри load_auto_bot_config)
+            # Не принуждаем к перезагрузке при каждом запросе - загрузка происходит только при изменении файла
             from bots_modules.imports_and_globals import load_auto_bot_config
-            
-            # ✅ КРИТИЧНО: Сбрасываем кэш времени модификации ПЕРЕД вызовом load_auto_bot_config
-            # Это заставит load_auto_bot_config() перезагрузить модуль внутри себя
-            if hasattr(load_auto_bot_config, '_last_mtime'):
-                load_auto_bot_config._last_mtime = 0
-            
-            # ✅ Принудительно перезагружаем конфигурацию из файла
-            # load_auto_bot_config() сама перезагрузит модуль, т.к. _last_mtime == 0
             load_auto_bot_config()
             
             with bots_data_lock:
@@ -2581,31 +2573,15 @@ def auto_bot_config():
                         config['avoid_up_trend'] = False
                     logger.warning(f" ✅ avoid_up_trend преобразовано в: {config['avoid_up_trend']} (тип: {type(config['avoid_up_trend']).__name__})")
                 
-                # ✅ Загружаем фильтры (whitelist, blacklist, scope) из БД
-                try:
-                    from bot_engine.bots_database import get_bots_database
-                    db = get_bots_database()
-                    filters_data = db.load_coin_filters()
-                    
-                    # Объединяем фильтры из БД с конфигурацией
-                    # БД имеет приоритет над файловой конфигурацией
-                    if 'whitelist' in filters_data:
-                        config['whitelist'] = filters_data['whitelist']
-                    if 'blacklist' in filters_data:
-                        config['blacklist'] = filters_data['blacklist']
-                    if 'scope' in filters_data:
-                        config['scope'] = filters_data['scope']
-                    
-                    logger.debug(f"📂 Фильтры загружены из БД: whitelist={len(config.get('whitelist', []))}, blacklist={len(config.get('blacklist', []))}, scope={config.get('scope', 'all')}")
-                except Exception as e:
-                    logger.error(f"❌ Ошибка загрузки фильтров из БД: {e}")
-                    # Устанавливаем значения по умолчанию если загрузка не удалась
-                    if 'whitelist' not in config:
-                        config['whitelist'] = []
-                    if 'blacklist' not in config:
-                        config['blacklist'] = []
-                    if 'scope' not in config:
-                        config['scope'] = 'all'
+                # ✅ Фильтры уже загружены в load_auto_bot_config() выше и находятся в bots_data['auto_bot_config']
+                # Не нужно повторно загружать их из БД - используем уже загруженные значения
+                # Если фильтров нет в config (на всякий случай), устанавливаем значения по умолчанию
+                if 'whitelist' not in config:
+                    config['whitelist'] = []
+                if 'blacklist' not in config:
+                    config['blacklist'] = []
+                if 'scope' not in config:
+                    config['scope'] = 'all'
                 
                 # ✅ Финальная проверка перед возвратом (логирование убрано для уменьшения спама)
                 

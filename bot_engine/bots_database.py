@@ -4294,6 +4294,11 @@ class BotsDatabase:
             return []
     
     # ==================== МЕТОДЫ ДЛЯ ФИЛЬТРОВ МОНЕТ (WHITELIST/BLACKLIST) ====================
+    # Кэш фильтров для оптимизации (избегаем частых запросов к БД)
+    _coin_filters_cache = None
+    _coin_filters_cache_time = None
+    _coin_filters_cache_lock = threading.Lock()
+    _coin_filters_cache_ttl = 5.0  # Кэш живет 5 секунд
     
     def save_coin_filters(self, whitelist: list = None, blacklist: list = None, scope: str = None) -> bool:
         """
@@ -4351,6 +4356,12 @@ class BotsDatabase:
                         logger.debug(f"💾 Scope сохранен: {scope}")
                     
                     conn.commit()
+                    
+                    # ✅ Инвалидируем кэш после сохранения
+                    with self._coin_filters_cache_lock:
+                        self._coin_filters_cache = None
+                        self._coin_filters_cache_time = None
+                    
                     return True
                     
         except Exception as e:
@@ -4361,11 +4372,20 @@ class BotsDatabase:
     
     def load_coin_filters(self) -> Dict[str, Any]:
         """
-        Загружает фильтры монет из БД
+        Загружает фильтры монет из БД (с кэшированием для оптимизации)
         
         Returns:
             Словарь с ключами: whitelist (list), blacklist (list), scope (str)
         """
+        # ✅ Проверяем кэш перед загрузкой из БД
+        current_time = time.time()
+        with self._coin_filters_cache_lock:
+            if (self._coin_filters_cache is not None and 
+                self._coin_filters_cache_time is not None and
+                current_time - self._coin_filters_cache_time < self._coin_filters_cache_ttl):
+                # Кэш валиден, возвращаем его
+                return self._coin_filters_cache.copy()
+        
         try:
             result = {
                 'whitelist': [],
@@ -4392,9 +4412,30 @@ class BotsDatabase:
                     scope_row = cursor.fetchone()
                     if scope_row:
                         result['scope'] = scope_row[0]
-                    
-                    logger.debug(f"📂 Фильтры загружены: whitelist={len(result['whitelist'])}, blacklist={len(result['blacklist'])}, scope={result['scope']}")
-                    return result
+            
+            # ✅ Сохраняем в кэш
+            with self._coin_filters_cache_lock:
+                # Логируем только при первой загрузке или при изменении данных
+                was_cached = self._coin_filters_cache is not None
+                old_whitelist_len = len(self._coin_filters_cache.get('whitelist', [])) if was_cached else 0
+                old_blacklist_len = len(self._coin_filters_cache.get('blacklist', [])) if was_cached else 0
+                old_scope = self._coin_filters_cache.get('scope', 'all') if was_cached else None
+                
+                self._coin_filters_cache = result.copy()
+                self._coin_filters_cache_time = current_time
+                
+                # Логируем только при первой загрузке или при реальных изменениях
+                new_whitelist_len = len(result['whitelist'])
+                new_blacklist_len = len(result['blacklist'])
+                new_scope = result['scope']
+                
+                if (not was_cached or 
+                    old_whitelist_len != new_whitelist_len or 
+                    old_blacklist_len != new_blacklist_len or 
+                    old_scope != new_scope):
+                    logger.debug(f"📂 Фильтры загружены из БД: whitelist={new_whitelist_len}, blacklist={new_blacklist_len}, scope={new_scope}")
+            
+            return result
                     
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки фильтров монет: {e}")
