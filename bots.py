@@ -7,6 +7,81 @@
 import os
 import sys
 
+# 🔍 Проверка и создание bot_config.py из example.bot_config.py (если отсутствует)
+# Также настраиваем git skip-worktree для игнорирования локальных изменений
+_bot_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bot_engine', 'bot_config.py')
+_example_bot_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bot_engine', 'example.bot_config.py')
+
+if not os.path.exists(_bot_config_path):
+    if os.path.exists(_example_bot_config_path):
+        try:
+            import shutil
+            shutil.copy2(_example_bot_config_path, _bot_config_path)
+            # Логгер еще не настроен, используем stderr
+            import sys
+            sys.stderr.write(f"[INFO] ✅ Создан bot_engine/bot_config.py из example.bot_config.py\n")
+        except Exception as e:
+            # Логгер еще не настроен, используем stderr
+            import sys
+            sys.stderr.write(f"[WARNING] Не удалось создать bot_config.py: {e}\n")
+            sys.stderr.write(f"[WARNING] Продолжаем с example.bot_config.py...\n")
+    else:
+        # Логгер еще не настроен, используем stderr
+        import sys
+        sys.stderr.write(f"[WARNING] Файл example.bot_config.py не найден, bot_config.py не будет создан автоматически\n")
+
+# Настройка git skip-worktree для игнорирования локальных изменений в bot_config.py
+# Это позволяет файлу оставаться в git, но локальные изменения не будут коммититься
+# И защищает от перезаписи при git pull - локальная версия всегда имеет приоритет
+if os.path.exists(_bot_config_path):
+    try:
+        import subprocess
+        git_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Проверяем, установлен ли уже skip-worktree
+        result = subprocess.run(
+            ['git', 'ls-files', '-v', _bot_config_path],
+            capture_output=True,
+            text=True,
+            cwd=git_dir,
+            timeout=5
+        )
+        # Если файл отслеживается и не имеет флага skip-worktree (не начинается с 'S')
+        if result.returncode == 0 and result.stdout.strip() and not result.stdout.strip().startswith('S'):
+            subprocess.run(
+                ['git', 'update-index', '--skip-worktree', _bot_config_path],
+                cwd=git_dir,
+                timeout=5,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            # Логгер еще не настроен, используем stderr
+            import sys
+            sys.stderr.write(f"[INFO] ✅ Защита bot_config.py от перезаписи при git pull активирована\n")
+        
+        # Дополнительная защита: если файл был изменен в удаленном репозитории,
+        # но у нас есть локальная версия - восстанавливаем её из бэкапа (если есть)
+        backup_path = _bot_config_path + '.local_backup'
+        if os.path.exists(backup_path):
+            try:
+                import shutil
+                # Восстанавливаем локальную версию из бэкапа
+                shutil.copy2(backup_path, _bot_config_path)
+                # Удаляем бэкап после восстановления
+                try:
+                    os.remove(backup_path)
+                except Exception:
+                    pass
+                # Логгер еще не настроен, используем stderr
+                import sys
+                sys.stderr.write(f"[INFO] ✅ Восстановлена локальная версия bot_config.py после git pull\n")
+            except Exception:
+                pass
+            
+    except Exception:
+        # Игнорируем ошибки git (если это не git репозиторий или git не установлен)
+        pass
+
 # 🔍 ТРЕЙСИНГ из конфига (после импорта sys, но до остальных импортов)
 try:
     # Читаем настройку трейсинга из конфига
