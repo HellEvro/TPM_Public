@@ -3333,8 +3333,12 @@ class BotsManager {
         }
         
         const leverageCoinEl = document.getElementById('leverageCoinInput');
-        if (leverageCoinEl && settings.leverage !== undefined) {
-            leverageCoinEl.value = settings.leverage;
+        if (leverageCoinEl) {
+            // Загружаем из индивидуальных настроек, если есть, иначе из глобального конфига
+            const leverageValue = getSettingValue('leverage');
+            if (leverageValue !== undefined) {
+                leverageCoinEl.value = leverageValue;
+            }
         }
         
         // ✅ Enhanced RSI настройки для индивидуальных настроек монеты
@@ -3588,7 +3592,23 @@ class BotsManager {
         if (trendCandlesThresholdEl) {
             trendCandlesThresholdEl.value = get('trend_candles_threshold', fallback.trend_candles_threshold);
         }
-     }
+        
+        // Объем торговли и плечо
+        const volumeModeEl = document.getElementById('volumeModeSelect');
+        if (volumeModeEl) {
+            volumeModeEl.value = get('default_position_mode', 'usdt');
+        }
+        
+        const volumeValueEl = document.getElementById('volumeValueInput');
+        if (volumeValueEl) {
+            volumeValueEl.value = get('default_position_size', 10);
+        }
+        
+        const leverageCoinEl = document.getElementById('leverageCoinInput');
+        if (leverageCoinEl) {
+            leverageCoinEl.value = get('leverage', 1);
+        }
+    }
 
     initializeIndividualSettingsButtons() {
         console.log('[BotsManager] 🔧 Инициализация кнопок индивидуальных настроек...');
@@ -6822,8 +6842,13 @@ class BotsManager {
             const originalValue = this.originalConfig?.autoBot?.[configKey];
             
             if (value !== undefined && value !== null) {
+                // Если originalValue undefined (новое поле), всегда устанавливаем значение
+                if (originalValue === undefined) {
+                    config[configKey] = value;
+                    console.log(`[BotsManager] 🔄 Авто-применено (новое поле): ${configKey} = ${value}`);
+                }
                 // Для булевых значений
-                if (typeof value === 'boolean') {
+                else if (typeof value === 'boolean') {
                     const normalizedOriginal = originalValue === true ? true : false;
                     if (value !== normalizedOriginal) {
                         config[configKey] = value;

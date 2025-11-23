@@ -657,8 +657,7 @@ def load_auto_bot_config():
         if should_log_verbose:
             # Детальное логирование убрано для уменьшения спама (переведено в DEBUG если нужно)
             load_auto_bot_config._logged_once = True
-        else:
-            logger.debug(" ✅ Конфигурация загружена (без изменений в файле)")
+        # ✅ УБРАНО: Логирование "без изменений" создавало спам в логах при частых вызовах из API
 
         # ✅ Загружаем фильтры (whitelist, blacklist, scope) из БД и объединяем с конфигурацией
         try:
