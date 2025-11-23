@@ -1133,13 +1133,38 @@ class NewTradingBot:
             # ✅ ИСПРАВЛЕНО: Рассчитываем profit_percent как процент от СТОИМОСТИ СДЕЛКИ (position_value)
             # Триггер защиты безубыточности - это процент от стоимости сделки, а не от цены
             position_size_coins = self._get_position_quantity()
-            if position_size_coins > 0:
-                position_value = entry_price * position_size_coins
+            position_value = 0.0
+            profit_usdt = 0.0
+            
+            # ✅ ИСПРАВЛЕНО: Используем нереализованный P&L напрямую, если доступен
+            # Это более точно, чем расчет через цену
+            if self.unrealized_pnl_usdt is not None:
+                profit_usdt = float(self.unrealized_pnl_usdt)
+            elif self.unrealized_pnl is not None:
+                profit_usdt = float(self.unrealized_pnl)
+            
+            # Если нереализованный P&L не доступен, рассчитываем через цену
+            if profit_usdt == 0.0 and position_size_coins > 0:
                 if self.position_side == 'LONG':
                     profit_usdt = position_size_coins * (current_price - entry_price)
                 else:
                     profit_usdt = position_size_coins * (entry_price - current_price)
-                profit_percent = (profit_usdt / position_value) * 100 if position_value > 0 else 0.0
+            
+            # Рассчитываем стоимость сделки (position_value)
+            # ✅ ИСПРАВЛЕНО: Используем position_size (стоимость позиции в USDT) напрямую, если доступен
+            if self.position_size:
+                try:
+                    position_value = float(self.position_size)
+                except (TypeError, ValueError):
+                    position_value = 0.0
+            elif position_size_coins > 0:
+                position_value = entry_price * position_size_coins
+            else:
+                position_value = 0.0
+            
+            # Рассчитываем profit_percent от стоимости сделки
+            if position_value > 0:
+                profit_percent = (profit_usdt / position_value) * 100
             else:
                 profit_percent = 0.0
 
@@ -1152,18 +1177,34 @@ class NewTradingBot:
                 0.0
             ) or 0.0
             
+            # ✅ ОТЛАДКА: Логируем расчеты для диагностики
             if break_even_enabled and break_even_trigger > 0:
-                # Если нереализованная прибыль достигла триггера (процент от стоимости сделки), активируем защиту
-                if not self.break_even_activated and profit_percent >= break_even_trigger:
-                    self.break_even_activated = True
-                    logger.info(
-                        f"[NEW_BOT_{self.symbol}] 🛡️ Защита безубыточности активирована "
-                        f"(прибыль {profit_percent:.2f}% >= триггер {break_even_trigger:.2f}%)"
-                    )
-                
-                # Если защита активирована, устанавливаем/обновляем стоп
-                if self.break_even_activated:
+                logger.debug(
+                    f"[NEW_BOT_{self.symbol}] 🔍 Break-even проверка: "
+                    f"profit={profit_percent:.2f}%, trigger={break_even_trigger:.2f}%, "
+                    f"activated={self.break_even_activated}, "
+                    f"position_size={position_size_coins:.6f}, position_value={position_value:.2f}, profit_usdt={profit_usdt:.4f}"
+                )
+            
+            if break_even_enabled and break_even_trigger > 0:
+                # ✅ ИСПРАВЛЕНО: Если прибыль достигла триггера, активируем защиту
+                # Проверяем, нужно ли активировать защиту (даже если она уже была активирована ранее)
+                if profit_percent >= break_even_trigger:
+                    if not self.break_even_activated:
+                        self.break_even_activated = True
+                        logger.info(
+                            f"[NEW_BOT_{self.symbol}] 🛡️ Защита безубыточности активирована "
+                            f"(прибыль {profit_percent:.2f}% >= триггер {break_even_trigger:.2f}%)"
+                        )
+                    
+                    # Если защита активирована, устанавливаем/обновляем стоп
                     self._ensure_break_even_stop(current_price, force=False)
+                else:
+                    # ✅ ИСПРАВЛЕНО: Если прибыль упала ниже триггера, но защита уже была активирована,
+                    # защита остается активной (не деактивируем, чтобы защитить уже достигнутую прибыль)
+                    if self.break_even_activated:
+                        # Защита остается активной, обновляем стоп
+                        self._ensure_break_even_stop(current_price, force=False)
             else:
                 # Если защита отключена, деактивируем
                 if self.break_even_activated:
