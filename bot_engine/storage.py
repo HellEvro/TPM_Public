@@ -306,7 +306,8 @@ def save_process_state(process_state):
     
     try:
         if db.save_process_state(process_state):
-            logger.debug("💾 Состояние процессов сохранено в БД")
+            # Убрано избыточное DEBUG логирование для уменьшения спама
+            # logger.debug("💾 Состояние процессов сохранено в БД")
             return True
         return False
     except Exception as e:
