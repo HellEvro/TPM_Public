@@ -438,3 +438,4 @@ data/bots_data.db
 data/app_data.db
 data/ai_data.db
 data/app_data.db-shm
+data/bots_data.db-shm
