@@ -404,7 +404,7 @@ class InfoBotManager(tk.Tk):
         separator = ttk.Separator(main, orient="horizontal")
         separator.grid(row=1, column=0, sticky="ew", padx=4)
 
-        venv_frame = ttk.LabelFrame(main, text="1. Виртуальное окружение (управляется автоматически)", padding=10)
+        venv_frame = ttk.LabelFrame(main, text="1. Виртуальное окружение", padding=10)
         venv_frame.grid(row=2, column=0, sticky="new", padx=4, pady=(4, 4))
         venv_frame.columnconfigure(1, weight=1)
 
@@ -680,11 +680,114 @@ class InfoBotManager(tk.Tk):
         }
 
     def update_environment_status(self) -> None:
+        """Обновляет статус виртуального окружения"""
+        global PYTHON_EXECUTABLE
+        PYTHON_EXECUTABLE = _detect_python_executable()
+        
         if VENV_DIR.exists():
             python = "python.exe" if os.name == "nt" else "python"
             self.env_status_var.set(f"Готово: .venv найден (используется {python})")
+            self.venv_enabled_var.set(True)
         else:
-            self.env_status_var.set("Создание окружения... (выполняется автоматически)")
+            # Проверяем, есть ли ._venv (отключенное окружение)
+            disabled_venv = PROJECT_ROOT / "._venv"
+            if disabled_venv.exists():
+                self.env_status_var.set("Виртуальное окружение отключено (._venv)")
+            else:
+                self.env_status_var.set("Виртуальное окружение не создано")
+            self.venv_enabled_var.set(False)
+    
+    def toggle_venv(self) -> None:
+        """Переключает виртуальное окружение (включает/отключает через переименование)"""
+        global PYTHON_EXECUTABLE
+        
+        enabled = self.venv_enabled_var.get()
+        venv_dir = PROJECT_ROOT / ".venv"
+        disabled_venv_dir = PROJECT_ROOT / "._venv"
+        
+        # Останавливаем все сервисы перед переключением
+        running_services = [sid for sid, proc in self.processes.items() if proc.is_running]
+        if running_services:
+            if not messagebox.askyesno(
+                "Остановить сервисы?",
+                f"Для переключения виртуального окружения необходимо остановить все запущенные сервисы.\n\n"
+                f"Запущено сервисов: {len(running_services)}\n\n"
+                f"Остановить все сервисы и продолжить?"
+            ):
+                # Отменяем переключение
+                self.venv_enabled_var.set(not enabled)
+                return
+            self.stop_all_services()
+            self.log("[venv] Все сервисы остановлены для переключения окружения", channel="system")
+        
+        try:
+            if enabled:
+                # Включаем venv: переименовываем ._venv -> .venv
+                if disabled_venv_dir.exists():
+                    if venv_dir.exists():
+                        messagebox.showerror(
+                            "Ошибка",
+                            "Не удалось включить venv: .venv уже существует. Удалите один из каталогов вручную."
+                        )
+                        self.venv_enabled_var.set(False)
+                        return
+                    
+                    try:
+                        disabled_venv_dir.rename(venv_dir)
+                        self.log("[venv] ✅ Виртуальное окружение включено (.venv)", channel="system")
+                    except OSError as exc:
+                        messagebox.showerror("Ошибка", f"Не удалось переименовать ._venv в .venv: {exc}")
+                        self.venv_enabled_var.set(False)
+                        return
+                elif not venv_dir.exists():
+                    # Если нет ни .venv, ни ._venv, предлагаем создать
+                    if messagebox.askyesno(
+                        "Создать venv?",
+                        "Виртуальное окружение не найдено. Создать новое?"
+                    ):
+                        self._ensure_venv_with_dependencies(update_existing=False)
+                    else:
+                        self.venv_enabled_var.set(False)
+                        self.update_environment_status()
+                        return
+            else:
+                # Отключаем venv: переименовываем .venv -> ._venv
+                if venv_dir.exists():
+                    if disabled_venv_dir.exists():
+                        messagebox.showerror(
+                            "Ошибка",
+                            "Не удалось отключить venv: ._venv уже существует. Удалите один из каталогов вручную."
+                        )
+                        self.venv_enabled_var.set(True)
+                        return
+                    
+                    try:
+                        venv_dir.rename(disabled_venv_dir)
+                        self.log("[venv] ⏸️ Виртуальное окружение отключено (._venv)", channel="system")
+                    except OSError as exc:
+                        messagebox.showerror("Ошибка", f"Не удалось переименовать .venv в ._venv: {exc}")
+                        self.venv_enabled_var.set(True)
+                        return
+                else:
+                    # Если .venv не существует, просто обновляем статус
+                    self.log("[venv] Виртуальное окружение уже отключено", channel="system")
+            
+            # Обновляем Python executable и статус
+            PYTHON_EXECUTABLE = _detect_python_executable()
+            self.update_environment_status()
+            
+            if enabled:
+                self.log(f"[venv] Используется Python из venv: {PYTHON_EXECUTABLE}", channel="system")
+            else:
+                self.log(f"[venv] Используется системный Python: {PYTHON_EXECUTABLE}", channel="system")
+                
+        except Exception as exc:  # pylint: disable=broad-except
+            error_msg = f"Ошибка при переключении venv: {exc}"
+            self.log(f"[venv] ❌ {error_msg}", channel="system")
+            messagebox.showerror("Ошибка", error_msg)
+            # Восстанавливаем состояние
+            self.venv_enabled_var.set(not enabled)
+            self.update_environment_status()
 
     def _set_service_controls_enabled(self, enabled: bool) -> None:
         state = tk.NORMAL if enabled else tk.DISABLED
