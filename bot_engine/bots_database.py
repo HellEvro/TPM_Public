@@ -3815,21 +3815,14 @@ class BotsDatabase:
                         created_at = created_at_cache.get(symbol) or symbol_settings.get('created_at') or now
                         
                         # ✅ ИСПРАВЛЕНО: Упрощенный SQL запрос без подзапроса (все записи уже удалены)
-                        cursor.execute("""
-                            INSERT INTO individual_coin_settings (
-                                symbol, rsi_long_threshold, rsi_short_threshold,
-                                rsi_exit_long_with_trend, rsi_exit_long_against_trend,
-                                rsi_exit_short_with_trend, rsi_exit_short_against_trend,
-                                max_loss_percent, take_profit_percent,
-                                trailing_stop_activation, trailing_stop_distance,
-                                trailing_take_distance, trailing_update_interval,
-                                break_even_trigger, break_even_protection,
-                                max_position_hours, rsi_time_filter_enabled,
-                                rsi_time_filter_candles, rsi_time_filter_upper,
-                                rsi_time_filter_lower, avoid_down_trend,
-                                extra_settings_json, updated_at, created_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
+                        # ✅ ИСПРАВЛЕНО: Убрана лишняя колонка - проверяем что передаем ровно 24 значения для 24 колонок
+                        # Колонки в INSERT (24): symbol, rsi_long_threshold, rsi_short_threshold, rsi_exit_long_with_trend,
+                        # rsi_exit_long_against_trend, rsi_exit_short_with_trend, rsi_exit_short_against_trend,
+                        # max_loss_percent, take_profit_percent, trailing_stop_activation, trailing_stop_distance,
+                        # trailing_take_distance, trailing_update_interval, break_even_trigger, break_even_protection,
+                        # max_position_hours, rsi_time_filter_enabled, rsi_time_filter_candles, rsi_time_filter_upper,
+                        # rsi_time_filter_lower, avoid_down_trend, extra_settings_json, updated_at, created_at
+                        values_tuple = (
                             symbol,
                             symbol_settings.get('rsi_long_threshold'),
                             symbol_settings.get('rsi_short_threshold'),
@@ -3854,7 +3847,29 @@ class BotsDatabase:
                             extra_settings_json,
                             now,  # updated_at
                             created_at  # created_at
-                        ))
+                        )
+                        
+                        # ✅ ДИАГНОСТИКА: Проверяем количество значений перед выполнением запроса
+                        if len(values_tuple) != 24:
+                            logger.error(f"❌ ОШИБКА: Передается {len(values_tuple)} значений вместо 24 для символа {symbol}")
+                            logger.error(f"Значения: {values_tuple}")
+                            raise ValueError(f"Неверное количество значений: {len(values_tuple)} вместо 24")
+                        
+                        cursor.execute("""
+                            INSERT INTO individual_coin_settings (
+                                symbol, rsi_long_threshold, rsi_short_threshold,
+                                rsi_exit_long_with_trend, rsi_exit_long_against_trend,
+                                rsi_exit_short_with_trend, rsi_exit_short_against_trend,
+                                max_loss_percent, take_profit_percent,
+                                trailing_stop_activation, trailing_stop_distance,
+                                trailing_take_distance, trailing_update_interval,
+                                break_even_trigger, break_even_protection,
+                                max_position_hours, rsi_time_filter_enabled,
+                                rsi_time_filter_candles, rsi_time_filter_upper,
+                                rsi_time_filter_lower, avoid_down_trend,
+                                extra_settings_json, updated_at, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, values_tuple)
                     
                     conn.commit()
             
@@ -4726,33 +4741,45 @@ class BotsDatabase:
                     cursor.execute("SELECT COUNT(*) FROM candles_cache_data")
                     old_total_count = cursor.fetchone()[0]
                     
-                    # Удаляем ВСЕ старые свечи (эквивалент TRUNCATE в SQLite)
-                    cursor.execute("DELETE FROM candles_cache_data")
-                    deleted_total_count = cursor.rowcount
+                    # ✅ ИСПРАВЛЕНО: В SQLite rowcount может быть неточным, используем реальный подсчет
+                    # ⚠️ КРИТИЧНО: Используем DROP TABLE + CREATE TABLE вместо DELETE для гарантированной очистки
+                    # DELETE может не удалить все записи из-за блокировок, WAL режима или других проблем
+                    # DROP TABLE гарантирует полное удаление всех данных и освобождение места
+                    logger.debug(f"🗑️ Удаляем таблицу candles_cache_data для полной очистки (DROP TABLE)...")
+                    cursor.execute("DROP TABLE IF EXISTS candles_cache_data")
                     
-                    # ⚠️ КРИТИЧНО: Проверяем, что DELETE действительно удалил ВСЕ записи
+                    # Создаем таблицу заново с UNIQUE constraint
+                    cursor.execute("""
+                        CREATE TABLE candles_cache_data (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            cache_id INTEGER NOT NULL,
+                            time INTEGER NOT NULL,
+                            open REAL NOT NULL,
+                            high REAL NOT NULL,
+                            low REAL NOT NULL,
+                            close REAL NOT NULL,
+                            volume REAL NOT NULL,
+                            FOREIGN KEY (cache_id) REFERENCES candles_cache(id) ON DELETE CASCADE,
+                            UNIQUE(cache_id, time)
+                        )
+                    """)
+                    
+                    # Восстанавливаем индексы
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_candles_cache_data_cache_id ON candles_cache_data(cache_id)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_candles_cache_data_time ON candles_cache_data(time)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_candles_cache_data_cache_time ON candles_cache_data(cache_id, time)")
+                    
+                    # Проверяем, что таблица действительно пуста (после DROP TABLE она должна быть пуста)
                     cursor.execute("SELECT COUNT(*) FROM candles_cache_data")
                     count_after_delete = cursor.fetchone()[0]
+                    deleted_total_count = old_total_count  # Для логирования
                     
-                    if count_after_delete > 0:
-                        logger.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА! DELETE не удалил все записи! Осталось {count_after_delete:,} записей после DELETE!")
-                        # Пытаемся удалить еще раз принудительно
-                        cursor.execute("DELETE FROM candles_cache_data")
-                        deleted_again = cursor.rowcount
-                        cursor.execute("SELECT COUNT(*) FROM candles_cache_data")
-                        final_after_delete = cursor.fetchone()[0]
-                        if final_after_delete > 0:
-                            logger.critical(f"❌ КРИТИЧЕСКАЯ ПРОБЛЕМА! После повторного DELETE осталось {final_after_delete:,} записей! Возможна проблема с БД или транзакцией!")
-                            raise Exception(f"DELETE не работает! Осталось {final_after_delete:,} записей после двух попыток DELETE!")
-                        else:
-                            logger.warning(f"⚠️ Повторное удаление успешно удалило оставшиеся {deleted_again:,} записей")
-                            count_after_delete = 0  # Обновляем счетчик
+                    if count_after_delete != 0:
+                        logger.critical(f"❌ КРИТИЧЕСКАЯ ОШИБКА! После DROP TABLE + CREATE TABLE в таблице {count_after_delete:,} записей! Это невозможно!")
+                        raise Exception(f"DROP TABLE не работает! В таблице {count_after_delete:,} записей после пересоздания!")
                     
                     if old_total_count > 0:
-                        if count_after_delete == 0:
-                            logger.debug(f"🗑️ Удалено {deleted_total_count:,} старых свечей из кэша (TRUNCATE), проверка: таблица пуста ✅")
-                        else:
-                            logger.error(f"🗑️ Удалено {deleted_total_count:,} старых свечей, но осталось {count_after_delete:,} записей! ❌")
+                        logger.debug(f"🗑️ Удалено {deleted_total_count:,} старых свечей из кэша (DROP TABLE), проверка: таблица пуста ✅")
                     
                     # Теперь вставляем новые свечи для всех символов
                     all_candles_to_insert = []

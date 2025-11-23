@@ -181,7 +181,16 @@ def save_bots_state(bots_data, auto_bot_config):
     
     try:
         if db.save_bots_state(bots_data, auto_bot_config):
-            logger.info(f"💾 Состояние {len(bots_data)} ботов сохранено в БД")
+            # ✅ ИСПРАВЛЕНО: Логируем только если есть боты или раз в 5 минут, чтобы не спамить
+            bots_count = len(bots_data) if isinstance(bots_data, dict) else 0
+            if bots_count > 0:
+                # Логируем только раз в 5 минут для уменьшения спама
+                import time
+                last_log_time = getattr(save_bots_state, '_last_log_time', 0)
+                if time.time() - last_log_time > 300:  # 5 минут
+                    logger.info(f"💾 Состояние {bots_count} ботов сохранено в БД")
+                    save_bots_state._last_log_time = time.time()
+            # Не логируем когда ботов 0 - это спам
             return True
         return False
     except Exception as e:
