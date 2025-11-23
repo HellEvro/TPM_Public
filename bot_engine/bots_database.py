@@ -620,8 +620,16 @@ class BotsDatabase:
                     
                     # КРИТИЧНО: Обработка ошибки "attempt to write a readonly database"
                     elif "readonly" in error_str or "read-only" in error_str or "read only" in error_str:
-                        conn.rollback()
-                        conn.close()
+                        # ✅ ИСПРАВЛЕНО: Правильно закрываем соединение перед выходом из generator
+                        try:
+                            conn.rollback()
+                        except:
+                            pass
+                        try:
+                            conn.close()
+                        except:
+                            pass
+                        # ✅ КРИТИЧНО: Закрываем generator правильно, чтобы избежать "generator didn't stop after throw()"
                         logger.error(f"❌ КРИТИЧНО: БД открыта в режиме только для чтения: {self.db_path}")
                         logger.error(f"❌ Ошибка: {e}")
                         logger.warning("🔧 Попытка исправления прав доступа...")
@@ -633,7 +641,10 @@ class BotsDatabase:
                                     os.chmod(self.db_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH)
                                     logger.info("✅ Права доступа к файлу БД исправлены, повторяем операцию...")
                                     time.sleep(0.5)  # Небольшая задержка перед повтором
-                                    continue
+                                    # ✅ ИСПРАВЛЕНО: Выходим из try блока правильно, чтобы generator мог остановиться
+                                    # Используем break чтобы выйти из внутреннего try и повторить цикл
+                                    last_error = e
+                                    break  # Выходим из try: yield conn, чтобы повторить цикл
                                 else:
                                     logger.error("❌ Файл БД не существует")
                                     raise
@@ -3883,41 +3894,49 @@ class BotsDatabase:
                 
                 settings = {}
                 for row in rows:
+                    # ✅ ИСПРАВЛЕНО: Проверяем количество колонок в row для предотвращения IndexError
+                    if len(row) < 24:
+                        logger.warning(f"⚠️ Неожиданное количество колонок в individual_coin_settings: {len(row)}, ожидалось 24. Пропускаем строку.")
+                        continue
+                    
                     symbol = row[0]
+                    if not symbol:
+                        continue
+                    
                     settings_dict = {
-                        'rsi_long_threshold': row[1],
-                        'rsi_short_threshold': row[2],
-                        'rsi_exit_long_with_trend': row[3],
-                        'rsi_exit_long_against_trend': row[4],
-                        'rsi_exit_short_with_trend': row[5],
-                        'rsi_exit_short_against_trend': row[6],
-                        'max_loss_percent': row[7],
-                        'take_profit_percent': row[8],
-                        'trailing_stop_activation': row[9],
-                        'trailing_stop_distance': row[10],
-                        'trailing_take_distance': row[11],
-                        'trailing_update_interval': row[12],
-                        'break_even_trigger': row[13],
-                        'break_even_protection': row[14],
-                        'max_position_hours': row[15],
-                        'rsi_time_filter_enabled': bool(row[16]),
-                        'rsi_time_filter_candles': row[17],
-                        'rsi_time_filter_upper': row[18],
-                        'rsi_time_filter_lower': row[19],
-                        'avoid_down_trend': bool(row[20])
+                        'rsi_long_threshold': row[1] if len(row) > 1 else None,
+                        'rsi_short_threshold': row[2] if len(row) > 2 else None,
+                        'rsi_exit_long_with_trend': row[3] if len(row) > 3 else None,
+                        'rsi_exit_long_against_trend': row[4] if len(row) > 4 else None,
+                        'rsi_exit_short_with_trend': row[5] if len(row) > 5 else None,
+                        'rsi_exit_short_against_trend': row[6] if len(row) > 6 else None,
+                        'max_loss_percent': row[7] if len(row) > 7 else None,
+                        'take_profit_percent': row[8] if len(row) > 8 else None,
+                        'trailing_stop_activation': row[9] if len(row) > 9 else None,
+                        'trailing_stop_distance': row[10] if len(row) > 10 else None,
+                        'trailing_take_distance': row[11] if len(row) > 11 else None,
+                        'trailing_update_interval': row[12] if len(row) > 12 else None,
+                        'break_even_trigger': row[13] if len(row) > 13 else None,
+                        'break_even_protection': row[14] if len(row) > 14 else None,
+                        'max_position_hours': row[15] if len(row) > 15 else None,
+                        'rsi_time_filter_enabled': bool(row[16]) if len(row) > 16 else None,
+                        'rsi_time_filter_candles': row[17] if len(row) > 17 else None,
+                        'rsi_time_filter_upper': row[18] if len(row) > 18 else None,
+                        'rsi_time_filter_lower': row[19] if len(row) > 19 else None,
+                        'avoid_down_trend': bool(row[20]) if len(row) > 20 else None
                     }
                     
-                    # ✅ ИСПРАВЛЕНО: Добавляем updated_at и created_at
-                    if row[23]:  # updated_at
-                        settings_dict['updated_at'] = row[23]
-                    if row[24]:  # created_at
-                        settings_dict['created_at'] = row[24]
+                    # ✅ ИСПРАВЛЕНО: Добавляем updated_at и created_at с проверкой индексов
+                    if len(row) > 22 and row[22]:  # updated_at
+                        settings_dict['updated_at'] = row[22]
+                    if len(row) > 23 and row[23]:  # created_at
+                        settings_dict['created_at'] = row[23]
                     
                     # Удаляем None значения
                     settings_dict = {k: v for k, v in settings_dict.items() if v is not None}
                     
                     # Загружаем extra_settings_json если есть
-                    if row[21]:  # extra_settings_json
+                    if len(row) > 21 and row[21]:  # extra_settings_json
                         try:
                             extra_settings = json.loads(row[21])
                             settings_dict.update(extra_settings)
