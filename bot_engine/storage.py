@@ -457,6 +457,21 @@ def is_coin_delisted(symbol: str) -> bool:
 # Candles Cache
 def save_candles_cache(candles_cache: Dict) -> bool:
     """Сохраняет кэш свечей в БД"""
+    # ⚠️ КРИТИЧНО: Проверяем, что это НЕ процесс ai.py
+    # ai.py должен использовать ai_database.save_candles(), а не bots_data.db!
+    import os
+    import sys
+    is_ai_process = (
+        'ai.py' in os.path.basename(sys.argv[0]).lower() if sys.argv else False or
+        any('ai.py' in str(arg).lower() for arg in sys.argv) or
+        os.environ.get('INFOBOT_AI_PROCESS', '').lower() == 'true'
+    )
+    
+    if is_ai_process:
+        logger.warning("⚠️ БЛОКИРОВКА: ai.py пытается записать в bots_data.db через save_candles_cache()! "
+                      "Используйте ai_database.save_candles() вместо этого.")
+        return False
+    
     db = _get_bots_database()
     
     try:

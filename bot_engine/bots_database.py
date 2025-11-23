@@ -723,6 +723,19 @@ class BotsDatabase:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
+            # ==================== ТАБЛИЦА: МЕТАДАННЫЕ БД (создаем ПЕРВОЙ) ====================
+            # Создаем db_metadata ПЕРВОЙ, чтобы она была доступна для всех миграций
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS db_metadata (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    key TEXT UNIQUE NOT NULL,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_db_metadata_key ON db_metadata(key)")
+            
             # Миграция: добавляем новые поля если их нет
             self._migrate_schema(cursor, conn)
             
@@ -1093,20 +1106,6 @@ class BotsDatabase:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bot_trades_entry_time ON bot_trades_history(entry_timestamp)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bot_trades_exit_time ON bot_trades_history(exit_timestamp)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bot_trades_decision_source ON bot_trades_history(decision_source)")
-            
-            # ==================== ТАБЛИЦА: МЕТАДАННЫЕ БД ====================
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS db_metadata (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    key TEXT UNIQUE NOT NULL,
-                    value TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-            """)
-            
-            # Индексы для db_metadata
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_db_metadata_key ON db_metadata(key)")
             
             # Если БД новая - устанавливаем флаг что миграция не выполнена
             if not db_exists:
@@ -2419,6 +2418,7 @@ class BotsDatabase:
             # ==================== МИГРАЦИЯ ДАННЫХ: Перенос сделок из других БД ====================
             try:
                 # Проверяем, выполнена ли миграция данных из других БД
+                # db_metadata уже создана в начале _init_database
                 cursor.execute("""
                     SELECT value FROM db_metadata 
                     WHERE key = 'trades_migration_from_other_dbs'
@@ -4193,6 +4193,21 @@ class BotsDatabase:
         Returns:
             True если успешно сохранено
         """
+        # ⚠️ КРИТИЧНО: Проверяем, что это НЕ процесс ai.py
+        # ai.py должен использовать ai_database.save_candles(), а не bots_data.db!
+        import os
+        import sys
+        is_ai_process = (
+            'ai.py' in os.path.basename(sys.argv[0]).lower() if sys.argv else False or
+            any('ai.py' in str(arg).lower() for arg in sys.argv) or
+            os.environ.get('INFOBOT_AI_PROCESS', '').lower() == 'true'
+        )
+        
+        if is_ai_process:
+            logger.warning("⚠️ БЛОКИРОВКА: ai.py пытается записать в bots_data.db через BotsDatabase.save_candles_cache()! "
+                          "Используйте ai_database.save_candles() вместо этого.")
+            return False
+        
         try:
             now = datetime.now().isoformat()
             
