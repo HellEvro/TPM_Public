@@ -77,6 +77,29 @@ if os.path.exists(_bot_config_path):
                 sys.stderr.write(f"[INFO] ✅ Восстановлена локальная версия bot_config.py после git pull\n")
             except Exception:
                 pass
+        
+        # Автоматическая установка git hooks для защиты bot_config.py
+        try:
+            hooks_install_script = os.path.join(git_dir, 'scripts', 'install_git_hooks.py')
+            if os.path.exists(hooks_install_script):
+                # Проверяем, установлены ли уже хуки
+                hooks_target_dir = os.path.join(git_dir, '.git', 'hooks')
+                post_merge_hook = os.path.join(hooks_target_dir, 'post-merge')
+                if os.path.exists(hooks_target_dir) and not os.path.exists(post_merge_hook):
+                    # Устанавливаем хуки автоматически
+                    install_result = subprocess.run(
+                        [sys.executable, hooks_install_script],
+                        cwd=git_dir,
+                        timeout=10,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                    if install_result.returncode == 0:
+                        import sys
+                        sys.stderr.write(f"[INFO] ✅ Git hooks для защиты bot_config.py установлены автоматически\n")
+        except Exception:
+            # Игнорируем ошибки установки хуков
+            pass
             
     except Exception:
         # Игнорируем ошибки git (если это не git репозиторий или git не установлен)
