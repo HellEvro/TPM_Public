@@ -4550,6 +4550,14 @@ class BotsDatabase:
                         if cache_row:
                             cache_id = cache_row[0]
                             
+                            # ⚠️ КРИТИЧНО: Кэш должен ПЕРЕЗАПИСЫВАТЬСЯ, а не накапливаться!
+                            # Удаляем ВСЕ старые свечи для этого символа перед вставкой новых
+                            cursor.execute("""
+                                DELETE FROM candles_cache_data 
+                                WHERE cache_id = ?
+                            """, (cache_id,))
+                            deleted_old_count = cursor.rowcount
+                            
                             # ОГРАНИЧЕНИЕ: Сохраняем только последние N свечей для каждого символа
                             # Это предотвращает раздувание БД до огромных размеров
                             # 1000 свечей = ~250 дней истории (6h свечи) - более чем достаточно для всех нужд:
@@ -4566,49 +4574,31 @@ class BotsDatabase:
                             if len(candles_sorted) > MAX_CANDLES_PER_SYMBOL:
                                 logger.debug(f"   📊 {symbol}: Ограничено до {MAX_CANDLES_PER_SYMBOL} свечей (было {len(candles_sorted)})")
                             
-                            # ⚡ ОПТИМИЗИРОВАННОЕ УДАЛЕНИЕ: удаляем только старые свечи (быстро с индексом)
-                            # Используем индекс idx_candles_cache_data_cache_time для быстрого поиска
-                            if candles_to_save:
-                                min_time_to_keep = min(c.get('time') for c in candles_to_save if c.get('time'))
-                                # Удаляем все свечи старше минимального времени из новых
-                                cursor.execute("""
-                                    DELETE FROM candles_cache_data 
-                                    WHERE cache_id = ? AND time < ?
-                                """, (cache_id, min_time_to_keep))
-                            
                             # ⚡ ОПТИМИЗИРОВАННАЯ ВСТАВКА: используем executemany вместо цикла
-                            # Используем INSERT OR IGNORE для пропуска дубликатов
-                            cursor.executemany("""
-                                INSERT OR IGNORE INTO candles_cache_data 
-                                (cache_id, time, open, high, low, close, volume)
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
-                            """, [
-                                (
-                                    cache_id,
-                                    candle.get('time'),
-                                    candle.get('open'),
-                                    candle.get('high'),
-                                    candle.get('low'),
-                                    candle.get('close'),
-                                    candle.get('volume', 0)
-                                )
-                                for candle in candles_to_save
-                            ])
-                            
-                            # ⚡ ОПТИМИЗИРОВАННАЯ ПРОВЕРКА: удаляем лишние свечи БЕЗ COUNT(*)
-                            # Используем один запрос для удаления всех записей кроме последних MAX_CANDLES_PER_SYMBOL
-                            cursor.execute("""
-                                DELETE FROM candles_cache_data
-                                WHERE id IN (
-                                    SELECT id FROM candles_cache_data
-                                    WHERE cache_id = ?
-                                    ORDER BY time ASC
-                                    LIMIT (SELECT MAX(0, COUNT(*) - ?) FROM candles_cache_data WHERE cache_id = ?)
-                                )
-                            """, (cache_id, MAX_CANDLES_PER_SYMBOL, cache_id))
-                            deleted_count = cursor.rowcount
-                            if deleted_count > 0:
-                                logger.debug(f"   🗑️ {symbol}: Удалено {deleted_count} старых свечей (осталось ≤{MAX_CANDLES_PER_SYMBOL})")
+                            # Вставляем только новые свечи (старые уже удалены)
+                            if candles_to_save:
+                                cursor.executemany("""
+                                    INSERT INTO candles_cache_data 
+                                    (cache_id, time, open, high, low, close, volume)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                                """, [
+                                    (
+                                        cache_id,
+                                        candle.get('time'),
+                                        candle.get('open'),
+                                        candle.get('high'),
+                                        candle.get('low'),
+                                        candle.get('close'),
+                                        candle.get('volume', 0)
+                                    )
+                                    for candle in candles_to_save
+                                ])
+                                
+                                inserted_count = cursor.rowcount
+                                if deleted_old_count > 0:
+                                    logger.debug(f"   🔄 {symbol}: Перезаписан кэш (удалено {deleted_old_count} старых, вставлено {inserted_count} новых)")
+                                else:
+                                    logger.debug(f"   💾 {symbol}: Сохранено {inserted_count} свечей в кэш")
                     
                     conn.commit()
             
