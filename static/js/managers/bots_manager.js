@@ -5708,6 +5708,9 @@ class BotsManager {
                 scopeInput.value = value;
                 
                 console.log('[BotsManager] 🎯 Область действия изменена на:', value);
+                console.log('[BotsManager] 🔍 Проверка: autoBotScope.value =', scopeInput.value);
+                console.log('[BotsManager] 🔍 Проверка: autoBotScope.type =', scopeInput.type);
+                console.log('[BotsManager] 🔍 Проверка: autoBotScope.id =', scopeInput.id);
             });
         });
         
@@ -6536,6 +6539,7 @@ class BotsManager {
             'globalAutoBotToggle': 'enabled',
             'autoBotMaxConcurrent': 'max_concurrent',
             'autoBotRiskCap': 'risk_cap_percent',
+            'autoBotScope': 'scope',  // ✅ КРИТИЧЕСКИ ВАЖНО: маппинг для scope
             'autoBotAIEnabled': 'ai_enabled',
             'aiMinConfidence': 'ai_min_confidence',
             'aiOverrideOriginal': 'ai_override_original',
@@ -6638,12 +6642,13 @@ class BotsManager {
         }
         
         // Находим ВСЕ поля конфигурации: input, select, checkbox
-        const autoBotInputs = configTab.querySelectorAll('input[type="number"], input[type="text"], input[type="checkbox"], select');
+        // ✅ КРИТИЧЕСКИ ВАЖНО: Включаем скрытые input (hidden) для scope
+        const autoBotInputs = configTab.querySelectorAll('input[type="number"], input[type="text"], input[type="hidden"], input[type="checkbox"], select');
         
         // Также добавляем поля из секции AI, если она существует
         const aiConfigSection = document.getElementById('aiConfigSection');
         if (aiConfigSection) {
-            const aiInputs = aiConfigSection.querySelectorAll('input[type="number"], input[type="text"], input[type="checkbox"], select');
+            const aiInputs = aiConfigSection.querySelectorAll('input[type="number"], input[type="text"], input[type="hidden"], input[type="checkbox"], select');
             const uniqueInputs = new Set([...autoBotInputs, ...aiInputs]);
             this.collectFieldsFromElements(Array.from(uniqueInputs), autoBotConfig);
         } else {
@@ -6841,6 +6846,15 @@ class BotsManager {
             // Применяем значение только если оно изменилось
             const originalValue = this.originalConfig?.autoBot?.[configKey];
             
+            // ✅ КРИТИЧЕСКИ ВАЖНО: Специальная обработка для scope - всегда обновляем если значение изменилось
+            if (configKey === 'scope') {
+                if (value !== undefined && value !== null) {
+                    config[configKey] = value;
+                    console.log(`[BotsManager] 🔄 scope собран из UI: ${value} (было в originalConfig: ${originalValue || 'undefined'})`);
+                }
+                return; // Пропускаем остальную логику для scope
+            }
+            
             if (value !== undefined && value !== null) {
                 // Если originalValue undefined (новое поле), всегда устанавливаем значение
                 if (originalValue === undefined) {
@@ -6876,19 +6890,27 @@ class BotsManager {
     async saveBasicSettings() {
         console.log('[BotsManager] 💾 Сохранение основных настроек...');
         try {
+            // ✅ КРИТИЧЕСКИ ВАЖНО: Сначала получаем scope напрямую из UI
+            const scopeInput = document.getElementById('autoBotScope');
+            const scopeFromUI = scopeInput ? scopeInput.value : null;
+            console.log('[BotsManager] 🔍 scope из UI (autoBotScope):', scopeFromUI);
+            
             const config = this.collectConfigurationData();
+            console.log('[BotsManager] 🔍 scope из collectConfigurationData():', config.autoBot.scope);
+            
             const basicSettings = {
                 enabled: config.autoBot.enabled,
                 max_concurrent: config.autoBot.max_concurrent,
                 risk_cap_percent: config.autoBot.risk_cap_percent,
-                scope: config.autoBot.scope,
+                scope: scopeFromUI || config.autoBot.scope || 'all',  // ✅ Приоритет UI значению
                 ai_enabled: config.autoBot.ai_enabled,
                 ai_min_confidence: config.autoBot.ai_min_confidence,
                 ai_override_original: config.autoBot.ai_override_original
             };
             
             console.log('[BotsManager] 🔍 Основные настройки для сохранения:', basicSettings);
-            console.log('[BotsManager] 🔍 originalConfig.autoBot:', this.originalConfig?.autoBot);
+            console.log('[BotsManager] 🔍 originalConfig.autoBot.scope:', this.originalConfig?.autoBot?.scope);
+            console.log('[BotsManager] 🔍 Сравнение scope: UI=' + basicSettings.scope + ', original=' + (this.originalConfig?.autoBot?.scope || 'undefined'));
             
             await this.sendConfigUpdate('auto-bot', basicSettings, 'Основные настройки');
         } catch (error) {
@@ -7126,6 +7148,12 @@ class BotsManager {
         let changedCount = 0;
         
         console.log(`[BotsManager] 🔍 filterChangedParams: сравниваем ${Object.keys(data).length} параметров`);
+        // ✅ КРИТИЧЕСКИ ВАЖНО: Логируем scope для отладки
+        if (data.scope !== undefined) {
+            console.log(`[BotsManager] 🔍 SCOPE в data: "${data.scope}" (тип: ${typeof data.scope})`);
+            console.log(`[BotsManager] 🔍 SCOPE в original: "${original.scope}" (тип: ${typeof original.scope})`);
+            console.log(`[BotsManager] 🔍 SCOPE сравнение: ${data.scope} !== ${original.scope} = ${data.scope !== original.scope}`);
+        }
         
         for (const [key, value] of Object.entries(data)) {
             const originalValue = original[key];
@@ -7171,15 +7199,17 @@ class BotsManager {
                     console.log(`[BotsManager] ⏭️ Пропущен ${key}: ${originalValue} == ${value} (не изменился)`);
                 }
             }
-            // ✅ ОСОБАЯ ОБРАБОТКА ДЛЯ scope - всегда логируем сравнение
+            // ✅ ОСОБАЯ ОБРАБОТКА ДЛЯ scope - ВСЕГДА проверяем первым!
             else if (key === 'scope') {
-                console.log(`[BotsManager] 🔍 Сравнение scope: текущее="${value}" (тип: ${typeof value}), оригинальное="${originalValue}" (тип: ${typeof originalValue})`);
-                if (value !== originalValue) {
+                console.log(`[BotsManager] 🔍 [SCOPE] Сравнение scope: текущее="${value}" (тип: ${typeof value}), оригинальное="${originalValue}" (тип: ${typeof originalValue})`);
+                console.log(`[BotsManager] 🔍 [SCOPE] Строгое сравнение: ${value} !== ${originalValue} = ${value !== originalValue}`);
+                // ✅ КРИТИЧЕСКИ ВАЖНО: Для scope всегда проверяем изменение, даже если originalValue undefined
+                if (originalValue === undefined || value !== originalValue) {
                     filtered[key] = value;
                     changedCount++;
-                    console.log(`[BotsManager] 🔄 Изменен scope: ${originalValue} → ${value}`);
+                    console.log(`[BotsManager] ✅ [SCOPE] Изменен scope: ${originalValue || 'undefined'} → ${value} (ДОБАВЛЕН В ИЗМЕНЕННЫЕ!)`);
                 } else {
-                    console.log(`[BotsManager] ⏭️ Пропущен scope: ${originalValue} == ${value} (не изменился)`);
+                    console.log(`[BotsManager] ⏭️ [SCOPE] Пропущен scope: ${originalValue} == ${value} (не изменился)`);
                 }
             }
             // Для остальных типов: точное сравнение
@@ -7193,8 +7223,18 @@ class BotsManager {
         }
         
         console.log(`[BotsManager] 📊 Отфильтровано: ${changedCount} из ${Object.keys(data).length} параметров изменены`);
+        // ✅ КРИТИЧЕСКИ ВАЖНО: Логируем scope в результате
+        if (data.scope !== undefined) {
+            if (filtered.scope !== undefined) {
+                console.log(`[BotsManager] ✅ [SCOPE] scope ПОПАЛ В ОТПРАВЛЯЕМЫЕ ПАРАМЕТРЫ: "${filtered.scope}"`);
+            } else {
+                console.log(`[BotsManager] ❌ [SCOPE] scope НЕ ПОПАЛ В ОТПРАВЛЯЕМЫЕ ПАРАМЕТРЫ! data.scope="${data.scope}", original.scope="${original.scope}"`);
+            }
+        }
         if (changedCount > 0) {
             console.log(`[BotsManager] 📤 Отправляемые параметры:`, filtered);
+        } else {
+            console.log(`[BotsManager] ⚠️ НЕТ ИЗМЕНЕННЫХ ПАРАМЕТРОВ! Все ${Object.keys(data).length} параметров без изменений`);
         }
         return filtered;
     }
@@ -7240,6 +7280,11 @@ class BotsManager {
                         }
                     }
                     console.log(`[BotsManager] 💾 originalConfig обновлен после сохранения ${sectionName}`);
+                    console.log(`[BotsManager] 🔍 Обновленные параметры в originalConfig:`, Object.keys(filteredData));
+                    // ✅ КРИТИЧЕСКИ ВАЖНО: Логируем scope для отладки
+                    if (filteredData.scope !== undefined) {
+                        console.log(`[BotsManager] ✅ scope обновлен в originalConfig: ${this.originalConfig.autoBot.scope}`);
+                    }
                 }
                 
                 // ✅ ПЕРЕЗАГРУЖАЕМ КОНФИГУРАЦИЮ ДЛЯ ОБНОВЛЕНИЯ UI (особенно важно для Enhanced RSI)

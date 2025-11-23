@@ -65,12 +65,12 @@ class VolumeMode:
 
 # Настройки Auto Bot по умолчанию
 DEFAULT_AUTO_BOT_CONFIG = {
-    'enabled': False,
+    'enabled': True,
     'max_concurrent': 50,
     'risk_cap_percent': 10,
     'scope': 'all',  # all | whitelist | blacklist
-    'whitelist': ['BTC'],
-    'blacklist': ['ETHBTC'],
+    'whitelist': [],
+    'blacklist': [],
     # RSI параметры согласно ТЗ
     'rsi_long_threshold': 29,   # Вход в LONG при RSI <= 29
     'rsi_short_threshold': 71,  # Вход в SHORT при RSI >= 71
@@ -128,7 +128,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'exit_scam_multi_candle_percent': 50,   # Максимальный суммарный % за N свечей (50% = блокировка)
     # 🤖 ИИ настройки (премиум функции)
     'ai_optimal_entry_enabled': False,  # ИИ определение оптимальной точки входа (выкл. по умолчанию)
-    'ai_enabled': False, # Включить подтверждение сигналов AI
+    'ai_enabled': True, # Включить подтверждение сигналов AI
     'ai_min_confidence': 0.7,          # Минимальная уверенность AI (0.0-1.0)
     'ai_override_original': True,      # AI может блокировать решения скрипта
 }
