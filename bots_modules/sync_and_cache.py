@@ -648,12 +648,14 @@ def save_bots_state():
             for symbol, bot_data in bots_data['bots'].items():
                 bots_data_to_save[symbol] = bot_data
             
-            # Получаем конфигурацию Auto Bot
-            auto_bot_config_to_save = bots_data['auto_bot_config'].copy()
+            # ✅ УБРАНО: auto_bot_config больше НЕ сохраняется в БД
+            # Настройки хранятся ТОЛЬКО в bot_engine/bot_config.py через config_writer
+            # Передаем пустой словарь, чтобы не сохранять в БД
+            auto_bot_config_to_save = {}
         finally:
             bots_data_lock.release()
         
-        # ✅ Сохраняем в БД через storage.py
+        # ✅ Сохраняем в БД через storage.py (только боты, без auto_bot_config)
         success = storage_save_bots_state(bots_data_to_save, auto_bot_config_to_save)
         if not success:
             logger.error("[SAVE_STATE] ❌ Ошибка сохранения состояния в БД")

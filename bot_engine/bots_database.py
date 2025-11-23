@@ -3144,15 +3144,9 @@ class BotsDatabase:
                             logger.warning(f"⚠️ Ошибка сохранения бота {symbol}: {e}")
                             continue
                     
-                    # Сохраняем auto_bot_config
-                    for key, value in auto_bot_config.items():
-                        try:
-                            cursor.execute("""
-                                INSERT OR REPLACE INTO auto_bot_config (key, value, updated_at, created_at)
-                                VALUES (?, ?, ?, COALESCE((SELECT created_at FROM auto_bot_config WHERE key = ?), ?))
-                            """, (key, json.dumps(value) if not isinstance(value, (str, int, float, bool)) else str(value), now, key, now))
-                        except Exception as e:
-                            logger.warning(f"⚠️ Ошибка сохранения auto_bot_config.{key}: {e}")
+                    # ✅ УБРАНО: auto_bot_config больше НЕ сохраняется в БД
+                    # Настройки хранятся ТОЛЬКО в bot_engine/bot_config.py
+                    # Это гарантирует, что настройки не перезаписываются при перезапуске
                     
                     conn.commit()
             
@@ -3290,22 +3284,13 @@ class BotsDatabase:
                     
                     bots_data[symbol] = bot_dict
                 
-                # Загружаем auto_bot_config
-                cursor.execute("SELECT key, value FROM auto_bot_config")
-                config_rows = cursor.fetchall()
-                auto_bot_config = {}
-                for config_row in config_rows:
-                    key = config_row[0]
-                    value = config_row[1]
-                    try:
-                        # Пытаемся распарсить как JSON, если не получается - оставляем как строку
-                        auto_bot_config[key] = json.loads(value)
-                    except:
-                        auto_bot_config[key] = value
+                # ✅ УБРАНО: auto_bot_config больше НЕ загружается из БД
+                # Настройки читаются ТОЛЬКО из bot_engine/bot_config.py
+                # Это гарантирует, что настройки не перезаписываются при перезапуске
                 
                 return {
                     'bots': bots_data,
-                    'auto_bot_config': auto_bot_config,
+                    'auto_bot_config': {},  # Пустой словарь - настройки загружаются из файла
                     'version': '2.0'  # Новая версия с нормализованной структурой
                 }
         except Exception as e:

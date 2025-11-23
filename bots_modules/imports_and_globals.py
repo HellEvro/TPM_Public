@@ -647,25 +647,18 @@ def load_auto_bot_config():
         
         from bot_engine.bot_config import DEFAULT_AUTO_BOT_CONFIG
 
-        # ✅ ПРИОРИТЕТ: bot_config.py - это основной источник истины
-        # Начинаем с конфигурации из bot_config.py
+        # ✅ ЕДИНСТВЕННЫЙ источник истины: bot_engine/bot_config.py
+        # Все настройки загружаются ТОЛЬКО из файла, БД не используется для auto_bot_config
         merged_config = DEFAULT_AUTO_BOT_CONFIG.copy()
         
-        # ✅ Логируем подробности ТОЛЬКО при первом вызове или при реальном изменении файла
-        # (не логируем при принудительной перезагрузке модуля из API, чтобы не спамить)
-        should_log_verbose = (reloaded and load_auto_bot_config._last_mtime != 0) or not getattr(load_auto_bot_config, '_logged_once', False)
-        if should_log_verbose:
-            # Детальное логирование убрано для уменьшения спама (переведено в DEBUG если нужно)
-            load_auto_bot_config._logged_once = True
-        # ✅ УБРАНО: Логирование "без изменений" создавало спам в логах при частых вызовах из API
-
         # ✅ Загружаем фильтры (whitelist, blacklist, scope) из БД и объединяем с конфигурацией
+        # Фильтры хранятся в БД, но основные настройки - только в файле
         try:
             from bot_engine.bots_database import get_bots_database
             db = get_bots_database()
             filters_data = db.load_coin_filters()
             
-            # Объединяем фильтры из БД с конфигурацией (БД имеет приоритет)
+            # Объединяем фильтры из БД с конфигурацией (БД имеет приоритет для фильтров)
             if 'whitelist' in filters_data:
                 merged_config['whitelist'] = filters_data['whitelist']
             if 'blacklist' in filters_data:
@@ -686,6 +679,14 @@ def load_auto_bot_config():
                 merged_config['blacklist'] = []
             if 'scope' not in merged_config:
                 merged_config['scope'] = 'all'
+        
+        # ✅ Логируем подробности ТОЛЬКО при первом вызове или при реальном изменении файла
+        # (не логируем при принудительной перезагрузке модуля из API, чтобы не спамить)
+        should_log_verbose = (reloaded and load_auto_bot_config._last_mtime != 0) or not getattr(load_auto_bot_config, '_logged_once', False)
+        if should_log_verbose:
+            # Детальное логирование убрано для уменьшения спама (переведено в DEBUG если нужно)
+            load_auto_bot_config._logged_once = True
+        # ✅ УБРАНО: Логирование "без изменений" создавало спам в логах при частых вызовах из API
         
         # ✅ ВСЕГДА обновляем bots_data, даже если файл не изменился
         # Это гарантирует, что данные всегда актуальны, особенно после принудительной перезагрузки модуля в API
