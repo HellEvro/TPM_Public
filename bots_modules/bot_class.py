@@ -1091,6 +1091,7 @@ class NewTradingBot:
         После установки на бирже, защитный стоп больше не обновляется, чтобы не сбивать трейлинг-стоп.
         """
         if not self.exchange or self.position_side not in ('LONG', 'SHORT'):
+            logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Не могу установить break-even стоп: exchange={self.exchange is not None}, position_side={self.position_side}")
             return
 
         # ✅ ИСПРАВЛЕНО: Если защитный стоп уже установлен на бирже, не обновляем его
@@ -1101,28 +1102,22 @@ class NewTradingBot:
 
         stop_price = self._calculate_break_even_stop_price(current_price)
         if stop_price is None:
+            logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Не могу установить break-even стоп: stop_price=None (возможно, нет entry_price или quantity)")
             return
 
-        # ✅ ИСПРАВЛЕНО: Если стоп уже рассчитан и сохранен, но еще не установлен на бирже, устанавливаем его
-        if not force and self.break_even_stop_price is not None:
-            tolerance = 1e-8
-            if self.position_side == 'LONG':
-                if stop_price <= self.break_even_stop_price + tolerance:
-                    # Стоп уже рассчитан, но еще не установлен на бирже - устанавливаем
-                    if not self.break_even_stop_set:
-                        stop_price = self.break_even_stop_price
-                    else:
-                        return
-            else:  # SHORT
-                if stop_price >= self.break_even_stop_price - tolerance:
-                    # Стоп уже рассчитан, но еще не установлен на бирже - устанавливаем
-                    if not self.break_even_stop_set:
-                        stop_price = self.break_even_stop_price
-                    else:
-                        return
+        # ✅ ИСПРАВЛЕНО: Если стоп уже установлен на бирже (break_even_stop_set=True), не обновляем его
+        # Если стоп еще не установлен на бирже, устанавливаем новый рассчитанный стоп
+        if not force and self.break_even_stop_set:
+            logger.debug(f"[NEW_BOT_{self.symbol}] 🛡️ Защитный стоп уже установлен на бирже (break_even_stop_set=True), пропускаем")
+            return
 
         try:
             previous_stop = self.break_even_stop_price
+            logger.debug(
+                f"[NEW_BOT_{self.symbol}] 🔧 Пытаюсь установить break-even стоп: "
+                f"stop_price={stop_price:.6f}, previous_stop={previous_stop}, "
+                f"break_even_stop_set={self.break_even_stop_set}, force={force}"
+            )
             result = self.exchange.update_stop_loss(self.symbol, stop_price, self.position_side)
             if result and result.get('success'):
                 is_update = previous_stop is not None
@@ -1150,10 +1145,10 @@ class NewTradingBot:
             else:
                 logger.warning(
                     f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось установить break-even стоп: "
-                    f"{(result or {}).get('message', 'Unknown')}"
+                    f"result={result}, message={(result or {}).get('message', 'Unknown')}"
                 )
         except Exception as exc:
-            logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка установки break-even стопа: {exc}")
+            logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка установки break-even стопа: {exc}", exc_info=True)
 
     def check_protection_mechanisms(self, current_price):
         """Проверяет все защитные механизмы"""

@@ -98,6 +98,63 @@ class AIContinuousLearning:
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения базы знаний в БД: {e}")
     
+    def _should_train_on_symbol(self, symbol: str) -> bool:
+        """
+        Проверяет, должна ли монета использоваться для обучения AI на основе whitelist/blacklist.
+        
+        Логика:
+        - Если scope == 'whitelist' ИЛИ (scope == 'all' и whitelist не пуст) -> обучаться только на монетах из whitelist
+        - Если scope == 'blacklist' -> исключить монеты из blacklist (но если whitelist не пуст, то использовать whitelist)
+        - Если scope == 'all' и whitelist пуст -> использовать все монеты кроме blacklist
+        
+        Args:
+            symbol: Символ монеты для проверки
+            
+        Returns:
+            True если монета должна использоваться для обучения, False иначе
+        """
+        if not symbol:
+            return False
+        
+        symbol_upper = symbol.upper()
+        
+        try:
+            # Пробуем получить конфигурацию из bots_data
+            from bots_modules.imports_and_globals import bots_data, bots_data_lock
+            with bots_data_lock:
+                auto_config = bots_data.get('auto_bot_config', {})
+        except ImportError:
+            # Fallback: используем helper модуль
+            try:
+                from bot_engine.ai.bots_data_helper import get_auto_bot_config
+                auto_config = get_auto_bot_config() or {}
+            except Exception:
+                # Если не удалось загрузить конфигурацию, используем все монеты
+                return True
+        
+        scope = auto_config.get('scope', 'all')
+        whitelist = auto_config.get('whitelist', []) or []
+        blacklist = auto_config.get('blacklist', []) or []
+        
+        # Нормализуем списки (верхний регистр)
+        whitelist = [coin.upper() for coin in whitelist if coin]
+        blacklist = [coin.upper() for coin in blacklist if coin]
+        
+        # Если whitelist не пуст (независимо от scope), обучаемся только на монетах из whitelist
+        if whitelist:
+            return symbol_upper in whitelist
+        
+        # Если scope == 'whitelist' но whitelist пуст, не обучаемся ни на чем
+        if scope == 'whitelist':
+            return False
+        
+        # Если scope == 'blacklist', исключаем монеты из blacklist
+        if scope == 'blacklist':
+            return symbol_upper not in blacklist
+        
+        # scope == 'all': исключаем только blacklist
+        return symbol_upper not in blacklist
+    
     def analyze_trade_results(self, trades: List[Dict]) -> Dict:
         """
         Анализирует результаты сделок и извлекает знания
@@ -347,6 +404,21 @@ class AIContinuousLearning:
         logger.info("=" * 80)
         logger.info("🧠 ПОСТОЯННОЕ ОБУЧЕНИЕ НА РЕАЛЬНЫХ СДЕЛКАХ")
         logger.info("=" * 80)
+        
+        # Фильтруем сделки по whitelist/blacklist
+        original_trades_count = len(trades)
+        filtered_trades = []
+        for trade in trades:
+            symbol = trade.get('symbol', '')
+            if self._should_train_on_symbol(symbol):
+                filtered_trades.append(trade)
+        
+        trades = filtered_trades
+        filtered_count = len(trades)
+        skipped_by_filter = original_trades_count - filtered_count
+        
+        if skipped_by_filter > 0:
+            logger.info(f"🎯 Фильтрация по whitelist/blacklist: {original_trades_count} → {filtered_count} сделок ({skipped_by_filter} пропущено)")
         
         if len(trades) < 10:
             logger.info(f"⏳ Недостаточно сделок для обучения (есть {len(trades)}, нужно минимум 10)")

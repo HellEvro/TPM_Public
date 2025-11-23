@@ -103,6 +103,64 @@ def _get_config_snapshot(symbol: Optional[str] = None) -> Dict[str, Any]:
         }
 
 
+def _should_train_on_symbol(symbol: str) -> bool:
+    """
+    Проверяет, должна ли монета использоваться для обучения AI на основе whitelist/blacklist.
+    
+    Логика:
+    - Если scope == 'whitelist' ИЛИ (scope == 'all' и whitelist не пуст) -> обучаться только на монетах из whitelist
+    - Если scope == 'blacklist' -> исключить монеты из blacklist (но если whitelist не пуст, то использовать whitelist)
+    - Если scope == 'all' и whitelist пуст -> использовать все монеты кроме blacklist
+    
+    Args:
+        symbol: Символ монеты для проверки
+        
+    Returns:
+        True если монета должна использоваться для обучения, False иначе
+    """
+    if not symbol:
+        return False
+    
+    symbol_upper = symbol.upper()
+    
+    try:
+        # Пробуем получить конфигурацию из bots_data
+        from bots_modules.imports_and_globals import bots_data, bots_data_lock
+        with bots_data_lock:
+            auto_config = bots_data.get('auto_bot_config', {})
+    except ImportError:
+        # Fallback: используем helper модуль
+        try:
+            from bot_engine.ai.bots_data_helper import get_auto_bot_config
+            auto_config = get_auto_bot_config() or {}
+        except Exception:
+            # Если не удалось загрузить конфигурацию, используем все монеты
+            return True
+    
+    scope = auto_config.get('scope', 'all')
+    whitelist = auto_config.get('whitelist', []) or []
+    blacklist = auto_config.get('blacklist', []) or []
+    
+    # Нормализуем списки (верхний регистр)
+    whitelist = [coin.upper() for coin in whitelist if coin]
+    blacklist = [coin.upper() for coin in blacklist if coin]
+    
+    # Если whitelist не пуст (независимо от scope), обучаемся только на монетах из whitelist
+    if whitelist:
+        return symbol_upper in whitelist
+    
+    # Если scope == 'whitelist' но whitelist пуст, не обучаемся ни на чем
+    if scope == 'whitelist':
+        return False
+    
+    # Если scope == 'blacklist', исключаем монеты из blacklist
+    if scope == 'blacklist':
+        return symbol_upper not in blacklist
+    
+    # scope == 'all': исключаем только blacklist
+    return symbol_upper not in blacklist
+
+
 class AITrainer:
     """
     Класс для обучения AI моделей
@@ -1627,6 +1685,33 @@ class AITrainer:
                 return
             
             logger.info(f"📊 Загружено {len(trades)} сделок для обучения")
+            
+            # Фильтруем сделки по whitelist/blacklist
+            original_trades_count = len(trades)
+            filtered_trades = []
+            for trade in trades:
+                symbol = trade.get('symbol', '')
+                if _should_train_on_symbol(symbol):
+                    filtered_trades.append(trade)
+            
+            trades = filtered_trades
+            filtered_count = len(trades)
+            skipped_by_filter = original_trades_count - filtered_count
+            
+            if skipped_by_filter > 0:
+                logger.info(f"🎯 Фильтрация по whitelist/blacklist: {original_trades_count} → {filtered_count} сделок ({skipped_by_filter} пропущено)")
+            
+            if len(trades) < 10:
+                logger.warning(f"⚠️ Недостаточно данных для обучения после фильтрации (нужно минимум 10, есть {len(trades)})")
+                logger.info("💡 Накопите больше сделок для качественного обучения")
+                self._record_training_event(
+                    'history_trades_training',
+                    status='SKIPPED',
+                    reason='not_enough_trades_after_filter',
+                    samples=len(trades)
+                )
+                return
+            
             logger.info(f"📈 Анализируем сделки...")
             
             # Подготавливаем данные
@@ -2863,6 +2948,20 @@ class AITrainer:
                 skipped_count = original_count - filtered_count
                 if skipped_count > 0:
                     logger.info(f"📊 Фильтрация по зрелости: {original_count} → {filtered_count} монет ({skipped_count} незрелых пропущено)")
+            
+            # Фильтруем монеты по whitelist/blacklist для обучения
+            original_count_after_maturity = len(candles_data)
+            filtered_candles_data = {}
+            for symbol, data in candles_data.items():
+                if _should_train_on_symbol(symbol):
+                    filtered_candles_data[symbol] = data
+            
+            candles_data = filtered_candles_data
+            filtered_count_after_whitelist = len(candles_data)
+            skipped_by_whitelist = original_count_after_maturity - filtered_count_after_whitelist
+            
+            if skipped_by_whitelist > 0:
+                logger.info(f"🎯 Фильтрация по whitelist/blacklist: {original_count_after_maturity} → {filtered_count_after_whitelist} монет ({skipped_by_whitelist} пропущено)")
             
             # Сокращенный лог начала обучения
             total_coins = len(candles_data)
