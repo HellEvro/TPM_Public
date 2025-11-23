@@ -1058,10 +1058,11 @@ class NewTradingBot:
             stop_price = max(stop_price, entry_price)
             
             # ✅ ОТЛАДКА: Логируем финальный расчет для LONG
+            price_str = f"{price:.6f}" if price is not None else "None"
             logger.debug(
                 f"[NEW_BOT_{self.symbol}] 🔍 Break-even LONG: "
                 f"entry={entry_price:.6f}, protected_per_coin={protected_profit_per_coin:.6f}, "
-                f"stop_price={stop_price:.6f}, current_price={price:.6f if price else 'None'}"
+                f"stop_price={stop_price:.6f}, current_price={price_str}"
             )
         else:  # SHORT
             # ✅ Для SHORT: стоп на уровне entry_price - protected_profit_per_coin
@@ -1075,10 +1076,11 @@ class NewTradingBot:
             stop_price = min(stop_price, entry_price)
             
             # ✅ ОТЛАДКА: Логируем финальный расчет для SHORT
+            price_str = f"{price:.6f}" if price is not None else "None"
             logger.debug(
                 f"[NEW_BOT_{self.symbol}] 🔍 Break-even SHORT: "
                 f"entry={entry_price:.6f}, protected_per_coin={protected_profit_per_coin:.6f}, "
-                f"stop_price={stop_price:.6f}, current_price={price:.6f if price else 'None'}"
+                f"stop_price={stop_price:.6f}, current_price={price_str}"
             )
 
         return stop_price
