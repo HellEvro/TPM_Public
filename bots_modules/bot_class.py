@@ -1120,14 +1120,28 @@ class NewTradingBot:
             if entry_price is None or current_price is None or entry_price == 0:
                 return
 
+            # Рассчитываем процент изменения цены (для max_profit_achieved и других целей)
             if self.position_side == 'LONG':
-                profit_percent = ((current_price - entry_price) / entry_price) * 100
+                price_change_percent = ((current_price - entry_price) / entry_price) * 100
             else:
-                profit_percent = ((entry_price - current_price) / entry_price) * 100
+                price_change_percent = ((entry_price - current_price) / entry_price) * 100
 
-            if profit_percent > self.max_profit_achieved:
-                self.max_profit_achieved = profit_percent
-                logger.debug(f"[NEW_BOT_{self.symbol}] 📈 Обновлена максимальная прибыль: {profit_percent:.2f}%")
+            if price_change_percent > self.max_profit_achieved:
+                self.max_profit_achieved = price_change_percent
+                logger.debug(f"[NEW_BOT_{self.symbol}] 📈 Обновлена максимальная прибыль: {price_change_percent:.2f}%")
+
+            # ✅ ИСПРАВЛЕНО: Рассчитываем profit_percent как процент от СТОИМОСТИ СДЕЛКИ (position_value)
+            # Триггер защиты безубыточности - это процент от стоимости сделки, а не от цены
+            position_size_coins = self._get_position_quantity()
+            if position_size_coins > 0:
+                position_value = entry_price * position_size_coins
+                if self.position_side == 'LONG':
+                    profit_usdt = position_size_coins * (current_price - entry_price)
+                else:
+                    profit_usdt = position_size_coins * (entry_price - current_price)
+                profit_percent = (profit_usdt / position_value) * 100 if position_value > 0 else 0.0
+            else:
+                profit_percent = 0.0
 
             # ✅ ИСПРАВЛЕНО: Добавлен вызов установки break-even стопа
             # Проверяем, активирована ли защита безубыточности
@@ -1139,7 +1153,7 @@ class NewTradingBot:
             ) or 0.0
             
             if break_even_enabled and break_even_trigger > 0:
-                # Если прибыль достигла триггера, активируем защиту
+                # Если нереализованная прибыль достигла триггера (процент от стоимости сделки), активируем защиту
                 if not self.break_even_activated and profit_percent >= break_even_trigger:
                     self.break_even_activated = True
                     logger.info(
@@ -1157,7 +1171,8 @@ class NewTradingBot:
                     self.break_even_stop_price = None
                     logger.info(f"[NEW_BOT_{self.symbol}] 🛡️ Защита безубыточности деактивирована (отключена в конфиге)")
 
-            self._update_trailing_stops(current_price, profit_percent)
+            # Для trailing используем процент изменения цены (как в других функциях)
+            self._update_trailing_stops(current_price, price_change_percent)
 
         except Exception as e:
             logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка обновления защитных механизмов: {e}")
