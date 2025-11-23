@@ -215,6 +215,7 @@ class BotsManager {
                 '#rsiExitShort',
                 '#defaultPositionSize',
                 '#defaultPositionMode',
+                '#leverage',
                 '#autoBotMaxConcurrent',
                 '#autoBotRiskCap'
             ];
@@ -2666,6 +2667,7 @@ class BotsManager {
             const config = {
                 volume_mode: document.getElementById('volumeModeSelect')?.value || 'usdt',
                 volume_value: parseFloat(document.getElementById('volumeValueInput')?.value || '10'),
+                leverage: parseInt(document.getElementById('leverageCoinInput')?.value || '1'),
                 // Добавляем индивидуальные настройки бота
                 ...duplicateSettings
             };
@@ -3330,6 +3332,11 @@ class BotsManager {
             volumeValueEl.value = settings.volume_value;
         }
         
+        const leverageCoinEl = document.getElementById('leverageCoinInput');
+        if (leverageCoinEl && settings.leverage !== undefined) {
+            leverageCoinEl.value = settings.leverage;
+        }
+        
         // ✅ Enhanced RSI настройки для индивидуальных настроек монеты
         const enhancedRsiEnabledDupEl = document.getElementById('enhancedRsiEnabledDup');
         if (enhancedRsiEnabledDupEl) {
@@ -3596,6 +3603,13 @@ class BotsManager {
                 }
                 
                 const settings = this.collectDuplicateSettings();
+                // Добавляем основные настройки торговли (volume_mode, volume_value, leverage)
+                const volumeModeEl = document.getElementById('volumeModeSelect');
+                if (volumeModeEl) settings.volume_mode = volumeModeEl.value;
+                const volumeValueEl = document.getElementById('volumeValueInput');
+                if (volumeValueEl) settings.volume_value = parseFloat(volumeValueEl.value) || 10;
+                const leverageCoinEl = document.getElementById('leverageCoinInput');
+                if (leverageCoinEl) settings.leverage = parseInt(leverageCoinEl.value) || 1;
                 await this.saveIndividualSettings(this.selectedCoin.symbol, settings);
             });
         }
@@ -5863,6 +5877,12 @@ class BotsManager {
             console.log('[BotsManager] 🔄 Режим размера позиции:', positionModeEl.value);
         }
         
+        const leverageEl = document.getElementById('leverage');
+        if (leverageEl) {
+            leverageEl.value = autoBotConfig.leverage || 1;
+            console.log('[BotsManager] ⚡ Кредитное плечо:', leverageEl.value);
+        }
+        
         const checkIntervalEl = document.getElementById('checkInterval');
         if (checkIntervalEl && autoBotConfig.check_interval !== undefined) {
             checkIntervalEl.value = autoBotConfig.check_interval;
@@ -6507,6 +6527,7 @@ class BotsManager {
             'rsiExitShortAgainstTrendGlobal': 'rsi_exit_short_against_trend',
             'defaultPositionSize': 'default_position_size',
             'defaultPositionMode': 'default_position_mode',
+            'leverage': 'leverage',
             'checkInterval': 'check_interval',
             'maxLossPercent': 'max_loss_percent',
             'takeProfitPercent': 'take_profit_percent',
@@ -6875,6 +6896,7 @@ class BotsManager {
                 rsi_exit_short_against_trend: config.autoBot.rsi_exit_short_against_trend,
                 default_position_size: config.autoBot.default_position_size,
                 default_position_mode: config.autoBot.default_position_mode,
+                leverage: config.autoBot.leverage,
                 check_interval: config.autoBot.check_interval,
                 // Торговые настройки (перенесены из отдельного блока)
                 trading_enabled: config.autoBot.trading_enabled,

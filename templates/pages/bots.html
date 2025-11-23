@@ -560,6 +560,15 @@
                             <label data-translate="volume_value_label">🔢 Значение:</label>
                             <input type="number" id="volumeValueInput" value="10" min="0.1" step="0.1" />
                         </div>
+                        
+                        <div class="setting-item">
+                            <label data-translate="leverage_label">⚡ Кредитное плечо:</label>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <input type="number" id="leverageCoinInput" value="1" min="1" max="125" step="1" style="flex: 1;" />
+                                <span style="color: var(--text-muted);">x</span>
+                            </div>
+                            <small style="color: var(--text-muted); font-size: 12px; display: block; margin-top: 5px;" data-translate="leverage_help">Плечо устанавливается автоматически перед входом в позицию. Диапазон: 1-125x</small>
+                        </div>
 
                         <!-- Дублированные настройки Auto Bot -->
                         <div class="auto-bot-settings-duplicate">
@@ -1279,6 +1288,18 @@
                                     <option value="percent" data-translate="percent_option">📊 % от депозита</option>
                                 </select>
                             </div>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">⚡</span>
+                                <span class="label-text" data-translate="leverage_label">Кредитное плечо:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="leverage" value="1" min="1" max="125" step="1" class="config-input" />
+                                <span class="input-unit">x</span>
+                            </div>
+                            <small class="config-help" data-translate="leverage_help">Плечо устанавливается автоматически перед входом в позицию. Диапазон: 1-125x</small>
                         </div>
                         
                         <div class="config-item">
