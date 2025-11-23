@@ -2957,6 +2957,35 @@ class BotsDatabase:
     
     # ==================== МЕТОДЫ ДЛЯ СОСТОЯНИЯ БОТОВ ====================
     
+    def _ensure_table_exists(self, table_name: str, cursor) -> bool:
+        """Проверяет существование таблицы и создает её если нужно"""
+        try:
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+            if cursor.fetchone():
+                return True
+            # Таблица не существует - вызываем инициализацию
+            logger.warning(f"⚠️ Таблица {table_name} не существует, создаем...")
+            # Закрываем текущее соединение перед инициализацией
+            # Инициализация создаст новое соединение
+            try:
+                self._init_database()
+            except Exception as init_error:
+                logger.error(f"❌ Ошибка инициализации БД: {init_error}")
+                return False
+            # Проверяем еще раз после инициализации
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+            if cursor.fetchone():
+                logger.info(f"✅ Таблица {table_name} успешно создана")
+                return True
+            else:
+                logger.error(f"❌ Не удалось создать таблицу {table_name}")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Ошибка проверки/создания таблицы {table_name}: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return False
+    
     def save_bots_state(self, bots_data: Dict, auto_bot_config: Dict) -> bool:
         """
         Сохраняет состояние ботов в нормализованные таблицы
@@ -2974,6 +3003,11 @@ class BotsDatabase:
             with self.lock:
                 with self._get_connection() as conn:
                     cursor = conn.cursor()
+                    
+                    # ✅ ИСПРАВЛЕНО: Проверяем существование таблицы bots перед использованием
+                    if not self._ensure_table_exists('bots', cursor):
+                        logger.error("❌ Не удалось создать таблицу bots, пропускаем сохранение")
+                        return False
                     
                     # Сохраняем каждого бота в нормализованную таблицу
                     for symbol, bot_data in bots_data.items():
@@ -3142,6 +3176,11 @@ class BotsDatabase:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 
+                # ✅ ИСПРАВЛЕНО: Проверяем существование таблицы bots перед использованием
+                if not self._ensure_table_exists('bots', cursor):
+                    logger.error("❌ Не удалось создать таблицу bots, возвращаем пустое состояние")
+                    return {'bots': {}, 'auto_bot_config': {}}
+                
                 # Загружаем ботов из нормализованной таблицы
                 cursor.execute("""
                     SELECT symbol, status, auto_managed, volume_mode, volume_value,
@@ -3160,7 +3199,36 @@ class BotsDatabase:
                            updated_at, created_at
                     FROM bots
                 """)
-                rows = cursor.fetchall()
+                try:
+                    rows = cursor.fetchall()
+                except sqlite3.OperationalError as e:
+                    if "no such table: bots" in str(e).lower():
+                        logger.warning("⚠️ Таблица bots не существует, пытаемся создать...")
+                        if self._ensure_table_exists('bots', cursor):
+                            # Повторяем запрос после создания таблицы
+                            cursor.execute("""
+                                SELECT symbol, status, auto_managed, volume_mode, volume_value,
+                                       entry_price, entry_time, entry_timestamp, position_side,
+                                       position_size, position_size_coins, position_start_time,
+                                       unrealized_pnl, unrealized_pnl_usdt, realized_pnl, leverage,
+                                       margin_usdt, max_profit_achieved, trailing_stop_price,
+                                       trailing_activation_threshold, trailing_activation_profit,
+                                       trailing_locked_profit, trailing_active, trailing_max_profit_usdt,
+                                       trailing_step_usdt, trailing_step_price, trailing_steps,
+                                       trailing_reference_price, trailing_last_update_ts, trailing_take_profit_price,
+                                       break_even_activated, break_even_stop_price, order_id,
+                                       current_price, last_price, last_rsi, last_trend,
+                                       last_signal_time, last_bar_timestamp, entry_trend,
+                                       opened_by_autobot, bot_id, extra_data_json,
+                                       updated_at, created_at
+                                FROM bots
+                            """)
+                            rows = cursor.fetchall()
+                        else:
+                            logger.error("❌ Не удалось создать таблицу bots, возвращаем пустое состояние")
+                            return {'bots': {}, 'auto_bot_config': {}}
+                    else:
+                        raise
                 
                 bots_data = {}
                 for row in rows:
