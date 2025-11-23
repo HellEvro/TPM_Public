@@ -4543,25 +4543,19 @@ class BotsDatabase:
                     
                     # ⚠️ МИГРАЦИЯ: Добавляем UNIQUE constraint к candles_cache_data если его нет
                     try:
-                        # Проверяем, есть ли UNIQUE constraint на (cache_id, time)
-                        cursor.execute("PRAGMA index_list(candles_cache_data)")
-                        indexes = cursor.fetchall()
-                        has_unique = False
-                        for idx in indexes:
-                            idx_name = idx[1]
-                            cursor.execute(f"PRAGMA index_info({idx_name})")
-                            idx_info = cursor.fetchall()
-                            if len(idx_info) == 2:  # Два столбца в индексе
-                                cols = [info[2] for info in idx_info]
-                                if 'cache_id' in cols and 'time' in cols:
-                                    # Проверяем, является ли индекс UNIQUE
-                                    cursor.execute(f"SELECT sql FROM sqlite_master WHERE type='index' AND name='{idx_name}'")
-                                    idx_sql = cursor.fetchone()
-                                    if idx_sql and 'UNIQUE' in idx_sql[0].upper():
-                                        has_unique = True
-                                        break
+                        # Проверяем, есть ли UNIQUE constraint на (cache_id, time) в определении таблицы
+                        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='candles_cache_data'")
+                        table_sql = cursor.fetchone()
+                        has_unique_in_table = False
+                        if table_sql and table_sql[0]:
+                            table_sql_str = str(table_sql[0]).upper()
+                            # Проверяем, есть ли UNIQUE(cache_id, time) в определении таблицы
+                            if 'UNIQUE' in table_sql_str and 'CACHE_ID' in table_sql_str and 'TIME' in table_sql_str:
+                                # Проверяем, что UNIQUE constraint именно на (cache_id, time)
+                                if 'UNIQUE(CACHE_ID' in table_sql_str or 'UNIQUE(CACHE_ID,' in table_sql_str:
+                                    has_unique_in_table = True
                         
-                        if not has_unique:
+                        if not has_unique_in_table:
                             logger.warning("⚠️ Добавляем UNIQUE constraint к candles_cache_data для предотвращения дубликатов...")
                             # Создаем новую таблицу с UNIQUE constraint
                             cursor.execute("""
@@ -4717,8 +4711,29 @@ class BotsDatabase:
                     cursor.execute("DELETE FROM candles_cache_data")
                     deleted_total_count = cursor.rowcount
                     
+                    # ⚠️ КРИТИЧНО: Проверяем, что DELETE действительно удалил ВСЕ записи
+                    cursor.execute("SELECT COUNT(*) FROM candles_cache_data")
+                    count_after_delete = cursor.fetchone()[0]
+                    
+                    if count_after_delete > 0:
+                        logger.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА! DELETE не удалил все записи! Осталось {count_after_delete:,} записей после DELETE!")
+                        # Пытаемся удалить еще раз принудительно
+                        cursor.execute("DELETE FROM candles_cache_data")
+                        deleted_again = cursor.rowcount
+                        cursor.execute("SELECT COUNT(*) FROM candles_cache_data")
+                        final_after_delete = cursor.fetchone()[0]
+                        if final_after_delete > 0:
+                            logger.critical(f"❌ КРИТИЧЕСКАЯ ПРОБЛЕМА! После повторного DELETE осталось {final_after_delete:,} записей! Возможна проблема с БД или транзакцией!")
+                            raise Exception(f"DELETE не работает! Осталось {final_after_delete:,} записей после двух попыток DELETE!")
+                        else:
+                            logger.warning(f"⚠️ Повторное удаление успешно удалило оставшиеся {deleted_again:,} записей")
+                            count_after_delete = 0  # Обновляем счетчик
+                    
                     if old_total_count > 0:
-                        logger.debug(f"🗑️ Удалено {deleted_total_count:,} старых свечей из кэша (TRUNCATE)")
+                        if count_after_delete == 0:
+                            logger.debug(f"🗑️ Удалено {deleted_total_count:,} старых свечей из кэша (TRUNCATE), проверка: таблица пуста ✅")
+                        else:
+                            logger.error(f"🗑️ Удалено {deleted_total_count:,} старых свечей, но осталось {count_after_delete:,} записей! ❌")
                     
                     # Теперь вставляем новые свечи для всех символов
                     all_candles_to_insert = []
@@ -4785,17 +4800,39 @@ class BotsDatabase:
                                 ))
                     
                     # ⚡ ОПТИМИЗИРОВАННАЯ ПАКЕТНАЯ ВСТАВКА: вставляем все свечи одним запросом
-                    # ⚠️ КРИТИЧНО: Используем INSERT OR REPLACE для предотвращения дубликатов
-                    # (на случай если UNIQUE constraint еще не применен)
+                    # ⚠️ КРИТИЧНО: Используем простой INSERT (не OR REPLACE), так как DELETE уже удалил все старые данные
+                    # INSERT OR REPLACE может создавать проблемы с UNIQUE constraint и добавлять лишние записи
                     if all_candles_to_insert:
                         cursor.executemany("""
-                            INSERT OR REPLACE INTO candles_cache_data 
+                            INSERT INTO candles_cache_data 
                             (cache_id, time, open, high, low, close, volume)
                             VALUES (?, ?, ?, ?, ?, ?, ?)
                         """, all_candles_to_insert)
                         
                         inserted_total_count = cursor.rowcount
-                        logger.debug(f"💾 Вставлено {inserted_total_count:,} новых свечей в кэш ({len(candles_cache)} символов)")
+                        
+                        # ⚠️ КРИТИЧНО: Проверяем количество записей после вставки ДО коммита
+                        cursor.execute("SELECT COUNT(*) FROM candles_cache_data")
+                        count_after_insert = cursor.fetchone()[0]
+                        
+                        if count_after_insert != inserted_total_count:
+                            logger.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА! Вставлено {inserted_total_count:,}, но в БД {count_after_insert:,} записей! Разница: {count_after_insert - inserted_total_count:,} записей! Возможна проблема с транзакцией или дубликатами!")
+                            # Проверяем, есть ли дубликаты
+                            cursor.execute("""
+                                SELECT cache_id, time, COUNT(*) as cnt 
+                                FROM candles_cache_data 
+                                GROUP BY cache_id, time 
+                                HAVING cnt > 1
+                                LIMIT 10
+                            """)
+                            duplicates = cursor.fetchall()
+                            if duplicates:
+                                logger.error(f"❌ Обнаружены дубликаты! Примеры: {duplicates[:5]}")
+                        
+                        if count_after_insert == inserted_total_count:
+                            logger.debug(f"💾 Вставлено {inserted_total_count:,} новых свечей в кэш ({len(candles_cache)} символов), проверка: в БД {count_after_insert:,} записей ✅")
+                        else:
+                            logger.warning(f"💾 Вставлено {inserted_total_count:,} новых свечей, но в БД {count_after_insert:,} записей (разница: {count_after_insert - inserted_total_count:,}) ⚠️")
                     
                     # ⚠️ КРИТИЧНО: Коммитим транзакцию СРАЗУ после DELETE+INSERT
                     # Это гарантирует, что изменения применены и не будет дубликатов
