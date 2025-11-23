@@ -4892,6 +4892,15 @@ class AIDatabase:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 
+                # ⚠️ КРИТИЧНО: Кэш должен ПОЛНОСТЬЮ ПЕРЕЗАПИСЫВАТЬСЯ, а не накапливаться!
+                # ВСЕГДА удаляем ВСЕ старые свечи для этого символа перед вставкой новых
+                # Это гарантирует, что старые неиспользуемые данные всегда удаляются
+                cursor.execute("""
+                    DELETE FROM candles_history 
+                    WHERE symbol = ? AND timeframe = ?
+                """, (symbol, timeframe))
+                deleted_old_count = cursor.rowcount
+                
                 # Сортируем свечи по времени и берем только последние MAX_CANDLES_PER_SYMBOL
                 candles_sorted = sorted(candles, key=lambda x: x.get('time', 0))
                 candles_to_save = candles_sorted[-MAX_CANDLES_PER_SYMBOL:]
@@ -4899,52 +4908,30 @@ class AIDatabase:
                 if len(candles_sorted) > MAX_CANDLES_PER_SYMBOL:
                     logger.debug(f"📊 {symbol}: Ограничено до {MAX_CANDLES_PER_SYMBOL} свечей (было {len(candles_sorted)})")
                 
-                # ⚡ ОПТИМИЗИРОВАННОЕ УДАЛЕНИЕ: удаляем старые свечи ОДНИМ запросом
-                # Используем эффективный DELETE с LIMIT, который удаляет все кроме последних MAX_CANDLES_PER_SYMBOL
+                # ⚡ ОПТИМИЗИРОВАННАЯ ВСТАВКА: используем executemany вместо цикла
+                # Вставляем только новые свечи (старые уже удалены)
                 if candles_to_save:
-                    # Сначала удаляем все свечи старше минимального времени из новых (быстро с индексом)
-                    min_time_to_keep = min(c.get('time') for c in candles_to_save if c.get('time'))
-                    cursor.execute("""
-                        DELETE FROM candles_history 
-                        WHERE symbol = ? AND timeframe = ? AND candle_time < ?
-                    """, (symbol, timeframe, min_time_to_keep))
-                
-                # Используем INSERT OR IGNORE для пропуска дубликатов
-                cursor.executemany("""
-                    INSERT OR IGNORE INTO candles_history (
-                        symbol, timeframe, candle_time, open_price, high_price,
-                        low_price, close_price, volume, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, [
-                    (
-                        symbol, timeframe,
-                        int(candle['time']),
-                        float(candle['open']),
-                        float(candle['high']),
-                        float(candle['low']),
-                        float(candle['close']),
-                        float(candle['volume']),
-                        now
-                    )
-                    for candle in candles_to_save
-                ])
-                saved_count = cursor.rowcount
-                
-                # ⚡ ОПТИМИЗИРОВАННАЯ ПРОВЕРКА: удаляем лишние свечи эффективным способом
-                # Используем один запрос для удаления всех записей кроме последних MAX_CANDLES_PER_SYMBOL
-                # Это быстрее чем COUNT(*) + DELETE, так как SQLite оптимизирует подзапрос
-                cursor.execute("""
-                    DELETE FROM candles_history
-                    WHERE id IN (
-                        SELECT id FROM candles_history
-                        WHERE symbol = ? AND timeframe = ?
-                        ORDER BY candle_time ASC
-                        LIMIT (SELECT MAX(0, COUNT(*) - ?) FROM candles_history WHERE symbol = ? AND timeframe = ?)
-                    )
-                """, (symbol, timeframe, MAX_CANDLES_PER_SYMBOL, symbol, timeframe))
-                deleted_count = cursor.rowcount
-                if deleted_count > 0:
-                    logger.debug(f"🗑️ {symbol}: Удалено {deleted_count} старых свечей (осталось ≤{MAX_CANDLES_PER_SYMBOL})")
+                    cursor.executemany("""
+                        INSERT INTO candles_history (
+                            symbol, timeframe, candle_time, open_price, high_price,
+                            low_price, close_price, volume, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, [
+                        (
+                            symbol, timeframe,
+                            int(candle['time']),
+                            float(candle['open']),
+                            float(candle['high']),
+                            float(candle['low']),
+                            float(candle['close']),
+                            float(candle['volume']),
+                            now
+                        )
+                        for candle in candles_to_save
+                    ])
+                    saved_count = cursor.rowcount
+                else:
+                    saved_count = 0
                 
                 conn.commit()
             return saved_count

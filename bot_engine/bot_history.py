@@ -796,14 +796,20 @@ class BotHistoryManager:
         matching_trade_snapshot: Optional[Dict[str, Any]] = None
         
         # Пробуем найти соответствующую сделку для получения информации об источнике решения
-        # Также проверяем, не была ли позиция уже закрыта ранее
+        # Также проверяем, не была ли позиция уже закрыта ранее (в памяти и в БД)
         already_closed = False
+        matching_trade_snapshot = None
+        decision_source = 'SCRIPT'
+        found_ai_decision_id = ai_decision_id  # Сохраняем параметр функции
+        ai_confidence = None
+        
+        # Сначала проверяем в памяти
         with self.lock:
             for trade in reversed(self.trades):
                 if trade['bot_id'] == bot_id and trade['symbol'] == symbol:
                     if trade['status'] == 'OPEN':
                         decision_source = trade.get('decision_source', 'SCRIPT')
-                        ai_decision_id = trade.get('ai_decision_id') or ai_decision_id
+                        found_ai_decision_id = trade.get('ai_decision_id') or found_ai_decision_id
                         ai_confidence = trade.get('ai_confidence')
                         matching_trade_snapshot = trade.copy()
                         break
@@ -811,9 +817,44 @@ class BotHistoryManager:
                         # Позиция уже была закрыта ранее - не пересчитываем PnL
                         already_closed = True
                         decision_source = trade.get('decision_source', 'SCRIPT')
-                        ai_decision_id = trade.get('ai_decision_id') or ai_decision_id
+                        found_ai_decision_id = trade.get('ai_decision_id') or found_ai_decision_id
                         ai_confidence = trade.get('ai_confidence')
                         break
+        
+        # Если не нашли в памяти, проверяем в БД (закрытые сделки могут быть только в БД)
+        # Ищем по symbol и status='CLOSED', так как bot_id может отличаться (может быть символом вместо ID)
+        if not already_closed and not matching_trade_snapshot:
+            try:
+                from bot_engine.bots_database import get_bots_database
+                bots_db = get_bots_database()
+                # Сначала ищем по bot_id и symbol (точное совпадение)
+                closed_trades = bots_db.get_bot_trades_history(
+                    bot_id=bot_id,
+                    symbol=symbol,
+                    status='CLOSED',
+                    limit=1
+                )
+                # Если не нашли, ищем только по symbol (bot_id может отличаться)
+                if not closed_trades:
+                    closed_trades = bots_db.get_bot_trades_history(
+                        bot_id=None,
+                        symbol=symbol,
+                        status='CLOSED',
+                        limit=1
+                    )
+                if closed_trades:
+                    # Нашли закрытую сделку в БД - не пересчитываем PnL
+                    already_closed = True
+                    closed_trade = closed_trades[0]
+                    decision_source = closed_trade.get('decision_source', 'SCRIPT')
+                    found_ai_decision_id = closed_trade.get('ai_decision_id') or found_ai_decision_id
+                    ai_confidence = closed_trade.get('ai_confidence')
+            except Exception as db_check_error:
+                # Если ошибка проверки БД, продолжаем работу (не критично)
+                logger.debug(f"[BOT_HISTORY] ⚠️ Ошибка проверки БД на закрытые сделки: {db_check_error}")
+        
+        # Используем найденный ai_decision_id
+        ai_decision_id = found_ai_decision_id
         
         original_pnl_input = pnl
         original_roi_input = roi
