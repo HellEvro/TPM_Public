@@ -5696,7 +5696,7 @@ class BotsManager {
         if (!scopeButtons.length || !scopeInput) return;
         
         scopeButtons.forEach(button => {
-            button.addEventListener('click', () => {
+            button.addEventListener('click', async () => {
                 // Убираем активность со всех кнопок
                 scopeButtons.forEach(btn => btn.classList.remove('active'));
                 
@@ -5705,12 +5705,26 @@ class BotsManager {
                 
                 // Обновляем скрытое поле
                 const value = button.getAttribute('data-value');
+                const oldValue = scopeInput.value;
                 scopeInput.value = value;
                 
-                console.log('[BotsManager] 🎯 Область действия изменена на:', value);
+                console.log('[BotsManager] 🎯 Область действия изменена на:', value, '(было:', oldValue + ')');
                 console.log('[BotsManager] 🔍 Проверка: autoBotScope.value =', scopeInput.value);
-                console.log('[BotsManager] 🔍 Проверка: autoBotScope.type =', scopeInput.type);
-                console.log('[BotsManager] 🔍 Проверка: autoBotScope.id =', scopeInput.id);
+                
+                // ✅ КРИТИЧЕСКИ ВАЖНО: Автоматически сохраняем при переключении scope
+                if (oldValue !== value) {
+                    console.log('[BotsManager] 💾 Автоматическое сохранение scope при переключении...');
+                    try {
+                        // Сохраняем только scope, чтобы не трогать другие настройки
+                        await this.sendConfigUpdate('auto-bot', { scope: value }, 'Область действия');
+                        console.log('[BotsManager] ✅ Scope автоматически сохранен');
+                    } catch (error) {
+                        console.error('[BotsManager] ❌ Ошибка автоматического сохранения scope:', error);
+                        this.showNotification('❌ Ошибка сохранения области действия: ' + error.message, 'error');
+                    }
+                } else {
+                    console.log('[BotsManager] ⏭️ Scope не изменился, пропускаем сохранение');
+                }
             });
         });
         

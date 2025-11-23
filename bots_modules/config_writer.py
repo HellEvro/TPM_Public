@@ -179,9 +179,16 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
                 existing_keys.add(key_match.group(2))
         
         # ✅ ГАРАНТИРУЕМ, что leverage всегда есть в конфиге
+        # Примечание: если leverage не передан в config, это нормально - значит он не изменялся
+        # Проверяем только если он действительно отсутствует в файле
         if 'leverage' not in config:
-            logger.warning(f"[CONFIG_WRITER] ⚠️ leverage отсутствует в config, устанавливаем значение по умолчанию: 1")
-            config['leverage'] = 1
+            # Проверяем, есть ли leverage в существующих ключах файла
+            if 'leverage' not in existing_keys:
+                logger.info(f"[CONFIG_WRITER] ℹ️ leverage отсутствует в файле, добавляем значение по умолчанию: 1")
+                config['leverage'] = 1
+            else:
+                # leverage есть в файле, но не передан в config - это нормально (не изменялся)
+                logger.debug(f"[CONFIG_WRITER] ℹ️ leverage не передан в config (не изменялся), оставляем значение из файла")
         
         # Добавляем недостающие ключи перед закрывающей скобкой
         # Находим последнюю строку перед закрывающей скобкой
