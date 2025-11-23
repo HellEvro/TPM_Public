@@ -1342,14 +1342,18 @@ def load_all_coins_candles_fast():
             # Если это точно bots.py - НЕ проверяем дальше и игнорируем переменную окружения
             if is_bots_process:
                 is_ai_process = False
+                logger.debug(f"🔍 Обнаружен процесс bots.py - сохраняем свечи в bots_data.db (script_name={script_name}, main_file={main_file})")
             else:
                 # Проверяем, что это ai.py (переменная окружения учитывается ТОЛЬКО если это не bots.py)
+                env_flag = os.environ.get('INFOBOT_AI_PROCESS', '').lower() == 'true'
                 is_ai_process = (
                     'ai.py' in script_name.lower() or 
                     any('ai.py' in str(arg).lower() for arg in sys.argv) or
                     (main_file and 'ai.py' in main_file.lower()) or
-                    (os.environ.get('INFOBOT_AI_PROCESS', '').lower() == 'true' and not is_bots_process)
+                    env_flag
                 )
+                if is_ai_process:
+                    logger.debug(f"🔍 Обнаружен процесс ai.py - сохраняем свечи в ai_data.db (script_name={script_name}, main_file={main_file}, env_flag={env_flag})")
             
             if is_ai_process:
                 # Если это процесс ai.py - сохраняем ТОЛЬКО в ai_data.db, НЕ в bots_data.db!

@@ -776,6 +776,7 @@ class BotsDatabase:
                     trailing_take_profit_price REAL,
                     break_even_activated INTEGER DEFAULT 0,
                     break_even_stop_price REAL,
+                    break_even_stop_set INTEGER DEFAULT 0,
                     order_id TEXT,
                     current_price REAL,
                     last_price REAL,
@@ -1249,6 +1250,15 @@ class BotsDatabase:
                 # Таблица не существует или уже новая структура - ничего не делаем
                 pass
             
+            # ==================== МИГРАЦИЯ: Добавляем break_even_stop_set в таблицу bots ====================
+            try:
+                cursor.execute("SELECT break_even_stop_set FROM bots LIMIT 1")
+            except sqlite3.OperationalError:
+                # Поля нет - добавляем
+                logger.info("📦 Миграция: добавляем break_even_stop_set в bots")
+                cursor.execute("ALTER TABLE bots ADD COLUMN break_even_stop_set INTEGER DEFAULT 0")
+                conn.commit()
+            
             # ==================== МИГРАЦИЯ: bots_state из JSON в нормализованные таблицы ====================
             # Проверяем, есть ли данные в старой таблице bots_state
             try:
@@ -1351,6 +1361,7 @@ class BotsDatabase:
                                 # Break even
                                 break_even_activated = 1 if bot_data.get('break_even_activated', False) else 0
                                 break_even_stop_price = safe_float(bot_data.get('break_even_stop_price'))
+                                break_even_stop_set = 1 if bot_data.get('break_even_stop_set', False) else 0
                                 
                                 # Другие
                                 order_id = bot_data.get('order_id')
@@ -1375,7 +1386,7 @@ class BotsDatabase:
                                     'trailing_locked_profit', 'trailing_active', 'trailing_max_profit_usdt',
                                     'trailing_step_usdt', 'trailing_step_price', 'trailing_steps',
                                     'trailing_reference_price', 'trailing_last_update_ts', 'trailing_take_profit_price',
-                                    'break_even_activated', 'break_even_stop_price', 'order_id',
+                                    'break_even_activated', 'break_even_stop_price', 'break_even_stop_set', 'order_id',
                                     'current_price', 'last_price', 'last_rsi', 'last_trend',
                                     'last_signal_time', 'last_bar_timestamp', 'entry_trend',
                                     'opened_by_autobot', 'id', 'position', 'rsi_data', 'scaling_enabled',
@@ -1407,12 +1418,12 @@ class BotsDatabase:
                                         trailing_locked_profit, trailing_active, trailing_max_profit_usdt,
                                         trailing_step_usdt, trailing_step_price, trailing_steps,
                                         trailing_reference_price, trailing_last_update_ts, trailing_take_profit_price,
-                                        break_even_activated, break_even_stop_price, order_id,
+                                        break_even_activated, break_even_stop_price, break_even_stop_set, order_id,
                                         current_price, last_price, last_rsi, last_trend,
                                         last_signal_time, last_bar_timestamp, entry_trend,
                                         opened_by_autobot, bot_id, extra_data_json,
                                         updated_at, created_at
-                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 """, (
                                     symbol, status, auto_managed, volume_mode, volume_value,
                                     entry_price, entry_time, entry_timestamp, position_side,
@@ -2901,6 +2912,7 @@ class BotsDatabase:
                             # Break even
                             break_even_activated = 1 if bot_data.get('break_even_activated', False) else 0
                             break_even_stop_price = float(bot_data.get('break_even_stop_price', 0.0)) if bot_data.get('break_even_stop_price') not in (None, '') else None
+                            break_even_stop_set = 1 if bot_data.get('break_even_stop_set', False) else 0
                             
                             # Другие
                             order_id = bot_data.get('order_id')
@@ -2925,7 +2937,7 @@ class BotsDatabase:
                                 'trailing_locked_profit', 'trailing_active', 'trailing_max_profit_usdt',
                                 'trailing_step_usdt', 'trailing_step_price', 'trailing_steps',
                                 'trailing_reference_price', 'trailing_last_update_ts', 'trailing_take_profit_price',
-                                'break_even_activated', 'break_even_stop_price', 'order_id',
+                                'break_even_activated', 'break_even_stop_price', 'break_even_stop_set', 'order_id',
                                 'current_price', 'last_price', 'last_rsi', 'last_trend',
                                 'last_signal_time', 'last_bar_timestamp', 'entry_trend',
                                 'opened_by_autobot', 'id', 'position', 'rsi_data', 'scaling_enabled',
@@ -2961,12 +2973,12 @@ class BotsDatabase:
                                     trailing_locked_profit, trailing_active, trailing_max_profit_usdt,
                                     trailing_step_usdt, trailing_step_price, trailing_steps,
                                     trailing_reference_price, trailing_last_update_ts, trailing_take_profit_price,
-                                    break_even_activated, break_even_stop_price, order_id,
+                                    break_even_activated, break_even_stop_price, break_even_stop_set, order_id,
                                     current_price, last_price, last_rsi, last_trend,
                                     last_signal_time, last_bar_timestamp, entry_trend,
                                     opened_by_autobot, bot_id, extra_data_json,
                                     updated_at, created_at
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """, (
                                 symbol, status, auto_managed, volume_mode, volume_value,
                                 entry_price, entry_time, entry_timestamp, position_side,
@@ -2977,7 +2989,7 @@ class BotsDatabase:
                                 trailing_locked_profit, trailing_active, trailing_max_profit_usdt,
                                 trailing_step_usdt, trailing_step_price, trailing_steps,
                                 trailing_reference_price, trailing_last_update_ts, trailing_take_profit_price,
-                                break_even_activated, break_even_stop_price, order_id,
+                                break_even_activated, break_even_stop_price, break_even_stop_set, order_id,
                                 current_price, last_price, last_rsi, last_trend,
                                 last_signal_time, last_bar_timestamp, entry_trend,
                                 opened_by_autobot, bot_id, extra_data_json,
@@ -3074,7 +3086,8 @@ class BotsDatabase:
                         'trailing_take_profit_price': row[29],
                         'break_even_activated': bool(row[30]),
                         'break_even_stop_price': row[31],
-                        'order_id': row[32],
+                        'break_even_stop_set': bool(row[32]),
+                        'order_id': row[33],
                         'current_price': row[33],
                         'last_price': row[34],
                         'last_rsi': row[35],
