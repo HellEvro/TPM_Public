@@ -4252,48 +4252,51 @@ class AIDatabase:
                 cursor.execute("SELECT * FROM used_training_parameters WHERE param_hash = ?", (param_hash,))
                 row = cursor.fetchone()
                 if row:
+                    # Конвертируем sqlite3.Row в словарь для работы с .get()
+                    row_dict = dict(row)
+                    
                     # Восстанавливаем rsi_params из нормализованных столбцов
                     rsi_params = {}
-                    if row.get('rsi_long_threshold') is not None:
-                        rsi_params['oversold'] = row['rsi_long_threshold']
-                        rsi_params['rsi_long_threshold'] = row['rsi_long_threshold']
-                    if row.get('rsi_short_threshold') is not None:
-                        rsi_params['overbought'] = row['rsi_short_threshold']
-                        rsi_params['rsi_short_threshold'] = row['rsi_short_threshold']
-                    if row.get('rsi_exit_long_with_trend') is not None:
-                        rsi_params['exit_long_with_trend'] = row['rsi_exit_long_with_trend']
-                        rsi_params['rsi_exit_long_with_trend'] = row['rsi_exit_long_with_trend']
-                    if row.get('rsi_exit_long_against_trend') is not None:
-                        rsi_params['exit_long_against_trend'] = row['rsi_exit_long_against_trend']
-                        rsi_params['rsi_exit_long_against_trend'] = row['rsi_exit_long_against_trend']
-                    if row.get('rsi_exit_short_with_trend') is not None:
-                        rsi_params['exit_short_with_trend'] = row['rsi_exit_short_with_trend']
-                        rsi_params['rsi_exit_short_with_trend'] = row['rsi_exit_short_with_trend']
-                    if row.get('rsi_exit_short_against_trend') is not None:
-                        rsi_params['exit_short_against_trend'] = row['rsi_exit_short_against_trend']
-                        rsi_params['rsi_exit_short_against_trend'] = row['rsi_exit_short_against_trend']
+                    if row_dict.get('rsi_long_threshold') is not None:
+                        rsi_params['oversold'] = row_dict['rsi_long_threshold']
+                        rsi_params['rsi_long_threshold'] = row_dict['rsi_long_threshold']
+                    if row_dict.get('rsi_short_threshold') is not None:
+                        rsi_params['overbought'] = row_dict['rsi_short_threshold']
+                        rsi_params['rsi_short_threshold'] = row_dict['rsi_short_threshold']
+                    if row_dict.get('rsi_exit_long_with_trend') is not None:
+                        rsi_params['exit_long_with_trend'] = row_dict['rsi_exit_long_with_trend']
+                        rsi_params['rsi_exit_long_with_trend'] = row_dict['rsi_exit_long_with_trend']
+                    if row_dict.get('rsi_exit_long_against_trend') is not None:
+                        rsi_params['exit_long_against_trend'] = row_dict['rsi_exit_long_against_trend']
+                        rsi_params['rsi_exit_long_against_trend'] = row_dict['rsi_exit_long_against_trend']
+                    if row_dict.get('rsi_exit_short_with_trend') is not None:
+                        rsi_params['exit_short_with_trend'] = row_dict['rsi_exit_short_with_trend']
+                        rsi_params['rsi_exit_short_with_trend'] = row_dict['rsi_exit_short_with_trend']
+                    if row_dict.get('rsi_exit_short_against_trend') is not None:
+                        rsi_params['exit_short_against_trend'] = row_dict['rsi_exit_short_against_trend']
+                        rsi_params['rsi_exit_short_against_trend'] = row_dict['rsi_exit_short_against_trend']
                     
                     # Загружаем extra_rsi_params_json если есть
-                    if row.get('extra_rsi_params_json'):
+                    if row_dict.get('extra_rsi_params_json'):
                         try:
-                            extra_rsi = json.loads(row['extra_rsi_params_json'])
+                            extra_rsi = json.loads(row_dict['extra_rsi_params_json'])
                             rsi_params.update(extra_rsi)
                         except:
                             pass
                     
                     return {
-                        'id': row['id'],
-                        'param_hash': row['param_hash'],
+                        'id': row_dict['id'],
+                        'param_hash': row_dict['param_hash'],
                         'rsi_params': rsi_params,
-                        'training_seed': row['training_seed'],
-                        'win_rate': row['win_rate'],
-                        'total_pnl': row['total_pnl'],
-                        'signal_accuracy': row['signal_accuracy'],
-                        'trades_count': row['trades_count'],
-                        'rating': row['rating'],
-                        'symbol': row['symbol'],
-                        'used_at': row['used_at'],
-                        'update_count': row['update_count']
+                        'training_seed': row_dict['training_seed'],
+                        'win_rate': row_dict['win_rate'],
+                        'total_pnl': row_dict['total_pnl'],
+                        'signal_accuracy': row_dict['signal_accuracy'],
+                        'trades_count': row_dict['trades_count'],
+                        'rating': row_dict['rating'],
+                        'symbol': row_dict['symbol'],
+                        'used_at': row_dict['used_at'],
+                        'update_count': row_dict['update_count']
                     }
                 return None
         except Exception as e:
@@ -4325,45 +4328,48 @@ class AIDatabase:
                 rows = cursor.fetchall()
                 result = []
                 for row in rows:
+                    # Конвертируем sqlite3.Row в словарь для работы с .get()
+                    row_dict = dict(row)
+                    
                     # Восстанавливаем rsi_params из нормализованных столбцов
                     rsi_params = {}
-                    if row.get('rsi_long_threshold') is not None:
-                        rsi_params['oversold'] = row['rsi_long_threshold']
-                        rsi_params['rsi_long_threshold'] = row['rsi_long_threshold']
-                    if row.get('rsi_short_threshold') is not None:
-                        rsi_params['overbought'] = row['rsi_short_threshold']
-                        rsi_params['rsi_short_threshold'] = row['rsi_short_threshold']
-                    if row.get('rsi_exit_long_with_trend') is not None:
-                        rsi_params['exit_long_with_trend'] = row['rsi_exit_long_with_trend']
-                        rsi_params['rsi_exit_long_with_trend'] = row['rsi_exit_long_with_trend']
-                    if row.get('rsi_exit_long_against_trend') is not None:
-                        rsi_params['exit_long_against_trend'] = row['rsi_exit_long_against_trend']
-                        rsi_params['rsi_exit_long_against_trend'] = row['rsi_exit_long_against_trend']
-                    if row.get('rsi_exit_short_with_trend') is not None:
-                        rsi_params['exit_short_with_trend'] = row['rsi_exit_short_with_trend']
-                        rsi_params['rsi_exit_short_with_trend'] = row['rsi_exit_short_with_trend']
-                    if row.get('rsi_exit_short_against_trend') is not None:
-                        rsi_params['exit_short_against_trend'] = row['rsi_exit_short_against_trend']
-                        rsi_params['rsi_exit_short_against_trend'] = row['rsi_exit_short_against_trend']
+                    if row_dict.get('rsi_long_threshold') is not None:
+                        rsi_params['oversold'] = row_dict['rsi_long_threshold']
+                        rsi_params['rsi_long_threshold'] = row_dict['rsi_long_threshold']
+                    if row_dict.get('rsi_short_threshold') is not None:
+                        rsi_params['overbought'] = row_dict['rsi_short_threshold']
+                        rsi_params['rsi_short_threshold'] = row_dict['rsi_short_threshold']
+                    if row_dict.get('rsi_exit_long_with_trend') is not None:
+                        rsi_params['exit_long_with_trend'] = row_dict['rsi_exit_long_with_trend']
+                        rsi_params['rsi_exit_long_with_trend'] = row_dict['rsi_exit_long_with_trend']
+                    if row_dict.get('rsi_exit_long_against_trend') is not None:
+                        rsi_params['exit_long_against_trend'] = row_dict['rsi_exit_long_against_trend']
+                        rsi_params['rsi_exit_long_against_trend'] = row_dict['rsi_exit_long_against_trend']
+                    if row_dict.get('rsi_exit_short_with_trend') is not None:
+                        rsi_params['exit_short_with_trend'] = row_dict['rsi_exit_short_with_trend']
+                        rsi_params['rsi_exit_short_with_trend'] = row_dict['rsi_exit_short_with_trend']
+                    if row_dict.get('rsi_exit_short_against_trend') is not None:
+                        rsi_params['exit_short_against_trend'] = row_dict['rsi_exit_short_against_trend']
+                        rsi_params['rsi_exit_short_against_trend'] = row_dict['rsi_exit_short_against_trend']
                     
                     # Загружаем extra_rsi_params_json если есть
-                    if row.get('extra_rsi_params_json'):
+                    if row_dict.get('extra_rsi_params_json'):
                         try:
-                            extra_rsi = json.loads(row['extra_rsi_params_json'])
+                            extra_rsi = json.loads(row_dict['extra_rsi_params_json'])
                             rsi_params.update(extra_rsi)
                         except:
                             pass
                     
                     result.append({
                         'rsi_params': rsi_params,
-                        'training_seed': row['training_seed'],
-                        'win_rate': row['win_rate'],
-                        'total_pnl': row['total_pnl'],
-                        'signal_accuracy': row['signal_accuracy'],
-                        'trades_count': row['trades_count'],
-                        'rating': row['rating'],
-                        'symbol': row['symbol'],
-                        'used_at': row['used_at']
+                        'training_seed': row_dict['training_seed'],
+                        'win_rate': row_dict['win_rate'],
+                        'total_pnl': row_dict['total_pnl'],
+                        'signal_accuracy': row_dict['signal_accuracy'],
+                        'trades_count': row_dict['trades_count'],
+                        'rating': row_dict['rating'],
+                        'symbol': row_dict['symbol'],
+                        'used_at': row_dict['used_at']
                     })
                 return result
         except Exception as e:
