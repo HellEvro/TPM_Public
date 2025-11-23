@@ -1931,7 +1931,7 @@ class BybitExchange(BaseExchange):
     @with_timeout(15)  # 15 секунд таймаут для размещения ордера
     def place_order(self, symbol, side, quantity, order_type='market', price=None,
                     take_profit=None, stop_loss=None, max_loss_percent=None, quantity_is_usdt=True,
-                    skip_min_notional_enforcement=False):
+                    skip_min_notional_enforcement=False, leverage=None, **kwargs):
         """Размещение ордера для бота
         
         Args:
@@ -1946,6 +1946,8 @@ class BybitExchange(BaseExchange):
             skip_min_notional_enforcement (bool): Если True, выводить специальное предупреждение при увеличении до minNotionalValue
                                                   (используется для лимитных ордеров из набора позиций)
                                                   ВАЖНО: ордер все равно будет увеличен до минимума, иначе биржа отклонит его!
+            leverage (int, optional): Кредитное плечо (например, 5 для x5). Если указано, будет установлено перед входом в позицию.
+            **kwargs: Дополнительные параметры
             
         Returns:
             dict: Результат размещения ордера
@@ -1984,8 +1986,19 @@ class BybitExchange(BaseExchange):
                     'message': error_msg
                 }
                          
-            # ⚠️ ПЛЕЧО НЕ УСТАНАВЛИВАЕТСЯ ЧЕРЕЗ API!
-            # Плечо должно быть установлено ВРУЧНУЮ в настройках аккаунта на бирже
+            # ✅ Устанавливаем плечо перед входом в позицию (если указано в параметрах)
+            leverage = kwargs.get('leverage')
+            if leverage:
+                try:
+                    leverage_int = int(leverage)
+                    leverage_result = self.set_leverage(symbol, leverage_int)
+                    if not leverage_result.get('success'):
+                        logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Не удалось установить плечо {leverage_int}x: {leverage_result.get('message')}")
+                        # Не блокируем вход в позицию, если не удалось установить плечо
+                    else:
+                        logger.info(f"[BYBIT_BOT] ✅ {symbol}: Плечо установлено на {leverage_int}x перед входом в позицию")
+                except Exception as e:
+                    logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Ошибка установки плеча: {e}")
                          
             # Конвертируем side для ботов
             if side.upper() == 'LONG':

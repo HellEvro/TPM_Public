@@ -493,6 +493,7 @@ def create_bot(symbol, config=None, exchange_obj=None):
         'max_position_hours': auto_bot_config.get('max_position_hours', 48),
         'break_even_protection': auto_bot_config.get('break_even_protection', True),
         'break_even_trigger': auto_bot_config.get('break_even_trigger', 100.0),
+        'leverage': individual_settings.get('leverage') if individual_settings and 'leverage' in individual_settings else auto_bot_config.get('leverage', 1),
         'break_even_trigger_percent': auto_bot_config.get(
             'break_even_trigger_percent',
             auto_bot_config.get('break_even_trigger', 100.0)

@@ -1117,6 +1117,24 @@ def open_position_for_bot(symbol, side, volume_value, current_price, take_profit
         
         logger.info(f" {symbol}: Открываем {side} позицию на {volume_value} USDT @ {current_price}")
         
+        # Получаем leverage из конфига бота (индивидуальные настройки или глобальный конфиг)
+        leverage = None
+        try:
+            with bots_data_lock:
+                bot_data = bots_data.get('bots', {}).get(symbol, {})
+                if bot_data and 'leverage' in bot_data:
+                    leverage = bot_data.get('leverage')
+                else:
+                    # Пробуем получить из индивидуальных настроек или глобального конфига
+                    individual_settings = get_individual_coin_settings(symbol)
+                    if individual_settings and 'leverage' in individual_settings:
+                        leverage = individual_settings.get('leverage')
+                    else:
+                        auto_bot_config = bots_data.get('auto_bot_config', {})
+                        leverage = auto_bot_config.get('leverage')
+        except Exception as e:
+            logger.debug(f" {symbol}: Не удалось получить leverage из конфига: {e}")
+        
         # Вызываем place_order с правильными параметрами
         # quantity передаем в USDT (не в монетах!)
         result = exch.place_order(
@@ -1124,7 +1142,8 @@ def open_position_for_bot(symbol, side, volume_value, current_price, take_profit
             side=side,
             quantity=volume_value,  # ⚡ Количество в USDT!
             order_type='market',
-            take_profit=take_profit_price
+            take_profit=take_profit_price,
+            leverage=leverage
         )
         
         if result and result.get('success'):

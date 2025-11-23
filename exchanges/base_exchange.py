@@ -119,7 +119,7 @@ class BaseExchange(ABC):
         raise NotImplementedError
     
     @abstractmethod
-    def place_order(self, symbol, side, quantity, order_type='market', price=None):
+    def place_order(self, symbol, side, quantity, order_type='market', price=None, leverage=None, **kwargs):
         """Размещение ордера
         
         Args:
@@ -128,6 +128,8 @@ class BaseExchange(ABC):
             quantity (float): Количество
             order_type (str): Тип ордера ('market' или 'limit')
             price (float, optional): Цена для лимитного ордера
+            leverage (int, optional): Кредитное плечо (например, 5 для x5). Если указано, будет установлено перед входом в позицию.
+            **kwargs: Дополнительные параметры
             
         Returns:
             dict: Результат размещения ордера

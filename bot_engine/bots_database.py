@@ -812,6 +812,32 @@ class BotsDatabase:
             # Индексы для auto_bot_config
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_auto_bot_config_key ON auto_bot_config(key)")
             
+            # ==================== ТАБЛИЦА: WHITELIST ФИЛЬТРОВ МОНЕТ ====================
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS coin_filters_whitelist (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT NOT NULL UNIQUE,
+                    added_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            
+            # Индексы для coin_filters_whitelist
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_whitelist_symbol ON coin_filters_whitelist(symbol)")
+            
+            # ==================== ТАБЛИЦА: BLACKLIST ФИЛЬТРОВ МОНЕТ ====================
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS coin_filters_blacklist (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT NOT NULL UNIQUE,
+                    added_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            
+            # Индексы для coin_filters_blacklist
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_blacklist_symbol ON coin_filters_blacklist(symbol)")
+            
             # ==================== ТАБЛИЦА: СОСТОЯНИЕ БОТОВ (СТАРАЯ, ДЛЯ МИГРАЦИИ) ====================
             # Оставляем для обратной совместимости и миграции
             # ==================== ТАБЛИЦА: СОСТОЯНИЕ БОТОВ ====================

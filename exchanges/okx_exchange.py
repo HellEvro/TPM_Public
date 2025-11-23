@@ -1102,3 +1102,90 @@ class OkxExchange(BaseExchange):
                 'available_balance': 0.0,
                 'realized_pnl': 0.0
             }
+    
+    def set_leverage(self, symbol, leverage):
+        """
+        Устанавливает кредитное плечо для символа
+        
+        Args:
+            symbol (str): Символ торговой пары (например, 'BTC')
+            leverage (int): Значение плеча (например, 5 для x5)
+            
+        Returns:
+            dict: Результат установки плеча с полями:
+                - success (bool): Успешность операции
+                - message (str): Сообщение о результате
+        """
+        try:
+            # Проверяем валидность плеча
+            leverage = int(leverage)
+            if leverage < 1 or leverage > 125:
+                return {
+                    'success': False,
+                    'message': f'Недопустимое значение плеча: {leverage}. Допустимый диапазон: 1-125'
+                }
+            
+            okx_symbol = f"{symbol}-USDT-SWAP"
+            
+            # Получаем текущее плечо
+            current_leverage = None
+            try:
+                positions = self.client.fetch_positions([okx_symbol])
+                if positions:
+                    current_leverage = float(positions[0].get('leverage', 1))
+            except Exception as e:
+                logger.warning(f"[OKX] ⚠️ Не удалось получить текущее плечо: {e}")
+            
+            # Если плечо уже установлено на нужное значение, пропускаем
+            if current_leverage and int(current_leverage) == leverage:
+                logger.debug(f"[OKX] ✅ {symbol}: Плечо уже установлено на {leverage}x")
+                return {
+                    'success': True,
+                    'message': f'Плечо уже установлено на {leverage}x'
+                }
+            
+            # Устанавливаем плечо через API OKX (используем ccxt метод)
+            # OKX требует установку плеча через set_leverage с параметрами
+            try:
+                self.client.set_leverage(leverage, okx_symbol)
+                logger.info(f"[OKX] ✅ {symbol}: Плечо установлено на {leverage}x")
+                return {
+                    'success': True,
+                    'message': f'Плечо успешно установлено на {leverage}x'
+                }
+            except Exception as api_error:
+                # Если метод set_leverage не работает напрямую, пробуем через private API
+                try:
+                    params = {
+                        'instId': okx_symbol,
+                        'lever': str(leverage),
+                        'mgnMode': 'isolated'  # или 'cross' в зависимости от режима маржи
+                    }
+                    response = self.client.private_post_account_set_leverage(params)
+                    
+                    if response and response.get('code') == '0':
+                        logger.info(f"[OKX] ✅ {symbol}: Плечо установлено на {leverage}x")
+                        return {
+                            'success': True,
+                            'message': f'Плечо успешно установлено на {leverage}x'
+                        }
+                    else:
+                        error_msg = response.get('msg', 'Unknown error') if response else 'No response'
+                        logger.error(f"[OKX] ❌ {symbol}: Ошибка установки плеча: {error_msg}")
+                        return {
+                            'success': False,
+                            'message': f'Ошибка установки плеча: {error_msg}'
+                        }
+                except Exception as private_error:
+                    logger.error(f"[OKX] ❌ {symbol}: Ошибка установки плеча через private API: {private_error}")
+                    return {
+                        'success': False,
+                        'message': f'Ошибка установки плеча: {str(private_error)}'
+                    }
+                
+        except Exception as e:
+            logger.error(f"[OKX] ❌ {symbol}: Ошибка установки плеча: {e}")
+            return {
+                'success': False,
+                'message': f'Ошибка установки плеча: {str(e)}'
+            }

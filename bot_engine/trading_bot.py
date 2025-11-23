@@ -890,11 +890,14 @@ class TradingBot:
             
             # Размещаем ордер
             self.logger.info(f" {self.symbol}: Размещаем {side} ордер на {quantity}...")
+            # Получаем leverage из конфига бота
+            leverage = self.config.get('leverage')
             order_result = self.exchange.place_order(
                 symbol=self.symbol,
                 side=side,
                 quantity=quantity,
-                order_type='market'
+                order_type='market',
+                leverage=leverage
             )
             self.logger.info(f" {self.symbol}: Результат ордера: {order_result}")
             

@@ -2628,10 +2628,22 @@ def auto_bot_config():
                         log_config_change(key, old_value, value)
             
             # ✅ Обновляем bots_data новыми значениями
+            # ✅ ИСПРАВЛЕНО: Теперь добавляем новые ключи, даже если их нет в дефолтной конфигурации
             with bots_data_lock:
                 for key, value in data.items():
-                    if key in bots_data['auto_bot_config']:
-                        bots_data['auto_bot_config'][key] = value
+                    # Добавляем или обновляем ключ (включая новые: whitelist, blacklist, scope)
+                    old_value = bots_data['auto_bot_config'].get(key)
+                    bots_data['auto_bot_config'][key] = value
+                    
+                    # Логируем изменения (включая новые ключи)
+                    if old_value != value:
+                        if key not in old_config:
+                            # Новый ключ добавляется
+                            logger.info(f" ✅ Добавлен новый ключ конфигурации: {key} = {value}")
+                            changes_count += 1
+                        else:
+                            # Изменение существующего ключа
+                            changes_count += 1
             
             # КРИТИЧЕСКИ ВАЖНО: Сохраняем конфигурацию в файл (с перезагрузкой модуля)
             save_result = save_auto_bot_config()
