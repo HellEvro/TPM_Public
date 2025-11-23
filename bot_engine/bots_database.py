@@ -3690,6 +3690,14 @@ class BotsDatabase:
                 with self._get_connection() as conn:
                     cursor = conn.cursor()
                     
+                    # ✅ ИСПРАВЛЕНО: Сначала получаем created_at для всех символов ДО удаления
+                    created_at_cache = {}
+                    for symbol in settings.keys():
+                        cursor.execute("SELECT created_at FROM individual_coin_settings WHERE symbol = ?", (symbol,))
+                        existing = cursor.fetchone()
+                        if existing:
+                            created_at_cache[symbol] = existing[0]
+                    
                     # Удаляем старые записи
                     cursor.execute("DELETE FROM individual_coin_settings")
                     
@@ -3716,13 +3724,12 @@ class BotsDatabase:
                         
                         extra_settings_json = json.dumps(extra_settings) if extra_settings else None
                         
-                        # Получаем created_at из существующей записи или используем текущее время
-                        cursor.execute("SELECT created_at FROM individual_coin_settings WHERE symbol = ?", (symbol,))
-                        existing = cursor.fetchone()
-                        created_at = existing[0] if existing else symbol_settings.get('created_at', now)
+                        # ✅ ИСПРАВЛЕНО: Используем сохраненный created_at или значение из настроек или текущее время
+                        created_at = created_at_cache.get(symbol) or symbol_settings.get('created_at') or now
                         
+                        # ✅ ИСПРАВЛЕНО: Упрощенный SQL запрос без подзапроса (все записи уже удалены)
                         cursor.execute("""
-                            INSERT OR REPLACE INTO individual_coin_settings (
+                            INSERT INTO individual_coin_settings (
                                 symbol, rsi_long_threshold, rsi_short_threshold,
                                 rsi_exit_long_with_trend, rsi_exit_long_against_trend,
                                 rsi_exit_short_with_trend, rsi_exit_short_against_trend,
@@ -3734,8 +3741,7 @@ class BotsDatabase:
                                 rsi_time_filter_candles, rsi_time_filter_upper,
                                 rsi_time_filter_lower, avoid_down_trend,
                                 extra_settings_json, updated_at, created_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
-                                COALESCE((SELECT created_at FROM individual_coin_settings WHERE symbol = ?), ?), ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             symbol,
                             symbol_settings.get('rsi_long_threshold'),
@@ -3759,9 +3765,8 @@ class BotsDatabase:
                             symbol_settings.get('rsi_time_filter_lower'),
                             1 if symbol_settings.get('avoid_down_trend') else 0,
                             extra_settings_json,
-                            symbol,
-                            created_at,
-                            now
+                            now,  # updated_at
+                            created_at  # created_at
                         ))
                     
                     conn.commit()
@@ -3795,7 +3800,7 @@ class BotsDatabase:
                            max_position_hours, rsi_time_filter_enabled,
                            rsi_time_filter_candles, rsi_time_filter_upper,
                            rsi_time_filter_lower, avoid_down_trend,
-                           extra_settings_json
+                           extra_settings_json, updated_at, created_at
                     FROM individual_coin_settings
                 """)
                 rows = cursor.fetchall()
@@ -3826,11 +3831,17 @@ class BotsDatabase:
                         'avoid_down_trend': bool(row[20])
                     }
                     
+                    # ✅ ИСПРАВЛЕНО: Добавляем updated_at и created_at
+                    if row[23]:  # updated_at
+                        settings_dict['updated_at'] = row[23]
+                    if row[24]:  # created_at
+                        settings_dict['created_at'] = row[24]
+                    
                     # Удаляем None значения
                     settings_dict = {k: v for k, v in settings_dict.items() if v is not None}
                     
                     # Загружаем extra_settings_json если есть
-                    if row[21]:
+                    if row[21]:  # extra_settings_json
                         try:
                             extra_settings = json.loads(row[21])
                             settings_dict.update(extra_settings)
@@ -4193,6 +4204,133 @@ class BotsDatabase:
     
     def load_delisted_coins(self) -> list:
         """
+        Загружает список делистированных монет
+        
+        Returns:
+            Список символов делистированных монет
+        """
+        try:
+            with self.lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT symbol FROM delisted ORDER BY symbol")
+                    rows = cursor.fetchall()
+                    return [row[0] for row in rows]
+        except Exception as e:
+            logger.error(f"❌ Ошибка загрузки делистированных монет: {e}")
+            return []
+    
+    # ==================== МЕТОДЫ ДЛЯ ФИЛЬТРОВ МОНЕТ (WHITELIST/BLACKLIST) ====================
+    
+    def save_coin_filters(self, whitelist: list = None, blacklist: list = None, scope: str = None) -> bool:
+        """
+        Сохраняет фильтры монет (whitelist, blacklist, scope) в БД
+        
+        Args:
+            whitelist: Список символов для белого списка (если None - не обновляется)
+            blacklist: Список символов для черного списка (если None - не обновляется)
+            scope: Режим работы ('all', 'whitelist', 'blacklist') (если None - не обновляется)
+        
+        Returns:
+            True если успешно сохранено
+        """
+        try:
+            now = datetime.now().isoformat()
+            
+            with self.lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    
+                    # Сохраняем whitelist
+                    if whitelist is not None:
+                        # Очищаем старый whitelist
+                        cursor.execute("DELETE FROM coin_filters_whitelist")
+                        # Добавляем новые записи
+                        for symbol in whitelist:
+                            if symbol and symbol.strip():
+                                symbol_upper = symbol.strip().upper()
+                                cursor.execute("""
+                                    INSERT INTO coin_filters_whitelist (symbol, added_at, updated_at)
+                                    VALUES (?, ?, ?)
+                                """, (symbol_upper, now, now))
+                        logger.debug(f"💾 Whitelist сохранен: {len(whitelist)} монет")
+                    
+                    # Сохраняем blacklist
+                    if blacklist is not None:
+                        # Очищаем старый blacklist
+                        cursor.execute("DELETE FROM coin_filters_blacklist")
+                        # Добавляем новые записи
+                        for symbol in blacklist:
+                            if symbol and symbol.strip():
+                                symbol_upper = symbol.strip().upper()
+                                cursor.execute("""
+                                    INSERT INTO coin_filters_blacklist (symbol, added_at, updated_at)
+                                    VALUES (?, ?, ?)
+                                """, (symbol_upper, now, now))
+                        logger.debug(f"💾 Blacklist сохранен: {len(blacklist)} монет")
+                    
+                    # Сохраняем scope в auto_bot_config
+                    if scope is not None:
+                        cursor.execute("""
+                            INSERT OR REPLACE INTO auto_bot_config (key, value, updated_at, created_at)
+                            VALUES (?, ?, ?, COALESCE((SELECT created_at FROM auto_bot_config WHERE key = ?), ?))
+                        """, ('scope', scope, now, 'scope', now))
+                        logger.debug(f"💾 Scope сохранен: {scope}")
+                    
+                    conn.commit()
+                    return True
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка сохранения фильтров монет: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return False
+    
+    def load_coin_filters(self) -> Dict[str, Any]:
+        """
+        Загружает фильтры монет из БД
+        
+        Returns:
+            Словарь с ключами: whitelist (list), blacklist (list), scope (str)
+        """
+        try:
+            result = {
+                'whitelist': [],
+                'blacklist': [],
+                'scope': 'all'  # По умолчанию
+            }
+            
+            with self.lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    
+                    # Загружаем whitelist
+                    cursor.execute("SELECT symbol FROM coin_filters_whitelist ORDER BY symbol")
+                    whitelist_rows = cursor.fetchall()
+                    result['whitelist'] = [row[0] for row in whitelist_rows]
+                    
+                    # Загружаем blacklist
+                    cursor.execute("SELECT symbol FROM coin_filters_blacklist ORDER BY symbol")
+                    blacklist_rows = cursor.fetchall()
+                    result['blacklist'] = [row[0] for row in blacklist_rows]
+                    
+                    # Загружаем scope из auto_bot_config
+                    cursor.execute("SELECT value FROM auto_bot_config WHERE key = 'scope'")
+                    scope_row = cursor.fetchone()
+                    if scope_row:
+                        result['scope'] = scope_row[0]
+                    
+                    logger.debug(f"📂 Фильтры загружены: whitelist={len(result['whitelist'])}, blacklist={len(result['blacklist'])}, scope={result['scope']}")
+                    return result
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка загрузки фильтров монет: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return {'whitelist': [], 'blacklist': [], 'scope': 'all'}
+    
+    def load_delisted_coins_old(self) -> list:
+        """
         Загружает делистированные монеты
         
         Returns:
@@ -4236,16 +4374,38 @@ class BotsDatabase:
         # ai.py должен использовать ai_database.save_candles(), а не bots_data.db!
         import os
         import sys
-        is_ai_process = (
-            'ai.py' in os.path.basename(sys.argv[0]).lower() if sys.argv else False or
-            any('ai.py' in str(arg).lower() for arg in sys.argv) or
-            os.environ.get('INFOBOT_AI_PROCESS', '').lower() == 'true'
+        script_name = os.path.basename(sys.argv[0]).lower() if sys.argv else ''
+        main_file = None
+        try:
+            if hasattr(sys.modules.get('__main__', None), '__file__') and sys.modules['__main__'].__file__:
+                main_file = str(sys.modules['__main__'].__file__).lower()
+        except:
+            pass
+        
+        # Сначала проверяем, что это НЕ bots.py
+        is_bots_process = (
+            'bots.py' in script_name or 
+            any('bots.py' in str(arg).lower() for arg in sys.argv) or
+            (main_file and 'bots.py' in main_file)
         )
         
-        if is_ai_process:
-            logger.warning("⚠️ БЛОКИРОВКА: ai.py пытается записать в bots_data.db через BotsDatabase.save_candles_cache()! "
-                          "Используйте ai_database.save_candles() вместо этого.")
-            return False
+        # Если это точно bots.py - разрешаем запись
+        if is_bots_process:
+            pass  # Разрешаем запись
+        else:
+            # Проверяем, что это ai.py
+            is_ai_process = (
+                'ai.py' in script_name or 
+                any('ai.py' in str(arg).lower() for arg in sys.argv) or
+                (main_file and 'ai.py' in main_file) or
+                os.environ.get('INFOBOT_AI_PROCESS', '').lower() == 'true'
+            )
+            
+            if is_ai_process:
+                logger.error("🚫 КРИТИЧЕСКАЯ БЛОКИРОВКА: ai.py пытается записать в bots_data.db через BotsDatabase.save_candles_cache()! "
+                          f"script_name={script_name}, main_file={main_file}, env={os.environ.get('INFOBOT_AI_PROCESS', '')}")
+                logger.error("🚫 Используйте ai_database.save_candles() вместо этого!")
+                return False
         
         try:
             now = datetime.now().isoformat()

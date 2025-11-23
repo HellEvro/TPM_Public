@@ -660,6 +660,31 @@ def load_auto_bot_config():
         else:
             logger.debug(" ✅ Конфигурация загружена (без изменений в файле)")
 
+        # ✅ Загружаем фильтры (whitelist, blacklist, scope) из БД и объединяем с конфигурацией
+        try:
+            from bot_engine.bots_database import get_bots_database
+            db = get_bots_database()
+            filters_data = db.load_coin_filters()
+            
+            # Объединяем фильтры из БД с конфигурацией (БД имеет приоритет)
+            if 'whitelist' in filters_data:
+                merged_config['whitelist'] = filters_data['whitelist']
+            if 'blacklist' in filters_data:
+                merged_config['blacklist'] = filters_data['blacklist']
+            if 'scope' in filters_data:
+                merged_config['scope'] = filters_data['scope']
+            
+            logger.debug(f"📂 Фильтры загружены из БД: whitelist={len(merged_config.get('whitelist', []))}, blacklist={len(merged_config.get('blacklist', []))}, scope={merged_config.get('scope', 'all')}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка загрузки фильтров из БД: {e}")
+            # Устанавливаем значения по умолчанию если загрузка не удалась
+            if 'whitelist' not in merged_config:
+                merged_config['whitelist'] = []
+            if 'blacklist' not in merged_config:
+                merged_config['blacklist'] = []
+            if 'scope' not in merged_config:
+                merged_config['scope'] = 'all'
+        
         # ✅ ВСЕГДА обновляем bots_data, даже если файл не изменился
         # Это гарантирует, что данные всегда актуальны, особенно после принудительной перезагрузки модуля в API
         with bots_data_lock:
@@ -763,7 +788,7 @@ def load_individual_coin_settings():
 
 
 def save_individual_coin_settings():
-    """Сохраняет индивидуальные настройки монет в файл"""
+    """Сохраняет индивидуальные настройки монет в БД"""
     try:
         with bots_data_lock:
             settings = {

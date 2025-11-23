@@ -2581,6 +2581,32 @@ def auto_bot_config():
                         config['avoid_up_trend'] = False
                     logger.warning(f" ✅ avoid_up_trend преобразовано в: {config['avoid_up_trend']} (тип: {type(config['avoid_up_trend']).__name__})")
                 
+                # ✅ Загружаем фильтры (whitelist, blacklist, scope) из БД
+                try:
+                    from bot_engine.bots_database import get_bots_database
+                    db = get_bots_database()
+                    filters_data = db.load_coin_filters()
+                    
+                    # Объединяем фильтры из БД с конфигурацией
+                    # БД имеет приоритет над файловой конфигурацией
+                    if 'whitelist' in filters_data:
+                        config['whitelist'] = filters_data['whitelist']
+                    if 'blacklist' in filters_data:
+                        config['blacklist'] = filters_data['blacklist']
+                    if 'scope' in filters_data:
+                        config['scope'] = filters_data['scope']
+                    
+                    logger.debug(f"📂 Фильтры загружены из БД: whitelist={len(config.get('whitelist', []))}, blacklist={len(config.get('blacklist', []))}, scope={config.get('scope', 'all')}")
+                except Exception as e:
+                    logger.error(f"❌ Ошибка загрузки фильтров из БД: {e}")
+                    # Устанавливаем значения по умолчанию если загрузка не удалась
+                    if 'whitelist' not in config:
+                        config['whitelist'] = []
+                    if 'blacklist' not in config:
+                        config['blacklist'] = []
+                    if 'scope' not in config:
+                        config['scope'] = 'all'
+                
                 # ✅ Финальная проверка перед возвратом (логирование убрано для уменьшения спама)
                 
                 return jsonify({
@@ -2644,6 +2670,24 @@ def auto_bot_config():
                         else:
                             # Изменение существующего ключа
                             changes_count += 1
+            
+            # ✅ КРИТИЧЕСКИ ВАЖНО: Сохраняем фильтры (whitelist, blacklist, scope) в БД
+            filters_saved = False
+            try:
+                from bot_engine.bots_database import get_bots_database
+                db = get_bots_database()
+                
+                # Извлекаем фильтры из data
+                whitelist = data.get('whitelist') if 'whitelist' in data else None
+                blacklist = data.get('blacklist') if 'blacklist' in data else None
+                scope = data.get('scope') if 'scope' in data else None
+                
+                if whitelist is not None or blacklist is not None or scope is not None:
+                    filters_saved = db.save_coin_filters(whitelist=whitelist, blacklist=blacklist, scope=scope)
+                    if filters_saved:
+                        logger.info(f"✅ Фильтры сохранены в БД: whitelist={len(whitelist) if whitelist else 'не изменен'}, blacklist={len(blacklist) if blacklist else 'не изменен'}, scope={scope if scope else 'не изменен'}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка сохранения фильтров в БД: {e}")
             
             # КРИТИЧЕСКИ ВАЖНО: Сохраняем конфигурацию в файл (с перезагрузкой модуля)
             save_result = save_auto_bot_config()

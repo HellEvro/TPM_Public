@@ -1327,16 +1327,20 @@ def load_all_coins_candles_fast():
             main_file = None
             try:
                 if hasattr(sys.modules.get('__main__', None), '__file__') and sys.modules['__main__'].__file__:
-                    main_file = str(sys.modules['__main__'].__file__)
+                    main_file = str(sys.modules['__main__'].__file__).lower()
             except:
                 pass
+            
+            # ⚠️ КРИТИЧНО: Явно инициализируем переменные
+            is_bots_process = False
+            is_ai_process = False
             
             # Проверяем по имени скрипта, аргументам, файлу __main__ и переменной окружения
             # ⚠️ ВАЖНО: Сначала проверяем, что это НЕ bots.py, потом проверяем ai.py
             is_bots_process = (
                 'bots.py' in script_name.lower() or 
                 any('bots.py' in str(arg).lower() for arg in sys.argv) or
-                (main_file and 'bots.py' in main_file.lower())
+                (main_file and 'bots.py' in main_file)
             )
             
             # Если это точно bots.py - НЕ проверяем дальше и игнорируем переменную окружения
@@ -1349,11 +1353,11 @@ def load_all_coins_candles_fast():
                 is_ai_process = (
                     'ai.py' in script_name.lower() or 
                     any('ai.py' in str(arg).lower() for arg in sys.argv) or
-                    (main_file and 'ai.py' in main_file.lower()) or
+                    (main_file and 'ai.py' in main_file) or
                     env_flag
                 )
                 if is_ai_process:
-                    logger.debug(f"🔍 Обнаружен процесс ai.py - сохраняем свечи в ai_data.db (script_name={script_name}, main_file={main_file}, env_flag={env_flag})")
+                    logger.info(f"🔍 Обнаружен процесс ai.py - сохраняем свечи ТОЛЬКО в ai_data.db (script_name={script_name}, main_file={main_file}, env_flag={env_flag})")
             
             if is_ai_process:
                 # Если это процесс ai.py - сохраняем ТОЛЬКО в ai_data.db, НЕ в bots_data.db!

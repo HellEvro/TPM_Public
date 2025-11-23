@@ -461,16 +461,42 @@ def save_candles_cache(candles_cache: Dict) -> bool:
     # ai.py должен использовать ai_database.save_candles(), а не bots_data.db!
     import os
     import sys
-    is_ai_process = (
-        'ai.py' in os.path.basename(sys.argv[0]).lower() if sys.argv else False or
-        any('ai.py' in str(arg).lower() for arg in sys.argv) or
-        os.environ.get('INFOBOT_AI_PROCESS', '').lower() == 'true'
+    import traceback
+    script_name = os.path.basename(sys.argv[0]).lower() if sys.argv else ''
+    main_file = None
+    try:
+        if hasattr(sys.modules.get('__main__', None), '__file__') and sys.modules['__main__'].__file__:
+            main_file = str(sys.modules['__main__'].__file__).lower()
+    except:
+        pass
+    
+    # Сначала проверяем, что это НЕ bots.py
+    is_bots_process = (
+        'bots.py' in script_name or 
+        any('bots.py' in str(arg).lower() for arg in sys.argv) or
+        (main_file and 'bots.py' in main_file)
     )
     
-    if is_ai_process:
-        logger.warning("⚠️ БЛОКИРОВКА: ai.py пытается записать в bots_data.db через save_candles_cache()! "
-                      "Используйте ai_database.save_candles() вместо этого.")
-        return False
+    # Если это точно bots.py - разрешаем запись
+    if is_bots_process:
+        pass  # Разрешаем запись
+    else:
+        # Проверяем, что это ai.py
+        is_ai_process = (
+            'ai.py' in script_name or 
+            any('ai.py' in str(arg).lower() for arg in sys.argv) or
+            (main_file and 'ai.py' in main_file) or
+            os.environ.get('INFOBOT_AI_PROCESS', '').lower() == 'true'
+        )
+        
+        if is_ai_process:
+            # Получаем стек вызовов для диагностики
+            stack = ''.join(traceback.format_stack()[-5:-1])
+            logger.error("🚫 КРИТИЧЕСКАЯ БЛОКИРОВКА: ai.py пытается записать в bots_data.db через save_candles_cache()!")
+            logger.error(f"🚫 script_name={script_name}, main_file={main_file}, env={os.environ.get('INFOBOT_AI_PROCESS', '')}")
+            logger.error(f"🚫 Стек вызовов:\n{stack}")
+            logger.error("🚫 Используйте ai_database.save_candles() вместо этого!")
+            return False
     
     db = _get_bots_database()
     
