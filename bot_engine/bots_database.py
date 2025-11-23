@@ -1151,7 +1151,8 @@ class BotsDatabase:
                     low REAL NOT NULL,
                     close REAL NOT NULL,
                     volume REAL NOT NULL,
-                    FOREIGN KEY (cache_id) REFERENCES candles_cache(id) ON DELETE CASCADE
+                    FOREIGN KEY (cache_id) REFERENCES candles_cache(id) ON DELETE CASCADE,
+                    UNIQUE(cache_id, time)
                 )
             """)
             
@@ -4486,49 +4487,121 @@ class BotsDatabase:
         Returns:
             True если успешно сохранено
         """
-        # ⚠️ КРИТИЧНО: Проверяем, что это НЕ процесс ai.py
-        # ai.py должен использовать ai_database.save_candles(), а не bots_data.db!
-        import os
-        import sys
-        script_name = os.path.basename(sys.argv[0]).lower() if sys.argv else ''
-        main_file = None
+        # ⚠️ ЗАЩИТА ОТ ПОВТОРНЫХ ВЫЗОВОВ: проверяем, не выполняется ли уже сохранение
+        if not hasattr(self, '_saving_candles_cache'):
+            self._saving_candles_cache = False
+        
+        if self._saving_candles_cache:
+            logger.warning("⚠️ save_candles_cache() уже выполняется, пропускаем повторный вызов")
+            return False
+        
+        self._saving_candles_cache = True
         try:
-            if hasattr(sys.modules.get('__main__', None), '__file__') and sys.modules['__main__'].__file__:
-                main_file = str(sys.modules['__main__'].__file__).lower()
-        except:
-            pass
-        
-        # Сначала проверяем, что это НЕ bots.py
-        is_bots_process = (
-            'bots.py' in script_name or 
-            any('bots.py' in str(arg).lower() for arg in sys.argv) or
-            (main_file and 'bots.py' in main_file)
-        )
-        
-        # Если это точно bots.py - разрешаем запись
-        if is_bots_process:
-            pass  # Разрешаем запись
-        else:
-            # Проверяем, что это ai.py
-            is_ai_process = (
-                'ai.py' in script_name or 
-                any('ai.py' in str(arg).lower() for arg in sys.argv) or
-                (main_file and 'ai.py' in main_file) or
-                os.environ.get('INFOBOT_AI_PROCESS', '').lower() == 'true'
+            # ⚠️ КРИТИЧНО: Проверяем, что это НЕ процесс ai.py
+            # ai.py должен использовать ai_database.save_candles(), а не bots_data.db!
+            import os
+            import sys
+            script_name = os.path.basename(sys.argv[0]).lower() if sys.argv else ''
+            main_file = None
+            try:
+                if hasattr(sys.modules.get('__main__', None), '__file__') and sys.modules['__main__'].__file__:
+                    main_file = str(sys.modules['__main__'].__file__).lower()
+            except:
+                pass
+            
+            # Сначала проверяем, что это НЕ bots.py
+            is_bots_process = (
+                'bots.py' in script_name or 
+                any('bots.py' in str(arg).lower() for arg in sys.argv) or
+                (main_file and 'bots.py' in main_file)
             )
             
-            if is_ai_process:
-                logger.error("🚫 КРИТИЧЕСКАЯ БЛОКИРОВКА: ai.py пытается записать в bots_data.db через BotsDatabase.save_candles_cache()! "
-                          f"script_name={script_name}, main_file={main_file}, env={os.environ.get('INFOBOT_AI_PROCESS', '')}")
-                logger.error("🚫 Используйте ai_database.save_candles() вместо этого!")
-                return False
-        
-        try:
+            # Если это точно bots.py - разрешаем запись
+            if is_bots_process:
+                pass  # Разрешаем запись
+            else:
+                # Проверяем, что это ai.py
+                is_ai_process = (
+                    'ai.py' in script_name or 
+                    any('ai.py' in str(arg).lower() for arg in sys.argv) or
+                    (main_file and 'ai.py' in main_file) or
+                    os.environ.get('INFOBOT_AI_PROCESS', '').lower() == 'true'
+                )
+                
+                if is_ai_process:
+                    logger.error("🚫 КРИТИЧЕСКАЯ БЛОКИРОВКА: ai.py пытается записать в bots_data.db через BotsDatabase.save_candles_cache()! "
+                              f"script_name={script_name}, main_file={main_file}, env={os.environ.get('INFOBOT_AI_PROCESS', '')}")
+                    logger.error("🚫 Используйте ai_database.save_candles() вместо этого!")
+                    return False
+            
+            # Основная логика сохранения
             now = datetime.now().isoformat()
             
             with self.lock:
                 with self._get_connection() as conn:
                     cursor = conn.cursor()
+                    
+                    # ⚠️ МИГРАЦИЯ: Добавляем UNIQUE constraint к candles_cache_data если его нет
+                    try:
+                        # Проверяем, есть ли UNIQUE constraint на (cache_id, time)
+                        cursor.execute("PRAGMA index_list(candles_cache_data)")
+                        indexes = cursor.fetchall()
+                        has_unique = False
+                        for idx in indexes:
+                            idx_name = idx[1]
+                            cursor.execute(f"PRAGMA index_info({idx_name})")
+                            idx_info = cursor.fetchall()
+                            if len(idx_info) == 2:  # Два столбца в индексе
+                                cols = [info[2] for info in idx_info]
+                                if 'cache_id' in cols and 'time' in cols:
+                                    # Проверяем, является ли индекс UNIQUE
+                                    cursor.execute(f"SELECT sql FROM sqlite_master WHERE type='index' AND name='{idx_name}'")
+                                    idx_sql = cursor.fetchone()
+                                    if idx_sql and 'UNIQUE' in idx_sql[0].upper():
+                                        has_unique = True
+                                        break
+                        
+                        if not has_unique:
+                            logger.warning("⚠️ Добавляем UNIQUE constraint к candles_cache_data для предотвращения дубликатов...")
+                            # Создаем новую таблицу с UNIQUE constraint
+                            cursor.execute("""
+                                CREATE TABLE candles_cache_data_new (
+                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    cache_id INTEGER NOT NULL,
+                                    time INTEGER NOT NULL,
+                                    open REAL NOT NULL,
+                                    high REAL NOT NULL,
+                                    low REAL NOT NULL,
+                                    close REAL NOT NULL,
+                                    volume REAL NOT NULL,
+                                    FOREIGN KEY (cache_id) REFERENCES candles_cache(id) ON DELETE CASCADE,
+                                    UNIQUE(cache_id, time)
+                                )
+                            """)
+                            # Копируем данные, удаляя дубликаты (берем последнюю запись для каждой пары cache_id, time)
+                            cursor.execute("""
+                                INSERT INTO candles_cache_data_new (cache_id, time, open, high, low, close, volume)
+                                SELECT cache_id, time, open, high, low, close, volume
+                                FROM candles_cache_data
+                                WHERE id IN (
+                                    SELECT MAX(id) 
+                                    FROM candles_cache_data 
+                                    GROUP BY cache_id, time
+                                )
+                            """)
+                            # Удаляем старую таблицу
+                            cursor.execute("DROP TABLE candles_cache_data")
+                            # Переименовываем новую
+                            cursor.execute("ALTER TABLE candles_cache_data_new RENAME TO candles_cache_data")
+                            # Восстанавливаем индексы
+                            cursor.execute("CREATE INDEX IF NOT EXISTS idx_candles_cache_data_cache_id ON candles_cache_data(cache_id)")
+                            cursor.execute("CREATE INDEX IF NOT EXISTS idx_candles_cache_data_time ON candles_cache_data(time)")
+                            cursor.execute("CREATE INDEX IF NOT EXISTS idx_candles_cache_data_cache_time ON candles_cache_data(cache_id, time)")
+                            conn.commit()
+                            logger.info("✅ UNIQUE constraint добавлен к candles_cache_data")
+                    except Exception as migration_error:
+                        logger.warning(f"⚠️ Ошибка миграции UNIQUE constraint: {migration_error}")
+                        # Продолжаем работу, даже если миграция не удалась
                     
                     # Проверяем, есть ли старая колонка candles_json (NOT NULL constraint)
                     try:
@@ -4570,7 +4643,7 @@ class BotsDatabase:
                             )
                         """)
                         
-                        # Создаем таблицу для данных свечей
+                        # Создаем таблицу для данных свечей С UNIQUE CONSTRAINT
                         cursor.execute("""
                             CREATE TABLE candles_cache_data (
                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4581,7 +4654,8 @@ class BotsDatabase:
                                 low REAL NOT NULL,
                                 close REAL NOT NULL,
                                 volume REAL NOT NULL,
-                                FOREIGN KEY (cache_id) REFERENCES candles_cache(id) ON DELETE CASCADE
+                                FOREIGN KEY (cache_id) REFERENCES candles_cache(id) ON DELETE CASCADE,
+                                UNIQUE(cache_id, time)
                             )
                         """)
                         
@@ -4674,32 +4748,36 @@ class BotsDatabase:
                             cursor.execute("SELECT COUNT(*) FROM candles_cache_data WHERE cache_id = ?", (cache_id,))
                             old_count_before = cursor.fetchone()[0]
                             
-                            # Удаляем ВСЕ старые свечи
+                            # ⚠️ КРИТИЧНО: Удаляем ВСЕ старые свечи ПЕРЕД вставкой новых
+                            # Это должно выполняться в той же транзакции!
                             cursor.execute("""
                                 DELETE FROM candles_cache_data 
                                 WHERE cache_id = ?
                             """, (cache_id,))
                             deleted_old_count = cursor.rowcount
                             
-                            # Проверяем, что удаление сработало
+                            # ⚠️ КРИТИЧНО: Проверяем, что удаление сработало СРАЗУ после DELETE
                             cursor.execute("SELECT COUNT(*) FROM candles_cache_data WHERE cache_id = ?", (cache_id,))
                             old_count_after = cursor.fetchone()[0]
                             
-                            # Логируем если было много старых записей или удаление не сработало
-                            if old_count_before > 1000:
-                                logger.warning(f"⚠️ {symbol}: Обнаружено накопление! Было {old_count_before:,} свечей, удалено {deleted_old_count:,}, осталось {old_count_after}")
-                            
+                            # Если после DELETE остались записи - это КРИТИЧЕСКАЯ ОШИБКА!
                             if old_count_after > 0:
-                                logger.error(f"❌ {symbol}: КРИТИЧЕСКАЯ ОШИБКА! DELETE не удалил все старые свечи! Осталось {old_count_after} записей после DELETE!")
+                                logger.error(f"❌ {symbol}: КРИТИЧЕСКАЯ ОШИБКА! DELETE не удалил все записи! Осталось {old_count_after} записей!")
                                 # Пытаемся удалить еще раз принудительно
                                 cursor.execute("DELETE FROM candles_cache_data WHERE cache_id = ?", (cache_id,))
                                 deleted_again = cursor.rowcount
                                 cursor.execute("SELECT COUNT(*) FROM candles_cache_data WHERE cache_id = ?", (cache_id,))
-                                final_count = cursor.fetchone()[0]
-                                if final_count > 0:
-                                    logger.error(f"❌ {symbol}: КРИТИЧЕСКАЯ ПРОБЛЕМА! После повторного DELETE осталось {final_count} записей! Возможна проблема с БД или транзакцией!")
+                                final_after_delete = cursor.fetchone()[0]
+                                if final_after_delete > 0:
+                                    logger.critical(f"❌ {symbol}: КРИТИЧЕСКАЯ ПРОБЛЕМА! После повторного DELETE осталось {final_after_delete} записей! Возможна проблема с БД или транзакцией!")
+                                    # Откатываем транзакцию для этого символа
+                                    raise Exception(f"DELETE не работает для {symbol}! Осталось {final_after_delete} записей после двух попыток DELETE!")
                                 else:
                                     logger.warning(f"⚠️ {symbol}: Повторное удаление успешно удалило оставшиеся {deleted_again} записей")
+                            
+                            # Логируем если было много старых записей
+                            if old_count_before > 1000:
+                                logger.warning(f"⚠️ {symbol}: Обнаружено накопление! Было {old_count_before:,} свечей, удалено {deleted_old_count:,}, осталось {old_count_after}")
                             
                             # ОГРАНИЧЕНИЕ: Сохраняем только последние N свечей для каждого символа
                             # Это предотвращает раздувание БД до огромных размеров
@@ -4718,10 +4796,11 @@ class BotsDatabase:
                                 logger.debug(f"   📊 {symbol}: Ограничено до {MAX_CANDLES_PER_SYMBOL} свечей (было {len(candles_sorted)})")
                             
                             # ⚡ ОПТИМИЗИРОВАННАЯ ВСТАВКА: используем executemany вместо цикла
-                            # Вставляем только новые свечи (старые уже удалены)
+                            # ⚠️ КРИТИЧНО: Используем INSERT OR REPLACE для предотвращения дубликатов
+                            # Старые свечи уже удалены, но на случай параллельных вызовов используем OR REPLACE
                             if candles_to_save:
                                 cursor.executemany("""
-                                    INSERT INTO candles_cache_data 
+                                    INSERT OR REPLACE INTO candles_cache_data 
                                     (cache_id, time, open, high, low, close, volume)
                                     VALUES (?, ?, ?, ?, ?, ?, ?)
                                 """, [
@@ -4750,10 +4829,12 @@ class BotsDatabase:
                                 if final_count > MAX_CANDLES_PER_SYMBOL:
                                     logger.error(f"❌ {symbol}: ПРЕВЫШЕН ЛИМИТ! В БД {final_count} свечей, должно быть ≤{MAX_CANDLES_PER_SYMBOL}!")
                     
-                    # КРИТИЧНО: Коммитим транзакцию ПЕРЕД проверкой финального состояния
+                    # ⚠️ КРИТИЧНО: Коммитим транзакцию СРАЗУ после DELETE+INSERT
+                    # Это гарантирует, что изменения применены и не будет дубликатов
                     conn.commit()
                     
-                    # Проверяем финальное состояние после коммита
+                    # ⚠️ КРИТИЧНО: Проверяем финальное состояние после коммита
+                    # Если после коммита есть превышение лимита - это КРИТИЧЕСКАЯ ПРОБЛЕМА!
                     cursor.execute("""
                         SELECT cache_id, COUNT(*) as cnt 
                         FROM candles_cache_data 
@@ -4778,6 +4859,9 @@ class BotsDatabase:
             import traceback
             logger.debug(traceback.format_exc())
             return False
+        finally:
+            # Снимаем флаг блокировки
+            self._saving_candles_cache = False
     
     def load_candles_cache(self, symbol: Optional[str] = None) -> Dict:
         """
