@@ -1220,10 +1220,6 @@ class DatabaseGUI(tk.Tk):
                     'db_path': db['path'],
                     'table_name': None
                 }
-            
-            # Визуально выделяем несуществующие файлы (серым цветом)
-            if not exists:
-                self.db_tree.set(item_id, 'exists', '0')
     
     def _on_tree_item_click(self):
         """Обработчик клика на элемент дерева"""
