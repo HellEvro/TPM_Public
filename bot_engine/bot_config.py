@@ -65,10 +65,10 @@ class VolumeMode:
 
 # Настройки Auto Bot по умолчанию
 DEFAULT_AUTO_BOT_CONFIG = {
-    'enabled': True,
-    'max_concurrent': 50,
+    'enabled': False,
+    'max_concurrent': 1,
     'risk_cap_percent': 10,
-    'scope': 'all',  # all | whitelist | blacklist
+    'scope': 'all', # all | whitelist | blacklist
     'whitelist': [],
     'blacklist': [],
     # RSI параметры согласно ТЗ
@@ -130,7 +130,46 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'ai_optimal_entry_enabled': False,  # ИИ определение оптимальной точки входа (выкл. по умолчанию)
     'ai_enabled': True, # Включить подтверждение сигналов AI
     'ai_min_confidence': 0.7,          # Минимальная уверенность AI (0.0-1.0)
-    'ai_override_original': True,      # AI может блокировать решения скрипта
+    'ai_override_original': True,      # AI может блокировать решения скрипта,
+    'anomaly_block_threshold': 0.7,
+    'anomaly_detection_enabled': True,
+    'anomaly_log_enabled': True,
+    'auto_refresh_ui': True,
+    'auto_retrain': True,
+    'auto_save_interval': 30,
+    'auto_train_enabled': True,
+    'auto_update_data': True,
+    'data_update_interval': 86400,
+    'debug_mode': False,
+    'enhanced_rsi_enabled': True,
+    'enhanced_rsi_require_divergence_confirmation': True,
+    'enhanced_rsi_require_volume_confirmation': True,
+    'enhanced_rsi_use_stoch_rsi': True,
+    'inactive_bot_cleanup_interval': 600,
+    'inactive_bot_timeout': 600,
+    'log_anomalies': True,
+    'log_patterns': True,
+    'log_predictions': True,
+    'lstm_enabled': True,
+    'lstm_min_confidence': 0.6,
+    'lstm_weight': 1.5,
+    'min_volatility_threshold': 0.05,
+    'pattern_enabled': True,
+    'pattern_min_confidence': 0.6,
+    'pattern_weight': 1.2,
+    'position_sync_interval': 30,
+    'refresh_interval': 3,
+    'retrain_hour': 3,
+    'retrain_interval': 604800,
+    'risk_management_enabled': True,
+    'risk_update_interval': 300,
+    'rsi_divergence_lookback': 10,
+    'rsi_extreme_overbought': 80,
+    'rsi_extreme_oversold': 20,
+    'rsi_extreme_zone_timeout': 3,
+    'rsi_update_interval': 300,
+    'rsi_volume_confirmation_multiplier': 1.2,
+    'stop_loss_setup_interval': 300,
 }
 
 # Настройки по умолчанию для отдельного бота
