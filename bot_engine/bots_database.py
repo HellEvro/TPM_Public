@@ -4556,7 +4556,8 @@ class BotsDatabase:
                 direction = trade.get('direction', 'LONG')
                 entry_price = trade.get('entry_price', 0.0)
                 exit_price = trade.get('exit_price')
-                entry_time = trade.get('entry_time', now)
+                # ✅ ИСПРАВЛЕНО: Если entry_time отсутствует или равен None, используем текущее время
+                entry_time = trade.get('entry_time') or now
                 exit_time = trade.get('exit_time')
                 entry_timestamp = trade.get('entry_timestamp') or trade.get('entry_timestamp_ms')
                 exit_timestamp = trade.get('exit_timestamp') or trade.get('exit_timestamp_ms')
@@ -4596,6 +4597,10 @@ class BotsDatabase:
                         entry_timestamp = dt.timestamp() * 1000
                     except:
                         pass
+                
+                # ✅ ИСПРАВЛЕНО: Если entry_timestamp все еще None, вычисляем из текущего времени
+                if entry_timestamp is None:
+                    entry_timestamp = datetime.now().timestamp() * 1000
                 
                 if exit_timestamp is None and exit_time:
                     try:
