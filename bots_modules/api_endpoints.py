@@ -2648,6 +2648,7 @@ def auto_bot_config():
                             changes_count += 1
             
             # ✅ КРИТИЧЕСКИ ВАЖНО: Сохраняем фильтры (whitelist, blacklist, scope) в БД
+            # И ВАЖНО: scope также должен быть в bots_data['auto_bot_config'] для сохранения в файл!
             filters_saved = False
             try:
                 from bot_engine.bots_database import get_bots_database
@@ -2665,6 +2666,8 @@ def auto_bot_config():
             except Exception as e:
                 logger.error(f"❌ Ошибка сохранения фильтров в БД: {e}")
             
+            # ✅ КРИТИЧЕСКИ ВАЖНО: scope уже обновлен в bots_data['auto_bot_config'] выше (строка 2638)
+            # Теперь он будет сохранен в файл через save_auto_bot_config()
             # КРИТИЧЕСКИ ВАЖНО: Сохраняем конфигурацию в файл (с перезагрузкой модуля)
             save_result = save_auto_bot_config()
             

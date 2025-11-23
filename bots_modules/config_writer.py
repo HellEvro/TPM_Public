@@ -81,7 +81,16 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
         logger.info(f"[CONFIG_WRITER] 📝 Найден блок конфигурации: строки {start_idx+1}-{end_idx+1}")
         
         # ✅ Логируем ключевые значения, которые будут сохранены
-        logger.info(f"[CONFIG_WRITER] 🔍 Сохраняемые значения:")
+        logger.info(f"[CONFIG_WRITER] 🔍 Сохраняемые значения (всего {len(config)} параметров):")
+        logger.info(f"  enabled: {config.get('enabled')}")
+        logger.info(f"  max_concurrent: {config.get('max_concurrent')}")
+        logger.info(f"  risk_cap_percent: {config.get('risk_cap_percent')}")
+        logger.info(f"  scope: {config.get('scope')} (тип: {type(config.get('scope')).__name__})")
+        logger.info(f"  whitelist: {len(config.get('whitelist', []))} элементов")
+        logger.info(f"  blacklist: {len(config.get('blacklist', []))} элементов")
+        logger.info(f"  ai_enabled: {config.get('ai_enabled')}")
+        logger.info(f"  ai_min_confidence: {config.get('ai_min_confidence')}")
+        logger.info(f"  ai_override_original: {config.get('ai_override_original')}")
         logger.info(f"  leverage: {config.get('leverage')}")
         logger.info(f"  trailing_stop_activation: {config.get('trailing_stop_activation')}")
         logger.info(f"  trailing_stop_distance: {config.get('trailing_stop_distance')}")
@@ -151,11 +160,11 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
                     
                     # Всегда добавляем запятую перед комментарием
                     updated_line = f"{indent}'{key}': {new_value_str},{comment_str}\n"
-                    # ✅ Логируем ключевые изменения
-                    if key in ('leverage', 'trailing_stop_activation', 'trailing_stop_distance', 'break_even_trigger', 'avoid_down_trend', 'avoid_up_trend', 'limit_orders_entry_enabled', 'limit_orders_percent_steps', 'limit_orders_margin_amounts'):
-                        logger.info(f"[CONFIG_WRITER] ✏️ {key}: {old_normalized[:50]}... → {new_normalized[:50]}...")
+                    # ✅ Логируем ключевые изменения (включая основные настройки)
+                    if key in ('enabled', 'max_concurrent', 'risk_cap_percent', 'scope', 'whitelist', 'blacklist', 'ai_enabled', 'ai_min_confidence', 'ai_override_original', 'leverage', 'trailing_stop_activation', 'trailing_stop_distance', 'break_even_trigger', 'avoid_down_trend', 'avoid_up_trend', 'limit_orders_entry_enabled', 'limit_orders_percent_steps', 'limit_orders_margin_amounts'):
+                        logger.info(f"[CONFIG_WRITER] ✏️ {key}: {old_normalized[:50] if len(old_normalized) <= 50 else old_normalized[:50] + '...'} → {new_normalized[:50] if len(new_normalized) <= 50 else new_normalized[:50] + '...'}")
                     else:
-                        logger.debug(f"[CONFIG_WRITER] ✏️ {key}: {old_normalized[:50]}... → {new_normalized[:50]}...")
+                        logger.debug(f"[CONFIG_WRITER] ✏️ {key}: {old_normalized[:50] if len(old_normalized) <= 50 else old_normalized[:50] + '...'} → {new_normalized[:50] if len(new_normalized) <= 50 else new_normalized[:50] + '...'}")
             
             updated_lines.append(updated_line)
         
@@ -240,12 +249,43 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
                 importlib.reload(bot_engine.bot_config)
                 from bot_engine.bot_config import DEFAULT_AUTO_BOT_CONFIG
                 logger.info(f"[CONFIG_WRITER] ✅ Проверка сохраненных значений:")
+                logger.info(f"  enabled: {DEFAULT_AUTO_BOT_CONFIG.get('enabled')}")
+                logger.info(f"  max_concurrent: {DEFAULT_AUTO_BOT_CONFIG.get('max_concurrent')}")
+                logger.info(f"  risk_cap_percent: {DEFAULT_AUTO_BOT_CONFIG.get('risk_cap_percent')}")
+                logger.info(f"  scope: {DEFAULT_AUTO_BOT_CONFIG.get('scope')}")
+                logger.info(f"  ai_enabled: {DEFAULT_AUTO_BOT_CONFIG.get('ai_enabled')}")
+                logger.info(f"  ai_min_confidence: {DEFAULT_AUTO_BOT_CONFIG.get('ai_min_confidence')}")
+                logger.info(f"  ai_override_original: {DEFAULT_AUTO_BOT_CONFIG.get('ai_override_original')}")
                 logger.info(f"  leverage: {DEFAULT_AUTO_BOT_CONFIG.get('leverage')}")
                 logger.info(f"  trailing_stop_activation: {DEFAULT_AUTO_BOT_CONFIG.get('trailing_stop_activation')}")
                 logger.info(f"  trailing_stop_distance: {DEFAULT_AUTO_BOT_CONFIG.get('trailing_stop_distance')}")
                 logger.info(f"  break_even_trigger: {DEFAULT_AUTO_BOT_CONFIG.get('break_even_trigger')}")
                 logger.info(f"  avoid_down_trend: {DEFAULT_AUTO_BOT_CONFIG.get('avoid_down_trend')}")
                 logger.info(f"  avoid_up_trend: {DEFAULT_AUTO_BOT_CONFIG.get('avoid_up_trend')}")
+                
+                # ✅ Проверяем, что основные настройки действительно сохранились
+                if 'enabled' in config:
+                    saved_enabled = DEFAULT_AUTO_BOT_CONFIG.get('enabled')
+                    if saved_enabled != config.get('enabled'):
+                        logger.error(f"[CONFIG_WRITER] ❌ ОШИБКА: enabled не сохранился! Ожидалось: {config.get('enabled')}, сохранено: {saved_enabled}")
+                    else:
+                        logger.info(f"[CONFIG_WRITER] ✅ enabled успешно сохранен: {saved_enabled}")
+                
+                if 'max_concurrent' in config:
+                    saved_max_concurrent = DEFAULT_AUTO_BOT_CONFIG.get('max_concurrent')
+                    if saved_max_concurrent != config.get('max_concurrent'):
+                        logger.error(f"[CONFIG_WRITER] ❌ ОШИБКА: max_concurrent не сохранился! Ожидалось: {config.get('max_concurrent')}, сохранено: {saved_max_concurrent}")
+                    else:
+                        logger.info(f"[CONFIG_WRITER] ✅ max_concurrent успешно сохранен: {saved_max_concurrent}")
+                
+                # ✅ КРИТИЧЕСКИ ВАЖНО: Проверяем scope
+                if 'scope' in config:
+                    saved_scope = DEFAULT_AUTO_BOT_CONFIG.get('scope')
+                    expected_scope = config.get('scope')
+                    if saved_scope != expected_scope:
+                        logger.error(f"[CONFIG_WRITER] ❌ ОШИБКА: scope не сохранился! Ожидалось: {expected_scope} (тип: {type(expected_scope).__name__}), сохранено: {saved_scope} (тип: {type(saved_scope).__name__})")
+                    else:
+                        logger.info(f"[CONFIG_WRITER] ✅ scope успешно сохранен: {saved_scope}")
         except Exception as check_error:
             logger.warning(f"[CONFIG_WRITER] ⚠️ Не удалось проверить сохраненные значения: {check_error}")
         

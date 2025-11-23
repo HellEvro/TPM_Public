@@ -6887,10 +6887,13 @@ class BotsManager {
                 ai_override_original: config.autoBot.ai_override_original
             };
             
+            console.log('[BotsManager] 🔍 Основные настройки для сохранения:', basicSettings);
+            console.log('[BotsManager] 🔍 originalConfig.autoBot:', this.originalConfig?.autoBot);
+            
             await this.sendConfigUpdate('auto-bot', basicSettings, 'Основные настройки');
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка сохранения основных настроек:', error);
-            this.showNotification('❌ Ошибка сохранения основных настроек', 'error');
+            this.showNotification('❌ Ошибка сохранения основных настроек: ' + error.message, 'error');
         }
     }
     
@@ -7168,6 +7171,17 @@ class BotsManager {
                     console.log(`[BotsManager] ⏭️ Пропущен ${key}: ${originalValue} == ${value} (не изменился)`);
                 }
             }
+            // ✅ ОСОБАЯ ОБРАБОТКА ДЛЯ scope - всегда логируем сравнение
+            else if (key === 'scope') {
+                console.log(`[BotsManager] 🔍 Сравнение scope: текущее="${value}" (тип: ${typeof value}), оригинальное="${originalValue}" (тип: ${typeof originalValue})`);
+                if (value !== originalValue) {
+                    filtered[key] = value;
+                    changedCount++;
+                    console.log(`[BotsManager] 🔄 Изменен scope: ${originalValue} → ${value}`);
+                } else {
+                    console.log(`[BotsManager] ⏭️ Пропущен scope: ${originalValue} == ${value} (не изменился)`);
+                }
+            }
             // Для остальных типов: точное сравнение
             else if (value !== originalValue) {
                 filtered[key] = value;
@@ -7211,8 +7225,9 @@ class BotsManager {
             
             if (response.ok) {
                 const responseData = await response.json();
+                console.log(`[BotsManager] ✅ ${sectionName} сохранены успешно, ответ сервера:`, responseData);
                 this.showNotification(`✅ ${sectionName} сохранены успешно`, 'success');
-                console.log(`[BotsManager] ✅ ${sectionName} сохранены успешно`);
+                console.log(`[BotsManager] 🔔 Уведомление отправлено для ${sectionName}`);
                 
                 // ✅ ОБНОВЛЯЕМ originalConfig после успешного сохранения
                 if (this.originalConfig) {
