@@ -129,10 +129,14 @@ class NewTradingBot:
         self.max_profit_achieved = self.config.get('max_profit_achieved', 0.0)
         self.trailing_stop_price = self.config.get('trailing_stop_price', None)
         self.break_even_activated = bool(self.config.get('break_even_activated', False))
-        break_even_stop = self.config.get('break_even_stop_price')
-        try:
-            self.break_even_stop_price = float(break_even_stop) if break_even_stop is not None else None
-        except (TypeError, ValueError):
+        # ✅ ИСПРАВЛЕНО: break_even_stop_price должен быть None, если защита не активирована
+        if self.break_even_activated:
+            break_even_stop = self.config.get('break_even_stop_price')
+            try:
+                self.break_even_stop_price = float(break_even_stop) if break_even_stop is not None else None
+            except (TypeError, ValueError):
+                self.break_even_stop_price = None
+        else:
             self.break_even_stop_price = None
         self.trailing_activation_threshold = self.config.get('trailing_activation_threshold', 0.0)
         self.trailing_active = bool(self.config.get('trailing_active', False))
@@ -1016,18 +1020,19 @@ class NewTradingBot:
         # ✅ Берем по модулю (обычно отрицательный из-за комиссий при открытии)
         fee_usdt = abs(realized_pnl_usdt)
         
+        # ✅ ИСПРАВЛЕНО: Если нет реализованного PnL (комиссий), не устанавливаем стоп
+        # Стоп должен рассчитываться только на основе РЕАЛИЗОВАННОГО PnL*2.5
         if fee_usdt <= 0:
-            # Минимальная защита - уровень входа
-            return entry_price
+            return None
         
         # ✅ Защищаем от комиссий в размере abs(realized_pnl) * 2.5
         protected_profit_usdt = fee_usdt * self.BREAK_EVEN_FEE_MULTIPLIER
         
         # Преобразуем защищаемую прибыль (USDT) в цену на монету
         protected_profit_per_coin = protected_profit_usdt / quantity if quantity > 0 else 0.0
+        # ✅ ИСПРАВЛЕНО: Если защищаемая прибыль <= 0, не устанавливаем стоп
         if protected_profit_per_coin <= 0:
-            # Минимальная защита - уровень входа
-            return entry_price
+            return None
 
         price = float(current_price) if current_price is not None else None
 
@@ -1038,16 +1043,22 @@ class NewTradingBot:
             if price:
                 # Не устанавливаем стоп выше текущей цены
                 stop_price = min(stop_price, price)
-            # Минимально стоп не ниже уровня входа (базовая защита)
-            stop_price = max(stop_price, entry_price)
+            # ✅ ИСПРАВЛЕНО: Минимально стоп должен быть ВЫШЕ уровня входа
+            # Если стоп равен или очень близок к entry_price, не устанавливаем его
+            tolerance = 1e-6
+            if stop_price <= entry_price + tolerance:
+                return None
         else:  # SHORT
             # ✅ Для SHORT: стоп на уровне entry_price - protected_profit_per_coin
             stop_price = entry_price - protected_profit_per_coin
             if price:
                 # Не устанавливаем стоп ниже текущей цены
                 stop_price = max(stop_price, price)
-            # Максимально стоп не выше уровня входа (базовая защита)
-            stop_price = min(stop_price, entry_price)
+            # ✅ ИСПРАВЛЕНО: Максимально стоп должен быть НИЖЕ уровня входа
+            # Если стоп равен или очень близок к entry_price, не устанавливаем его
+            tolerance = 1e-6
+            if stop_price >= entry_price - tolerance:
+                return None
 
         return stop_price
 
