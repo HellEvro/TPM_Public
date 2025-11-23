@@ -1128,6 +1128,34 @@ class NewTradingBot:
                 self.max_profit_achieved = profit_percent
                 logger.debug(f"[NEW_BOT_{self.symbol}] 📈 Обновлена максимальная прибыль: {profit_percent:.2f}%")
 
+            # ✅ ИСПРАВЛЕНО: Добавлен вызов установки break-even стопа
+            # Проверяем, активирована ли защита безубыточности
+            config = self._get_effective_protection_config()
+            break_even_enabled = bool(config.get('break_even_protection', True))
+            break_even_trigger = self._safe_float(
+                config.get('break_even_trigger_percent', config.get('break_even_trigger')),
+                0.0
+            ) or 0.0
+            
+            if break_even_enabled and break_even_trigger > 0:
+                # Если прибыль достигла триггера, активируем защиту
+                if not self.break_even_activated and profit_percent >= break_even_trigger:
+                    self.break_even_activated = True
+                    logger.info(
+                        f"[NEW_BOT_{self.symbol}] 🛡️ Защита безубыточности активирована "
+                        f"(прибыль {profit_percent:.2f}% >= триггер {break_even_trigger:.2f}%)"
+                    )
+                
+                # Если защита активирована, устанавливаем/обновляем стоп
+                if self.break_even_activated:
+                    self._ensure_break_even_stop(current_price, force=False)
+            else:
+                # Если защита отключена, деактивируем
+                if self.break_even_activated:
+                    self.break_even_activated = False
+                    self.break_even_stop_price = None
+                    logger.info(f"[NEW_BOT_{self.symbol}] 🛡️ Защита безубыточности деактивирована (отключена в конфиге)")
+
             self._update_trailing_stops(current_price, profit_percent)
 
         except Exception as e:

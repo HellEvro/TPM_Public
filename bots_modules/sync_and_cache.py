@@ -2307,6 +2307,9 @@ def check_missing_stop_losses():
                     bot_instance.position_start_time = datetime.fromtimestamp(entry_timestamp)
 
                 decision = bot_instance._evaluate_protection_decision(current_price)
+                # ✅ ИСПРАВЛЕНО: Обновляем защитные механизмы (включая break-even стоп)
+                # Это нужно для установки break-even стопа на бирже при изменении конфига
+                bot_instance._update_protection_mechanisms(current_price)
                 protection_config = bot_instance._get_effective_protection_config()
 
                 updates = {
@@ -2348,10 +2351,9 @@ def check_missing_stop_losses():
                 )
                 existing_stop_value = _safe_float(existing_stop_loss)
 
-                # Проверяем, есть ли уже стоп-лосс на бирже
-                if existing_stop_loss and existing_stop_loss.strip():
-                    pass  # Стоп-лосс уже установлен, пропускаем
-                elif desired_stop and _needs_price_update(position_side, desired_stop, existing_stop_value):
+                # ✅ ИСПРАВЛЕНО: Обновляем стоп-лосс, даже если он уже установлен, если нужен новый стоп
+                # Проверяем, нужно ли обновить стоп-лосс на бирже
+                if desired_stop and _needs_price_update(position_side, desired_stop, existing_stop_value):
                     try:
                         sl_response = current_exchange.update_stop_loss(
                             symbol=symbol,
