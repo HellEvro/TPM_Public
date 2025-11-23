@@ -447,108 +447,79 @@ class AIDatabase:
                     return True, None
                 raise
             
-            # Синхронизируем WAL файлы перед проверкой (это может решить проблему зависания)
+            # ⚡ ИСПРАВЛЕНО: Создаем новое соединение для каждой операции
+            # Это гарантирует, что все операции выполняются в том же потоке
             logger.debug("   [3/4] Подключение к БД и проверка режима журнала...")
             try:
-                conn = sqlite3.connect(self.db_path, timeout=5.0)
-                cursor = conn.cursor()
+                # Получаем размер БД перед проверкой
+                try:
+                    db_size_mb = os.path.getsize(self.db_path) / (1024 * 1024)  # MB
+                    db_size_gb = db_size_mb / 1024  # GB
+                    logger.debug(f"   [3/4] Размер БД: {db_size_mb:.2f} MB ({db_size_gb:.2f} GB)")
+                    
+                    # Пропускаем проверку целостности для очень больших БД (>1 GB)
+                    if db_size_mb > 1024:  # Больше 1 GB
+                        logger.info(f"   [3/4] ⚠️ БД очень большая ({db_size_gb:.2f} GB), пропускаем проверку целостности для ускорения запуска")
+                        return True, None
+                except Exception as e:
+                    logger.debug(f"   [3/4] ⚠️ Не удалось получить размер БД: {e}")
+                
+                # Создаем новое соединение для проверки режима журнала
+                conn1 = sqlite3.connect(self.db_path, timeout=5.0)
+                cursor1 = conn1.cursor()
                 
                 # Проверяем режим журнала
                 logger.debug("   [3/4] Проверка режима журнала...")
-                cursor.execute("PRAGMA journal_mode")
-                journal_mode = cursor.fetchone()[0]
+                cursor1.execute("PRAGMA journal_mode")
+                journal_mode = cursor1.fetchone()[0]
                 logger.debug(f"   [3/4] Режим журнала: {journal_mode}")
                 
                 # Если WAL режим - делаем checkpoint для синхронизации
                 if journal_mode.upper() == 'WAL':
                     logger.debug("   [3/4] WAL режим обнаружен, выполнение checkpoint...")
                     try:
-                        # Делаем пассивный checkpoint (не блокирует читателей)
-                        cursor.execute("PRAGMA wal_checkpoint(PASSIVE)")
-                        conn.commit()
+                        cursor1.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                        conn1.commit()
                         logger.debug("   [3/4] ✅ Checkpoint выполнен")
                     except Exception as e:
                         logger.debug(f"   [3/4] ⚠️ Ошибка checkpoint (игнорируем): {e}")
-                        pass  # Игнорируем ошибки checkpoint
                 
-                # Быстрая проверка целостности (быстрее чем integrity_check)
+                conn1.close()
+                
+                # Создаем новое соединение для проверки целостности
                 logger.debug("   [4/4] Подготовка к проверке целостности...")
+                conn2 = sqlite3.connect(self.db_path, timeout=5.0)
+                cursor2 = conn2.cursor()
                 
                 # Получаем информацию о БД перед проверкой
                 try:
-                    cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
-                    table_count = cursor.fetchone()[0]
+                    cursor2.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
+                    table_count = cursor2.fetchone()[0]
                     logger.debug(f"   [4/4] Количество таблиц в БД: {table_count}")
                 except Exception as e:
                     logger.debug(f"   [4/4] ⚠️ Не удалось получить количество таблиц: {e}")
                 
-                try:
-                    # Получаем размер БД
-                    db_size_mb = os.path.getsize(self.db_path) / (1024 * 1024)  # MB
-                    db_size_gb = db_size_mb / 1024  # GB
-                    logger.debug(f"   [4/4] Размер БД: {db_size_mb:.2f} MB ({db_size_gb:.2f} GB)")
-                    
-                    # Пропускаем проверку целостности для очень больших БД (>1 GB)
-                    # PRAGMA quick_check на больших БД может занимать очень много времени
-                    if db_size_mb > 1024:  # Больше 1 GB
-                        logger.info(f"   [4/4] ⚠️ БД очень большая ({db_size_gb:.2f} GB), пропускаем проверку целостности для ускорения запуска")
-                        logger.info(f"   [4/4] 💡 Проверка целостности может занять много времени на БД такого размера")
-                        conn.close()
-                        logger.debug("   [4/4] ✅ Соединение с БД закрыто (проверка пропущена)")
-                        return True, None
-                except Exception as e:
-                    logger.debug(f"   [4/4] ⚠️ Не удалось получить размер БД: {e}")
-                
                 # Устанавливаем таймаут для операции
                 logger.debug("   [4/4] Установка PRAGMA busy_timeout = 2000...")
-                cursor.execute("PRAGMA busy_timeout = 2000")  # 2 секунды
+                cursor2.execute("PRAGMA busy_timeout = 2000")  # 2 секунды
                 logger.debug("   [4/4] ✅ busy_timeout установлен")
                 
-                # Выполняем проверку целостности с таймером и таймаутом
+                # ⚡ ИСПРАВЛЕНО: Выполняем проверку целостности в том же потоке
                 import time
-                import threading
                 logger.debug("   [4/4] ⏳ Начинаю выполнение PRAGMA quick_check...")
                 start_time = time.time()
                 
-                # Выполняем проверку в отдельном потоке с таймаутом
-                result_container = [None]
-                exception_container = [None]
-                check_completed = threading.Event()
-                
-                def run_quick_check():
-                    try:
-                        cursor.execute("PRAGMA quick_check")
-                        result_container[0] = cursor.fetchone()[0]
-                        check_completed.set()
-                    except Exception as e:
-                        exception_container[0] = e
-                        check_completed.set()
-                
-                check_thread = threading.Thread(target=run_quick_check, daemon=True)
-                check_thread.start()
-                
-                # Ждем максимум 30 секунд для БД до 1 GB
-                timeout = 30.0
-                if db_size_mb > 100:  # Для БД больше 100 MB увеличиваем таймаут
-                    timeout = min(60.0, db_size_mb / 10)  # До 60 секунд, но не больше размера/10
-                
-                logger.debug(f"   [4/4] ⏱️ Таймаут проверки: {timeout:.1f} секунд")
-                check_completed.wait(timeout=timeout)
-                
-                elapsed = time.time() - start_time
-                
-                if not check_completed.is_set():
-                    # Проверка не завершилась за таймаут
-                    logger.warning(f"   [4/4] ⚠️ PRAGMA quick_check не завершился за {timeout:.1f}s (прошло {elapsed:.1f}s), пропускаем проверку")
-                    conn.close()
-                    return True, None  # Считаем БД валидной, чтобы не блокировать запуск
-                
-                if exception_container[0]:
-                    logger.error(f"   [4/4] ❌ Ошибка при выполнении PRAGMA quick_check (после {elapsed:.2f}s): {exception_container[0]}")
-                    conn.close()
+                try:
+                    # Выполняем проверку напрямую в текущем потоке
+                    cursor2.execute("PRAGMA quick_check")
+                    result = cursor2.fetchone()[0]
+                    elapsed = time.time() - start_time
+                except Exception as e:
+                    elapsed = time.time() - start_time
+                    logger.error(f"   [4/4] ❌ Ошибка при выполнении PRAGMA quick_check (после {elapsed:.2f}s): {e}")
+                    conn2.close()
                     return True, None  # Считаем БД валидной при ошибке
                 
-                result = result_container[0]
                 logger.debug(f"   [4/4] ⏱️ PRAGMA quick_check выполнен за {elapsed:.2f} секунд")
                 logger.debug(f"   [4/4] 📊 Результат проверки получен: {result[:100] if len(str(result)) > 100 else result}")
                 
@@ -557,7 +528,7 @@ class AIDatabase:
                 else:
                     logger.warning(f"   [4/4] ⚠️ Обнаружены проблемы в БД: {result[:200]}")
                 
-                conn.close()
+                conn2.close()
                 logger.debug("   [4/4] ✅ Соединение с БД закрыто")
                 
                 if result == "ok":
