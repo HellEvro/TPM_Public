@@ -1987,7 +1987,9 @@ class BybitExchange(BaseExchange):
                 }
                          
             # ✅ Устанавливаем плечо перед входом в позицию (если указано в параметрах)
-            leverage = kwargs.get('leverage')
+            # ⚠️ КРИТИЧНО: leverage передается как именованный параметр, а не через kwargs!
+            leverage_set_successfully = False
+            leverage_to_use = None
             if leverage:
                 try:
                     leverage_int = int(leverage)
@@ -1996,7 +1998,12 @@ class BybitExchange(BaseExchange):
                         logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Не удалось установить плечо {leverage_int}x: {leverage_result.get('message')}")
                         # Не блокируем вход в позицию, если не удалось установить плечо
                     else:
+                        leverage_set_successfully = True
+                        leverage_to_use = leverage_int
                         logger.info(f"[BYBIT_BOT] ✅ {symbol}: Плечо установлено на {leverage_int}x перед входом в позицию")
+                        # Небольшая задержка, чтобы биржа успела обновить настройки
+                        import time
+                        time.sleep(0.5)
                 except Exception as e:
                     logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Ошибка установки плеча: {e}")
                          
@@ -2062,23 +2069,30 @@ class BybitExchange(BaseExchange):
                 logger.warning(f"[BYBIT_BOT] ⚠️ Не удалось получить информацию об инструменте: {e}")
             
             # ✅ Получаем ТЕКУЩЕЕ плечо для монеты из настроек биржи
+            # ⚠️ КРИТИЧНО: Если плечо только что установлено - используем его, а не получаем с биржи!
             current_leverage = None
-            try:
-                pos_response = self.client.get_positions(category="linear", symbol=f"{symbol}USDT")
-                if pos_response.get('retCode') == 0 and pos_response.get('result', {}).get('list'):
-                    # get_positions всегда возвращает leverage даже для пустых позиций!
-                    # Берем leverage из первой позиции в списке (она может быть пустой)
-                    pos_list = pos_response['result']['list']
-                    if pos_list:
-                        current_leverage = float(pos_list[0].get('leverage', 10))
-                        logger.debug(f"[BYBIT_BOT] 📊 {symbol}: Плечо с биржи: {current_leverage}x")
-            except Exception as e:
-                logger.warning(f"[BYBIT_BOT] ⚠️ Не удалось получить текущее плечо: {e}")
-            
-            # Если не удалось - используем дефолтное 10x (НО ЭТО НЕ ДОЛЖНО БЫТЬ!)
-            if not current_leverage:
-                current_leverage = 10.0
-                logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: FALLBACK - используем дефолтное плечо: {current_leverage}x")
+            if leverage_set_successfully and leverage_to_use:
+                # Если плечо только что успешно установлено - используем его значение
+                current_leverage = float(leverage_to_use)
+                logger.info(f"[BYBIT_BOT] 📊 {symbol}: Используем установленное плечо: {current_leverage}x (не получаем с биржи)")
+            else:
+                # Иначе получаем текущее плечо с биржи
+                try:
+                    pos_response = self.client.get_positions(category="linear", symbol=f"{symbol}USDT")
+                    if pos_response.get('retCode') == 0 and pos_response.get('result', {}).get('list'):
+                        # get_positions всегда возвращает leverage даже для пустых позиций!
+                        # Берем leverage из первой позиции в списке (она может быть пустой)
+                        pos_list = pos_response['result']['list']
+                        if pos_list:
+                            current_leverage = float(pos_list[0].get('leverage', 10))
+                            logger.debug(f"[BYBIT_BOT] 📊 {symbol}: Плечо с биржи: {current_leverage}x")
+                except Exception as e:
+                    logger.warning(f"[BYBIT_BOT] ⚠️ Не удалось получить текущее плечо: {e}")
+                
+                # Если не удалось получить и не было установлено - используем дефолтное 10x
+                if not current_leverage:
+                    current_leverage = 10.0
+                    logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: FALLBACK - используем дефолтное плечо: {current_leverage}x")
             
             qty_in_coins = None
             requested_qty_usdt = None

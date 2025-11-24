@@ -651,6 +651,10 @@ def load_auto_bot_config():
         # Все настройки загружаются ТОЛЬКО из файла, БД не используется для auto_bot_config
         merged_config = DEFAULT_AUTO_BOT_CONFIG.copy()
         
+        # ✅ Логируем загрузку leverage из конфиг-файла для отладки
+        leverage_from_file = merged_config.get('leverage')
+        logger.info(f"[CONFIG] ⚡ Кредитное плечо загружено из bot_config.py: {leverage_from_file}x")
+        
         # ✅ Загружаем фильтры (whitelist, blacklist) из БД, но scope загружается из файла!
         # ✅ КРИТИЧЕСКИ ВАЖНО: scope теперь хранится ТОЛЬКО в файле, не в БД
         # whitelist и blacklist хранятся в БД, но scope - в файле вместе с другими настройками
@@ -696,6 +700,9 @@ def load_auto_bot_config():
         # Это гарантирует, что данные всегда актуальны, особенно после принудительной перезагрузки модуля в API
         with bots_data_lock:
             bots_data['auto_bot_config'] = merged_config
+            # ✅ Логируем leverage в bots_data для отладки
+            leverage_in_bots_data = bots_data['auto_bot_config'].get('leverage')
+            logger.info(f"[CONFIG] ⚡ Кредитное плечо сохранено в bots_data: {leverage_in_bots_data}x")
         
         # Конфигурация загружена и обновлена в bots_data
             
@@ -1166,6 +1173,8 @@ def open_position_for_bot(symbol, side, volume_value, current_price, take_profit
                         leverage = auto_bot_config.get('leverage')
         except Exception as e:
             logger.debug(f" {symbol}: Не удалось получить leverage из конфига: {e}")
+        
+        logger.info(f" {symbol}: 📊 Используемое плечо из конфига: {leverage}x (для open_position_for_bot)")
         
         # Вызываем place_order с правильными параметрами
         # quantity передаем в USDT (не в монетах!)

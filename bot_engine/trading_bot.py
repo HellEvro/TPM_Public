@@ -892,6 +892,7 @@ class TradingBot:
             self.logger.info(f" {self.symbol}: Размещаем {side} ордер на {quantity}...")
             # Получаем leverage из конфига бота
             leverage = self.config.get('leverage')
+            self.logger.info(f" {self.symbol}: 📊 Используемое плечо из конфига: {leverage}x")
             order_result = self.exchange.place_order(
                 symbol=self.symbol,
                 side=side,

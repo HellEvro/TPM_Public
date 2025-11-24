@@ -494,7 +494,7 @@ def create_bot(symbol, config=None, exchange_obj=None):
         'max_position_hours': auto_bot_config.get('max_position_hours', 48),
         'break_even_protection': auto_bot_config.get('break_even_protection', True),
         'break_even_trigger': auto_bot_config.get('break_even_trigger', 100.0),
-        'leverage': individual_settings.get('leverage') if individual_settings and 'leverage' in individual_settings else auto_bot_config.get('leverage', 1),
+        'leverage': individual_settings.get('leverage') if individual_settings and 'leverage' in individual_settings else auto_bot_config.get('leverage', 1),  # ✅ Из конфиг-файла или индивидуальных настроек
         'break_even_trigger_percent': auto_bot_config.get(
             'break_even_trigger_percent',
             auto_bot_config.get('break_even_trigger', 100.0)
@@ -546,6 +546,7 @@ def create_bot(symbol, config=None, exchange_obj=None):
     logger.info(f"[BOT_INIT] 🔍 {symbol}: config = {config}")
     logger.info(f"[BOT_INIT] 🔍 {symbol}: volume_mode = {config.get('volume_mode')}")
     logger.info(f"[BOT_INIT] 🔍 {symbol}: volume_value = {config.get('volume_value')}")
+    logger.info(f"[BOT_INIT] ⚡ {symbol}: leverage = {config.get('leverage')}x (из конфиг-файла: {auto_bot_config.get('leverage')}x, индивидуальные: {individual_settings.get('leverage') if individual_settings and 'leverage' in individual_settings else None})")
     logger.info(f"[BOT_INIT] Объем торговли: {config.get('volume_mode')} = {config.get('volume_value')}")
     logger.info(f"[BOT_INIT] RSI пороги: Long<={config.get('rsi_long_threshold')}, Short>={config.get('rsi_short_threshold')}")
     
