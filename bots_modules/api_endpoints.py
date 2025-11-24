@@ -2696,8 +2696,31 @@ def auto_bot_config():
                 for key, value in data.items():
                     old_value = bots_data['auto_bot_config'].get(key)
                     
+                    # ✅ НОРМАЛИЗУЕМ значения для корректного сравнения (int vs float, str vs int и т.д.)
+                    def normalize_value(v):
+                        if v is None:
+                            return None
+                        if isinstance(v, bool):
+                            return v
+                        if isinstance(v, (int, float)):
+                            # Для чисел - сравниваем как float, но сохраняем исходный тип
+                            return float(v)
+                        if isinstance(v, str):
+                            # Пробуем преобразовать строку в число, если возможно
+                            try:
+                                if '.' in v:
+                                    return float(v)
+                                else:
+                                    return int(v)
+                            except ValueError:
+                                return v
+                        return v
+                    
+                    normalized_old = normalize_value(old_value)
+                    normalized_new = normalize_value(value)
+                    
                     # ✅ КРИТИЧЕСКИ ВАЖНО: Добавляем в changed_data только если значение РЕАЛЬНО изменилось
-                    if old_value != value:
+                    if normalized_old != normalized_new:
                         changed_data[key] = value
                         bots_data['auto_bot_config'][key] = value
                         

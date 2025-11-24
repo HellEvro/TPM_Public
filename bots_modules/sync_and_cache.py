@@ -764,6 +764,9 @@ def save_auto_bot_config(changed_data=None):
                     if hasattr(load_auto_bot_config, '_last_mtime'):
                         load_auto_bot_config._last_mtime = 0
                     
+                    # ✅ НЕ сбрасываем флаг логирования leverage - иначе будет спам при каждой перезагрузке
+                    # Флаг _leverage_logged остается, чтобы не логировать leverage при перезагрузке после сохранения
+                    
                     load_auto_bot_config()
                     logger.info(f"[SAVE_CONFIG] ✅ Конфигурация перезагружена из bot_config.py после сохранения")
             except Exception as reload_error:

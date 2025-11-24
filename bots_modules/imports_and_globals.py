@@ -608,6 +608,7 @@ def load_auto_bot_config():
         import importlib
         import sys
         import os
+        import re
         
         config_file_path = os.path.join('bot_engine', 'bot_config.py')
         reloaded = False
@@ -645,15 +646,52 @@ def load_auto_bot_config():
                 import bot_engine.bot_config  # pragma: no cover
             reloaded = True
         
+        # ✅ КРИТИЧНО: Принудительно перезагружаем модуль ПЕРЕД импортом DEFAULT_AUTO_BOT_CONFIG
+        # Это гарантирует, что мы получим актуальное значение из файла, а не из кэша
+        if 'bot_engine.bot_config' in sys.modules:
+            importlib.reload(sys.modules['bot_engine.bot_config'])
+        
         from bot_engine.bot_config import DEFAULT_AUTO_BOT_CONFIG
+        
+        # ✅ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: читаем значение напрямую из файла для сравнения
+        try:
+            config_file_path_check = os.path.join('bot_engine', 'bot_config.py')
+            if os.path.exists(config_file_path_check):
+                with open(config_file_path_check, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    # Ищем значение leverage в DEFAULT_AUTO_BOT_CONFIG
+                    leverage_match = re.search(r"'leverage':\s*(\d+)", content)
+                    if leverage_match:
+                        leverage_from_file_direct = int(leverage_match.group(1))
+                        leverage_from_module = DEFAULT_AUTO_BOT_CONFIG.get('leverage')
+                        if leverage_from_file_direct != leverage_from_module:
+                            logger.error(f"[CONFIG] ❌ РАСХОЖДЕНИЕ! leverage в файле: {leverage_from_file_direct}x, в модуле: {leverage_from_module}x")
+                            # Принудительно обновляем значение из файла
+                            DEFAULT_AUTO_BOT_CONFIG['leverage'] = leverage_from_file_direct
+                            logger.info(f"[CONFIG] ✅ Исправлено: leverage обновлен до {leverage_from_file_direct}x из файла")
+        except Exception as e:
+            logger.debug(f"[CONFIG] Не удалось проверить leverage напрямую из файла: {e}")
 
         # ✅ ЕДИНСТВЕННЫЙ источник истины: bot_engine/bot_config.py
         # Все настройки загружаются ТОЛЬКО из файла, БД не используется для auto_bot_config
         merged_config = DEFAULT_AUTO_BOT_CONFIG.copy()
         
-        # ✅ Логируем загрузку leverage из конфиг-файла для отладки
+        # ✅ Логируем leverage только при первой загрузке или при изменении (не спамим)
         leverage_from_file = merged_config.get('leverage')
-        logger.info(f"[CONFIG] ⚡ Кредитное плечо загружено из bot_config.py: {leverage_from_file}x")
+        # Логируем только если это первая загрузка ИЛИ значение действительно изменилось
+        should_log_leverage = (
+            not hasattr(load_auto_bot_config, '_leverage_logged') or 
+            (hasattr(load_auto_bot_config, '_last_leverage') and 
+             load_auto_bot_config._last_leverage != leverage_from_file)
+        )
+        if should_log_leverage:
+            logger.info(f"[CONFIG] ⚡ Кредитное плечо загружено из bot_config.py: {leverage_from_file}x")
+            load_auto_bot_config._leverage_logged = True
+            load_auto_bot_config._last_leverage = leverage_from_file
+        
+        # ✅ Проверяем, что значение действительно есть в конфиге (только при ошибке)
+        if leverage_from_file is None:
+            logger.error(f"[CONFIG] ❌ КРИТИЧЕСКАЯ ОШИБКА: leverage отсутствует в DEFAULT_AUTO_BOT_CONFIG!")
         
         # ✅ Загружаем фильтры (whitelist, blacklist) из БД, но scope загружается из файла!
         # ✅ КРИТИЧЕСКИ ВАЖНО: scope теперь хранится ТОЛЬКО в файле, не в БД
@@ -700,9 +738,7 @@ def load_auto_bot_config():
         # Это гарантирует, что данные всегда актуальны, особенно после принудительной перезагрузки модуля в API
         with bots_data_lock:
             bots_data['auto_bot_config'] = merged_config
-            # ✅ Логируем leverage в bots_data для отладки
-            leverage_in_bots_data = bots_data['auto_bot_config'].get('leverage')
-            logger.info(f"[CONFIG] ⚡ Кредитное плечо сохранено в bots_data: {leverage_in_bots_data}x")
+            # ✅ Логирование leverage убрано (было слишком много спама) - логируется только при загрузке из файла
         
         # Конфигурация загружена и обновлена в bots_data
             
