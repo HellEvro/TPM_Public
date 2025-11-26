@@ -2661,9 +2661,17 @@ def auto_bot_config():
                 logger.error(f" ❌ Ошибка парсинга JSON: {json_error}")
                 return jsonify({'success': False, 'error': f'Invalid JSON: {str(json_error)}'}), 400
             
-            if not data:
-                logger.error(" ❌ Пустые данные!")
-                return jsonify({'success': False, 'error': 'No data provided'}), 400
+            # ✅ Проверяем на None и пустой словарь
+            if data is None or (isinstance(data, dict) and len(data) == 0):
+                logger.warning(" ⚠️ Пустые данные или пустой объект, пропускаем обработку")
+                return jsonify({
+                    'success': True,
+                    'message': 'Нет изменений в настройках',
+                    'config': bots_data['auto_bot_config'].copy(),
+                    'saved_to_file': True,
+                    'changes_count': 0,
+                    'changed_params': []
+                }), 200
             
             # Проверяем изменение критериев зрелости
             maturity_params_changed = False

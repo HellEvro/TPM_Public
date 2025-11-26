@@ -30,7 +30,7 @@ DEFAULT_PARAMETER_GENOMES: Dict[str, Dict[str, Any]] = {
     'trailing_take_distance': {'min': 0.2, 'max': 2.0, 'step': 0.1, 'precision': 2},
     'trailing_update_interval': {'min': 1.0, 'max': 8.0, 'step': 0.5, 'precision': 1},
     'break_even_trigger': {'min': 30.0, 'max': 250.0, 'step': 10.0, 'precision': 1},
-    'max_position_hours': {'min': 12, 'max': 336, 'step': 12, 'type': 'int'},
+    'max_position_hours': {'min': 18, 'max': 336, 'step': 6, 'type': 'int'},  # Минимум 18 часов (3 свечи на 6H ТФ)
 }
 
 DEFAULT_MAX_TESTS = 200

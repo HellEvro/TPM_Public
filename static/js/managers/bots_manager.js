@@ -2821,7 +2821,8 @@ class BotsManager {
         if (maxHoursEl) {
             const minutes = parseInt(maxHoursEl.value) || 0;
             // Конвертируем минуты в секунды
-            settings.max_position_hours = minutes * 60;
+            const seconds = minutes * 60;
+            settings.max_position_hours = seconds;
         }
         
         const breakEvenEl = document.getElementById('breakEvenProtectionDup');
@@ -2863,7 +2864,8 @@ class BotsManager {
 
         const rsiTimeFilterCandlesEl = document.getElementById('rsiTimeFilterCandlesDup');
         if (rsiTimeFilterCandlesEl && rsiTimeFilterCandlesEl.value) {
-            settings.rsi_time_filter_candles = parseInt(rsiTimeFilterCandlesEl.value);
+            const candles = parseInt(rsiTimeFilterCandlesEl.value);
+            settings.rsi_time_filter_candles = candles;
         }
 
         const rsiTimeFilterUpperEl = document.getElementById('rsiTimeFilterUpperDup');
@@ -6506,31 +6508,41 @@ class BotsManager {
         console.log('[BotsManager] 💾 Сохранение конфигурации по умолчанию...');
         
         try {
-            // Сохраняем Auto Bot настройки
-            const autoBotResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/auto-bot`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(defaultConfig.autoBot)
-            });
-            
-            // Сохраняем системные настройки
-            const systemResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/system-config`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(defaultConfig.system)
-            });
-            
-            const autoBotData = await autoBotResponse.json();
-            const systemData = await systemResponse.json();
-            
-            if (autoBotData.success && systemData.success) {
-                console.log('[BotsManager] ✅ Конфигурация по умолчанию сохранена');
-                console.log('[BotsManager] 📊 Auto Bot сохранен:', autoBotData.saved_to_file);
-                console.log('[BotsManager] 🔧 System config сохранен:', systemData.success);
-                return true;
+            // ✅ Проверяем, что есть данные для отправки
+            if (!defaultConfig.autoBot || Object.keys(defaultConfig.autoBot).length === 0) {
+                console.log('[BotsManager] ⚠️ Auto Bot конфигурация пуста, пропускаем сохранение');
             } else {
-                throw new Error(`API ошибка: ${autoBotData.message || systemData.message}`);
+                // Сохраняем Auto Bot настройки
+                const autoBotResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/auto-bot`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(defaultConfig.autoBot)
+                });
+                
+                const autoBotData = await autoBotResponse.json();
+                if (autoBotData.success) {
+                    console.log('[BotsManager] ✅ Auto Bot конфигурация сохранена');
+                }
             }
+            
+            // ✅ Проверяем, что есть данные для отправки
+            if (!defaultConfig.system || Object.keys(defaultConfig.system).length === 0) {
+                console.log('[BotsManager] ⚠️ System конфигурация пуста, пропускаем сохранение');
+            } else {
+                // Сохраняем системные настройки
+                const systemResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/system-config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(defaultConfig.system)
+                });
+                
+                const systemData = await systemResponse.json();
+                if (systemData.success) {
+                    console.log('[BotsManager] ✅ System конфигурация сохранена');
+                }
+            }
+            
+            console.log('[BotsManager] ✅ Конфигурация по умолчанию обработана');
             
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка сохранения конфигурации по умолчанию:', error);
@@ -6999,7 +7011,7 @@ class BotsManager {
             const config = this.collectConfigurationData();
             const rsiTimeFilter = {
                 rsi_time_filter_enabled: config.autoBot.rsi_time_filter_enabled,
-                rsi_time_filter_candles: config.autoBot.rsi_time_filter_candles,
+                rsi_time_filter_candles: config.autoBot.rsi_time_filter_candles || 6,
                 rsi_time_filter_upper: config.autoBot.rsi_time_filter_upper,
                 rsi_time_filter_lower: config.autoBot.rsi_time_filter_lower
             };
@@ -7361,39 +7373,51 @@ class BotsManager {
             
             // БЕЗ БЛОКИРОВКИ - элементы остаются активными!
             
-            // Сохраняем Auto Bot настройки
-            const autoBotResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/auto-bot`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(config.autoBot)
-            });
-            
-            // Сохраняем системные настройки
-            const systemResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/system-config`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(config.system)
-            });
-            
-            const autoBotData = await autoBotResponse.json();
-            const systemData = await systemResponse.json();
-            
-            if (autoBotData.success && systemData.success) {
-                // Показываем уведомление только при ручном сохранении (при автосохранении уведомление показывается в scheduleAutoSave)
-                if (!isAutoSave) {
-                    this.showNotification('✅ Настройки сохранены', 'success');
+            // ✅ Проверяем, что есть данные для отправки Auto Bot
+            if (!config.autoBot || Object.keys(config.autoBot).length === 0) {
+                console.log('[BotsManager] ⚠️ Auto Bot конфигурация пуста, пропускаем сохранение');
+            } else {
+                // Сохраняем Auto Bot настройки
+                const autoBotResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/auto-bot`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config.autoBot)
+                });
+                const autoBotData = await autoBotResponse.json();
+                if (!autoBotData.success) {
+                    throw new Error(`Ошибка сохранения Auto Bot: ${autoBotData.message || 'Unknown error'}`);
                 }
-                console.log('[BotsManager] ✅ Конфигурация сохранена в bot_config.py и перезагружена');
-                console.log('[BotsManager] 📊 Auto Bot сохранен:', autoBotData.saved_to_file);
-                console.log('[BotsManager] 🔧 System config сохранен:', systemData.saved_to_file);
-                
-                // ✅ ОБНОВЛЯЕМ RSI ПОРОГИ (для фильтров и подписей)
-                if (config.autoBot) {
-                    this.updateRsiThresholds(config.autoBot);
-                    console.log('[BotsManager] 🔄 RSI пороги обновлены после сохранения');
+            }
+            
+            // ✅ Проверяем, что есть данные для отправки System
+            if (!config.system || Object.keys(config.system).length === 0) {
+                console.log('[BotsManager] ⚠️ System конфигурация пуста, пропускаем сохранение');
+            } else {
+                // Сохраняем системные настройки
+                const systemResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/system-config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config.system)
+                });
+                const systemData = await systemResponse.json();
+                if (!systemData.success) {
+                    throw new Error(`Ошибка сохранения System: ${systemData.message || 'Unknown error'}`);
                 }
-                
-                // ✅ ПЕРЕЗАГРУЖАЕМ КОНФИГУРАЦИЮ (чтобы UI отображал актуальные значения)
+            }
+            
+            // Показываем уведомление только при ручном сохранении (при автосохранении уведомление показывается в scheduleAutoSave)
+            if (!isAutoSave) {
+                this.showNotification('✅ Настройки сохранены', 'success');
+            }
+            console.log('[BotsManager] ✅ Конфигурация сохранена в bot_config.py и перезагружена');
+            
+            // ✅ ОБНОВЛЯЕМ RSI ПОРОГИ (для фильтров и подписей)
+            if (config.autoBot) {
+                this.updateRsiThresholds(config.autoBot);
+                console.log('[BotsManager] 🔄 RSI пороги обновлены после сохранения');
+            }
+            
+            // ✅ ПЕРЕЗАГРУЖАЕМ КОНФИГУРАЦИЮ (чтобы UI отображал актуальные значения)
                 setTimeout(() => {
                     console.log('[BotsManager] 🔄 Перезагрузка конфигурации для обновления UI...');
                     this.loadConfigurationData();

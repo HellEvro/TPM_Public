@@ -238,6 +238,7 @@ def _legacy_check_rsi_time_filter(candles, rsi, signal, symbol=None, individual_
         rsi_time_filter_candles = individual_settings.get('rsi_time_filter_candles') if individual_settings else None
         if rsi_time_filter_candles is None:
             rsi_time_filter_candles = auto_config.get('rsi_time_filter_candles', 8)
+        rsi_time_filter_candles = max(2, rsi_time_filter_candles)  # Минимум 2 свечи (защита от некорректных значений)
         
         rsi_time_filter_upper = individual_settings.get('rsi_time_filter_upper') if individual_settings else None
         if rsi_time_filter_upper is None:
