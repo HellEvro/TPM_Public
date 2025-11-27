@@ -466,10 +466,28 @@ def create_bot(symbol, config=None, exchange_obj=None):
 
     individual_settings = get_individual_coin_settings(symbol)
     incoming_config = config if isinstance(config, dict) else {}
+    
+    # ✅ Если передан полный конфиг из сервера (с настройками фильтров), используем его как базу
+    # Проверяем, содержит ли incoming_config настройки фильтров (значит это merged конфиг с сервера)
+    # Расширяем проверку - если конфиг содержит много настроек (не только volume/leverage), значит это серверный конфиг
+    has_server_config = (
+        incoming_config and 
+        len(incoming_config) > 10 and  # Серверный конфиг содержит много ключей
+        any(key in incoming_config for key in ['avoid_up_trend', 'avoid_down_trend', 'rsi_time_filter_enabled', 'rsi_long_threshold', 'rsi_short_threshold'])
+    )
 
     unique_id = f"{symbol}_{int(time.time())}"
     default_volume_mode = auto_bot_config.get('default_position_mode', 'usdt')
-    base_config = {
+    
+    # ✅ Если есть серверный конфиг - используем его как базу, иначе собираем из auto_bot_config
+    if has_server_config:
+        base_config = incoming_config.copy()
+        logger.info(f"[BOT_INIT] ✅ Используется серверный merged конфиг для {symbol} (avoid_up_trend={base_config.get('avoid_up_trend')}, avoid_down_trend={base_config.get('avoid_down_trend')})")
+        logger.info(f"[BOT_INIT] 🔍 Серверный конфиг содержит {len(base_config)} ключей")
+    else:
+        logger.warning(f"[BOT_INIT] ⚠️ Серверный конфиг не обнаружен для {symbol}, используется fallback логика (входящий конфиг: {len(incoming_config) if incoming_config else 0} ключей)")
+    else:
+        base_config = {
         'id': unique_id,
         'symbol': symbol,
         'volume_mode': default_volume_mode,
@@ -500,8 +518,8 @@ def create_bot(symbol, config=None, exchange_obj=None):
             auto_bot_config.get('break_even_trigger', 100.0)
         ),
         'take_profit_percent': auto_bot_config.get('take_profit_percent', 20.0),
-        'avoid_down_trend': auto_bot_config.get('avoid_down_trend', True),
-        'avoid_up_trend': auto_bot_config.get('avoid_up_trend', True),
+        'avoid_down_trend': auto_bot_config.get('avoid_down_trend', False),
+        'avoid_up_trend': auto_bot_config.get('avoid_up_trend', False),
         'enable_maturity_check': auto_bot_config.get('enable_maturity_check', True),
         # RSI временной фильтр
         'rsi_time_filter_enabled': auto_bot_config.get('rsi_time_filter_enabled', True),
@@ -525,11 +543,24 @@ def create_bot(symbol, config=None, exchange_obj=None):
         'max_rsi_high': auto_bot_config.get('max_rsi_high', 65)
     }
 
-    if individual_settings:
-        base_config.update(individual_settings)
-
-    if incoming_config:
-        base_config.update(incoming_config)
+    # ✅ Обновляем только если НЕ использовали серверный конфиг как базу
+    if not has_server_config:
+        if individual_settings:
+            base_config.update(individual_settings)
+        
+        if incoming_config:
+            # Для входящего конфига (без серверных настроек) обновляем только разрешённые поля
+            allowed_overrides = {'volume_mode', 'volume_value', 'leverage', 'status', 'auto_managed', 'margin_usdt'}
+            safe_overrides = {k: v for k, v in incoming_config.items() if k in allowed_overrides}
+            if safe_overrides:
+                base_config.update(safe_overrides)
+    else:
+        # Если использовали серверный конфиг - обновляем только разрешённые manual overrides
+        allowed_manual_overrides = {'volume_mode', 'volume_value', 'leverage', 'status', 'auto_managed', 'margin_usdt'}
+        manual_overrides_only = {k: v for k, v in incoming_config.items() if k in allowed_manual_overrides}
+        if manual_overrides_only:
+            base_config.update(manual_overrides_only)
+            logger.info(f"[BOT_INIT] 🔧 Применены manual overrides: {list(manual_overrides_only.keys())}")
 
     base_config['id'] = unique_id
     base_config['symbol'] = symbol
@@ -549,6 +580,7 @@ def create_bot(symbol, config=None, exchange_obj=None):
     logger.info(f"[BOT_INIT] ⚡ {symbol}: leverage = {config.get('leverage')}x (из конфиг-файла: {auto_bot_config.get('leverage')}x, индивидуальные: {individual_settings.get('leverage') if individual_settings and 'leverage' in individual_settings else None})")
     logger.info(f"[BOT_INIT] Объем торговли: {config.get('volume_mode')} = {config.get('volume_value')}")
     logger.info(f"[BOT_INIT] RSI пороги: Long<={config.get('rsi_long_threshold')}, Short>={config.get('rsi_short_threshold')}")
+    logger.info(f"[BOT_INIT] 🛡️ Фильтры трендов: avoid_up_trend={config.get('avoid_up_trend')}, avoid_down_trend={config.get('avoid_down_trend')}")
     
     # Создаем экземпляр торгового бота
     logger.info(f"[BOT_INIT] Создание экземпляра TradingBot для {symbol}...")

@@ -953,6 +953,10 @@ def create_bot_endpoint():
         bot_runtime_config.update(manual_overrides)
         
         logger.info(f" 🧠 Серверный конфиг для {symbol}: avoid_up_trend={bot_runtime_config.get('avoid_up_trend')} / avoid_down_trend={bot_runtime_config.get('avoid_down_trend')}")
+        logger.info(f" 🔍 Размер merged конфига: {len(merged_server_config)} ключей, размер итогового конфига: {len(bot_runtime_config)} ключей")
+        logger.info(f" 🔍 Individual settings для {symbol}: {snapshot.get('individual') is not None}")
+        if snapshot.get('individual'):
+            logger.info(f" 🔍 Individual settings содержат avoid_up_trend: {'avoid_up_trend' in snapshot.get('individual', {})}")
         
         # ✅ Проверяем, есть ли ручная позиция для этой монеты
         has_manual_position = False
