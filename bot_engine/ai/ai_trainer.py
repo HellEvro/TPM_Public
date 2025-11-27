@@ -3236,17 +3236,24 @@ class AITrainer:
                                 logger.debug(f"   🎯 {symbol}: получили новую комбинацию параметров из трекера")
                         
                         # Fallback: генерируем случайные (только если ML и трекер не помогли)
+                        # УЛУЧШЕНИЕ: Расширенные диапазоны для увеличения вероятности генерации сделок
                         if not coin_rsi_params:
-                            exit_variation = 8
+                            # Увеличиваем вариацию для большего разнообразия и вероятности входа
+                            expanded_variation = variation_range + 3  # Расширяем диапазон
+                            exit_variation = 10  # Увеличиваем вариацию выходов
+                            
+                            # УЛУЧШЕНИЕ: Используем более широкие диапазоны для увеличения вероятности входа
+                            # Oversold: расширяем до 18-38 (было 20-35) для большего покрытия
+                            # Overbought: расширяем до 62-82 (было 65-80) для большего покрытия
                             coin_rsi_params = {
-                                'oversold': max(20, min(35, coin_base_rsi_oversold + coin_rng.randint(-variation_range, variation_range))),
-                                'overbought': max(65, min(80, coin_base_rsi_overbought + coin_rng.randint(-variation_range, variation_range))),
-                                'exit_long_with_trend': max(55, min(70, coin_base_exit_long_with + coin_rng.randint(-exit_variation, exit_variation))),
-                                'exit_long_against_trend': max(50, min(65, coin_base_exit_long_against + coin_rng.randint(-exit_variation, exit_variation))),
-                                'exit_short_with_trend': max(25, min(40, coin_base_exit_short_with + coin_rng.randint(-exit_variation, exit_variation))),
-                                'exit_short_against_trend': max(30, min(45, coin_base_exit_short_against + coin_rng.randint(-exit_variation, exit_variation)))
+                                'oversold': max(18, min(38, coin_base_rsi_oversold + coin_rng.randint(-expanded_variation, expanded_variation))),
+                                'overbought': max(62, min(82, coin_base_rsi_overbought + coin_rng.randint(-expanded_variation, expanded_variation))),
+                                'exit_long_with_trend': max(52, min(72, coin_base_exit_long_with + coin_rng.randint(-exit_variation, exit_variation))),
+                                'exit_long_against_trend': max(48, min(68, coin_base_exit_long_against + coin_rng.randint(-exit_variation, exit_variation))),
+                                'exit_short_with_trend': max(22, min(42, coin_base_exit_short_with + coin_rng.randint(-exit_variation, exit_variation))),
+                                'exit_short_against_trend': max(28, min(48, coin_base_exit_short_against + coin_rng.randint(-exit_variation, exit_variation)))
                             }
-                            logger.debug(f"   🎲 {symbol}: сгенерировали случайные RSI параметры (ML модель недоступна)")
+                            logger.debug(f"   🎲 {symbol}: сгенерировали случайные RSI параметры с расширенными диапазонами (ML модель недоступна)")
 
                     if symbol_idx <= 5 or symbol_idx % progress_interval == 0:
                         logger.info(f"   ⚙️ {symbol}: RSI params {coin_rsi_params}, seed {coin_seed}")
@@ -3351,6 +3358,41 @@ class AITrainer:
                     if not rsi_history or len(rsi_history) < 50:
                         logger.debug(f"   ⚠️ Недостаточно данных для расчета RSI ({len(rsi_history) if rsi_history else 0})")
                         continue
+                    
+                    # УЛУЧШЕНИЕ: Адаптируем диапазоны параметров на основе статистики RSI монеты
+                    # Это увеличивает вероятность генерации сделок
+                    rsi_values = [r for r in rsi_history if r is not None and 0 <= r <= 100]
+                    if rsi_values:
+                        rsi_min = min(rsi_values)
+                        rsi_max = max(rsi_values)
+                        rsi_mean = sum(rsi_values) / len(rsi_values)
+                        rsi_std = (sum((x - rsi_mean) ** 2 for x in rsi_values) / len(rsi_values)) ** 0.5
+                        
+                        # Адаптируем параметры входа на основе реального диапазона RSI монеты
+                        # Если RSI монеты редко опускается ниже 30, увеличиваем oversold порог
+                        # Если RSI монеты редко поднимается выше 70, уменьшаем overbought порог
+                        adaptive_oversold = coin_RSI_OVERSOLD
+                        adaptive_overbought = coin_RSI_OVERBOUGHT
+                        
+                        # Если RSI монеты редко входит в зону oversold - расширяем диапазон
+                        if rsi_min > coin_RSI_OVERSOLD + 5:
+                            # RSI редко опускается ниже порога - увеличиваем порог для большей вероятности входа
+                            adaptive_oversold = min(35, max(coin_RSI_OVERSOLD, int(rsi_min - 2)))
+                            logger.debug(f"   📊 {symbol}: RSI min={rsi_min:.1f}, адаптируем oversold: {coin_RSI_OVERSOLD} → {adaptive_oversold}")
+                        
+                        # Если RSI монеты редко входит в зону overbought - расширяем диапазон
+                        if rsi_max < coin_RSI_OVERBOUGHT - 5:
+                            # RSI редко поднимается выше порога - уменьшаем порог для большей вероятности входа
+                            adaptive_overbought = max(65, min(coin_RSI_OVERBOUGHT, int(rsi_max + 2)))
+                            logger.debug(f"   📊 {symbol}: RSI max={rsi_max:.1f}, адаптируем overbought: {coin_RSI_OVERBOUGHT} → {adaptive_overbought}")
+                        
+                        # Применяем адаптивные значения
+                        coin_RSI_OVERSOLD = adaptive_oversold
+                        coin_RSI_OVERBOUGHT = adaptive_overbought
+                        
+                        # Обновляем параметры в словаре для логирования
+                        coin_rsi_params['oversold'] = adaptive_oversold
+                        coin_rsi_params['overbought'] = adaptive_overbought
                     
                     # СИМУЛЯЦИЯ: Проходим по свечам и симулируем входы/выходы
                     simulated_trades_symbol = []  # Симулированные сделки ТОЛЬКО для этой монеты

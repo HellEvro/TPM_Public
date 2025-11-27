@@ -19,7 +19,14 @@ from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import cross_val_score
 import joblib
+try:
+    from xgboost import XGBRegressor
+    XGBOOST_AVAILABLE = True
+except ImportError:
+    XGBOOST_AVAILABLE = False
+    logger.debug("⚠️ XGBoost недоступен, используем GradientBoostingRegressor")
 
 logger = logging.getLogger('AI.ParameterQualityPredictor')
 
@@ -97,6 +104,8 @@ class ParameterQualityPredictor:
         """
         Извлечь признаки из параметров для обучения
         
+        УЛУЧШЕННАЯ ВЕРСИЯ: Добавлены производные признаки для лучшего предсказания
+        
         Args:
             rsi_params: Параметры RSI
             risk_params: Параметры риск-менеджмента (опционально)
@@ -104,26 +113,83 @@ class ParameterQualityPredictor:
         Returns:
             Массив признаков
         """
+        # Базовые параметры RSI
+        oversold = rsi_params.get('oversold', 29)
+        overbought = rsi_params.get('overbought', 71)
+        exit_long_with = rsi_params.get('exit_long_with_trend', 65)
+        exit_long_against = rsi_params.get('exit_long_against_trend', 60)
+        exit_short_with = rsi_params.get('exit_short_with_trend', 35)
+        exit_short_against = rsi_params.get('exit_short_against_trend', 40)
+        
         features = [
-            rsi_params.get('oversold', 29),
-            rsi_params.get('overbought', 71),
-            rsi_params.get('exit_long_with_trend', 65),
-            rsi_params.get('exit_long_against_trend', 60),
-            rsi_params.get('exit_short_with_trend', 35),
-            rsi_params.get('exit_short_against_trend', 40),
+            # Базовые параметры
+            oversold,
+            overbought,
+            exit_long_with,
+            exit_long_against,
+            exit_short_with,
+            exit_short_against,
         ]
+        
+        # УЛУЧШЕНИЕ: Добавляем производные признаки для лучшего предсказания
+        # Ширина зон входа/выхода
+        long_entry_zone_width = overbought - oversold  # Ширина зоны между oversold и overbought
+        long_exit_zone_width = exit_long_with - exit_long_against  # Ширина зоны выхода LONG
+        short_exit_zone_width = exit_short_against - exit_short_with  # Ширина зоны выхода SHORT
+        
+        features.extend([
+            long_entry_zone_width,
+            long_exit_zone_width,
+            short_exit_zone_width,
+        ])
+        
+        # Отношения параметров (нормализованные)
+        oversold_ratio = oversold / 50.0  # Нормализация к середине диапазона
+        overbought_ratio = overbought / 50.0
+        exit_long_with_ratio = exit_long_with / 50.0
+        exit_short_with_ratio = exit_short_with / 50.0
+        
+        features.extend([
+            oversold_ratio,
+            overbought_ratio,
+            exit_long_with_ratio,
+            exit_short_with_ratio,
+        ])
+        
+        # Разница между входом и выходом (важна для прибыльности)
+        long_entry_exit_diff = exit_long_with - oversold  # Разница между входом LONG и выходом
+        short_entry_exit_diff = overbought - exit_short_with  # Разница между входом SHORT и выходом
+        
+        features.extend([
+            long_entry_exit_diff,
+            short_entry_exit_diff,
+        ])
         
         # Добавляем риск-параметры если есть
         if risk_params:
+            stop_loss = risk_params.get('stop_loss', 15.0)
+            take_profit = risk_params.get('take_profit', 20.0)
+            trailing_activation = risk_params.get('trailing_stop_activation', 30.0)
+            trailing_distance = risk_params.get('trailing_stop_distance', 5.0)
+            
             features.extend([
-                risk_params.get('stop_loss', 15.0),
-                risk_params.get('take_profit', 20.0),
-                risk_params.get('trailing_stop_activation', 30.0),
-                risk_params.get('trailing_stop_distance', 5.0),
+                stop_loss,
+                take_profit,
+                trailing_activation,
+                trailing_distance,
+            ])
+            
+            # Производные признаки для риск-параметров
+            risk_reward_ratio = take_profit / max(stop_loss, 0.1)  # Соотношение риск/награда
+            trailing_coverage = trailing_distance / max(trailing_activation, 0.1)  # Покрытие трейлингом
+            
+            features.extend([
+                risk_reward_ratio,
+                trailing_coverage,
             ])
         else:
             # Заполняем нулями если нет
-            features.extend([0, 0, 0, 0])
+            features.extend([0, 0, 0, 0, 0, 0])
         
         return np.array(features).reshape(1, -1)
     
@@ -282,22 +348,94 @@ class ParameterQualityPredictor:
             # Нормализуем признаки
             X_scaled = self.scaler.fit_transform(X)
             
-            # Создаем модель
-            self.model = GradientBoostingRegressor(
-                n_estimators=100,
-                max_depth=5,
-                learning_rate=0.1,
-                random_state=42,
-                n_iter_no_change=10
-            )
+            # УЛУЧШЕНИЕ: Пробуем несколько алгоритмов и выбираем лучший
+            models_to_try = []
             
-            # Обучаем
-            logger.info(f"🎓 Обучение модели предсказания качества параметров на {len(X)} образцах...")
-            self.model.fit(X_scaled, y)
+            # GradientBoostingRegressor (базовый)
+            models_to_try.append((
+                'GradientBoosting',
+                GradientBoostingRegressor(
+                    n_estimators=200,  # Увеличиваем количество деревьев
+                    max_depth=6,  # Увеличиваем глубину
+                    learning_rate=0.05,  # Уменьшаем learning rate для лучшей сходимости
+                    random_state=42,
+                    n_iter_no_change=15,
+                    subsample=0.8  # Добавляем subsample для уменьшения переобучения
+                )
+            ))
             
-            # Оценка качества
+            # RandomForestRegressor (альтернатива)
+            models_to_try.append((
+                'RandomForest',
+                RandomForestRegressor(
+                    n_estimators=200,
+                    max_depth=10,
+                    min_samples_split=5,
+                    min_samples_leaf=2,
+                    random_state=42,
+                    n_jobs=-1
+                )
+            ))
+            
+            # XGBoost (если доступен) - обычно лучший для табличных данных
+            if XGBOOST_AVAILABLE:
+                models_to_try.append((
+                    'XGBoost',
+                    XGBRegressor(
+                        n_estimators=200,
+                        max_depth=6,
+                        learning_rate=0.05,
+                        random_state=42,
+                        n_jobs=-1,
+                        subsample=0.8,
+                        colsample_bytree=0.8
+                    )
+                ))
+            
+            # Обучаем все модели и выбираем лучшую
+            best_model = None
+            best_score = -float('inf')
+            best_model_name = None
+            
+            logger.info(f"🎓 Обучение моделей предсказания качества параметров на {len(X)} образцах...")
+            
+            for model_name, model in models_to_try:
+                try:
+                    model.fit(X_scaled, y)
+                    score = model.score(X_scaled, y)
+                    
+                    # Кросс-валидация для более надежной оценки
+                    cv_scores = cross_val_score(model, X_scaled, y, cv=min(5, len(X) // 10), scoring='r2')
+                    cv_mean = np.mean(cv_scores)
+                    
+                    logger.info(f"   📊 {model_name}: R² = {score:.3f}, CV R² = {cv_mean:.3f}")
+                    
+                    # Выбираем модель с лучшим CV score (более надежная метрика)
+                    if cv_mean > best_score:
+                        best_score = cv_mean
+                        best_model = model
+                        best_model_name = model_name
+                except Exception as e:
+                    logger.debug(f"   ⚠️ Ошибка обучения {model_name}: {e}")
+            
+            if best_model is None:
+                # Fallback на GradientBoosting если все не удались
+                logger.warning("⚠️ Все модели не удалось обучить, используем GradientBoosting по умолчанию")
+                best_model = GradientBoostingRegressor(
+                    n_estimators=100,
+                    max_depth=5,
+                    learning_rate=0.1,
+                    random_state=42
+                )
+                best_model.fit(X_scaled, y)
+                best_model_name = "GradientBoosting (fallback)"
+                best_score = best_model.score(X_scaled, y)
+            
+            self.model = best_model
+            
+            # Финальная оценка
             train_score = self.model.score(X_scaled, y)
-            logger.info(f"✅ Модель обучена! R² score: {train_score:.3f}")
+            logger.info(f"✅ Модель обучена! Выбрана: {best_model_name}, R² score: {train_score:.3f}, CV R²: {best_score:.3f}")
             
             # Статистика по качеству образцов
             avg_quality = float(np.mean(y))

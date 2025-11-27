@@ -371,14 +371,53 @@ class AIParameterTracker:
         
         return False
     
+    def _lhs_sample(self, n_samples: int, dims: int, seed: Optional[int] = None) -> List[List[float]]:
+        """
+        Latin Hypercube Sampling для равномерного покрытия пространства параметров
+        
+        Args:
+            n_samples: Количество образцов
+            dims: Количество измерений (параметров)
+            seed: Seed для воспроизводимости
+        
+        Returns:
+            Список образцов [0, 1] для каждого измерения
+        """
+        import random
+        import numpy as np
+        
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
+        
+        samples = []
+        for i in range(n_samples):
+            sample = []
+            for j in range(dims):
+                # LHS: каждый интервал [i/n, (i+1)/n] используется ровно один раз
+                interval_start = i / n_samples
+                interval_end = (i + 1) / n_samples
+                value = random.uniform(interval_start, interval_end)
+                sample.append(value)
+            samples.append(sample)
+        
+        # Перемешиваем порядок для каждого измерения
+        for j in range(dims):
+            column = [s[j] for s in samples]
+            random.shuffle(column)
+            for i in range(n_samples):
+                samples[i][j] = column[i]
+        
+        return samples
+    
     def get_unused_params_suggestion(self, base_params: Dict, 
                                      variation_range: int = 3,
                                      avoid_blocked: bool = True) -> Optional[Dict]:
         """
         Предложить неиспользованные параметры на основе базовых
         
-        Пробует найти комбинацию параметров которая еще не использовалась
-        и (опционально) избегает параметров, похожих на заблокированные
+        УЛУЧШЕННАЯ ВЕРСИЯ: Использует Latin Hypercube Sampling для эффективного
+        покрытия пространства параметров даже при низком использовании (0.01%)
         
         Args:
             base_params: Базовые параметры
@@ -389,10 +428,12 @@ class AIParameterTracker:
             Словарь с неиспользованными параметрами или None если не найдено
         """
         import random
+        import time
         
         # Получаем статистику использования для диагностики
         stats = self.get_usage_stats()
         usage_percentage = stats.get('usage_percentage', 0.0)
+        used_count = stats.get('used_combinations', 0)
         
         # Загружаем заблокированные параметры если нужно их избегать
         blocked_params = []
@@ -402,28 +443,80 @@ class AIParameterTracker:
             if blocked_params:
                 blocking_patterns = self._analyze_blocking_patterns(blocked_params)
                 logger.debug(f"📊 Учитываем {len(blocked_params)} записей о блокировках при генерации параметров")
-                if blocking_patterns.get('top_blocking_reasons'):
-                    top_reasons = ", ".join([f"{r}: {c}" for r, c in blocking_patterns['top_blocking_reasons']])
-                    logger.debug(f"   🔍 Топ причин блокировок: {top_reasons}")
         
-        # Адаптивное количество попыток в зависимости от заполненности
-        if usage_percentage < 50:
-            max_attempts = 200
+        # УЛУЧШЕНИЕ: Адаптивное количество попыток в зависимости от заполненности
+        # При низком использовании (0.01%) увеличиваем попытки для лучшего покрытия
+        if usage_percentage < 1.0:
+            # Очень низкое использование - используем LHS для эффективного поиска
+            max_attempts = 2000  # Увеличиваем для лучшего покрытия
+            use_lhs = True
+        elif usage_percentage < 50:
+            max_attempts = 500
+            use_lhs = True
         elif usage_percentage < 80:
-            max_attempts = 500  # Увеличиваем при высокой заполненности
+            max_attempts = 1000
+            use_lhs = False
         else:
-            max_attempts = 1000  # Еще больше при очень высокой заполненности
+            max_attempts = 2000
+            use_lhs = False
         
-        # Сначала пробуем систематический перебор вокруг базовых параметров
-        # Это более эффективно чем чисто случайный поиск
-        systematic_attempts = min(100, max_attempts // 2)
+        # Определяем диапазоны параметров
+        param_ranges = {
+            'oversold': (20, 35),
+            'overbought': (65, 80),
+            'exit_long_with_trend': (55, 70),
+            'exit_long_against_trend': (50, 65),
+            'exit_short_with_trend': (25, 40),
+            'exit_short_against_trend': (30, 45)
+        }
+        
+        # Генерируем seed на основе времени для разнообразия
+        search_seed = int(time.time() * 1000) % 1000000
+        
+        # УЛУЧШЕНИЕ: Используем Latin Hypercube Sampling для равномерного покрытия
+        if use_lhs and usage_percentage < 5.0:
+            # LHS эффективен при низком использовании пространства
+            lhs_samples = self._lhs_sample(max_attempts, 6, seed=search_seed)
+            
+            for sample in lhs_samples:
+                # Преобразуем LHS образцы [0,1] в реальные значения параметров
+                rsi_params = {
+                    'oversold': int(param_ranges['oversold'][0] + 
+                                   sample[0] * (param_ranges['oversold'][1] - param_ranges['oversold'][0])),
+                    'overbought': int(param_ranges['overbought'][0] + 
+                                    sample[1] * (param_ranges['overbought'][1] - param_ranges['overbought'][0])),
+                    'exit_long_with_trend': int(param_ranges['exit_long_with_trend'][0] + 
+                                              sample[2] * (param_ranges['exit_long_with_trend'][1] - param_ranges['exit_long_with_trend'][0])),
+                    'exit_long_against_trend': int(param_ranges['exit_long_against_trend'][0] + 
+                                                 sample[3] * (param_ranges['exit_long_against_trend'][1] - param_ranges['exit_long_against_trend'][0])),
+                    'exit_short_with_trend': int(param_ranges['exit_short_with_trend'][0] + 
+                                               sample[4] * (param_ranges['exit_short_with_trend'][1] - param_ranges['exit_short_with_trend'][0])),
+                    'exit_short_against_trend': int(param_ranges['exit_short_against_trend'][0] + 
+                                                  sample[5] * (param_ranges['exit_short_against_trend'][1] - param_ranges['exit_short_against_trend'][0]))
+                }
+                
+                # Проверяем, использовались ли эти параметры
+                if self.is_params_used(rsi_params):
+                    continue
+                
+                # Проверяем, похожи ли на заблокированные
+                if avoid_blocked and blocked_params:
+                    if self._is_params_similar_to_blocked(rsi_params, blocked_params):
+                        continue
+                
+                logger.debug(f"✅ Найдены неиспользованные параметры через LHS (использовано {used_count}/{stats.get('total_combinations', 0)}, {usage_percentage:.2f}%)")
+                return rsi_params
+        
+        # Систематический перебор вокруг базовых параметров (для среднего использования)
+        systematic_attempts = min(200, max_attempts // 3)
         for attempt in range(systematic_attempts):
             # Генерируем параметры с систематической вариацией
-            # Используем attempt для создания более разнообразных комбинаций
-            offset1 = (attempt % 7) - 3  # -3 до 3
-            offset2 = ((attempt // 7) % 7) - 3
-            offset3 = ((attempt // 49) % 5) - 2
-            offset4 = ((attempt // 245) % 5) - 2
+            offset1 = (attempt % 11) - 5  # -5 до 5
+            offset2 = ((attempt // 11) % 11) - 5
+            offset3 = ((attempt // 121) % 7) - 3
+            offset4 = ((attempt // 847) % 7) - 3
+            offset5 = ((attempt // 5929) % 7) - 3
+            offset6 = ((attempt // 41503) % 7) - 3
             
             rsi_params = {
                 'oversold': max(20, min(35, 
@@ -435,51 +528,41 @@ class AIParameterTracker:
                 'exit_long_against_trend': max(50, min(65,
                     base_params.get('exit_long_against_trend', 60) + offset4)),
                 'exit_short_with_trend': max(25, min(40,
-                    base_params.get('exit_short_with_trend', 35) + random.randint(-5, 5))),
+                    base_params.get('exit_short_with_trend', 35) + offset5)),
                 'exit_short_against_trend': max(30, min(45,
-                    base_params.get('exit_short_against_trend', 40) + random.randint(-5, 5)))
+                    base_params.get('exit_short_against_trend', 40) + offset6))
             }
             
-            # Проверяем, использовались ли эти параметры
             if self.is_params_used(rsi_params):
                 continue
             
-            # Проверяем, похожи ли на заблокированные (если нужно избегать)
             if avoid_blocked and blocked_params:
                 if self._is_params_similar_to_blocked(rsi_params, blocked_params):
-                    continue  # Пропускаем похожие на заблокированные
+                    continue
             
             return rsi_params
         
-        # Если систематический поиск не дал результата, пробуем случайный
-        # Ослабляем проверку на заблокированные параметры если заполненность высокая
+        # Случайный поиск с расширенными диапазонами
         strict_blocked_check = avoid_blocked and usage_percentage < 70
+        random.seed(search_seed)
         
         for attempt in range(systematic_attempts, max_attempts):
             # Генерируем случайные параметры с большей вариацией
             rsi_params = {
-                'oversold': max(20, min(35, 
-                    base_params.get('oversold', 29) + random.randint(-variation_range * 2, variation_range * 2))),
-                'overbought': max(65, min(80,
-                    base_params.get('overbought', 71) + random.randint(-variation_range * 2, variation_range * 2))),
-                'exit_long_with_trend': max(55, min(70,
-                    base_params.get('exit_long_with_trend', 65) + random.randint(-8, 8))),
-                'exit_long_against_trend': max(50, min(65,
-                    base_params.get('exit_long_against_trend', 60) + random.randint(-8, 8))),
-                'exit_short_with_trend': max(25, min(40,
-                    base_params.get('exit_short_with_trend', 35) + random.randint(-8, 8))),
-                'exit_short_against_trend': max(30, min(45,
-                    base_params.get('exit_short_against_trend', 40) + random.randint(-8, 8)))
+                'oversold': random.randint(20, 35),
+                'overbought': random.randint(65, 80),
+                'exit_long_with_trend': random.randint(55, 70),
+                'exit_long_against_trend': random.randint(50, 65),
+                'exit_short_with_trend': random.randint(25, 40),
+                'exit_short_against_trend': random.randint(30, 45)
             }
             
-            # Проверяем, использовались ли эти параметры
             if self.is_params_used(rsi_params):
                 continue
             
-            # Проверяем, похожи ли на заблокированные (только если строгая проверка)
             if strict_blocked_check and blocked_params:
                 if self._is_params_similar_to_blocked(rsi_params, blocked_params):
-                    continue  # Пропускаем похожие на заблокированные
+                    continue
             
             return rsi_params
         
@@ -489,13 +572,12 @@ class AIParameterTracker:
             logger.debug(f"💡 Параметры почти исчерпаны ({usage_percentage:.1f}%), ищем лучшие использованные параметры")
             best_params = self.get_best_params(limit=10, min_win_rate=0.0)
             if best_params:
-                # Возвращаем лучшие параметры (даже если использовались)
                 best = best_params[0]
                 logger.debug(f"✅ Используем лучшие параметры (Win Rate: {best.get('win_rate', 0):.1f}%, Рейтинг: {best.get('rating', 0):.1f})")
                 return best.get('rsi_params')
         
         # Если все попытки не удались - возвращаем None
-        logger.warning(f"⚠️ Не удалось найти неиспользованные параметры за {max_attempts} попыток (использовано {stats.get('used_combinations', 0)}/{stats.get('total_combinations', 0)} комбинаций, {usage_percentage:.1f}%)")
+        logger.warning(f"⚠️ Не удалось найти неиспользованные параметры за {max_attempts} попыток (использовано {used_count}/{stats.get('total_combinations', 0)} комбинаций, {usage_percentage:.2f}%)")
         return None
     
     def reset_used_params(self, confirm: bool = False):
