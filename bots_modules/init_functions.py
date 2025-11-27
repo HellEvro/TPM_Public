@@ -486,7 +486,6 @@ def create_bot(symbol, config=None, exchange_obj=None):
         logger.info(f"[BOT_INIT] 🔍 Серверный конфиг содержит {len(base_config)} ключей")
     else:
         logger.warning(f"[BOT_INIT] ⚠️ Серверный конфиг не обнаружен для {symbol}, используется fallback логика (входящий конфиг: {len(incoming_config) if incoming_config else 0} ключей)")
-    else:
         base_config = {
         'id': unique_id,
         'symbol': symbol,
