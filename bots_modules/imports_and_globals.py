@@ -824,8 +824,66 @@ def load_individual_coin_settings():
             for symbol, settings in loaded.items()
             if isinstance(settings, dict)
         }
-        with bots_data_lock:
-            bots_data['individual_coin_settings'] = normalized
+        
+        # ✅ ОДНОРАЗОВАЯ МИГРАЦИЯ: Автоматически включаем временной фильтр для всех монет
+        # и гарантируем минимум 2 свечи (выполняется только один раз)
+        try:
+            from bot_engine.storage import _get_bots_database
+            db = _get_bots_database()
+            migration_flag = 'rsi_time_filter_auto_enable_migration_completed'
+            
+            # Проверяем, выполнена ли уже миграция
+            migration_completed = db._get_metadata_flag(migration_flag, '0') == '1'
+            
+            if not migration_completed:
+                # Миграция еще не выполнена - выполняем её
+                updated_count = 0
+                for symbol, settings in normalized.items():
+                    settings_updated = False
+                    
+                    # Включаем временной фильтр, если он отключен или отсутствует
+                    rsi_time_filter_enabled = settings.get('rsi_time_filter_enabled')
+                    if rsi_time_filter_enabled is None or rsi_time_filter_enabled is False or rsi_time_filter_enabled == 0:
+                        settings['rsi_time_filter_enabled'] = True
+                        settings_updated = True
+                    
+                    # Гарантируем минимум 2 свечи
+                    rsi_time_filter_candles = settings.get('rsi_time_filter_candles')
+                    if rsi_time_filter_candles is not None and rsi_time_filter_candles < 2:
+                        settings['rsi_time_filter_candles'] = max(2, rsi_time_filter_candles)
+                        settings_updated = True
+                    
+                    if settings_updated:
+                        updated_count += 1
+                        settings['updated_at'] = datetime.now().isoformat()
+                
+                # Сохраняем обновленные настройки обратно в БД, если были изменения
+                if updated_count > 0:
+                    with bots_data_lock:
+                        bots_data['individual_coin_settings'] = normalized
+                    try:
+                        save_individual_coin_settings()
+                        # Устанавливаем флаг миграции как выполненной
+                        db._set_metadata_flag(migration_flag, '1')
+                        logger.info(f" ✅ Одноразовая миграция: автоматически включен временной фильтр для {updated_count} монет(ы)")
+                    except Exception as save_exc:
+                        logger.warning(f" ⚠️ Не удалось сохранить обновленные настройки: {save_exc}")
+                else:
+                    # Если нет изменений, все равно помечаем миграцию как выполненную
+                    db._set_metadata_flag(migration_flag, '1')
+                    with bots_data_lock:
+                        bots_data['individual_coin_settings'] = normalized
+            else:
+                # Миграция уже выполнена - просто загружаем настройки
+                with bots_data_lock:
+                    bots_data['individual_coin_settings'] = normalized
+        except Exception as migration_exc:
+            # Если не удалось выполнить миграцию (например, БД еще не инициализирована),
+            # просто загружаем настройки без миграции
+            logger.debug(f" ⚠️ Не удалось проверить/выполнить миграцию включения фильтра: {migration_exc}")
+            with bots_data_lock:
+                bots_data['individual_coin_settings'] = normalized
+        
         try:
             _individual_coin_settings_state['last_mtime'] = os.path.getmtime(INDIVIDUAL_COIN_SETTINGS_FILE)
         except OSError:

@@ -329,7 +329,7 @@ class AITrainer:
             'break_even_trigger': risk_params.get('break_even_trigger'),
             'break_even_protection': risk_params.get('break_even_protection'),
             'max_position_hours': max_position_hours,
-            'rsi_time_filter_enabled': rsi_time_filter.get('enabled'),
+            'rsi_time_filter_enabled': True,  # Всегда включен, AI не может отключить
             'rsi_time_filter_candles': rsi_time_filter_candles,
             'rsi_time_filter_upper': rsi_time_filter.get('upper'),
             'rsi_time_filter_lower': rsi_time_filter.get('lower'),
@@ -3273,8 +3273,8 @@ class AITrainer:
                     MAX_POSITION_HOURS = max(18, min(336, coin_base_max_hours + coin_rng.randint(-72, 120)))  # Минимум 18 часов (3 свечи на 6H ТФ)
 
                     # Фильтры: RSI временной и ExitScam (индивидуализация на уровне монеты)
-                    coin_rsi_time_filter_enabled = bool(coin_base_rsi_time_filter_enabled)
-                    coin_rsi_time_filter_enabled = self._mutate_flag('rsi_time_filter_enabled', coin_rsi_time_filter_enabled, coin_rng)
+                    # КРИТИЧЕСКИ ВАЖНО: Временной фильтр всегда должен быть включен, AI не может его отключить
+                    coin_rsi_time_filter_enabled = True  # Всегда включен, AI не может отключить
                     coin_base_config['rsi_time_filter_enabled'] = coin_rsi_time_filter_enabled
                     coin_rsi_time_filter_candles = max(2, min(30, coin_base_rsi_time_filter_candles + coin_rng.randint(-4, 4)))
                     coin_rsi_time_filter_upper = max(50, min(85, coin_base_rsi_time_filter_upper + coin_rng.randint(-6, 6)))
