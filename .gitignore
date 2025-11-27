@@ -439,3 +439,6 @@ data/app_data.db
 data/ai_data.db
 data/app_data.db-shm
 data/bots_data.db-shm
+data/ai_data.db-shm
+data/ai_data.db-wal
+data/database_gui_settings.json
