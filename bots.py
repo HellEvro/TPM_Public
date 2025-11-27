@@ -371,23 +371,47 @@ logger = logging.getLogger('BotsService')
 
 # Глобальные переменные для shutdown
 graceful_shutdown = False
+_flask_server = None  # Глобальная ссылка на Flask сервер для корректной остановки
 
 # Signal handlers
 def signal_handler(signum, frame):
     """Обработчик сигналов для graceful shutdown"""
-    global graceful_shutdown
+    global graceful_shutdown, _flask_server
     
-    logger.warning(f"Получен сигнал {signum}, начинаем graceful shutdown...")
+    if graceful_shutdown:
+        # Уже идет завершение, принудительно выходим
+        logger.warning("⚠️ Принудительное завершение процесса...")
+        os._exit(0)
+    
+    logger.warning(f"\n🛑 Получен сигнал {signum}, начинаем graceful shutdown...")
     graceful_shutdown = True
     shutdown_flag.set()
     
-    # Принудительно останавливаем Flask
-    logger.info("\n🛑 Остановка сервиса...")
-    cleanup_bot_service()
+    # Останавливаем Flask сервер
+    if _flask_server:
+        try:
+            logger.info("🛑 Остановка Flask сервера...")
+            _flask_server.shutdown()
+            logger.info("✅ Flask сервер остановлен")
+        except Exception as e:
+            logger.debug(f"Ошибка остановки сервера: {e}")
+    
+    # Очистка ресурсов
+    try:
+        cleanup_bot_service()
+    except Exception as e:
+        logger.debug(f"Ошибка cleanup: {e}")
+    
     logger.info("✅ Сервис остановлен")
     
-    # Убиваем все потоки принудительно
-    os._exit(0)
+    # Принудительное завершение через небольшой таймаут
+    def force_exit():
+        time.sleep(1.5)  # Даём 1.5 секунды на graceful shutdown
+        logger.warning("⏱️ Таймаут graceful shutdown, принудительное завершение...")
+        os._exit(0)
+    
+    exit_thread = threading.Thread(target=force_exit, daemon=True)
+    exit_thread.start()
 
 _cleanup_done = False
 
@@ -485,6 +509,8 @@ def cleanup_bot_service():
 
 def run_bots_service():
     """Запуск Flask сервера для API ботов"""
+    global graceful_shutdown, _flask_server
+    
     try:
         logger.info("=" * 80)
         logger.info("ЗАПУСК BOTS SERVICE API (Порт 5001)")
@@ -500,15 +526,58 @@ def run_bots_service():
         logger.info("💡 Нажмите Ctrl+C для остановки")
         logger.info("=" * 80 + "\n")
         
-        bots_app.run(
-            host='0.0.0.0',
-            port=5001,
-            debug=False,
-            use_reloader=False,
-            threaded=True
-        )
+        # Используем Werkzeug сервер для возможности корректной остановки
+        from werkzeug.serving import make_server
+        
+        _flask_server = None
+        server_thread = None
+        
+        try:
+            _flask_server = make_server('0.0.0.0', 5001, bots_app, threaded=True)
+            
+            # Запускаем сервер в отдельном потоке
+            def run_server():
+                try:
+                    _flask_server.serve_forever(poll_interval=0.5)
+                except (KeyboardInterrupt, SystemExit):
+                    pass
+                except Exception as e:
+                    if not graceful_shutdown:
+                        logger.error(f"Ошибка сервера: {e}")
+            
+            server_thread = threading.Thread(target=run_server, daemon=True)
+            server_thread.start()
+            
+            # Ждем завершения или сигнала
+            try:
+                while server_thread.is_alive() and not graceful_shutdown:
+                    time.sleep(0.1)
+            except KeyboardInterrupt:
+                logger.info("\n🛑 Получен KeyboardInterrupt, останавливаем сервер...")
+                graceful_shutdown = True
+                shutdown_flag.set()
+                    
+        finally:
+            # Останавливаем сервер
+            if _flask_server:
+                try:
+                    if not graceful_shutdown:
+                        logger.info("🛑 Остановка Flask сервера...")
+                    _flask_server.shutdown()
+                    _flask_server = None
+                    if not graceful_shutdown:
+                        logger.info("✅ Flask сервер остановлен")
+                except Exception as e:
+                    logger.debug(f"Ошибка остановки сервера: {e}")
+                
+                # Ждем завершения потока сервера
+                if server_thread and server_thread.is_alive():
+                    server_thread.join(timeout=2.0)
+        
     except KeyboardInterrupt:
-        raise
+        logger.info("\n🛑 KeyboardInterrupt в run_bots_service")
+        graceful_shutdown = True
+        shutdown_flag.set()
     except SystemExit as e:
         if e.code == 42:
             # Специальный код для горячей перезагрузки
@@ -608,8 +677,9 @@ if __name__ == '__main__':
         run_bots_service()
         
     except KeyboardInterrupt:
-        logger.info("Получен сигнал прерывания...")
-        logger.info("\n🛑 Остановка сервиса...")
+        logger.info("\n🛑 Получен KeyboardInterrupt, останавливаем сервис...")
+        graceful_shutdown = True
+        shutdown_flag.set()
     except Exception as e:
         logger.error(f"Критическая ошибка: {e}")
         import traceback
@@ -617,9 +687,11 @@ if __name__ == '__main__':
     finally:
         try:
             # ✅ Auto Trainer останавливается в ai.py, здесь не требуется
-            
             cleanup_bot_service()
             logger.info("✅ Сервис остановлен\n")
-        except:
-            pass
+        except Exception as cleanup_error:
+            logger.debug(f"Ошибка при cleanup: {cleanup_error}")
+        
+        # Принудительное завершение процесса
+        logger.info("🚪 Завершение процесса...")
         os._exit(0)

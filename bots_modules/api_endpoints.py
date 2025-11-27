@@ -10,11 +10,63 @@ import time
 import threading
 import sys
 import importlib
+from copy import deepcopy
 from datetime import datetime
 from typing import Dict
 from flask import Flask, request, jsonify
 
 logger = logging.getLogger('BotsService')
+
+# ⚡ ОПТИМИЗАЦИЯ ПАМЯТИ: Кэш для bots_state_file
+_bots_state_cache = {
+    'symbols': set(),
+    'last_update': 0,
+    'cache_ttl': 30  # Кэш на 30 секунд
+}
+
+def _get_cached_bot_symbols():
+    """Получает кэшированный список символов ботов из файла"""
+    import time
+    current_time = time.time()
+    
+    # Проверяем, нужно ли обновить кэш
+    if current_time - _bots_state_cache['last_update'] < _bots_state_cache['cache_ttl']:
+        return _bots_state_cache['symbols'].copy()
+    
+    # Обновляем кэш
+    saved_bot_symbols = set()
+    try:
+        bots_state_file = 'data/bots_state.json'
+        if os.path.exists(bots_state_file):
+            # Проверяем только время изменения файла, не читаем весь файл если не изменился
+            file_mtime = os.path.getmtime(bots_state_file)
+            if file_mtime <= _bots_state_cache.get('file_mtime', 0):
+                # Файл не изменился - используем старый кэш
+                return _bots_state_cache['symbols'].copy()
+            
+            # Файл изменился - читаем только ключи ботов
+            with open(bots_state_file, 'r', encoding='utf-8') as f:
+                file_content = f.read()
+                if file_content.strip():
+                    try:
+                        saved_data = json.loads(file_content)
+                        if 'bots' in saved_data and isinstance(saved_data['bots'], dict):
+                            saved_bot_symbols = set(saved_data['bots'].keys())
+                    except json.JSONDecodeError:
+                        # Если ошибка парсинга - используем старый кэш
+                        return _bots_state_cache['symbols'].copy()
+        
+        # Обновляем кэш
+        _bots_state_cache['symbols'] = saved_bot_symbols
+        _bots_state_cache['last_update'] = current_time
+        if os.path.exists(bots_state_file):
+            _bots_state_cache['file_mtime'] = os.path.getmtime(bots_state_file)
+    except Exception as e:
+        logger.debug(f"⚠️ Ошибка загрузки кэша bots_state: {e}")
+        # В случае ошибки возвращаем старый кэш
+        return _bots_state_cache['symbols'].copy()
+    
+    return saved_bot_symbols
 
 
 def _load_json_file(file_path):
@@ -44,7 +96,8 @@ from bots_modules.imports_and_globals import (
     get_exchange, load_individual_coin_settings,
     get_individual_coin_settings, set_individual_coin_settings,
     remove_individual_coin_settings, copy_individual_coin_settings_to_all,
-    remove_all_individual_coin_settings, RealTradingBot
+    remove_all_individual_coin_settings, RealTradingBot,
+    get_config_snapshot
 )
 import bots_modules.imports_and_globals as globals_module
 
@@ -508,6 +561,11 @@ def refresh_manual_positions():
 @bots_app.route('/api/bots/coins-with-rsi', methods=['GET'])
 def get_coins_with_rsi():
     """Получить все монеты с RSI 6H данными"""
+    # ⚡ ИНИЦИАЛИЗАЦИЯ: Инициализируем переменные до try блока для обработки ошибок
+    cleaned_coins = {}
+    manual_positions = []
+    cache_age = None
+    
     try:
         # Проверяем параметр refresh_symbol для обновления конкретной монеты
         refresh_symbol = request.args.get('refresh_symbol')
@@ -525,9 +583,13 @@ def get_coins_with_rsi():
             except Exception as e:
                 logger.error(f"❌ Ошибка обновления RSI для {refresh_symbol}: {e}")
         
+        # ⚡ ОПТИМИЗАЦИЯ ПАМЯТИ: Получаем размер данных перед обработкой
+        coins_count = len(coins_rsi_data['coins'])
+        if coins_count > 1000:
+            logger.warning(f"⚠️ Большое количество монет ({coins_count}), возможны проблемы с памятью")
+        
         # ⚡ БЕЗ БЛОКИРОВКИ: чтение словаря - атомарная операция
         # Проверяем возраст кэша
-        cache_age = None
         if os.path.exists(RSI_CACHE_FILE):
             try:
                 cache_stat = os.path.getmtime(RSI_CACHE_FILE)
@@ -535,74 +597,97 @@ def get_coins_with_rsi():
             except:
                 cache_age = None
         
+        # ⚡ ОПТИМИЗАЦИЯ ПАМЯТИ: Минимизируем копирование данных
         # Очищаем данные от несериализуемых объектов
-        cleaned_coins = {}
-        for symbol, coin_data in coins_rsi_data['coins'].items():
+        coins_items = list(coins_rsi_data['coins'].items())  # Создаем список один раз
+        for symbol, coin_data in coins_items:
             # ✅ ИСПРАВЛЕНИЕ: НЕ фильтруем монеты по зрелости для UI!
             # Фильтр зрелости применяется в get_coin_rsi_data() через изменение сигнала на WAIT
             # Здесь показываем ВСЕ монеты, независимо от зрелости
-                
-            cleaned_coin = coin_data.copy()
             
-            # ✅ ВАЖНО: Убеждаемся, что time_filter_info и exit_scam_info сохраняются
-            # Эти поля должны быть в coin_data, но проверяем явно
-            if 'time_filter_info' in coin_data:
-                cleaned_coin['time_filter_info'] = coin_data['time_filter_info']
-            if 'exit_scam_info' in coin_data:
-                cleaned_coin['exit_scam_info'] = coin_data['exit_scam_info']
-            
-            # Очищаем enhanced_rsi от numpy типов и других несериализуемых объектов
-            if 'enhanced_rsi' in cleaned_coin and cleaned_coin['enhanced_rsi']:
-                enhanced_rsi = cleaned_coin['enhanced_rsi'].copy()
-                
-                # Конвертируем numpy типы в Python типы
-                if 'confirmations' in enhanced_rsi:
-                    confirmations = enhanced_rsi['confirmations'].copy()
-                    for key, value in confirmations.items():
-                        if hasattr(value, 'item'):  # numpy scalar
-                            confirmations[key] = value.item()
-                        elif value is None:
-                            confirmations[key] = None
-                    enhanced_rsi['confirmations'] = confirmations
-                
-                # Конвертируем adaptive_levels если это tuple
-                if 'adaptive_levels' in enhanced_rsi and enhanced_rsi['adaptive_levels']:
-                    if isinstance(enhanced_rsi['adaptive_levels'], tuple):
-                        enhanced_rsi['adaptive_levels'] = list(enhanced_rsi['adaptive_levels'])
-                
-                cleaned_coin['enhanced_rsi'] = enhanced_rsi
-            
-            # Добавляем эффективный сигнал для единообразия с фронтендом
-            # Вычисляем эффективный сигнал после очистки от numpy типов
-            effective_signal = get_effective_signal(cleaned_coin)
-            cleaned_coin['effective_signal'] = effective_signal
-            
-            # ✅ ИСПРАВЛЕНИЕ: Копируем Stochastic RSI из enhanced_rsi в основные поля
-            if 'enhanced_rsi' in cleaned_coin and cleaned_coin['enhanced_rsi']:
-                enhanced_rsi = cleaned_coin['enhanced_rsi']
-                if 'confirmations' in enhanced_rsi:
-                    confirmations = enhanced_rsi['confirmations']
-                    # Копируем Stochastic RSI данные в основные поля для совместимости с UI
-                    cleaned_coin['stoch_rsi_k'] = confirmations.get('stoch_rsi_k')
-                    cleaned_coin['stoch_rsi_d'] = confirmations.get('stoch_rsi_d')
-            
-            # ✅ ИСПРАВЛЕНИЕ: Добавляем количество свечей из данных зрелых монет
             try:
-                from bots_modules.imports_and_globals import mature_coins_storage
-                if symbol in mature_coins_storage:
-                    maturity_data = mature_coins_storage[symbol].get('maturity_data', {})
-                    details = maturity_data.get('details', {})
-                    cleaned_coin['candles_count'] = details.get('candles_count')
+                # ⚡ ОПТИМИЗАЦИЯ ПАМЯТИ: Создаем только необходимые поля, избегаем глубокого копирования
+                cleaned_coin = {}
+                
+                # Копируем только необходимые базовые поля
+                essential_fields = ['symbol', 'rsi6h', 'trend6h', 'rsi_zone', 'signal', 'price', 
+                                  'change24h', 'last_update', 'blocked_by_scope', 'has_existing_position',
+                                  'is_mature', 'blocked_by_exit_scam', 'blocked_by_rsi_time',
+                                  'trading_status', 'is_delisting']
+                for field in essential_fields:
+                    if field in coin_data:
+                        cleaned_coin[field] = coin_data[field]
+                
+                # Копируем структурированные данные только если они есть
+                if 'time_filter_info' in coin_data and coin_data['time_filter_info']:
+                    cleaned_coin['time_filter_info'] = coin_data['time_filter_info']
+                if 'exit_scam_info' in coin_data and coin_data['exit_scam_info']:
+                    cleaned_coin['exit_scam_info'] = coin_data['exit_scam_info']
+                
+                # ⚡ ОПТИМИЗАЦИЯ: Очищаем enhanced_rsi только если он есть
+                if 'enhanced_rsi' in coin_data and coin_data['enhanced_rsi']:
+                    enhanced_rsi = coin_data['enhanced_rsi']
+                    cleaned_enhanced_rsi = {}
+                    
+                    # Копируем только необходимые поля из enhanced_rsi
+                    if 'enabled' in enhanced_rsi:
+                        cleaned_enhanced_rsi['enabled'] = enhanced_rsi['enabled']
+                    
+                    # Очищаем confirmations от numpy типов
+                    if 'confirmations' in enhanced_rsi and enhanced_rsi['confirmations']:
+                        confirmations = {}
+                        for key, value in enhanced_rsi['confirmations'].items():
+                            if hasattr(value, 'item'):  # numpy scalar
+                                confirmations[key] = value.item()
+                            elif value is not None:
+                                confirmations[key] = value
+                            else:
+                                confirmations[key] = None
+                        cleaned_enhanced_rsi['confirmations'] = confirmations
+                        
+                        # Копируем Stochastic RSI данные в основные поля для совместимости с UI
+                        cleaned_coin['stoch_rsi_k'] = confirmations.get('stoch_rsi_k')
+                        cleaned_coin['stoch_rsi_d'] = confirmations.get('stoch_rsi_d')
+                    
+                    # Конвертируем adaptive_levels если это tuple
+                    if 'adaptive_levels' in enhanced_rsi and enhanced_rsi['adaptive_levels']:
+                        adaptive_levels = enhanced_rsi['adaptive_levels']
+                        cleaned_enhanced_rsi['adaptive_levels'] = list(adaptive_levels) if isinstance(adaptive_levels, tuple) else adaptive_levels
+                    
+                    cleaned_coin['enhanced_rsi'] = cleaned_enhanced_rsi
                 else:
-                    cleaned_coin['candles_count'] = None
+                    cleaned_coin['enhanced_rsi'] = {'enabled': False}
+                
+                # Копируем trend_analysis если есть
+                if 'trend_analysis' in coin_data and coin_data['trend_analysis']:
+                    cleaned_coin['trend_analysis'] = coin_data['trend_analysis']
+                
+                # Добавляем эффективный сигнал для единообразия с фронтендом
+                effective_signal = get_effective_signal(cleaned_coin)
+                cleaned_coin['effective_signal'] = effective_signal
+                
+                # ✅ ИСПРАВЛЕНИЕ: Добавляем количество свечей из данных зрелых монет
+                try:
+                    from bots_modules.imports_and_globals import mature_coins_storage
+                    if symbol in mature_coins_storage:
+                        maturity_data = mature_coins_storage[symbol].get('maturity_data', {})
+                        details = maturity_data.get('details', {})
+                        candles_count = details.get('candles_count')
+                        if candles_count is not None:
+                            cleaned_coin['candles_count'] = candles_count
+                except Exception as e:
+                    logger.debug(f" Ошибка получения candles_count для {symbol}: {e}")
+                
+                cleaned_coins[symbol] = cleaned_coin
+                
+            except MemoryError:
+                logger.error(f"❌ MemoryError при обработке монеты {symbol}, пропускаем")
+                continue
             except Exception as e:
-                logger.debug(f" Ошибка получения candles_count для {symbol}: {e}")
-                cleaned_coin['candles_count'] = None
-            
-            cleaned_coins[symbol] = cleaned_coin
+                logger.warning(f"⚠️ Ошибка обработки монеты {symbol}: {e}, пропускаем")
+                continue
         
         # Получаем список монет с ручными позициями на бирже (позиции БЕЗ ботов)
-        manual_positions = []
         try:
             # Получаем exchange объект
             try:
@@ -621,118 +706,8 @@ def get_coins_with_rsi():
                 # ⚡ БЕЗ БЛОКИРОВКИ: чтение словаря - атомарная операция
                 active_bot_symbols = set(bots_data['bots'].keys())
                 
-                # Также загружаем сохраненных ботов из файла
-                saved_bot_symbols = set()
-                try:
-                    import shutil
-                    bots_state_file = 'data/bots_state.json'
-                    if os.path.exists(bots_state_file):
-                        with open(bots_state_file, 'r', encoding='utf-8') as f:
-                            file_content = f.read()
-                            # Проверяем, что файл не пустой
-                            if file_content.strip():
-                                try:
-                                    saved_data = json.loads(file_content)
-                                    if 'bots' in saved_data:
-                                        saved_bot_symbols = set(saved_data['bots'].keys())
-                                except json.JSONDecodeError as e:
-                                    logger.warning(f" ⚠️ Ошибка парсинга JSON (строка {e.lineno}, колонка {e.colno}): {e.msg}")
-                                    logger.debug(f" Проблемный участок около символа {e.pos}")
-                                    
-                                    # ✅ Пытаемся восстановить из резервной копии
-                                    backup_file = f"{bots_state_file}.backup"
-                                    corrupted_file = f"{bots_state_file}.corrupted"
-                                    
-                                    if os.path.exists(backup_file):
-                                        try:
-                                            logger.info(f"🔄 Пытаемся восстановить из резервной копии: {backup_file}")
-                                            with open(backup_file, 'r', encoding='utf-8') as backup_f:
-                                                backup_content = backup_f.read().strip()
-                                                if backup_content:
-                                                    saved_data = json.loads(backup_content)
-                                                    if 'bots' in saved_data:
-                                                        saved_bot_symbols = set(saved_data['bots'].keys())
-                                                        logger.info(f"✅ Восстановлено из резервной копии: {len(saved_bot_symbols)} ботов")
-                                                        # Восстанавливаем основной файл из резервной копии
-                                                        shutil.copy2(backup_file, bots_state_file)
-                                                        logger.info(f"✅ Основной файл восстановлен из резервной копии")
-                                                else:
-                                                    raise ValueError("Резервная копия пустая")
-                                        except Exception as backup_error:
-                                            logger.error(f"❌ Ошибка восстановления из резервной копии: {backup_error}")
-                                    
-                                    # Сохраняем поврежденный файл для анализа
-                                    try:
-                                        shutil.copy2(bots_state_file, corrupted_file)
-                                        logger.info(f"📁 Поврежденный файл сохранен: {corrupted_file}")
-                                    except Exception as copy_error:
-                                        logger.debug(f"⚠️ Не удалось сохранить копию поврежденного файла: {copy_error}")
-                                    
-                                    # ✅ Если не удалось восстановить - инициализируем файл
-                                    if not saved_bot_symbols:
-                                        try:
-                                            from datetime import datetime
-                                            default_state = {
-                                                'version': '1.0',
-                                                'last_saved': datetime.now().isoformat(),
-                                                'bots': {},
-                                                'global_stats': {
-                                                    'total_trades': 0,
-                                                    'total_profit': 0.0,
-                                                    'win_rate': 0.0
-                                                }
-                                            }
-                                            with open(bots_state_file, 'w', encoding='utf-8') as f:
-                                                json.dump(default_state, f, ensure_ascii=False, indent=2)
-                                            logger.info("✅ Файл состояния инициализирован с базовой структурой")
-                                        except Exception as init_error:
-                                            logger.error(f"❌ Ошибка инициализации файла состояния: {init_error}")
-                            else:
-                                logger.warning(" ⚠️ Файл состояния пустой! Пытаемся восстановить или инициализировать...")
-                                # ✅ Пытаемся восстановить из резервной копии
-                                backup_file = f"{bots_state_file}.backup"
-                                if os.path.exists(backup_file):
-                                    try:
-                                        logger.info(f"🔄 Пытаемся восстановить из резервной копии: {backup_file}")
-                                        with open(backup_file, 'r', encoding='utf-8') as backup_f:
-                                            backup_content = backup_f.read()
-                                            if backup_content.strip():
-                                                saved_data = json.loads(backup_content)
-                                                if 'bots' in saved_data:
-                                                    saved_bot_symbols = set(saved_data['bots'].keys())
-                                                    logger.info(f"✅ Восстановлено из резервной копии: {len(saved_bot_symbols)} ботов")
-                                                    # Восстанавливаем основной файл из резервной копии
-                                                    shutil.copy2(backup_file, bots_state_file)
-                                                    logger.info(f"✅ Основной файл восстановлен из резервной копии")
-                                    except Exception as backup_error:
-                                        logger.error(f"❌ Ошибка восстановления из резервной копии: {backup_error}")
-                                
-                                # ✅ Если резервной копии нет или она тоже пустая - инициализируем файл
-                                if not saved_bot_symbols:
-                                    try:
-                                        from bots_modules.sync_and_cache import load_bots_state
-                                        # Пытаемся загрузить состояние через стандартную функцию (она может синхронизировать с биржей)
-                                        if not load_bots_state():
-                                            # Если загрузка не удалась - создаем базовую структуру
-                                            logger.info("📝 Инициализируем файл состояния с базовой структурой...")
-                                            from datetime import datetime
-                                            default_state = {
-                                                'version': '1.0',
-                                                'last_saved': datetime.now().isoformat(),
-                                                'bots': {},
-                                                'global_stats': {
-                                                    'total_trades': 0,
-                                                    'total_profit': 0.0,
-                                                    'win_rate': 0.0
-                                                }
-                                            }
-                                            with open(bots_state_file, 'w', encoding='utf-8') as f:
-                                                json.dump(default_state, f, ensure_ascii=False, indent=2)
-                                            logger.info("✅ Файл состояния инициализирован с базовой структурой")
-                                    except Exception as init_error:
-                                        logger.error(f"❌ Ошибка инициализации файла состояния: {init_error}")
-                except Exception as e:
-                    logger.warning(f" ⚠️ Не удалось загрузить сохраненных ботов: {e}")
+                # ⚡ ОПТИМИЗАЦИЯ: Используем кэшированный список сохраненных ботов
+                saved_bot_symbols = _get_cached_bot_symbols()
                 
                 # Объединяем активных и сохраненных ботов
                 system_bot_symbols = active_bot_symbols.union(saved_bot_symbols)
@@ -776,8 +751,34 @@ def get_coins_with_rsi():
             logger.debug(f" Возврат RSI данных для {len(result['coins'])} монет")
         return jsonify(result)
         
+    except MemoryError as e:
+        logger.error(f"❌ MemoryError при получении монет с RSI: {e}")
+        cleaned_count = len(cleaned_coins) if cleaned_coins else 0
+        logger.error(f"❌ Количество обработанных монет перед ошибкой: {cleaned_count}")
+        # Возвращаем частичные данные если они есть
+        if cleaned_coins and cleaned_count > 0:
+            result = {
+                'success': True,
+                'coins': cleaned_coins,
+                'total': len(cleaned_coins),
+                'warning': 'Данные могут быть неполными из-за нехватки памяти',
+                'last_update': coins_rsi_data.get('last_update'),
+                'update_in_progress': coins_rsi_data.get('update_in_progress', False),
+                'data_version': coins_rsi_data.get('data_version', 0),
+                'manual_positions': [],
+                'stats': {
+                    'total_coins': coins_rsi_data.get('total_coins', 0),
+                    'successful_coins': len(cleaned_coins),
+                    'failed_coins': coins_rsi_data.get('total_coins', 0) - len(cleaned_coins)
+                }
+            }
+            return jsonify(result), 200
+        else:
+            return jsonify({'success': False, 'error': 'Нехватка памяти при обработке данных'}), 500
     except Exception as e:
         logger.error(f" Ошибка получения монет с RSI: {str(e)}")
+        import traceback
+        logger.error(f" Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 def clean_data_for_json(data):
@@ -917,14 +918,41 @@ def create_bot_endpoint():
             return jsonify({'success': False, 'error': 'Symbol required'}), 400
         
         symbol = data['symbol']
-        config = data.get('config', {})
+        client_config = data.get('config', {}) or {}
         skip_maturity_check = data.get('skip_maturity_check', False)
         force_manual_entry = data.get('force_manual_entry', False) or data.get('ignore_filters', False)
         if force_manual_entry:
             skip_maturity_check = True  # принудительно отключаем зрелость для ручного запуска
         
         logger.info(f" Запрос на создание бота для {symbol}")
-        logger.info(f" Конфигурация: {config}")
+        logger.info(f" Клиентские overrides: {client_config}")
+        
+        # 🔄 Получаем актуальные настройки из бэкенда (global + individual)
+        merged_server_config = {}
+        try:
+            snapshot = get_config_snapshot(symbol)
+            merged_server_config = deepcopy(snapshot.get('merged') or snapshot.get('global') or {})
+        except Exception as snapshot_error:
+            logger.warning(f" ⚠️ Не удалось получить config snapshot для {symbol}: {snapshot_error}")
+        
+        if not merged_server_config:
+            with bots_data_lock:
+                merged_server_config = deepcopy(bots_data.get('auto_bot_config', {}))
+        
+        allowed_manual_overrides = {
+            'volume_mode', 'volume_value', 'leverage',
+            'status', 'auto_managed', 'margin_usdt'
+        }
+        manual_overrides = {
+            key: client_config[key]
+            for key in allowed_manual_overrides
+            if key in client_config
+        }
+        
+        bot_runtime_config = merged_server_config.copy()
+        bot_runtime_config.update(manual_overrides)
+        
+        logger.info(f" 🧠 Серверный конфиг для {symbol}: avoid_up_trend={bot_runtime_config.get('avoid_up_trend')} / avoid_down_trend={bot_runtime_config.get('avoid_down_trend')}")
         
         # ✅ Проверяем, есть ли ручная позиция для этой монеты
         has_manual_position = False
@@ -950,14 +978,14 @@ def create_bot_endpoint():
             logger.debug(f" Не удалось проверить ручную позицию: {e}")
         
         # Проверяем зрелость монеты (если включена проверка для этой монеты И нет ручной позиции)
-        enable_maturity_check_coin = config.get('enable_maturity_check', True)
+        enable_maturity_check_coin = bot_runtime_config.get('enable_maturity_check', True)
         if skip_maturity_check:
             logger.info(f" ✋ {symbol}: Принудительное создание бота - проверка зрелости отключена")
             enable_maturity_check_coin = False
             # Дополнительно отключаем защитные фильтры, если запрос ручной
-            config['avoid_down_trend'] = False
-            config['avoid_up_trend'] = False
-            config['rsi_time_filter_enabled'] = False
+            bot_runtime_config['avoid_down_trend'] = False
+            bot_runtime_config['avoid_up_trend'] = False
+            bot_runtime_config['rsi_time_filter_enabled'] = False
         
         if enable_maturity_check_coin and not has_manual_position:
             # Получаем данные свечей для проверки зрелости
@@ -1002,7 +1030,7 @@ def create_bot_endpoint():
             logger.info(f" ✋ {symbol}: Ручная позиция обнаружена - проверка зрелости пропущена")
         
         # Создаем бота
-        bot_config = create_bot(symbol, config, exchange_obj=get_exchange())
+        bot_state = create_bot(symbol, bot_runtime_config, exchange_obj=get_exchange())
         
         # ✅ Проверяем: есть ли уже позиция на бирже для этой монеты?
         has_existing_position = False
@@ -1054,7 +1082,7 @@ def create_bot_endpoint():
                                 direction = 'LONG' if signal == 'ENTER_LONG' else 'SHORT'
                     
                     if direction:
-                        trading_bot = RealTradingBot(symbol, get_exchange(), bot_config)
+                        trading_bot = RealTradingBot(symbol, get_exchange(), bot_state)
                         result = trading_bot._enter_position(direction)
                         if result and result.get('success'):
                             logger.info(f" ✅ Успешно вошли в {direction} позицию для {symbol}")
@@ -1091,7 +1119,7 @@ def create_bot_endpoint():
         return jsonify({
             'success': True,
             'message': f'Бот для {symbol} создан успешно',
-            'bot': bot_config,
+            'bot': bot_state,
             'existing_position': has_existing_position
         })
         

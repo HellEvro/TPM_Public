@@ -2661,18 +2661,13 @@ class BotsManager {
         this.showNotification(`🔄 ${this.translate('creating_bot_for')} ${this.selectedCoin.symbol}...`, 'info');
         
         try {
-            // Собираем дублированные настройки
-            const duplicateSettings = this.collectDuplicateSettings();
-            
             const config = {
                 volume_mode: document.getElementById('volumeModeSelect')?.value || 'usdt',
                 volume_value: parseFloat(document.getElementById('volumeValueInput')?.value || '10'),
-                leverage: parseInt(document.getElementById('leverageCoinInput')?.value || '1'),
-                // Добавляем индивидуальные настройки бота
-                ...duplicateSettings
+                leverage: parseInt(document.getElementById('leverageCoinInput')?.value || '1')
             };
             
-            console.log('[BotsManager] 📊 Полная конфигурация бота:', config);
+            console.log('[BotsManager] 📊 Параметры запуска бота (overrides):', config);
             console.log('[BotsManager] 🌐 Отправка запроса на создание бота...');
             
             const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/create`, {
