@@ -518,6 +518,54 @@ class DatabaseConnection:
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось загрузить данные:\n{e}")
             return [], 0
+    
+    def get_table_size(self, table_name: str) -> int:
+        """
+        Получает размер таблицы в байтах
+        
+        Args:
+            table_name: Имя таблицы
+            
+        Returns:
+            Размер таблицы в байтах (0 если ошибка)
+        """
+        if not self.conn:
+            return 0
+        
+        try:
+            cursor = self.conn.cursor()
+            
+            # Получаем количество записей в таблице
+            cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+            row_count = cursor.fetchone()[0]
+            
+            if row_count == 0:
+                return 0
+            
+            # Для оптимизации используем меньшую выборку для больших таблиц
+            sample_size = min(50, row_count)
+            
+            # Получаем размер одной записи (примерно) через выборку записей
+            cursor.execute(f"SELECT * FROM {table_name} LIMIT {sample_size}")
+            sample_rows = cursor.fetchall()
+            
+            if sample_rows:
+                # Вычисляем средний размер записи
+                total_sample_size = sum(len(str(row)) for row in sample_rows)
+                avg_row_size = total_sample_size // len(sample_rows) if sample_rows else 100
+                
+                # Общий размер таблицы (приблизительно)
+                estimated_size = row_count * avg_row_size
+                
+                # Добавляем накладные расходы на индексы и структуру (примерно 20%)
+                estimated_size = int(estimated_size * 1.2)
+                
+                return estimated_size
+            
+            return 0
+        except Exception as e:
+            # В случае ошибки возвращаем 0
+            return 0
 
 
 class DatabaseGUI(tk.Tk):
@@ -1325,12 +1373,26 @@ class DatabaseGUI(tk.Tk):
                     if child in self.db_tree_items:
                         del self.db_tree_items[child]
             
-            # Добавляем таблицы
+            # Добавляем таблицы с размерами
             for table_name in tables:
+                # Получаем размер таблицы
+                table_size = temp_conn.get_table_size(table_name)
+                
+                # Форматируем размер
+                if table_size >= 1024 * 1024:  # MB
+                    size_str = f"{table_size / (1024 * 1024):.2f} MB"
+                elif table_size >= 1024:  # KB
+                    size_str = f"{table_size / 1024:.2f} KB"
+                else:
+                    size_str = f"{table_size} B"
+                
+                # Формируем текст для отображения
+                display_text = f"📋 {table_name} ({size_str})"
+                
                 table_item_id = self.db_tree.insert(
                     db_item_id,
                     tk.END,
-                    text=f"📋 {table_name}",
+                    text=display_text,
                     values=(db_path, table_name, '', 'table')
                 )
                 
