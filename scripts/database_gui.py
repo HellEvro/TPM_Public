@@ -1575,6 +1575,8 @@ class DatabaseGUI(tk.Tk):
         if not table_name:
             return
         
+        # Проверяем, изменилась ли таблица
+        table_changed = (self.current_table != table_name)
         self.current_table = table_name
         
         # Обновляем статус
@@ -1600,8 +1602,9 @@ class DatabaseGUI(tk.Tk):
             self.data_tree.heading(col, text=col)
             self.data_tree.column(col, width=150, minwidth=100)
         
-        # Сбрасываем пагинацию при загрузке новой таблицы
-        self.current_page = 1
+        # Сбрасываем пагинацию только при загрузке новой таблицы
+        if table_changed:
+            self.current_page = 1
         
         # Загружаем данные с пагинацией
         limit = self.records_per_page if self.records_per_page > 0 else None
@@ -1616,8 +1619,9 @@ class DatabaseGUI(tk.Tk):
         self.all_table_data = rows
         self.all_table_columns = columns
         
-        # Очищаем фильтр при загрузке новой таблицы
-        self.search_var.set("")
+        # Очищаем фильтр только при загрузке новой таблицы
+        if table_changed:
+            self.search_var.set("")
         
         # Отображаем данные (с учетом текущего фильтра)
         self._display_filtered_data()
