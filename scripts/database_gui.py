@@ -1290,10 +1290,9 @@ class DatabaseGUI(tk.Tk):
             if not self.db_conn or self.db_conn.db_path != db_path:
                 self._open_database(db_path)
             
-            # Выбираем таблицу
+            # Выбираем таблицу (не устанавливаем current_table здесь, чтобы _load_table_data мог определить изменение)
             if self.db_conn:
                 self.table_var.set(table_name)
-                self.current_table = table_name
                 self._load_table_data()
     
     def _on_tree_item_double_click(self):
@@ -1560,7 +1559,7 @@ class DatabaseGUI(tk.Tk):
         
         if tables:
             self.tables_combo.current(0)
-            self.current_table = tables[0]
+            # Не устанавливаем current_table здесь, чтобы _load_table_data мог определить изменение
             self._update_status(f"Найдено таблиц: {len(tables)}", "success")
             self._load_table_data()
         else:
@@ -1602,7 +1601,7 @@ class DatabaseGUI(tk.Tk):
             self.data_tree.heading(col, text=col)
             self.data_tree.column(col, width=150, minwidth=100)
         
-        # Сбрасываем пагинацию только при загрузке новой таблицы
+        # Сбрасываем пагинацию при загрузке новой таблицы
         if table_changed:
             self.current_page = 1
         
@@ -1614,6 +1613,13 @@ class DatabaseGUI(tk.Tk):
         # Сохраняем общее количество записей
         self.total_records = total_count
         self.total_pages = max(1, (total_count + self.records_per_page - 1) // self.records_per_page) if self.records_per_page > 0 else 1
+        
+        # Если текущая страница больше общего количества страниц (может быть при смене таблицы), сбрасываем на 1
+        if self.current_page > self.total_pages:
+            self.current_page = 1
+            # Перезагружаем данные с первой страницы
+            offset = 0
+            rows, _ = self.db_conn.get_table_data(table_name, limit=limit, offset=offset)
         
         # Сохраняем загруженные данные
         self.all_table_data = rows
