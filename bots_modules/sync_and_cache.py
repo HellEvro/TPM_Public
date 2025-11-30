@@ -850,6 +850,15 @@ def load_delisted_coins():
         # ✅ Загружаем из БД через storage.py
         delisted_list = storage_load_delisted_coins()
         
+        # ✅ Загружаем last_scan из process_state
+        last_scan = None
+        try:
+            from bots_modules.imports_and_globals import process_state
+            if 'delisting_scan' in process_state:
+                last_scan = process_state['delisting_scan'].get('last_scan')
+        except Exception as state_error:
+            logger.debug(f"Не удалось загрузить last_scan из process_state: {state_error}")
+        
         # Преобразуем список в формат словаря для обратной совместимости
         if delisted_list:
             delisted_coins = {}
@@ -863,12 +872,12 @@ def load_delisted_coins():
             
             return {
                 "delisted_coins": delisted_coins,
-                "last_scan": None,
+                "last_scan": last_scan,
                 "scan_enabled": True
             }
         
         # Если данных нет, возвращаем дефолт
-        return {"delisted_coins": {}, "last_scan": None, "scan_enabled": True}
+        return {"delisted_coins": {}, "last_scan": last_scan, "scan_enabled": True}
         
     except Exception as e:
         logger.warning(f"Ошибка загрузки делистированных монет из БД: {e}, используем дефолтные данные")
@@ -877,16 +886,21 @@ def load_delisted_coins():
 def save_delisted_coins(data):
     """Сохраняет список делистинговых монет в БД"""
     try:
-        # Преобразуем словарь в список для БД
+        # Преобразуем словарь в список символов для БД
+        # ✅ ИСПРАВЛЕНО: БД ожидает список строк (символов), а не список словарей
         delisted_coins_dict = data.get("delisted_coins", {}) if isinstance(data, dict) else {}
         delisted_list = []
         
         for symbol, coin_data in delisted_coins_dict.items():
-            if isinstance(coin_data, dict):
-                coin_data['symbol'] = symbol
-                delisted_list.append(coin_data)
+            # Извлекаем только символ (строку) для сохранения в БД
+            # Дополнительные данные (status, reason и т.д.) не сохраняются в таблицу delisted
+            if isinstance(symbol, str):
+                delisted_list.append(symbol)
+            elif isinstance(coin_data, dict) and 'symbol' in coin_data:
+                delisted_list.append(coin_data['symbol'])
             else:
-                delisted_list.append({'symbol': symbol})
+                # Fallback: пытаемся извлечь символ из ключа
+                delisted_list.append(str(symbol))
         
         # ✅ Сохраняем в БД через storage.py
         if storage_save_delisted_coins(delisted_list):
@@ -895,6 +909,8 @@ def save_delisted_coins(data):
         return False
     except Exception as e:
         logger.error(f"Ошибка сохранения делистированных монет в БД: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return False
 
 def scan_all_coins_for_delisting():
@@ -926,50 +942,112 @@ def scan_all_coins_for_delisting():
         if hasattr(exchange_obj, 'client') and hasattr(exchange_obj.client, 'get_instruments_info'):
             try:
                 logger.info("📊 Запрашиваем все инструменты с биржи (включая делистинговые)...")
-                # Запрашиваем ВСЕ инструменты без фильтра по статусу (не указываем status)
-                # Это соответствует API Bybit v5 - можно запросить все инструменты без symbol
-                response = exchange_obj.client.get_instruments_info(
-                    category="linear",
-                    limit=1000  # Максимум инструментов за один запрос (Bybit API поддерживает до 1000)
-                )
                 
-                if response and response.get('retCode') == 0 and response['result']['list']:
-                    all_instruments = response['result']['list']
-                    logger.info(f"📊 Получено {len(all_instruments)} инструментов с биржи")
-                    
-                    # Фильтруем только USDT пары с статусом делистинга
-                    for instrument in all_instruments:
-                        symbol = instrument.get('symbol', '')
-                        if not symbol.endswith('USDT'):
-                            continue
+                all_instruments = []
+                cursor = None
+                page = 0
+                max_pages = 10  # Ограничение на количество страниц для безопасности
+                
+                # ✅ ОБРАБОТКА ПАГИНАЦИИ: Запрашиваем все страницы инструментов
+                while page < max_pages:
+                    page += 1
+                    try:
+                        # Запрашиваем ВСЕ инструменты без фильтра по статусу (не указываем status)
+                        # Это соответствует API Bybit v5 - можно запросить все инструменты без symbol
+                        params = {
+                            'category': 'linear',
+                            'limit': 1000  # Максимум инструментов за один запрос (Bybit API поддерживает до 1000)
+                        }
                         
-                        coin_symbol = symbol.replace('USDT', '')
-                        status = instrument.get('status', 'Unknown')
+                        # Добавляем cursor для пагинации, если он есть
+                        if cursor:
+                            params['cursor'] = cursor
                         
-                        # Пропускаем если уже в списке делистинговых
-                        if coin_symbol in delisted_data['delisted_coins']:
-                            continue
+                        response = exchange_obj.client.get_instruments_info(**params)
                         
-                        # Проверяем статус делистинга (Closed или Delivering)
-                        if status in ['Closed', 'Delivering']:
-                            delisted_data['delisted_coins'][coin_symbol] = {
-                                'status': status,
-                                'reason': f"Delisting detected via API scan (status: {status})",
-                                'delisting_date': datetime.now().strftime('%Y-%m-%d'),
-                                'detected_at': datetime.now().isoformat(),
-                                'source': 'api_bulk_scan'
-                            }
+                        if response and response.get('retCode') == 0:
+                            result = response.get('result', {})
+                            instruments_list = result.get('list', [])
                             
-                            new_delisted_count += 1
-                            logger.warning(f"🚨 НОВЫЙ ДЕЛИСТИНГ: {coin_symbol} - {status}")
+                            if not instruments_list:
+                                logger.debug(f"📊 Страница {page}: нет инструментов, завершаем сканирование")
+                                break
+                            
+                            all_instruments.extend(instruments_list)
+                            logger.info(f"📊 Страница {page}: получено {len(instruments_list)} инструментов (всего: {len(all_instruments)})")
+                            
+                            # Проверяем, есть ли следующая страница
+                            next_page_cursor = result.get('nextPageCursor')
+                            if not next_page_cursor or next_page_cursor == '':
+                                logger.debug(f"📊 Страница {page}: это последняя страница")
+                                break
+                            
+                            cursor = next_page_cursor
+                        else:
+                            error_msg = response.get('retMsg', 'Unknown error') if response else 'No response'
+                            logger.warning(f"⚠️ Страница {page}: ошибка получения инструментов: {error_msg}")
+                            break
+                            
+                    except Exception as page_error:
+                        logger.error(f"❌ Ошибка при получении страницы {page}: {page_error}")
+                        import traceback
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                        break
+                
+                logger.info(f"📊 Всего получено {len(all_instruments)} инструментов с биржи")
+                
+                # Фильтруем только USDT пары с статусом делистинга
+                delisted_found = 0
+                for instrument in all_instruments:
+                    symbol = instrument.get('symbol', '')
+                    if not symbol.endswith('USDT'):
+                        continue
+                    
+                    coin_symbol = symbol.replace('USDT', '')
+                    status = instrument.get('status', 'Unknown')
+                    
+                    # Пропускаем если уже в списке делистинговых
+                    if coin_symbol in delisted_data['delisted_coins']:
+                        continue
+                    
+                    # Проверяем статус делистинга (Closed или Delivering)
+                    if status in ['Closed', 'Delivering']:
+                        delisted_data['delisted_coins'][coin_symbol] = {
+                            'status': status,
+                            'reason': f"Delisting detected via API scan (status: {status})",
+                            'delisting_date': datetime.now().strftime('%Y-%m-%d'),
+                            'detected_at': datetime.now().isoformat(),
+                            'source': 'api_bulk_scan'
+                        }
+                        
+                        new_delisted_count += 1
+                        delisted_found += 1
+                        logger.warning(f"🚨 НОВЫЙ ДЕЛИСТИНГ: {coin_symbol} - {status}")
+                
+                if delisted_found == 0:
+                    logger.info("✅ Делистинговых монет не обнаружено (или все уже в списке)")
                 else:
-                    logger.warning("⚠️ Не удалось получить список инструментов с биржи")
+                    logger.info(f"🚨 Обнаружено {delisted_found} новых делистинговых монет")
+                    
             except Exception as bulk_scan_error:
                 logger.error(f"❌ Ошибка массового сканирования делистинга: {bulk_scan_error}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
                 logger.warning("⚠️ Массовое сканирование не удалось, делистинг будет обнаружен при попытке размещения ордеров")
         
         # Обновляем время последнего сканирования
-        delisted_data['last_scan'] = datetime.now().isoformat()
+        last_scan_time = datetime.now().isoformat()
+        delisted_data['last_scan'] = last_scan_time
+        
+        # ✅ Сохраняем last_scan в process_state для персистентности
+        try:
+            update_process_state('delisting_scan', {
+                'last_scan': last_scan_time,
+                'total_delisted': len(delisted_data['delisted_coins']),
+                'new_delisted': new_delisted_count
+            })
+        except Exception as state_error:
+            logger.debug(f"Не удалось сохранить last_scan в process_state: {state_error}")
         
         # Сохраняем обновленные данные
         if save_delisted_coins(delisted_data):
