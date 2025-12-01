@@ -1812,7 +1812,73 @@ def process_auto_bot_signals(exchange_obj=None):
                 logger.warning(f" ⚠️ {symbol}: Ошибка проверки позиций: {pos_error}")
                 # Продолжаем создание бота если проверка не удалась
             
-            # Создаем нового бота
+            # ✅ КРИТИЧНО: Проверяем ВСЕ фильтры ПЕРЕД созданием бота!
+            try:
+                from bot_engine.ai.filter_utils import apply_entry_filters
+                from bots_modules.imports_and_globals import get_config_snapshot
+                
+                # Получаем конфиг
+                config_snapshot = get_config_snapshot(symbol)
+                filter_config = config_snapshot.get('merged', {})
+                
+                # Получаем свечи для проверки фильтров
+                candles = None
+                # Сначала пробуем получить из кэша
+                candles_cache = coins_rsi_data.get('candles_cache', {})
+                if symbol in candles_cache:
+                    cached_data = candles_cache[symbol]
+                    candles = cached_data.get('candles')
+                
+                # Если нет в кэше, пробуем загрузить
+                if not candles:
+                    try:
+                        candles_data = get_coin_candles_only(symbol, exchange_obj=exchange_obj)
+                        if candles_data:
+                            candles = candles_data.get('candles')
+                    except Exception as candles_error:
+                        logger.debug(f" {symbol}: Не удалось загрузить свечи для проверки фильтров: {candles_error}")
+                
+                # Если свечи все еще нет, пробуем из БД
+                if not candles:
+                    try:
+                        from bot_engine.storage import get_candles_for_symbol
+                        db_cached_data = get_candles_for_symbol(symbol)
+                        if db_cached_data:
+                            candles = db_cached_data.get('candles', [])
+                    except Exception as db_error:
+                        logger.debug(f" {symbol}: Не удалось загрузить свечи из БД: {db_error}")
+                
+                # Проверяем фильтры
+                if candles and len(candles) >= 10:
+                    current_rsi = coin.get('rsi') or coin_data.get('rsi6h')
+                    current_trend = coin.get('trend') or coin_data.get('trend6h', 'NEUTRAL')
+                    signal = coin['signal']
+                    
+                    filters_allowed, filters_reason = apply_entry_filters(
+                        symbol,
+                        candles,
+                        current_rsi if current_rsi is not None else 50.0,
+                        signal,
+                        filter_config,
+                        trend=current_trend
+                    )
+                    
+                    if not filters_allowed:
+                        logger.warning(f" 🚫 {symbol}: Фильтры заблокировали создание бота: {filters_reason}")
+                        continue  # Пропускаем создание бота
+                else:
+                    logger.warning(f" ⚠️ {symbol}: Недостаточно свечей для проверки фильтров ({len(candles) if candles else 0}), пропускаем")
+                    continue  # Пропускаем создание бота если нет свечей
+                    
+            except Exception as filter_check_error:
+                logger.error(f" ❌ {symbol}: Ошибка проверки фильтров перед созданием бота: {filter_check_error}")
+                import traceback
+                logger.error(traceback.format_exc())
+                # ⚠️ ВАЖНО: Если проверка фильтров не работает, БЛОКИРУЕМ создание бота для безопасности!
+                logger.warning(f" 🚫 {symbol}: Блокируем создание бота из-за ошибки проверки фильтров!")
+                continue
+            
+            # Создаем нового бота (фильтры уже проверены!)
             try:
                 logger.info(f" 🚀 Создаем бота для {symbol} ({coin['signal']}, RSI: {coin['rsi']:.1f})")
                 new_bot = create_new_bot(symbol, exchange_obj=exchange_obj)
