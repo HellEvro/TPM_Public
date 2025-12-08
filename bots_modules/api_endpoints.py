@@ -612,7 +612,7 @@ def get_coins_with_rsi():
                 # Копируем только необходимые базовые поля
                 essential_fields = ['symbol', 'rsi6h', 'trend6h', 'rsi_zone', 'signal', 'price', 
                                   'change24h', 'last_update', 'blocked_by_scope', 'has_existing_position',
-                                  'is_mature', 'blocked_by_exit_scam', 'blocked_by_rsi_time',
+                                  'is_mature', 'blocked_by_exit_scam', 'blocked_by_rsi_time', 'blocked_by_loss_reentry',
                                   'trading_status', 'is_delisting']
                 for field in essential_fields:
                     if field in coin_data:
@@ -623,6 +623,8 @@ def get_coins_with_rsi():
                     cleaned_coin['time_filter_info'] = coin_data['time_filter_info']
                 if 'exit_scam_info' in coin_data and coin_data['exit_scam_info']:
                     cleaned_coin['exit_scam_info'] = coin_data['exit_scam_info']
+                if 'loss_reentry_info' in coin_data and coin_data['loss_reentry_info']:
+                    cleaned_coin['loss_reentry_info'] = coin_data['loss_reentry_info']
                 
                 # ⚡ ОПТИМИЗАЦИЯ: Очищаем enhanced_rsi только если он есть
                 if 'enhanced_rsi' in coin_data and coin_data['enhanced_rsi']:

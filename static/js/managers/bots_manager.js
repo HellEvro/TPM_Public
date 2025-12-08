@@ -1200,7 +1200,12 @@ class BotsManager {
             return 'WAIT';
         }
         
-        // 3. Проверяем зрелость монеты
+        // 3. Проверяем защиту от повторных входов после убытка
+        if (coin.blocked_by_loss_reentry === true) {
+            return 'WAIT';
+        }
+        
+        // 4. Проверяем зрелость монеты
         if (coin.is_mature === false) {
             return 'WAIT';
         }
@@ -1724,6 +1729,21 @@ class BotsManager {
             console.log(`[RSI_TIME_FILTER] ${coin.symbol}: НЕТ time_filter_info и других полей`);
         }
         
+        // Защита от повторных входов после убыточных закрытий - преобразуем loss_reentry_info в строковый статус
+        if (coin.loss_reentry_info) {
+            const lossReentry = coin.loss_reentry_info;
+            const isBlocked = lossReentry.blocked;
+            const reason = lossReentry.reason || '';
+            
+            if (isBlocked) {
+                activeStatusData.loss_reentry_protection = `BLOCKED: ${reason}`;
+            } else {
+                activeStatusData.loss_reentry_protection = `ALLOWED: ${reason}`;
+            }
+            
+            console.log(`[LOSS_REENTRY] ${coin.symbol}: activeStatusData.loss_reentry_protection =`, activeStatusData.loss_reentry_protection);
+        }
+        
         // Enhanced RSI информация (если включена)
         if (coin.enhanced_rsi && coin.enhanced_rsi.enabled) {
             const enhancedSignal = coin.enhanced_rsi.enhanced_signal;
@@ -1896,7 +1916,17 @@ class BotsManager {
                 }
             }
             
-            // 3. Проверяем зрелость монеты
+            // 3. Проверяем защиту от повторных входов после убытка
+            if (coin.blocked_by_loss_reentry === true) {
+                const lossReentryInfo = coin.loss_reentry_info;
+                if (lossReentryInfo && lossReentryInfo.reason) {
+                    blockReasons.push(`Защита от повторных входов: ${lossReentryInfo.reason}`);
+                } else {
+                    blockReasons.push('Защита от повторных входов после убытка');
+                }
+            }
+            
+            // 4. Проверяем зрелость монеты
             if (coin.is_mature === false) {
                 blockReasons.push('Незрелая монета');
             }
@@ -2556,6 +2586,45 @@ class BotsManager {
             });
         }
         
+        // 6. Защита от повторных входов после убыточных закрытий
+        if (coin.loss_reentry_info) {
+            const lossReentry = coin.loss_reentry_info;
+            const isBlocked = lossReentry.blocked;
+            const reason = lossReentry.reason || '';
+            const candlesPassed = lossReentry.candles_passed;
+            const requiredCandles = lossReentry.required_candles;
+            const lossCount = lossReentry.loss_count;
+            
+            // Добавляем цветовое кодирование
+            let coloredValue = '';
+            let icon = '';
+            if (isBlocked) {
+                coloredValue = `<span style="color: var(--red-text);">${window.languageUtils.translate('loss_reentry_blocked') || 'Блокирует'}: ${reason}</span>`;
+                icon = '🚫';
+            } else {
+                coloredValue = `<span style="color: var(--green-text);">${window.languageUtils.translate('loss_reentry_allowed') || 'Разрешено'}: ${reason}</span>`;
+                icon = '✅';
+            }
+            
+            // Формируем описание с деталями
+            let description = `${window.languageUtils.translate('loss_reentry_protection_label') || 'Защита от повторных входов'}: ${reason}`;
+            if (candlesPassed !== undefined && requiredCandles !== undefined) {
+                description += ` (прошло ${candlesPassed}/${requiredCandles} свечей)`;
+            }
+            if (lossCount !== undefined) {
+                description += ` [N=${lossCount}]`;
+            }
+            
+            realFilters.push({
+                itemId: 'lossReentryItem',
+                valueId: 'selectedCoinLossReentry',
+                iconId: 'lossReentryIcon',
+                value: coloredValue,
+                icon: icon,
+                description: description
+            });
+        }
+        
         realFilters.forEach(filter => {
             const itemElement = document.getElementById(filter.itemId);
             const valueElement = document.getElementById(filter.valueId);
@@ -2835,6 +2904,19 @@ class BotsManager {
 
         const avoidUpTrendEl = document.getElementById('avoidUpTrendDup');
         if (avoidUpTrendEl) settings.avoid_up_trend = avoidUpTrendEl.checked;
+
+        const lossReentryProtectionEl = document.getElementById('lossReentryProtection');
+        if (lossReentryProtectionEl) settings.loss_reentry_protection = lossReentryProtectionEl.checked;
+
+        const lossReentryCountEl = document.getElementById('lossReentryCount');
+        if (lossReentryCountEl && lossReentryCountEl.value) {
+            settings.loss_reentry_count = parseInt(lossReentryCountEl.value);
+        }
+
+        const lossReentryCandlesEl = document.getElementById('lossReentryCandles');
+        if (lossReentryCandlesEl && lossReentryCandlesEl.value) {
+            settings.loss_reentry_candles = parseInt(lossReentryCandlesEl.value);
+        }
 
         const maturityCheckEl = document.getElementById('enableMaturityCheckDup');
         if (maturityCheckEl) settings.enable_maturity_check = maturityCheckEl.checked;
@@ -3431,9 +3513,15 @@ class BotsManager {
             trailing_take_distance: 0.5,
             trailing_update_interval: 3.0,
             max_position_hours: 0,
-            break_even_protection: true,
-            break_even_trigger: 20.0,
+                    break_even_protection: true,
+                    break_even_trigger: 20.0,
+                    loss_reentry_protection: true,
+                    loss_reentry_count: 1,
+                    loss_reentry_candles: 3,
             avoid_down_trend: config.avoid_down_trend !== false,
+            loss_reentry_protection: config.loss_reentry_protection !== false,
+            loss_reentry_count: config.loss_reentry_count || 1,
+            loss_reentry_candles: config.loss_reentry_candles || 3,
             avoid_up_trend: config.avoid_up_trend !== false,
             enable_maturity_check: config.enable_maturity_check !== false,
             min_candles_for_maturity: (config.min_candles_for_maturity !== undefined ? config.min_candles_for_maturity : 400),
@@ -5815,7 +5903,26 @@ class BotsManager {
         console.log(`[BotsManager] 🔍 originalConfig ключи:`, Object.keys(this.originalConfig.autoBot));
         console.log(`[BotsManager] 🔍 trailing_stop_activation в originalConfig:`, this.originalConfig.autoBot.trailing_stop_activation);
         console.log(`[BotsManager] 🔍 trailing_stop_distance в originalConfig:`, this.originalConfig.autoBot.trailing_stop_distance);
-        console.log(`[BotsManager] 🔍 break_even_trigger в originalConfig:`, this.originalConfig.autoBot.break_even_trigger_percent ?? this.originalConfig.autoBot.break_even_trigger);
+            console.log(`[BotsManager] 🔍 break_even_trigger в originalConfig:`, this.originalConfig.autoBot.break_even_trigger_percent ?? this.originalConfig.autoBot.break_even_trigger);
+            
+            // Защита от повторных входов после убытка
+            const lossReentryProtectionEl = document.getElementById('lossReentryProtection');
+            if (lossReentryProtectionEl) {
+                lossReentryProtectionEl.checked = autoBotConfig.loss_reentry_protection !== false;
+                console.log('[BotsManager] 🛡️ Защита от повторных входов:', lossReentryProtectionEl.checked);
+            }
+
+            const lossReentryCountEl = document.getElementById('lossReentryCount');
+            if (lossReentryCountEl) {
+                lossReentryCountEl.value = autoBotConfig.loss_reentry_count || 1;
+                console.log('[BotsManager] 🔢 Количество убыточных позиций (N):', lossReentryCountEl.value);
+            }
+
+            const lossReentryCandlesEl = document.getElementById('lossReentryCandles');
+            if (lossReentryCandlesEl) {
+                lossReentryCandlesEl.value = autoBotConfig.loss_reentry_candles || 3;
+                console.log('[BotsManager] 🕯️ Через свечей (X):', lossReentryCandlesEl.value);
+            }
         console.log(`[BotsManager] 🔍 avoid_down_trend в originalConfig:`, this.originalConfig.autoBot.avoid_down_trend);
         console.log(`[BotsManager] 🔍 avoid_up_trend в originalConfig:`, this.originalConfig.autoBot.avoid_up_trend);
         
@@ -6583,6 +6690,9 @@ class BotsManager {
             'maxPositionHours': 'max_position_hours',
             'breakEvenProtection': 'break_even_protection',
             'breakEvenTrigger': 'break_even_trigger_percent',
+            'lossReentryProtection': 'loss_reentry_protection',
+            'lossReentryCount': 'loss_reentry_count',
+            'lossReentryCandles': 'loss_reentry_candles',
             'avoidDownTrend': 'avoid_down_trend',
             'avoidUpTrend': 'avoid_up_trend',
             'trendDetectionEnabled': 'trend_detection_enabled',
@@ -7092,6 +7202,9 @@ class BotsManager {
                 break_even_protection: config.autoBot.break_even_protection,
                 break_even_trigger: config.autoBot.break_even_trigger,
                 break_even_trigger_percent: config.autoBot.break_even_trigger_percent,
+                loss_reentry_protection: config.autoBot.loss_reentry_protection !== false,
+                loss_reentry_count: parseInt(config.autoBot.loss_reentry_count || 1),
+                loss_reentry_candles: parseInt(config.autoBot.loss_reentry_candles || 3),
                 avoid_down_trend: config.autoBot.avoid_down_trend,
                 avoid_up_trend: config.autoBot.avoid_up_trend,
                 // ✅ ПАРАМЕТРЫ АНАЛИЗА ТРЕНДА
@@ -7470,6 +7583,9 @@ class BotsManager {
                     trailing_update_interval: 3.0,
                     max_position_hours: 0,
                     break_even_protection: true,
+                    loss_reentry_protection: true,
+                    loss_reentry_count: 1,
+                    loss_reentry_candles: 3,
                     avoid_down_trend: true,
                     avoid_up_trend: true,
                     // Параметры анализа тренда
@@ -7650,6 +7766,15 @@ class BotsManager {
         
         const breakEvenDupEl = document.getElementById('breakEvenProtectionDup');
         if (breakEvenDupEl) breakEvenDupEl.checked = config.break_even_protection !== false;
+
+        const lossReentryProtectionDupEl = document.getElementById('lossReentryProtection');
+        if (lossReentryProtectionDupEl) lossReentryProtectionDupEl.checked = config.loss_reentry_protection !== false;
+
+        const lossReentryCountDupEl = document.getElementById('lossReentryCount');
+        if (lossReentryCountDupEl) lossReentryCountDupEl.value = config.loss_reentry_count || 1;
+
+        const lossReentryCandlesDupEl = document.getElementById('lossReentryCandles');
+        if (lossReentryCandlesDupEl) lossReentryCandlesDupEl.value = config.loss_reentry_candles || 3;
         
         const avoidDownTrendDupEl = document.getElementById('avoidDownTrendDup');
         if (avoidDownTrendDupEl) avoidDownTrendDupEl.checked = config.avoid_down_trend !== false;

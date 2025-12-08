@@ -1192,6 +1192,10 @@ class BotsDatabase:
                     rsi_time_filter_lower INTEGER,
                     -- Фильтры тренда
                     avoid_down_trend INTEGER DEFAULT 0,
+                    -- Защита от повторных входов после убыточных закрытий
+                    loss_reentry_protection INTEGER DEFAULT 1,
+                    loss_reentry_count INTEGER DEFAULT 1,
+                    loss_reentry_candles INTEGER DEFAULT 3,
                     -- Дополнительные настройки в JSON (для будущих расширений)
                     extra_settings_json TEXT,
                     updated_at TEXT NOT NULL,
@@ -1493,6 +1497,18 @@ class BotsDatabase:
                 logger.info("📦 Миграция: добавляем break_even_stop_set в bots")
                 cursor.execute("ALTER TABLE bots ADD COLUMN break_even_stop_set INTEGER DEFAULT 0")
                 conn.commit()
+            
+            # ==================== МИГРАЦИЯ: Добавляем поля защиты от повторных входов в individual_coin_settings ====================
+            try:
+                cursor.execute("SELECT loss_reentry_protection FROM individual_coin_settings LIMIT 1")
+            except sqlite3.OperationalError:
+                # Поля нет - добавляем новые колонки
+                logger.info("📦 Миграция: добавляем поля защиты от повторных входов в individual_coin_settings")
+                cursor.execute("ALTER TABLE individual_coin_settings ADD COLUMN loss_reentry_protection INTEGER DEFAULT 1")
+                cursor.execute("ALTER TABLE individual_coin_settings ADD COLUMN loss_reentry_count INTEGER DEFAULT 1")
+                cursor.execute("ALTER TABLE individual_coin_settings ADD COLUMN loss_reentry_candles INTEGER DEFAULT 3")
+                conn.commit()
+                logger.info("✅ Миграция: поля защиты от повторных входов добавлены в individual_coin_settings")
             
             # ==================== МИГРАЦИЯ: bots_state из JSON в нормализованные таблицы ====================
             # Проверяем, есть ли данные в старой таблице bots_state
@@ -1947,7 +1963,8 @@ class BotsDatabase:
                                 'break_even_trigger', 'break_even_protection',
                                 'max_position_hours', 'rsi_time_filter_enabled',
                                 'rsi_time_filter_candles', 'rsi_time_filter_upper',
-                                'rsi_time_filter_lower', 'avoid_down_trend'
+                                'rsi_time_filter_lower', 'avoid_down_trend',
+                                'loss_reentry_protection', 'loss_reentry_count', 'loss_reentry_candles'
                             }
                             
                             for key, value in settings.items():
@@ -1969,8 +1986,9 @@ class BotsDatabase:
                                     max_position_hours, rsi_time_filter_enabled,
                                     rsi_time_filter_candles, rsi_time_filter_upper,
                                     rsi_time_filter_lower, avoid_down_trend,
+                                    loss_reentry_protection, loss_reentry_count, loss_reentry_candles,
                                     extra_settings_json, updated_at, created_at
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """, (
                                 symbol,
                                 settings.get('rsi_long_threshold'),
@@ -1993,6 +2011,9 @@ class BotsDatabase:
                                 settings.get('rsi_time_filter_upper'),
                                 settings.get('rsi_time_filter_lower'),
                                 1 if settings.get('avoid_down_trend') else 0,
+                                1 if settings.get('loss_reentry_protection', True) else 0,
+                                settings.get('loss_reentry_count', 1),
+                                settings.get('loss_reentry_candles', 3),
                                 extra_settings_json,
                                 updated_at,
                                 created_at
@@ -2551,6 +2572,7 @@ class BotsDatabase:
                                     is_mature = 1 if coin_data.get('is_mature', True) else 0
                                     blocked_by_exit_scam = 1 if coin_data.get('blocked_by_exit_scam', False) else 0
                                     blocked_by_rsi_time = 1 if coin_data.get('blocked_by_rsi_time', False) else 0
+                                    blocked_by_loss_reentry = 1 if coin_data.get('blocked_by_loss_reentry', False) else 0
                                     trading_status = coin_data.get('trading_status')
                                     is_delisting = 1 if coin_data.get('is_delisting', False) else 0
                                     
@@ -2559,6 +2581,7 @@ class BotsDatabase:
                                     enhanced_rsi_json = json.dumps(coin_data.get('enhanced_rsi')) if coin_data.get('enhanced_rsi') else None
                                     time_filter_info_json = json.dumps(coin_data.get('time_filter_info')) if coin_data.get('time_filter_info') else None
                                     exit_scam_info_json = json.dumps(coin_data.get('exit_scam_info')) if coin_data.get('exit_scam_info') else None
+                                    loss_reentry_info_json = json.dumps(coin_data.get('loss_reentry_info')) if coin_data.get('loss_reentry_info') else None
                                     
                                     # Собираем остальные поля в extra_coin_data_json
                                     extra_coin_data = {}
@@ -2566,8 +2589,8 @@ class BotsDatabase:
                                         'symbol', 'rsi6h', 'trend6h', 'rsi_zone', 'signal', 'price',
                                         'change24h', 'change_24h', 'last_update', 'blocked_by_scope',
                                         'has_existing_position', 'is_mature', 'blocked_by_exit_scam',
-                                        'blocked_by_rsi_time', 'trading_status', 'is_delisting',
-                                        'trend_analysis', 'enhanced_rsi', 'time_filter_info', 'exit_scam_info'
+                                        'blocked_by_rsi_time', 'blocked_by_loss_reentry', 'trading_status', 'is_delisting',
+                                        'trend_analysis', 'enhanced_rsi', 'time_filter_info', 'exit_scam_info', 'loss_reentry_info'
                                     }
                                     
                                     for key, value in coin_data.items():
@@ -2582,17 +2605,17 @@ class BotsDatabase:
                                             cache_id, symbol, rsi6h, trend6h, rsi_zone, signal,
                                             price, change24h, last_update, blocked_by_scope,
                                             has_existing_position, is_mature, blocked_by_exit_scam,
-                                            blocked_by_rsi_time, trading_status, is_delisting,
+                                            blocked_by_rsi_time, blocked_by_loss_reentry, trading_status, is_delisting,
                                             trend_analysis_json, enhanced_rsi_json, time_filter_info_json,
-                                            exit_scam_info_json, extra_coin_data_json
-                                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                            exit_scam_info_json, loss_reentry_info_json, extra_coin_data_json
+                                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                     """, (
                                         cache_id, symbol, rsi6h, trend6h, rsi_zone, signal,
                                         price, change24h, last_update, blocked_by_scope,
                                         has_existing_position, is_mature, blocked_by_exit_scam,
-                                        blocked_by_rsi_time, trading_status, is_delisting,
+                                        blocked_by_rsi_time, blocked_by_loss_reentry, trading_status, is_delisting,
                                         trend_analysis_json, enhanced_rsi_json, time_filter_info_json,
-                                        exit_scam_info_json, extra_coin_data_json
+                                        exit_scam_info_json, loss_reentry_info_json, extra_coin_data_json
                                     ))
                                     migrated_coins += 1
                                 except Exception as e:
@@ -2660,6 +2683,17 @@ class BotsDatabase:
                 pass
             except Exception as e:
                 logger.warning(f"⚠️ Ошибка миграции rsi_cache: {e}")
+            
+            # ==================== МИГРАЦИЯ: Добавляем поля защиты от повторных входов в rsi_cache_coins ====================
+            try:
+                cursor.execute("SELECT blocked_by_loss_reentry FROM rsi_cache_coins LIMIT 1")
+            except sqlite3.OperationalError:
+                # Поля нет - добавляем новые колонки
+                logger.info("📦 Миграция: добавляем поля защиты от повторных входов в rsi_cache_coins")
+                cursor.execute("ALTER TABLE rsi_cache_coins ADD COLUMN blocked_by_loss_reentry INTEGER DEFAULT 0")
+                cursor.execute("ALTER TABLE rsi_cache_coins ADD COLUMN loss_reentry_info_json TEXT")
+                conn.commit()
+                logger.info("✅ Миграция: поля защиты от повторных входов добавлены в rsi_cache_coins")
             
             # ==================== МИГРАЦИЯ ДАННЫХ: Перенос сделок из других БД ====================
             try:
@@ -3637,16 +3671,18 @@ class BotsDatabase:
                             blocked_by_scope = 1 if coin_data.get('blocked_by_scope', False) else 0
                             has_existing_position = 1 if coin_data.get('has_existing_position', False) else 0
                             is_mature = 1 if coin_data.get('is_mature', True) else 0
-                            blocked_by_exit_scam = 1 if coin_data.get('blocked_by_exit_scam', False) else 0
-                            blocked_by_rsi_time = 1 if coin_data.get('blocked_by_rsi_time', False) else 0
-                            trading_status = coin_data.get('trading_status')
-                            is_delisting = 1 if coin_data.get('is_delisting', False) else 0
-                            
-                            # Сохраняем сложные структуры в JSON
-                            trend_analysis_json = json.dumps(coin_data.get('trend_analysis')) if coin_data.get('trend_analysis') else None
-                            enhanced_rsi_json = json.dumps(coin_data.get('enhanced_rsi')) if coin_data.get('enhanced_rsi') else None
-                            time_filter_info_json = json.dumps(coin_data.get('time_filter_info')) if coin_data.get('time_filter_info') else None
-                            exit_scam_info_json = json.dumps(coin_data.get('exit_scam_info')) if coin_data.get('exit_scam_info') else None
+                                    blocked_by_exit_scam = 1 if coin_data.get('blocked_by_exit_scam', False) else 0
+                                    blocked_by_rsi_time = 1 if coin_data.get('blocked_by_rsi_time', False) else 0
+                                    blocked_by_loss_reentry = 1 if coin_data.get('blocked_by_loss_reentry', False) else 0
+                                    trading_status = coin_data.get('trading_status')
+                                    is_delisting = 1 if coin_data.get('is_delisting', False) else 0
+                                    
+                                    # Сохраняем сложные структуры в JSON
+                                    trend_analysis_json = json.dumps(coin_data.get('trend_analysis')) if coin_data.get('trend_analysis') else None
+                                    enhanced_rsi_json = json.dumps(coin_data.get('enhanced_rsi')) if coin_data.get('enhanced_rsi') else None
+                                    time_filter_info_json = json.dumps(coin_data.get('time_filter_info')) if coin_data.get('time_filter_info') else None
+                                    exit_scam_info_json = json.dumps(coin_data.get('exit_scam_info')) if coin_data.get('exit_scam_info') else None
+                                    loss_reentry_info_json = json.dumps(coin_data.get('loss_reentry_info')) if coin_data.get('loss_reentry_info') else None
                             
                             # Собираем остальные поля в extra_coin_data_json
                             extra_coin_data = {}
@@ -3654,8 +3690,8 @@ class BotsDatabase:
                                 'symbol', 'rsi6h', 'trend6h', 'rsi_zone', 'signal', 'price',
                                 'change24h', 'change_24h', 'last_update', 'blocked_by_scope',
                                 'has_existing_position', 'is_mature', 'blocked_by_exit_scam',
-                                'blocked_by_rsi_time', 'trading_status', 'is_delisting',
-                                'trend_analysis', 'enhanced_rsi', 'time_filter_info', 'exit_scam_info'
+                                'blocked_by_rsi_time', 'blocked_by_loss_reentry', 'trading_status', 'is_delisting',
+                                'trend_analysis', 'enhanced_rsi', 'time_filter_info', 'exit_scam_info', 'loss_reentry_info'
                             }
                             
                             for key, value in coin_data.items():
@@ -3670,17 +3706,17 @@ class BotsDatabase:
                                     cache_id, symbol, rsi6h, trend6h, rsi_zone, signal,
                                     price, change24h, last_update, blocked_by_scope,
                                     has_existing_position, is_mature, blocked_by_exit_scam,
-                                    blocked_by_rsi_time, trading_status, is_delisting,
+                                    blocked_by_rsi_time, blocked_by_loss_reentry, trading_status, is_delisting,
                                     trend_analysis_json, enhanced_rsi_json, time_filter_info_json,
-                                    exit_scam_info_json, extra_coin_data_json
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    exit_scam_info_json, loss_reentry_info_json, extra_coin_data_json
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                                 cache_id, symbol, rsi6h, trend6h, rsi_zone, signal,
                                 price, change24h, last_update, blocked_by_scope,
                                 has_existing_position, is_mature, blocked_by_exit_scam,
-                                blocked_by_rsi_time, trading_status, is_delisting,
+                                blocked_by_rsi_time, blocked_by_loss_reentry, trading_status, is_delisting,
                                 trend_analysis_json, enhanced_rsi_json, time_filter_info_json,
-                                exit_scam_info_json, extra_coin_data_json
+                                exit_scam_info_json, loss_reentry_info_json, extra_coin_data_json
                             ))
                         except Exception as e:
                             logger.warning(f"⚠️ Ошибка сохранения монеты {symbol} в RSI кэш: {e}")
@@ -3734,9 +3770,10 @@ class BotsDatabase:
                 cursor.execute("""
                     SELECT symbol, rsi6h, trend6h, rsi_zone, signal, price, change24h,
                            last_update, blocked_by_scope, has_existing_position, is_mature,
-                           blocked_by_exit_scam, blocked_by_rsi_time, trading_status, is_delisting,
+                           blocked_by_exit_scam, blocked_by_rsi_time, blocked_by_loss_reentry,
+                           trading_status, is_delisting,
                            trend_analysis_json, enhanced_rsi_json, time_filter_info_json,
-                           exit_scam_info_json, extra_coin_data_json
+                           exit_scam_info_json, loss_reentry_info_json, extra_coin_data_json
                     FROM rsi_cache_coins
                     WHERE cache_id = ?
                 """, (cache_id,))
@@ -3759,39 +3796,54 @@ class BotsDatabase:
                         'is_mature': bool(coin_row[10]),
                         'blocked_by_exit_scam': bool(coin_row[11]),
                         'blocked_by_rsi_time': bool(coin_row[12]),
-                        'trading_status': coin_row[13],
-                        'is_delisting': bool(coin_row[14])
+                        'blocked_by_loss_reentry': bool(coin_row[13]) if len(coin_row) > 13 else False,
+                        'trading_status': coin_row[14] if len(coin_row) > 14 else (coin_row[13] if len(coin_row) > 13 else None),
+                        'is_delisting': bool(coin_row[15]) if len(coin_row) > 15 else (bool(coin_row[14]) if len(coin_row) > 14 else False)
                     }
                     
                     # Удаляем None значения
                     coin_data = {k: v for k, v in coin_data.items() if v is not None}
                     
-                    # Загружаем сложные структуры из JSON
-                    if coin_row[15]:
+                    # Загружаем сложные структуры из JSON (индексы могут быть разными в зависимости от версии БД)
+                    json_start_idx = 16 if len(coin_row) > 16 else 15  # Индекс первой JSON колонки
+                    
+                    if len(coin_row) > json_start_idx and coin_row[json_start_idx]:
                         try:
-                            coin_data['trend_analysis'] = json.loads(coin_row[15])
+                            coin_data['trend_analysis'] = json.loads(coin_row[json_start_idx])
                         except:
                             pass
-                    if coin_row[16]:
+                    if len(coin_row) > json_start_idx + 1 and coin_row[json_start_idx + 1]:
                         try:
-                            coin_data['enhanced_rsi'] = json.loads(coin_row[16])
+                            coin_data['enhanced_rsi'] = json.loads(coin_row[json_start_idx + 1])
                         except:
                             pass
-                    if coin_row[17]:
+                    if len(coin_row) > json_start_idx + 2 and coin_row[json_start_idx + 2]:
                         try:
-                            coin_data['time_filter_info'] = json.loads(coin_row[17])
+                            coin_data['time_filter_info'] = json.loads(coin_row[json_start_idx + 2])
                         except:
                             pass
-                    if coin_row[18]:
+                    if len(coin_row) > json_start_idx + 3 and coin_row[json_start_idx + 3]:
                         try:
-                            coin_data['exit_scam_info'] = json.loads(coin_row[18])
+                            coin_data['exit_scam_info'] = json.loads(coin_row[json_start_idx + 3])
+                        except:
+                            pass
+                    if len(coin_row) > json_start_idx + 4 and coin_row[json_start_idx + 4]:
+                        try:
+                            coin_data['loss_reentry_info'] = json.loads(coin_row[json_start_idx + 4])
                         except:
                             pass
                     
-                    # Загружаем extra_coin_data_json если есть
-                    if coin_row[19]:
+                    # Загружаем extra_coin_data_json если есть (последняя JSON колонка)
+                    if len(coin_row) > json_start_idx + 5:
                         try:
-                            extra_data = json.loads(coin_row[19])
+                            extra_data = json.loads(coin_row[json_start_idx + 5])
+                            coin_data.update(extra_data)
+                        except:
+                            pass
+                    elif len(coin_row) > json_start_idx + 4 and coin_row[json_start_idx + 4]:
+                        # Обратная совместимость: если нет loss_reentry_info_json, extra_coin_data_json может быть раньше
+                        try:
+                            extra_data = json.loads(coin_row[json_start_idx + 4])
                             coin_data.update(extra_data)
                         except:
                             pass
@@ -4081,7 +4133,8 @@ class BotsDatabase:
                             'break_even_trigger', 'break_even_protection',
                             'max_position_hours', 'rsi_time_filter_enabled',
                             'rsi_time_filter_candles', 'rsi_time_filter_upper',
-                            'rsi_time_filter_lower', 'avoid_down_trend'
+                            'rsi_time_filter_lower', 'avoid_down_trend',
+                            'loss_reentry_protection', 'loss_reentry_count', 'loss_reentry_candles'
                         }
                         
                         for key, value in symbol_settings.items():
@@ -4094,13 +4147,13 @@ class BotsDatabase:
                         created_at = created_at_cache.get(symbol) or symbol_settings.get('created_at') or now
                         
                         # ✅ ИСПРАВЛЕНО: Упрощенный SQL запрос без подзапроса (все записи уже удалены)
-                        # ✅ ИСПРАВЛЕНО: Убрана лишняя колонка - проверяем что передаем ровно 24 значения для 24 колонок
-                        # Колонки в INSERT (24): symbol, rsi_long_threshold, rsi_short_threshold, rsi_exit_long_with_trend,
+                        # Колонки в INSERT (27): symbol, rsi_long_threshold, rsi_short_threshold, rsi_exit_long_with_trend,
                         # rsi_exit_long_against_trend, rsi_exit_short_with_trend, rsi_exit_short_against_trend,
                         # max_loss_percent, take_profit_percent, trailing_stop_activation, trailing_stop_distance,
                         # trailing_take_distance, trailing_update_interval, break_even_trigger, break_even_protection,
                         # max_position_hours, rsi_time_filter_enabled, rsi_time_filter_candles, rsi_time_filter_upper,
-                        # rsi_time_filter_lower, avoid_down_trend, extra_settings_json, updated_at, created_at
+                        # rsi_time_filter_lower, avoid_down_trend, loss_reentry_protection, loss_reentry_count,
+                        # loss_reentry_candles, extra_settings_json, updated_at, created_at
                         values_tuple = (
                             symbol,
                             symbol_settings.get('rsi_long_threshold'),
@@ -4123,16 +4176,19 @@ class BotsDatabase:
                             symbol_settings.get('rsi_time_filter_upper'),
                             symbol_settings.get('rsi_time_filter_lower'),
                             1 if symbol_settings.get('avoid_down_trend') else 0,
+                            1 if symbol_settings.get('loss_reentry_protection', True) else 0,
+                            symbol_settings.get('loss_reentry_count', 1),
+                            symbol_settings.get('loss_reentry_candles', 3),
                             extra_settings_json,
                             now,  # updated_at
                             created_at  # created_at
                         )
                         
                         # ✅ ДИАГНОСТИКА: Проверяем количество значений перед выполнением запроса
-                        if len(values_tuple) != 24:
-                            logger.error(f"❌ ОШИБКА: Передается {len(values_tuple)} значений вместо 24 для символа {symbol}")
+                        if len(values_tuple) != 27:
+                            logger.error(f"❌ ОШИБКА: Передается {len(values_tuple)} значений вместо 27 для символа {symbol}")
                             logger.error(f"Значения: {values_tuple}")
-                            raise ValueError(f"Неверное количество значений: {len(values_tuple)} вместо 24")
+                            raise ValueError(f"Неверное количество значений: {len(values_tuple)} вместо 27")
                         
                         cursor.execute("""
                             INSERT INTO individual_coin_settings (
@@ -4146,8 +4202,9 @@ class BotsDatabase:
                                 max_position_hours, rsi_time_filter_enabled,
                                 rsi_time_filter_candles, rsi_time_filter_upper,
                                 rsi_time_filter_lower, avoid_down_trend,
+                                loss_reentry_protection, loss_reentry_count, loss_reentry_candles,
                                 extra_settings_json, updated_at, created_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, values_tuple)
                     
                     conn.commit()
@@ -4181,6 +4238,7 @@ class BotsDatabase:
                            max_position_hours, rsi_time_filter_enabled,
                            rsi_time_filter_candles, rsi_time_filter_upper,
                            rsi_time_filter_lower, avoid_down_trend,
+                           loss_reentry_protection, loss_reentry_count, loss_reentry_candles,
                            extra_settings_json, updated_at, created_at
                     FROM individual_coin_settings
                 """)
@@ -4189,8 +4247,9 @@ class BotsDatabase:
                 settings = {}
                 for row in rows:
                     # ✅ ИСПРАВЛЕНО: Проверяем количество колонок в row для предотвращения IndexError
+                    # Теперь ожидаем 27 колонок (добавлены 3 новых поля для защиты от повторных входов)
                     if len(row) < 24:
-                        logger.warning(f"⚠️ Неожиданное количество колонок в individual_coin_settings: {len(row)}, ожидалось 24. Пропускаем строку.")
+                        logger.warning(f"⚠️ Неожиданное количество колонок в individual_coin_settings: {len(row)}, ожидалось минимум 24. Пропускаем строку.")
                         continue
                     
                     symbol = row[0]
@@ -4220,11 +4279,27 @@ class BotsDatabase:
                         'avoid_down_trend': bool(row[20]) if len(row) > 20 else None
                     }
                     
+                    # ✅ Загружаем новые поля защиты от повторных входов (если есть в БД)
+                    if len(row) > 22:
+                        settings_dict['loss_reentry_protection'] = bool(row[22]) if row[22] is not None else True
+                    else:
+                        settings_dict['loss_reentry_protection'] = True  # По умолчанию включено
+                    
+                    if len(row) > 23:
+                        settings_dict['loss_reentry_count'] = row[23] if row[23] is not None else 1
+                    else:
+                        settings_dict['loss_reentry_count'] = 1  # По умолчанию 1
+                    
+                    if len(row) > 24:
+                        settings_dict['loss_reentry_candles'] = row[24] if row[24] is not None else 3
+                    else:
+                        settings_dict['loss_reentry_candles'] = 3  # По умолчанию 3
+                    
                     # ✅ ИСПРАВЛЕНО: Добавляем updated_at и created_at с проверкой индексов
-                    if len(row) > 22 and row[22]:  # updated_at
-                        settings_dict['updated_at'] = row[22]
-                    if len(row) > 23 and row[23]:  # created_at
-                        settings_dict['created_at'] = row[23]
+                    if len(row) > 25 and row[25]:  # updated_at
+                        settings_dict['updated_at'] = row[25]
+                    if len(row) > 26 and row[26]:  # created_at
+                        settings_dict['created_at'] = row[26]
                     
                     # Удаляем None значения
                     settings_dict = {k: v for k, v in settings_dict.items() if v is not None}
@@ -4233,7 +4308,17 @@ class BotsDatabase:
                     if len(row) > 21 and row[21]:  # extra_settings_json
                         try:
                             extra_settings = json.loads(row[21])
-                            settings_dict.update(extra_settings)
+                            # Проверяем, есть ли новые настройки в extra_settings (для обратной совместимости)
+                            if 'loss_reentry_protection' in extra_settings and 'loss_reentry_protection' not in settings_dict:
+                                settings_dict['loss_reentry_protection'] = extra_settings.get('loss_reentry_protection', True)
+                            if 'loss_reentry_count' in extra_settings and 'loss_reentry_count' not in settings_dict:
+                                settings_dict['loss_reentry_count'] = extra_settings.get('loss_reentry_count', 1)
+                            if 'loss_reentry_candles' in extra_settings and 'loss_reentry_candles' not in settings_dict:
+                                settings_dict['loss_reentry_candles'] = extra_settings.get('loss_reentry_candles', 3)
+                            # Обновляем остальные настройки из extra_settings
+                            for key, value in extra_settings.items():
+                                if key not in ['loss_reentry_protection', 'loss_reentry_count', 'loss_reentry_candles']:
+                                    settings_dict[key] = value
                         except:
                             pass
                     
@@ -5542,7 +5627,13 @@ class BotsDatabase:
                     query += " AND decision_source = ?"
                     params.append(decision_source)
                 
-                query += " ORDER BY entry_timestamp DESC, created_at DESC"
+                # ✅ КРИТИЧНО: Для закрытых сделок сортируем по exit_timestamp (времени закрытия)
+                # чтобы получить самые последние закрытые сделки
+                if status == 'CLOSED':
+                    query += " ORDER BY exit_timestamp DESC, entry_timestamp DESC, created_at DESC"
+                else:
+                    # Для открытых сделок сортируем по времени входа
+                    query += " ORDER BY entry_timestamp DESC, created_at DESC"
                 
                 if limit:
                     query += " LIMIT ? OFFSET ?"

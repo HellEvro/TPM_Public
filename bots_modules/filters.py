@@ -527,6 +527,131 @@ def _run_exit_scam_ai_detection(symbol, candles):
     return True
 
 
+def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, loss_reentry_candles, individual_settings=None):
+    """
+    Статическая функция проверки защиты от повторных входов после убыточных закрытий
+    
+    Args:
+        symbol: Символ монеты
+        candles: Список свечей для подсчета прошедших свечей
+        loss_reentry_count: Количество убыточных сделок для проверки (N)
+        loss_reentry_candles: Количество свечей для ожидания (X)
+        individual_settings: Индивидуальные настройки монеты (опционально)
+    
+    Returns:
+        dict: {'allowed': bool, 'reason': str, 'candles_passed': int}
+    """
+    try:
+        # Получаем последние N закрытых сделок для этого символа
+        from bot_engine.bots_database import get_bots_database
+        bots_db = get_bots_database()
+        
+        # Получаем последние N закрытых сделок по символу, отсортированные по времени закрытия (новые первыми)
+        closed_trades = bots_db.get_bot_trades_history(
+            bot_id=None,
+            symbol=symbol,
+            status='CLOSED',
+            decision_source=None,
+            limit=loss_reentry_count,
+            offset=0
+        )
+        
+        # Если нет закрытых сделок - разрешаем вход
+        if not closed_trades or len(closed_trades) < loss_reentry_count:
+            return {
+                'allowed': True,
+                'reason': f'Недостаточно закрытых сделок ({len(closed_trades) if closed_trades else 0} < {loss_reentry_count})',
+                'candles_passed': None
+            }
+        
+        # Проверяем, все ли последние N сделок были в минус
+        all_losses = True
+        for trade in closed_trades:
+            pnl = trade.get('pnl', 0)
+            if pnl is None or float(pnl) >= 0:
+                all_losses = False
+                break
+        
+        # Если не все сделки в минус - разрешаем вход
+        if not all_losses:
+            return {
+                'allowed': True,
+                'reason': f'Не все последние {loss_reentry_count} сделок в минус',
+                'candles_passed': None
+            }
+        
+        # Все последние N сделок в минус - проверяем количество прошедших свечей
+        last_trade = closed_trades[0]  # Самая последняя закрытая сделка
+        
+        # Получаем timestamp закрытия последней сделки
+        exit_timestamp = last_trade.get('exit_timestamp')
+        if not exit_timestamp:
+            exit_time_str = last_trade.get('exit_time')
+            if exit_time_str:
+                try:
+                    from datetime import datetime
+                    if isinstance(exit_time_str, str):
+                        exit_dt = datetime.fromisoformat(exit_time_str.replace('Z', '+00:00'))
+                        exit_timestamp = int(exit_dt.timestamp())
+                    else:
+                        exit_timestamp = int(exit_time_str)
+                except:
+                    return {'allowed': True, 'reason': 'Не удалось получить время закрытия', 'candles_passed': None}
+            else:
+                return {'allowed': True, 'reason': 'Нет данных о времени закрытия', 'candles_passed': None}
+        
+        # Если exit_timestamp в миллисекундах, конвертируем в секунды
+        if exit_timestamp > 1e12:
+            exit_timestamp = exit_timestamp / 1000
+        
+        # Подсчитываем количество свечей, прошедших с момента закрытия
+        CANDLE_INTERVAL_SECONDS = 6 * 3600  # 6 часов
+        
+        if not candles or len(candles) == 0:
+            return {'allowed': True, 'reason': 'Нет свечей для проверки', 'candles_passed': None}
+        
+        # Получаем timestamp последней свечи
+        last_candle = candles[-1]
+        last_candle_timestamp = last_candle.get('timestamp', 0)
+        if last_candle_timestamp > 1e12:
+            last_candle_timestamp = last_candle_timestamp / 1000
+        
+        # Подсчитываем количество свечей с момента закрытия
+        candles_passed = 0
+        for i, candle in enumerate(candles):
+            candle_timestamp = candle.get('timestamp', 0)
+            if candle_timestamp > 1e12:
+                candle_timestamp = candle_timestamp / 1000
+            
+            if candle_timestamp > exit_timestamp:
+                candles_passed = len(candles) - i
+                break
+        
+        # Если не нашли свечей после закрытия, считаем по времени
+        if candles_passed == 0:
+            time_diff_seconds = last_candle_timestamp - exit_timestamp
+            if time_diff_seconds > 0:
+                candles_passed = int(time_diff_seconds / CANDLE_INTERVAL_SECONDS)
+        
+        # Проверяем, прошло ли достаточно свечей
+        if candles_passed < loss_reentry_candles:
+            return {
+                'allowed': False,
+                'reason': f'Последние {loss_reentry_count} сделок в минус, прошло только {candles_passed} свечей (требуется {loss_reentry_candles})',
+                'candles_passed': candles_passed
+            }
+        
+        return {
+            'allowed': True,
+            'reason': f'Прошло {candles_passed} свечей с последнего убытка (требуется {loss_reentry_candles})',
+            'candles_passed': candles_passed
+        }
+        
+    except Exception as e:
+        logger.debug(f"{symbol}: Ошибка проверки защиты от повторных входов: {e}")
+        return {'allowed': True, 'reason': f'Ошибка проверки: {str(e)}', 'candles_passed': None}
+
+
 def check_exit_scam_filter(symbol, coin_data):
     """Унифицированный exit-scam фильтр с AI-анализом и fallback."""
     try:
@@ -1080,6 +1205,61 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                     'reason': f'Ошибка проверки: {str(e)}',
                     'filter_type': 'exit_scam'
                 }
+            
+            # ✅ Проверяем защиту от повторных входов после убыточных закрытий для UI
+            loss_reentry_info = None
+            try:
+                if len(candles) >= 10:  # Минимум свечей для проверки
+                    # Получаем конфиг с учетом индивидуальных настроек
+                    auto_config = bots_data.get('auto_bot_config', {}).copy()
+                    if individual_settings:
+                        for key in ['loss_reentry_protection', 'loss_reentry_count', 'loss_reentry_candles']:
+                            if key in individual_settings:
+                                auto_config[key] = individual_settings[key]
+                    
+                    loss_reentry_protection_enabled = auto_config.get('loss_reentry_protection', True)
+                    loss_reentry_count = auto_config.get('loss_reentry_count', 1)
+                    loss_reentry_candles = auto_config.get('loss_reentry_candles', 3)
+                    
+                    if loss_reentry_protection_enabled:
+                        # Вызываем проверку защиты
+                        loss_reentry_result = _check_loss_reentry_protection_static(
+                            symbol, candles, loss_reentry_count, loss_reentry_candles, individual_settings
+                        )
+                        if loss_reentry_result:
+                            loss_reentry_info = {
+                                'blocked': not loss_reentry_result.get('allowed', True),
+                                'reason': loss_reentry_result.get('reason', ''),
+                                'filter_type': 'loss_reentry_protection',
+                                'candles_passed': loss_reentry_result.get('candles_passed'),
+                                'required_candles': loss_reentry_candles,
+                                'loss_count': loss_reentry_count
+                            }
+                        else:
+                            loss_reentry_info = {
+                                'blocked': False,
+                                'reason': 'Защита от повторных входов: проверка не выполнена',
+                                'filter_type': 'loss_reentry_protection'
+                            }
+                    else:
+                        loss_reentry_info = {
+                            'blocked': False,
+                            'reason': 'Защита от повторных входов: выключена',
+                            'filter_type': 'loss_reentry_protection'
+                        }
+                else:
+                    loss_reentry_info = {
+                        'blocked': False,
+                        'reason': 'Недостаточно свечей для проверки',
+                        'filter_type': 'loss_reentry_protection'
+                    }
+            except Exception as e:
+                logger.debug(f"{symbol}: Ошибка проверки защиты от повторных входов для UI: {e}")
+                loss_reentry_info = {
+                    'blocked': False,
+                    'reason': f'Ошибка проверки: {str(e)}',
+                    'filter_type': 'loss_reentry_protection'
+                }
         
         # ✅ ПРИМЕНЯЕМ БЛОКИРОВКУ ПО SCOPE
         # Scope фильтр (если монета в черном списке или не в белом)
@@ -1145,6 +1325,8 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
             # Устанавливаем флаги на основе результатов проверки фильтров для UI
             'blocked_by_exit_scam': exit_scam_info.get('blocked', False) if exit_scam_info else False,
             'blocked_by_rsi_time': time_filter_info.get('blocked', False) if time_filter_info else False,
+            'loss_reentry_info': loss_reentry_info,  # Информация о защите от повторных входов
+            'blocked_by_loss_reentry': loss_reentry_info.get('blocked', False) if loss_reentry_info else False,
             # ✅ ИНФОРМАЦИЯ О СТАТУСЕ ТОРГОВЛИ: Для визуальных эффектов делистинга
             'trading_status': trading_status,
             'is_delisting': is_delisting
@@ -1697,6 +1879,13 @@ def get_effective_signal(coin):
     # Проверяем RSI Time фильтр
     if coin.get('blocked_by_rsi_time', False):
         logger.debug(f"{symbol}: ❌ {signal} заблокирован RSI Time фильтром")
+        return 'WAIT'
+    
+    # ✅ Проверяем защиту от повторных входов после убыточных закрытий
+    if coin.get('blocked_by_loss_reentry', False):
+        loss_reentry_info = coin.get('loss_reentry_info', {})
+        reason = loss_reentry_info.get('reason', 'Защита от повторных входов') if loss_reentry_info else 'Защита от повторных входов'
+        logger.debug(f"{symbol}: ❌ {signal} заблокирован защитой от повторных входов после убытка: {reason}")
         return 'WAIT'
     
     # Проверяем зрелость монеты

@@ -519,6 +519,9 @@ def create_bot(symbol, config=None, exchange_obj=None):
         'take_profit_percent': auto_bot_config.get('take_profit_percent', 20.0),
         'avoid_down_trend': auto_bot_config.get('avoid_down_trend', False),
         'avoid_up_trend': auto_bot_config.get('avoid_up_trend', False),
+        'loss_reentry_protection': auto_bot_config.get('loss_reentry_protection', True),
+        'loss_reentry_count': auto_bot_config.get('loss_reentry_count', 1),
+        'loss_reentry_candles': auto_bot_config.get('loss_reentry_candles', 3),
         'enable_maturity_check': auto_bot_config.get('enable_maturity_check', True),
         # RSI временной фильтр
         'rsi_time_filter_enabled': auto_bot_config.get('rsi_time_filter_enabled', True),

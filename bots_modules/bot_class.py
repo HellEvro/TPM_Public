@@ -545,6 +545,12 @@ class NewTradingBot:
                     logger.debug(f"[NEW_BOT_{self.symbol}] ❌ RSI Time Filter блокирует LONG: {time_filter_result['reason']}")
                     return False
             
+            # 4. Проверка защиты от повторных входов после убыточных закрытий
+            loss_reentry_result = self.check_loss_reentry_protection(candles)
+            if not loss_reentry_result['allowed']:
+                logger.info(f"[NEW_BOT_{self.symbol}] 🚫 Защита от повторных входов блокирует LONG: {loss_reentry_result['reason']}")
+                return False
+            
             logger.info(f"[NEW_BOT_{self.symbol}] ✅ Открываем LONG (RSI: {rsi:.1f})")
             self._remember_entry_context(rsi, trend)
             return True
@@ -635,6 +641,12 @@ class NewTradingBot:
                     logger.debug(f"[NEW_BOT_{self.symbol}] ❌ RSI Time Filter блокирует SHORT: {time_filter_result['reason']}")
                     return False
             
+            # 4. Проверка защиты от повторных входов после убыточных закрытий
+            loss_reentry_result = self.check_loss_reentry_protection(candles)
+            if not loss_reentry_result['allowed']:
+                logger.info(f"[NEW_BOT_{self.symbol}] 🚫 Защита от повторных входов блокирует SHORT: {loss_reentry_result['reason']}")
+                return False
+            
             logger.info(f"[NEW_BOT_{self.symbol}] ✅ Открываем SHORT (RSI: {rsi:.1f})")
             self._remember_entry_context(rsi, trend)
             return True
@@ -662,6 +674,175 @@ class NewTradingBot:
         except Exception as e:
             logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка RSI Time Filter для SHORT: {e}")
             return {'allowed': False, 'reason': f'Ошибка анализа: {str(e)}'}
+    
+    def check_loss_reentry_protection(self, candles):
+        """
+        ДОПОЛНИТЕЛЬНЫЙ ФИЛЬТР: Защита от повторных входов после убыточных закрытий
+        
+        Логика фильтра:
+        1. Берет последние N закрытых сделок по текущей монете (self.symbol)
+        2. Проверяет, все ли они были с отрицательным результатом (pnl < 0)
+        3. Если все последние N сделок в минус:
+           - Проверяет время закрытия последней убыточной сделки
+           - Считает количество свечей, прошедших с момента закрытия
+           - Если прошло МЕНЬШЕ X свечей - БЛОКИРУЕТ вход
+           - Если прошло X свечей или больше - РАЗРЕШАЕТ вход
+        4. Если не все последние N сделок в минус (есть хотя бы одна прибыльная) - РАЗРЕШАЕТ вход
+        
+        Returns:
+            dict: {'allowed': bool, 'reason': str}
+        """
+        try:
+            with bots_data_lock:
+                auto_config = bots_data.get('auto_bot_config', {})
+            
+            # Получаем настройки (сначала из индивидуальных, потом из глобальных)
+            loss_reentry_protection_enabled = self.config.get('loss_reentry_protection') if 'loss_reentry_protection' in self.config else auto_config.get('loss_reentry_protection', True)
+            loss_reentry_count = self.config.get('loss_reentry_count') or auto_config.get('loss_reentry_count', 1)
+            loss_reentry_candles = self.config.get('loss_reentry_candles') or auto_config.get('loss_reentry_candles', 3)
+            
+            # Если защита выключена - разрешаем вход
+            if not loss_reentry_protection_enabled:
+                return {'allowed': True, 'reason': 'Protection disabled'}
+            
+            # Получаем последние N закрытых сделок для этого символа
+            try:
+                from bot_engine.bots_database import get_bots_database
+                bots_db = get_bots_database()
+                
+                # ✅ Получаем последние N закрытых сделок по текущей монете
+                # Сортировка по exit_timestamp DESC - самые последние закрытые сделки первыми
+                closed_trades = bots_db.get_bot_trades_history(
+                    bot_id=None,
+                    symbol=self.symbol,  # ⬅️ Только для текущей монеты
+                    status='CLOSED',
+                    decision_source=None,
+                    limit=loss_reentry_count,  # ⬅️ Последние N сделок
+                    offset=0
+                )
+                
+                # Если нет закрытых сделок - разрешаем вход
+                if not closed_trades or len(closed_trades) < loss_reentry_count:
+                    logger.debug(f"[NEW_BOT_{self.symbol}] ✅ Защита от повторных входов: нет {loss_reentry_count} закрытых сделок")
+                    return {'allowed': True, 'reason': f'Not enough closed trades ({len(closed_trades) if closed_trades else 0} < {loss_reentry_count})'}
+                
+                # ✅ Проверяем: все ли последние N сделок были с отрицательным результатом (pnl < 0)
+                all_losses = True
+                for trade in closed_trades:
+                    pnl = trade.get('pnl', 0)
+                    # Проверяем что PnL определен и отрицательный (убыток)
+                    if pnl is None or float(pnl) >= 0:
+                        all_losses = False
+                        break
+                
+                # ✅ Если не все последние N сделок в минус (есть хотя бы одна прибыльная) - РАЗРЕШАЕМ вход
+                if not all_losses:
+                    logger.debug(f"[NEW_BOT_{self.symbol}] ✅ Защита от повторных входов: не все последние {loss_reentry_count} сделок в минус")
+                    return {'allowed': True, 'reason': f'Not all last {loss_reentry_count} trades were losses'}
+                
+                # ✅ Все последние N сделок были в минус - проверяем количество прошедших свечей
+                # Берем самую последнюю закрытую убыточную сделку (первая в списке после сортировки по exit_timestamp DESC)
+                last_trade = closed_trades[0]
+                
+                # Получаем timestamp закрытия последней сделки
+                exit_timestamp = last_trade.get('exit_timestamp')
+                if not exit_timestamp:
+                    # Если нет exit_timestamp, пытаемся получить из exit_time
+                    exit_time_str = last_trade.get('exit_time')
+                    if exit_time_str:
+                        try:
+                            from datetime import datetime
+                            if isinstance(exit_time_str, str):
+                                exit_dt = datetime.fromisoformat(exit_time_str.replace('Z', '+00:00'))
+                                exit_timestamp = int(exit_dt.timestamp())
+                            else:
+                                exit_timestamp = int(exit_time_str)
+                        except:
+                            logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось получить timestamp закрытия сделки")
+                            # Если не удалось получить timestamp - разрешаем вход (безопаснее)
+                            return {'allowed': True, 'reason': 'Cannot get close timestamp'}
+                    else:
+                        # Нет данных о времени закрытия - разрешаем вход
+                        return {'allowed': True, 'reason': 'No close timestamp'}
+                
+                # Если exit_timestamp в миллисекундах, конвертируем в секунды
+                if exit_timestamp > 1e12:
+                    exit_timestamp = exit_timestamp / 1000
+                
+                # Получаем текущее время
+                current_time = time.time()
+                
+                # Подсчитываем количество свечей, прошедших с момента закрытия
+                # Свечи 6h, значит одна свеча = 6 часов = 21600 секунд
+                CANDLE_INTERVAL_SECONDS = 6 * 3600  # 6 часов
+                
+                # Находим последнюю свечу (самую новую) в переданных candles
+                if not candles or len(candles) == 0:
+                    logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Нет свечей для проверки защиты от повторных входов")
+                    return {'allowed': True, 'reason': 'No candles provided'}
+                
+                # Получаем timestamp последней свечи
+                last_candle = candles[-1]  # Последняя свеча - самая новая
+                last_candle_timestamp = last_candle.get('timestamp', 0)
+                
+                # Если timestamp в миллисекундах, конвертируем в секунды
+                if last_candle_timestamp > 1e12:
+                    last_candle_timestamp = last_candle_timestamp / 1000
+                
+                # Подсчитываем количество свечей с момента закрытия до последней свечи
+                # Ищем первую свечу после времени закрытия
+                candles_passed = 0
+                for i, candle in enumerate(candles):
+                    candle_timestamp = candle.get('timestamp', 0)
+                    if candle_timestamp > 1e12:
+                        candle_timestamp = candle_timestamp / 1000
+                    
+                    # Если свеча после времени закрытия - считаем её и все последующие
+                    if candle_timestamp > exit_timestamp:
+                        candles_passed = len(candles) - i
+                        break
+                
+                # Если не нашли свечей после закрытия, проверяем альтернативным способом
+                if candles_passed == 0:
+                    # Считаем время между закрытием и последней свечью
+                    time_diff_seconds = last_candle_timestamp - exit_timestamp
+                    if time_diff_seconds > 0:
+                        candles_passed = int(time_diff_seconds / CANDLE_INTERVAL_SECONDS)
+                
+                # ✅ КРИТИЧЕСКАЯ ПРОВЕРКА: Если прошло МЕНЬШЕ X свечей - БЛОКИРУЕМ вход
+                # Если прошло X свечей или больше - РАЗРЕШАЕМ вход
+                if candles_passed < loss_reentry_candles:
+                    logger.info(
+                        f"[NEW_BOT_{self.symbol}] 🚫 ФИЛЬТР ЗАБЛОКИРОВАЛ ВХОД: "
+                        f"последние {loss_reentry_count} сделок в минус, "
+                        f"прошло только {candles_passed} свечей (требуется {loss_reentry_candles} свечей)"
+                    )
+                    return {
+                        'allowed': False,  # ⬅️ БЛОКИРУЕМ вход
+                        'reason': f'Last {loss_reentry_count} trades were losses, only {candles_passed} candles passed (need {loss_reentry_candles})'
+                    }
+                
+                # ✅ Прошло X свечей или больше - РАЗРЕШАЕМ вход
+                logger.debug(
+                    f"[NEW_BOT_{self.symbol}] ✅ ФИЛЬТР РАЗРЕШИЛ ВХОД: "
+                    f"прошло {candles_passed} свечей (требуется {loss_reentry_candles}), вход разрешен"
+                )
+                return {
+                    'allowed': True,  # ⬅️ РАЗРЕШАЕМ вход
+                    'reason': f'{candles_passed} candles passed since last loss (required: {loss_reentry_candles})'
+                }
+                
+            except Exception as db_error:
+                logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка проверки защиты от повторных входов: {db_error}")
+                # При ошибке разрешаем вход (безопаснее)
+                return {'allowed': True, 'reason': f'Error checking protection: {str(db_error)}'}
+                
+        except Exception as e:
+            logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка проверки защиты от повторных входов: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            # При ошибке разрешаем вход (безопаснее)
+            return {'allowed': True, 'reason': f'Exception: {str(e)}'}
     
     @staticmethod
     def check_should_close_by_rsi(symbol, rsi, position_side):
