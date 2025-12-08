@@ -648,6 +648,17 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         }
         
     except Exception as e:
+        # При ошибке разрешаем вход (безопаснее, как в bot_class.py)
+        logger.error(f"{symbol}: ❌ Ошибка проверки защиты от повторных входов (static): {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
+        return {
+            'allowed': True,
+            'reason': f'Ошибка проверки: {str(e)}',
+            'candles_passed': None
+        }
+        
+    except Exception as e:
         logger.debug(f"{symbol}: Ошибка проверки защиты от повторных входов: {e}")
         return {'allowed': True, 'reason': f'Ошибка проверки: {str(e)}', 'candles_passed': None}
 
@@ -1036,6 +1047,7 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
         
         exit_scam_info = None
         time_filter_info = None
+        loss_reentry_info = None  # ✅ Инициализируем ДО использования в result
         
         # ✅ Получаем пороги для фильтров с учетом индивидуальных настроек
         # Пороги RSI уже определены выше (с учетом индивидуальных настроек)
@@ -1053,6 +1065,7 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
         # - Для LONG: RSI <= 35 (нижняя граница)
         # - Для SHORT: RSI >= 65 (верхняя граница)
         
+        # Определяем potential_signal для проверки фильтров
         if rsi is not None:
             # Проверяем, в какой зоне находится RSI
             if rsi <= rsi_time_filter_lower:
@@ -1063,6 +1076,7 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                 potential_signal = 'ENTER_SHORT'
             else:
                 # RSI вне зоны фильтра - показываем что фильтр не активен
+                potential_signal = None  # Вне зоны входа
                 time_filter_info = {
                     'blocked': False,
                     'reason': 'RSI временной фильтр вне зоны входа в сделку',
@@ -1076,6 +1090,32 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                     'reason': 'ExitScam фильтр: RSI вне зоны входа в сделку',
                     'filter_type': 'exit_scam'
                 }
+                # Для монет вне зоны входа защита от повторных входов не проверяется
+                loss_reentry_info = {
+                    'blocked': False,
+                    'reason': 'Защита от повторных входов: RSI вне зоны входа в сделку',
+                    'filter_type': 'loss_reentry_protection'
+                }
+        else:
+            # RSI не определен - все фильтры не активны
+            potential_signal = None
+            time_filter_info = {
+                'blocked': False,
+                'reason': 'RSI временной фильтр: RSI не определен',
+                'filter_type': 'time_filter',
+                'last_extreme_candles_ago': None,
+                'calm_candles': None
+            }
+            exit_scam_info = {
+                'blocked': False,
+                'reason': 'ExitScam фильтр: RSI не определен',
+                'filter_type': 'exit_scam'
+            }
+            loss_reentry_info = {
+                'blocked': False,
+                'reason': 'Защита от повторных входов: RSI не определен',
+                'filter_type': 'loss_reentry_protection'
+            }
         
         # Проверяем фильтры если монета в зоне фильтра (LONG/SHORT)
         # ✅ ИСПРАВЛЕНИЕ: Проверяем фильтры для UI, чтобы показывать блокировки
@@ -1207,7 +1247,6 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                 }
             
             # ✅ Проверяем защиту от повторных входов после убыточных закрытий для UI
-            loss_reentry_info = None
             try:
                 if len(candles) >= 10:  # Минимум свечей для проверки
                     # Получаем конфиг с учетом индивидуальных настроек
