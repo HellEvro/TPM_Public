@@ -1892,20 +1892,24 @@
                             <small class="config-help" data-translate="avoid_up_trend_help">Не входить в SHORT при UP тренде монеты</small>
                         </div>
                         
-                        <div class="config-item loss_reentry_protection-config">
-                            <label class="config-label">
-                                <span class="label-text" data-translate="loss_reentry_protection_toggle">Защита от повторных входов после убытка:</span>
-                            </label>
-                            <div class="config-row">
+                        <div class="config-item loss-reentry-protection-item">
+                            <div class="config-row config-row-header">
+                                <label class="config-label" style="margin-bottom: 0;">
+                                    <span class="label-text" data-translate="loss_reentry_protection_toggle">🛡️ Защита от повторных входов после убытка</span>
+                                </label>
                                 <label class="toggle-switch">
                                     <input type="checkbox" id="lossReentryProtection" checked />
                                     <span class="toggle-slider"></span>
                                 </label>
-                                <div class="loss-reentry-settings-group">
-                                    <label for="lossReentryCount" class="loss-reentry-label" data-translate="loss_reentry_count_label">Количество убыточных позиций (N):</label>
-                                    <input type="number" id="lossReentryCount" value="1" min="1" max="10" step="1" class="config-input" style="width: 80px;" />
-                                    <label for="lossReentryCandles" class="loss-reentry-label" data-translate="loss_reentry_candles_label">Через свечей (X):</label>
-                                    <input type="number" id="lossReentryCandles" value="3" min="1" max="50" step="1" class="config-input" style="width: 80px;" />
+                            </div>
+                            <div class="loss-reentry-params-group">
+                                <div class="loss-reentry-param">
+                                    <label for="lossReentryCount" class="loss-reentry-param-label" data-translate="loss_reentry_count_label">Количество убыточных позиций (N):</label>
+                                    <input type="number" id="lossReentryCount" value="1" min="1" max="10" step="1" class="config-input loss-reentry-input" />
+                                </div>
+                                <div class="loss-reentry-param">
+                                    <label for="lossReentryCandles" class="loss-reentry-param-label" data-translate="loss_reentry_candles_label">Через свечей (X):</label>
+                                    <input type="number" id="lossReentryCandles" value="3" min="1" max="50" step="1" class="config-input loss-reentry-input" />
                                 </div>
                             </div>
                             <small class="config-help" data-translate="loss_reentry_protection_help">Блокирует повторный вход если последние N позиций закрылись в минус, разрешает вход только через X свечей</small>
