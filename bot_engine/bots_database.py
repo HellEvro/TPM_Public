@@ -1112,12 +1112,14 @@ class BotsDatabase:
                     is_mature INTEGER DEFAULT 1,
                     blocked_by_exit_scam INTEGER DEFAULT 0,
                     blocked_by_rsi_time INTEGER DEFAULT 0,
+                    blocked_by_loss_reentry INTEGER DEFAULT 0,
                     trading_status TEXT,
                     is_delisting INTEGER DEFAULT 0,
                     trend_analysis_json TEXT,
                     enhanced_rsi_json TEXT,
                     time_filter_info_json TEXT,
                     exit_scam_info_json TEXT,
+                    loss_reentry_info_json TEXT,
                     extra_coin_data_json TEXT,
                     FOREIGN KEY (cache_id) REFERENCES rsi_cache(id) ON DELETE CASCADE
                 )
@@ -2497,12 +2499,14 @@ class BotsDatabase:
                             is_mature INTEGER DEFAULT 1,
                             blocked_by_exit_scam INTEGER DEFAULT 0,
                             blocked_by_rsi_time INTEGER DEFAULT 0,
+                            blocked_by_loss_reentry INTEGER DEFAULT 0,
                             trading_status TEXT,
                             is_delisting INTEGER DEFAULT 0,
                             trend_analysis_json TEXT,
                             enhanced_rsi_json TEXT,
                             time_filter_info_json TEXT,
                             exit_scam_info_json TEXT,
+                            loss_reentry_info_json TEXT,
                             extra_coin_data_json TEXT,
                             FOREIGN KEY (cache_id) REFERENCES rsi_cache(id) ON DELETE CASCADE
                         )
@@ -2660,12 +2664,14 @@ class BotsDatabase:
                             is_mature INTEGER DEFAULT 1,
                             blocked_by_exit_scam INTEGER DEFAULT 0,
                             blocked_by_rsi_time INTEGER DEFAULT 0,
+                            blocked_by_loss_reentry INTEGER DEFAULT 0,
                             trading_status TEXT,
                             is_delisting INTEGER DEFAULT 0,
                             trend_analysis_json TEXT,
                             enhanced_rsi_json TEXT,
                             time_filter_info_json TEXT,
                             exit_scam_info_json TEXT,
+                            loss_reentry_info_json TEXT,
                             extra_coin_data_json TEXT,
                             FOREIGN KEY (cache_id) REFERENCES rsi_cache(id) ON DELETE CASCADE
                         )
@@ -3628,12 +3634,14 @@ class BotsDatabase:
                             is_mature INTEGER DEFAULT 1,
                             blocked_by_exit_scam INTEGER DEFAULT 0,
                             blocked_by_rsi_time INTEGER DEFAULT 0,
+                            blocked_by_loss_reentry INTEGER DEFAULT 0,
                             trading_status TEXT,
                             is_delisting INTEGER DEFAULT 0,
                             trend_analysis_json TEXT,
                             enhanced_rsi_json TEXT,
                             time_filter_info_json TEXT,
                             exit_scam_info_json TEXT,
+                            loss_reentry_info_json TEXT,
                             extra_coin_data_json TEXT,
                             FOREIGN KEY (cache_id) REFERENCES rsi_cache(id) ON DELETE CASCADE
                         )
@@ -3671,18 +3679,18 @@ class BotsDatabase:
                             blocked_by_scope = 1 if coin_data.get('blocked_by_scope', False) else 0
                             has_existing_position = 1 if coin_data.get('has_existing_position', False) else 0
                             is_mature = 1 if coin_data.get('is_mature', True) else 0
-                                    blocked_by_exit_scam = 1 if coin_data.get('blocked_by_exit_scam', False) else 0
-                                    blocked_by_rsi_time = 1 if coin_data.get('blocked_by_rsi_time', False) else 0
-                                    blocked_by_loss_reentry = 1 if coin_data.get('blocked_by_loss_reentry', False) else 0
-                                    trading_status = coin_data.get('trading_status')
-                                    is_delisting = 1 if coin_data.get('is_delisting', False) else 0
-                                    
-                                    # Сохраняем сложные структуры в JSON
-                                    trend_analysis_json = json.dumps(coin_data.get('trend_analysis')) if coin_data.get('trend_analysis') else None
-                                    enhanced_rsi_json = json.dumps(coin_data.get('enhanced_rsi')) if coin_data.get('enhanced_rsi') else None
-                                    time_filter_info_json = json.dumps(coin_data.get('time_filter_info')) if coin_data.get('time_filter_info') else None
-                                    exit_scam_info_json = json.dumps(coin_data.get('exit_scam_info')) if coin_data.get('exit_scam_info') else None
-                                    loss_reentry_info_json = json.dumps(coin_data.get('loss_reentry_info')) if coin_data.get('loss_reentry_info') else None
+                            blocked_by_exit_scam = 1 if coin_data.get('blocked_by_exit_scam', False) else 0
+                            blocked_by_rsi_time = 1 if coin_data.get('blocked_by_rsi_time', False) else 0
+                            blocked_by_loss_reentry = 1 if coin_data.get('blocked_by_loss_reentry', False) else 0
+                            trading_status = coin_data.get('trading_status')
+                            is_delisting = 1 if coin_data.get('is_delisting', False) else 0
+                            
+                            # Сохраняем сложные структуры в JSON
+                            trend_analysis_json = json.dumps(coin_data.get('trend_analysis')) if coin_data.get('trend_analysis') else None
+                            enhanced_rsi_json = json.dumps(coin_data.get('enhanced_rsi')) if coin_data.get('enhanced_rsi') else None
+                            time_filter_info_json = json.dumps(coin_data.get('time_filter_info')) if coin_data.get('time_filter_info') else None
+                            exit_scam_info_json = json.dumps(coin_data.get('exit_scam_info')) if coin_data.get('exit_scam_info') else None
+                            loss_reentry_info_json = json.dumps(coin_data.get('loss_reentry_info')) if coin_data.get('loss_reentry_info') else None
                             
                             # Собираем остальные поля в extra_coin_data_json
                             extra_coin_data = {}
@@ -3710,7 +3718,7 @@ class BotsDatabase:
                                     trend_analysis_json, enhanced_rsi_json, time_filter_info_json,
                                     exit_scam_info_json, loss_reentry_info_json, extra_coin_data_json
                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
+                            """, (
                                 cache_id, symbol, rsi6h, trend6h, rsi_zone, signal,
                                 price, change24h, last_update, blocked_by_scope,
                                 has_existing_position, is_mature, blocked_by_exit_scam,
@@ -3916,12 +3924,14 @@ class BotsDatabase:
                             is_mature INTEGER DEFAULT 1,
                             blocked_by_exit_scam INTEGER DEFAULT 0,
                             blocked_by_rsi_time INTEGER DEFAULT 0,
+                            blocked_by_loss_reentry INTEGER DEFAULT 0,
                             trading_status TEXT,
                             is_delisting INTEGER DEFAULT 0,
                             trend_analysis_json TEXT,
                             enhanced_rsi_json TEXT,
                             time_filter_info_json TEXT,
                             exit_scam_info_json TEXT,
+                            loss_reentry_info_json TEXT,
                             extra_coin_data_json TEXT,
                             FOREIGN KEY (cache_id) REFERENCES rsi_cache(id) ON DELETE CASCADE
                         )

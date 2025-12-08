@@ -60,12 +60,20 @@ def git_pull_with_merge(cwd: str | None = None) -> None:
 
 def ensure_changes_present() -> None:
     """Exit early if there are no changes to commit."""
+    # Сначала добавляем все файлы, чтобы проверить реальное состояние
+    run_git_command(["git", "add", "-A"])
+    
     status = run_git_command(["git", "status", "--porcelain"])
     if status.returncode != 0:
         print((status.stderr or "").strip() or "Не удалось получить статус репозитория.")
         sys.exit(status.returncode)
 
-    if not (status.stdout and status.stdout.strip()):
+    # Проверяем также staged изменения
+    diff_staged = run_git_command(["git", "diff", "--cached", "--name-only"])
+    has_unstaged = status.stdout and status.stdout.strip()
+    has_staged = diff_staged.stdout and diff_staged.stdout.strip()
+    
+    if not has_unstaged and not has_staged:
         print("Изменения отсутствуют — коммит не требуется.")
         sys.exit(0)
 
@@ -132,10 +140,20 @@ def main() -> None:
     
     # Шаг 2: Коммит в основном репозитории
     git_pull_with_merge()
-    ensure_changes_present()
+    
+    # Добавляем все файлы ПЕРЕД проверкой
     git_add_all()
-    git_commit(args.message)
-    git_push()
+    
+    # Проверяем наличие изменений после добавления
+    status = run_git_command(["git", "status", "--porcelain"])
+    diff_staged = run_git_command(["git", "diff", "--cached", "--name-only"])
+    has_changes = (status.stdout and status.stdout.strip()) or (diff_staged.stdout and diff_staged.stdout.strip())
+    
+    if not has_changes:
+        print("Изменения отсутствуют — коммит не требуется.")
+    else:
+        git_commit(args.message)
+        git_push()
     
     # Шаг 3: Коммит в публичном репозитории
     public_dir = root_dir.parent / "InfoBot_Public"
