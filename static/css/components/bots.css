@@ -1489,6 +1489,7 @@ input:checked + .slider:before {
     gap: 16px;
     margin-top: 12px;
     margin-bottom: 8px;
+    align-items: start;
 }
 
 .loss-reentry-param {
@@ -1498,9 +1499,14 @@ input:checked + .slider:before {
 }
 
 .loss-reentry-param-label {
-    font-size: 13px;
+    font-size: 12px;
     color: var(--text-muted);
     font-weight: 500;
+    line-height: 1.4;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+    min-height: 2.8em;
 }
 
 .loss-reentry-input {
