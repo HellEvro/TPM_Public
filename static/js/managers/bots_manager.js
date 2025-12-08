@@ -5921,7 +5921,7 @@ class BotsManager {
             const lossReentryCandlesEl = document.getElementById('lossReentryCandles');
             if (lossReentryCandlesEl) {
                 lossReentryCandlesEl.value = autoBotConfig.loss_reentry_candles || 3;
-                console.log('[BotsManager] 🕯️ Через свечей (X):', lossReentryCandlesEl.value);
+                console.log('[BotsManager] 🕯️ ВХОД ЧЕРЕЗ X СВЕЧЕЙ:', lossReentryCandlesEl.value);
             }
         console.log(`[BotsManager] 🔍 avoid_down_trend в originalConfig:`, this.originalConfig.autoBot.avoid_down_trend);
         console.log(`[BotsManager] 🔍 avoid_up_trend в originalConfig:`, this.originalConfig.autoBot.avoid_up_trend);

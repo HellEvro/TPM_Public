@@ -210,7 +210,7 @@ const TRANSLATIONS = {
         'avoid_up_trend_help': 'Не входить в SHORT при UP тренде монеты',
         'loss_reentry_protection_toggle': 'Защита от повторных входов после убытка:',
         'loss_reentry_count_label': 'Количество убыточных позиций (N):',
-        'loss_reentry_candles_label': 'Через свечей (X):',
+        'loss_reentry_candles_label': 'ВХОД ЧЕРЕЗ X СВЕЧЕЙ:',
         'loss_reentry_protection_help': 'Блокирует повторный вход если последние N позиций закрылись в минус, разрешает вход только через X свечей',
         'to_white_list_btn': 'В белый список',
         'to_black_list_btn': 'В черный список',
