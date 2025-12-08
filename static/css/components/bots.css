@@ -1456,10 +1456,10 @@ input:checked + .slider:before {
     max-width: 60px;
     min-width: 60px;
     text-align: center;
-    padding: 3px 6px;
-    height: 28px;
+    padding: 2px 6px;
+    height: 22px;
     line-height: 1;
-    font-size: 14px;
+    font-size: 13px;
 }
 
 .config-select option {
@@ -1491,6 +1491,7 @@ input:checked + .slider:before {
     padding: 18px;
     min-width: 0;
     overflow: visible;
+    grid-column: span 2;
 }
 
 .config-row-header {
@@ -1529,10 +1530,10 @@ input:checked + .slider:before {
     width: 60px;
     max-width: 60px;
     min-width: 60px;
-    padding: 3px 6px;
-    height: 28px;
+    padding: 2px 6px;
+    height: 22px;
     line-height: 1;
-    font-size: 14px;
+    font-size: 13px;
     flex-shrink: 0;
 }
 
