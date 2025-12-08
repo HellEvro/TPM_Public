@@ -545,11 +545,21 @@ class NewTradingBot:
                     logger.debug(f"[NEW_BOT_{self.symbol}] ❌ RSI Time Filter блокирует LONG: {time_filter_result['reason']}")
                     return False
             
+            # ✅ КРИТИЧНО: Проверка наличия открытой позиции - если позиция уже открыта, фильтр НЕ применяется
+            # Фильтр защиты от повторных входов работает ТОЛЬКО при попытке открыть НОВУЮ позицию
+            is_in_position = (self.status == BOT_STATUS['IN_POSITION_LONG'] or 
+                             self.status == BOT_STATUS['IN_POSITION_SHORT'] or 
+                             self.position_side is not None)
+            
             # 4. Проверка защиты от повторных входов после убыточных закрытий
-            loss_reentry_result = self.check_loss_reentry_protection(candles)
-            if not loss_reentry_result['allowed']:
-                logger.info(f"[NEW_BOT_{self.symbol}] 🚫 Защита от повторных входов блокирует LONG: {loss_reentry_result['reason']}")
-                return False
+            # ⚠️ ПРИМЕНЯЕМ ТОЛЬКО если позиция НЕ открыта
+            if not is_in_position:
+                loss_reentry_result = self.check_loss_reentry_protection(candles)
+                if not loss_reentry_result['allowed']:
+                    logger.info(f"[NEW_BOT_{self.symbol}] 🚫 Защита от повторных входов блокирует LONG: {loss_reentry_result['reason']}")
+                    return False
+            else:
+                logger.debug(f"[NEW_BOT_{self.symbol}] ⏭️ Пропуск фильтра защиты от повторных входов: позиция уже открыта (status={self.status}, position_side={self.position_side})")
             
             logger.info(f"[NEW_BOT_{self.symbol}] ✅ Открываем LONG (RSI: {rsi:.1f})")
             self._remember_entry_context(rsi, trend)
@@ -641,11 +651,21 @@ class NewTradingBot:
                     logger.debug(f"[NEW_BOT_{self.symbol}] ❌ RSI Time Filter блокирует SHORT: {time_filter_result['reason']}")
                     return False
             
+            # ✅ КРИТИЧНО: Проверка наличия открытой позиции - если позиция уже открыта, фильтр НЕ применяется
+            # Фильтр защиты от повторных входов работает ТОЛЬКО при попытке открыть НОВУЮ позицию
+            is_in_position = (self.status == BOT_STATUS['IN_POSITION_LONG'] or 
+                             self.status == BOT_STATUS['IN_POSITION_SHORT'] or 
+                             self.position_side is not None)
+            
             # 4. Проверка защиты от повторных входов после убыточных закрытий
-            loss_reentry_result = self.check_loss_reentry_protection(candles)
-            if not loss_reentry_result['allowed']:
-                logger.info(f"[NEW_BOT_{self.symbol}] 🚫 Защита от повторных входов блокирует SHORT: {loss_reentry_result['reason']}")
-                return False
+            # ⚠️ ПРИМЕНЯЕМ ТОЛЬКО если позиция НЕ открыта
+            if not is_in_position:
+                loss_reentry_result = self.check_loss_reentry_protection(candles)
+                if not loss_reentry_result['allowed']:
+                    logger.info(f"[NEW_BOT_{self.symbol}] 🚫 Защита от повторных входов блокирует SHORT: {loss_reentry_result['reason']}")
+                    return False
+            else:
+                logger.debug(f"[NEW_BOT_{self.symbol}] ⏭️ Пропуск фильтра защиты от повторных входов: позиция уже открыта (status={self.status}, position_side={self.position_side})")
             
             logger.info(f"[NEW_BOT_{self.symbol}] ✅ Открываем SHORT (RSI: {rsi:.1f})")
             self._remember_entry_context(rsi, trend)
