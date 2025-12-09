@@ -29,6 +29,11 @@ except ImportError:
 
 logger = logging.getLogger('BotsService')
 
+# Кэш для предотвращения спама логов защиты от повторных входов
+_loss_reentry_log_cache = {}
+_loss_reentry_log_lock = threading.Lock()
+_loss_reentry_log_interval = 60  # Логируем не чаще раза в минуту для каждой монеты
+
 # ✅ КЭШИРОВАНИЕ AI MANAGER для избежания повторных инициализаций
 _ai_manager_cache = None
 _ai_available_cache = None
@@ -653,11 +658,17 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
             if time_diff_seconds > 0:
                 candles_passed = int(time_diff_seconds / CANDLE_INTERVAL_SECONDS)
         
+        # ✅ ИСПРАВЛЕНО: Конвертируем loss_reentry_candles в int для корректного сравнения
+        try:
+            loss_reentry_candles_int = int(loss_reentry_candles) if loss_reentry_candles is not None else 3
+        except (ValueError, TypeError):
+            loss_reentry_candles_int = 3
+        
         # Проверяем, прошло ли достаточно свечей
-        if candles_passed < loss_reentry_candles:
+        if candles_passed < loss_reentry_candles_int:
             return {
                 'allowed': False,
-                'reason': f'Последние {loss_reentry_count} сделок в минус, прошло только {candles_passed} свечей (требуется {loss_reentry_candles})',
+                'reason': f'Последние {loss_reentry_count} сделок в минус, прошло только {candles_passed} свечей (требуется {loss_reentry_candles_int})',
                 'candles_passed': candles_passed
             }
         
@@ -1965,7 +1976,15 @@ def get_effective_signal(coin):
     if coin.get('blocked_by_loss_reentry', False):
         loss_reentry_info = coin.get('loss_reentry_info', {})
         reason = loss_reentry_info.get('reason', 'Защита от повторных входов') if loss_reentry_info else 'Защита от повторных входов'
-        logger.debug(f"{symbol}: ❌ {signal} заблокирован защитой от повторных входов после убытка: {reason}")
+        
+        # ✅ АНТИСПАМ: Логируем не чаще раза в минуту для каждой монеты
+        current_time = time.time()
+        with _loss_reentry_log_lock:
+            last_log_time = _loss_reentry_log_cache.get(symbol, 0)
+            if current_time - last_log_time >= _loss_reentry_log_interval:
+                logger.debug(f"{symbol}: ❌ {signal} заблокирован защитой от повторных входов после убытка: {reason}")
+                _loss_reentry_log_cache[symbol] = current_time
+        
         return 'WAIT'
     
     # Проверяем зрелость монеты

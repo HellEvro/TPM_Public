@@ -829,27 +829,33 @@ class NewTradingBot:
                     if time_diff_seconds > 0:
                         candles_passed = int(time_diff_seconds / CANDLE_INTERVAL_SECONDS)
                 
+                # ✅ ИСПРАВЛЕНО: Конвертируем loss_reentry_candles в int для корректного сравнения
+                try:
+                    loss_reentry_candles_int = int(loss_reentry_candles) if loss_reentry_candles is not None else 3
+                except (ValueError, TypeError):
+                    loss_reentry_candles_int = 3
+                
                 # ✅ КРИТИЧЕСКАЯ ПРОВЕРКА: Если прошло МЕНЬШЕ X свечей - БЛОКИРУЕМ вход
                 # Если прошло X свечей или больше - РАЗРЕШАЕМ вход
-                if candles_passed < loss_reentry_candles:
+                if candles_passed < loss_reentry_candles_int:
                     logger.info(
                         f"[NEW_BOT_{self.symbol}] 🚫 ФИЛЬТР ЗАБЛОКИРОВАЛ ВХОД: "
                         f"последние {loss_reentry_count} сделок в минус, "
-                        f"прошло только {candles_passed} свечей (требуется {loss_reentry_candles} свечей)"
+                        f"прошло только {candles_passed} свечей (требуется {loss_reentry_candles_int} свечей)"
                     )
                     return {
                         'allowed': False,  # ⬅️ БЛОКИРУЕМ вход
-                        'reason': f'Last {loss_reentry_count} trades were losses, only {candles_passed} candles passed (need {loss_reentry_candles})'
+                        'reason': f'Last {loss_reentry_count} trades were losses, only {candles_passed} candles passed (need {loss_reentry_candles_int})'
                     }
                 
                 # ✅ Прошло X свечей или больше - РАЗРЕШАЕМ вход
                 logger.debug(
                     f"[NEW_BOT_{self.symbol}] ✅ ФИЛЬТР РАЗРЕШИЛ ВХОД: "
-                    f"прошло {candles_passed} свечей (требуется {loss_reentry_candles}), вход разрешен"
+                    f"прошло {candles_passed} свечей (требуется {loss_reentry_candles_int}), вход разрешен"
                 )
                 return {
                     'allowed': True,  # ⬅️ РАЗРЕШАЕМ вход
-                    'reason': f'{candles_passed} candles passed since last loss (required: {loss_reentry_candles})'
+                    'reason': f'{candles_passed} candles passed since last loss (required: {loss_reentry_candles_int})'
                 }
                 
             except Exception as db_error:
