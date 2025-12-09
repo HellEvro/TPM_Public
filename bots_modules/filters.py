@@ -547,25 +547,8 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         dict: {'allowed': bool, 'reason': str, 'candles_passed': int}
     """
     try:
-        # ✅ КРИТИЧНО: Проверяем наличие открытой позиции - если позиция уже открыта, фильтр НЕ применяется
-        # Фильтр защиты от повторных входов работает ТОЛЬКО при попытке открыть НОВУЮ позицию
-        from bots_modules.imports_and_globals import bots_data, BOT_STATUS, bots_data_lock
-        with bots_data_lock:
-            bots = bots_data.get('bots', {})
-            bot = bots.get(symbol)
-            if bot:
-                bot_status = bot.get('status', '')
-                position_side = bot.get('position_side')
-                is_in_position = (bot_status == BOT_STATUS['IN_POSITION_LONG'] or 
-                                 bot_status == BOT_STATUS['IN_POSITION_SHORT'] or 
-                                 position_side is not None)
-                if is_in_position:
-                    # Позиция уже открыта - фильтр не применяется
-                    return {
-                        'allowed': True,
-                        'reason': f'Позиция уже открыта (status={bot_status}, side={position_side}) - фильтр не применяется',
-                        'candles_passed': None
-                    }
+        # ✅ УБРАНО: Проверка на открытую позицию должна быть только в should_open_long/short
+        # Статическая функция всегда проверяет фильтр, проверка позиции делается на уровне бота
         
         # Получаем последние N закрытых сделок для этого символа
         from bot_engine.bots_database import get_bots_database
@@ -657,6 +640,12 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
             time_diff_seconds = last_candle_timestamp - exit_timestamp
             if time_diff_seconds > 0:
                 candles_passed = int(time_diff_seconds / CANDLE_INTERVAL_SECONDS)
+        
+        # ✅ ИСПРАВЛЕНО: Если последняя свеча совпадает с временем закрытия или позже - считаем её как прошедшую
+        # Проверяем, находится ли последняя свеча после времени закрытия
+        if candles_passed == 0 and last_candle_timestamp >= exit_timestamp:
+            # Если последняя свеча >= времени закрытия, значит прошла минимум 1 свеча
+            candles_passed = 1
         
         # ✅ ИСПРАВЛЕНО: Конвертируем loss_reentry_candles в int для корректного сравнения
         try:
@@ -1304,9 +1293,9 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                     loss_reentry_count = auto_config.get('loss_reentry_count', 1)
                     loss_reentry_candles = auto_config.get('loss_reentry_candles', 3)
                     
-                    # ⚠️ ПРИМЕНЯЕМ ТОЛЬКО если позиция НЕ открыта
-                    if loss_reentry_protection_enabled and not has_existing_position_check:
-                        # Вызываем проверку защиты
+                    # ✅ ИСПРАВЛЕНО: Всегда проверяем фильтр, проверка позиции делается на уровне бота
+                    if loss_reentry_protection_enabled:
+                        # Вызываем проверку защиты (проверка позиции убрана - она в should_open_long/short)
                         loss_reentry_result = _check_loss_reentry_protection_static(
                             symbol, candles, loss_reentry_count, loss_reentry_candles, individual_settings
                         )
@@ -1325,13 +1314,6 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                                 'reason': 'Защита от повторных входов: проверка не выполнена',
                                 'filter_type': 'loss_reentry_protection'
                             }
-                    elif has_existing_position_check:
-                        # Позиция уже открыта - фильтр не применяется
-                        loss_reentry_info = {
-                            'blocked': False,
-                            'reason': 'Защита от повторных входов: позиция уже открыта - фильтр не применяется',
-                            'filter_type': 'loss_reentry_protection'
-                        }
                     else:
                         loss_reentry_info = {
                             'blocked': False,
