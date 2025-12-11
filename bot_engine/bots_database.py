@@ -3308,6 +3308,23 @@ class BotsDatabase:
                             logger.warning(f"⚠️ Ошибка сохранения бота {symbol}: {e}")
                             continue
                     
+                    # ✅ КРИТИЧНО: Удаляем из БД всех ботов, которых НЕТ в bots_data!
+                    # Это гарантирует, что удаленные боты не будут загружаться при следующем запуске
+                    symbols_to_keep = set(bots_data.keys())
+                    if symbols_to_keep:
+                        # Создаем плейсхолдеры для SQL запроса (?, ?, ...)
+                        placeholders = ','.join(['?'] * len(symbols_to_keep))
+                        cursor.execute(f"DELETE FROM bots WHERE symbol NOT IN ({placeholders})", list(symbols_to_keep))
+                        deleted_count = cursor.rowcount
+                        if deleted_count > 0:
+                            logger.debug(f"🗑️ Удалено {deleted_count} ботов из БД (не в bots_data)")
+                    else:
+                        # Если bots_data пустой - удаляем всех ботов
+                        cursor.execute("DELETE FROM bots")
+                        deleted_count = cursor.rowcount
+                        if deleted_count > 0:
+                            logger.debug(f"🗑️ Удалены все боты из БД (bots_data пустой)")
+                    
                     # ✅ УБРАНО: auto_bot_config больше НЕ сохраняется в БД
                     # Настройки хранятся ТОЛЬКО в bot_engine/bot_config.py
                     # Это гарантирует, что настройки не перезаписываются при перезапуске

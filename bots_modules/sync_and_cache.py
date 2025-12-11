@@ -2610,16 +2610,14 @@ def check_startup_position_conflicts():
                                 # КОНФЛИКТ: бот думает что в позиции, но позиции нет на бирже
                                 logger.warning(f" 🚨 {symbol}: КОНФЛИКТ! Бот показывает позицию, но на бирже её нет!")
                                 
-                                # Сбрасываем статус бота
-                                bot_data['status'] = BOT_STATUS['IDLE']
-                                bot_data['entry_price'] = None
-                                bot_data['position_side'] = None
-                                bot_data['unrealized_pnl'] = 0.0
-                                bot_data['last_update'] = datetime.now().isoformat()
+                                # ✅ КРИТИЧНО: УДАЛЯЕМ бота, а не переводим в IDLE - позиции нет на бирже!
+                                with bots_data_lock:
+                                    if symbol in bots_data['bots']:
+                                        del bots_data['bots'][symbol]
                                 
                                 conflicts_found += 1
                                 
-                                logger.warning(f" 🔄 {symbol}: Статус сброшен в IDLE")
+                                logger.warning(f" 🗑️ {symbol}: Бот удален - позиции нет на бирже")
                     else:
                         logger.warning(f" ❌ {symbol}: Ошибка получения позиций: {positions_response.get('retMsg', 'Unknown error')}")
                         
