@@ -565,14 +565,21 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
             offset=0
         )
         
-        # ✅ Логируем ВСЕ найденные сделки для отладки
+        # ✅ КРИТИЧНО: Логируем ВСЕ найденные сделки для отладки - ДО фильтрации
+        logger.info(f"[LOSS_REENTRY_{symbol}] ════════════════════════════════════════════════════")
+        logger.info(f"[LOSS_REENTRY_{symbol}] 🔍🔍🔍 ОТЛАДКА: Запрос всех закрытых сделок для {symbol}")
         if all_closed_trades:
-            logger.info(f"[LOSS_REENTRY_{symbol}] 🔍 ВСЕГО найдено закрытых сделок в БД: {len(all_closed_trades)}")
-            for idx, trade in enumerate(all_closed_trades[:5]):  # Показываем первые 5
+            logger.info(f"[LOSS_REENTRY_{symbol}] ✅ ВСЕГО найдено закрытых сделок в БД: {len(all_closed_trades)}")
+            logger.info(f"[LOSS_REENTRY_{symbol}] 📋 Показываем ВСЕ найденные сделки (первые 10):")
+            for idx, trade in enumerate(all_closed_trades[:10]):  # Показываем первые 10
                 trade_pnl = trade.get('pnl', 'N/A')
                 trade_exit = trade.get('exit_time') or trade.get('exit_timestamp')
                 trade_id = trade.get('id', 'N/A')
-                logger.info(f"[LOSS_REENTRY_{symbol}] Сделка #{idx+1}: ID={trade_id}, PnL={trade_pnl}, exit={trade_exit}")
+                trade_status_icon = "✅" if (isinstance(trade_pnl, (int, float)) and float(trade_pnl) >= 0) else "❌"
+                logger.info(f"[LOSS_REENTRY_{symbol}]    {trade_status_icon} Сделка #{idx+1}: ID={trade_id}, PnL={trade_pnl}, exit={trade_exit}")
+        else:
+            logger.warning(f"[LOSS_REENTRY_{symbol}] ⚠️ НЕ НАЙДЕНО закрытых сделок для {symbol}!")
+        logger.info(f"[LOSS_REENTRY_{symbol}] ════════════════════════════════════════════════════")
         
         # Берем только первые N сделок для проверки фильтра
         closed_trades = all_closed_trades[:loss_reentry_count] if all_closed_trades else []
