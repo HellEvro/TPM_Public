@@ -746,16 +746,24 @@ class NewTradingBot:
                     logger.debug(f"[NEW_BOT_{self.symbol}] ✅ Защита от повторных входов: нет {loss_reentry_count} закрытых сделок")
                     return {'allowed': True, 'reason': f'Not enough closed trades ({len(closed_trades) if closed_trades else 0} < {loss_reentry_count})'}
                 
-                # ✅ Проверяем: все ли последние N сделок были с отрицательным результатом (pnl < 0)
+                # ✅ ИСПРАВЛЕНО: Проверяем, все ли последние N сделок были с отрицательным результатом (pnl < 0)
+                # Важно: проверяем именно ПОСЛЕДНИЕ N сделок по времени закрытия (уже отсортированы DESC)
                 all_losses = True
                 for trade in closed_trades:
                     pnl = trade.get('pnl', 0)
-                    # Проверяем что PnL определен и отрицательный (убыток)
-                    if pnl is None or float(pnl) >= 0:
+                    # ✅ КРИТИЧНО: Проверяем что PnL определен и действительно отрицательный (строго < 0)
+                    try:
+                        pnl_float = float(pnl) if pnl is not None else 0.0
+                        # Если хотя бы одна сделка >= 0 (прибыльная или безубыточная) - не все в минус
+                        if pnl_float >= 0:
+                            all_losses = False
+                            break
+                    except (ValueError, TypeError):
+                        # Если не удалось преобразовать PnL - считаем что не убыточная
                         all_losses = False
                         break
                 
-                # ✅ Если не все последние N сделок в минус (есть хотя бы одна прибыльная) - РАЗРЕШАЕМ вход
+                # ✅ КРИТИЧНО: Если НЕ ВСЕ последние N сделок в минус - РАЗРЕШАЕМ вход (фильтр НЕ работает)
                 if not all_losses:
                     logger.debug(f"[NEW_BOT_{self.symbol}] ✅ Защита от повторных входов: не все последние {loss_reentry_count} сделок в минус")
                     return {'allowed': True, 'reason': f'Not all last {loss_reentry_count} trades were losses'}

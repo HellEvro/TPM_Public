@@ -572,19 +572,28 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
                 'candles_passed': None
             }
         
-        # Проверяем, все ли последние N сделок были в минус
+        # ✅ ИСПРАВЛЕНО: Проверяем, все ли последние N сделок были в минус
+        # Важно: проверяем именно ПОСЛЕДНИЕ N сделок по времени закрытия (они уже отсортированы DESC)
         all_losses = True
         for trade in closed_trades:
             pnl = trade.get('pnl', 0)
-            if pnl is None or float(pnl) >= 0:
+            # ✅ КРИТИЧНО: Проверяем что PnL определен и действительно отрицательный (строго < 0)
+            try:
+                pnl_float = float(pnl) if pnl is not None else 0.0
+                # Если хотя бы одна сделка >= 0 (прибыльная или безубыточная) - не все в минус
+                if pnl_float >= 0:
+                    all_losses = False
+                    break
+            except (ValueError, TypeError):
+                # Если не удалось преобразовать PnL - считаем что не убыточная
                 all_losses = False
                 break
         
-        # Если не все сделки в минус - разрешаем вход
+        # ✅ КРИТИЧНО: Если НЕ ВСЕ последние N сделок в минус - РАЗРЕШАЕМ вход (фильтр НЕ работает)
         if not all_losses:
             return {
                 'allowed': True,
-                'reason': f'Не все последние {loss_reentry_count} сделок в минус',
+                'reason': f'Не все последние {loss_reentry_count} сделок в минус - есть прибыльные сделки, фильтр не применяется',
                 'candles_passed': None
             }
         
