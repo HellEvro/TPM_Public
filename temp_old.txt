@@ -554,98 +554,40 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         from bot_engine.bots_database import get_bots_database
         bots_db = get_bots_database()
         
-        # ✅ КРИТИЧНО: Получаем ВСЕ последние закрытые сделки для отладки (не только N, а больше)
-        # Чтобы увидеть, нет ли более новой сделки, которая не попала в выборку
-        all_closed_trades = bots_db.get_bot_trades_history(
+        # Получаем последние N закрытых сделок по символу, отсортированные по времени закрытия (новые первыми)
+        closed_trades = bots_db.get_bot_trades_history(
             bot_id=None,
             symbol=symbol,
             status='CLOSED',
             decision_source=None,
-            limit=10,  # Берем больше сделок для отладки
+            limit=loss_reentry_count,
             offset=0
         )
         
-        # ✅ КРИТИЧНО: Логируем ВСЕ найденные сделки для отладки - ДО фильтрации
-        logger.info(f"[LOSS_REENTRY_{symbol}] ════════════════════════════════════════════════════")
-        logger.info(f"[LOSS_REENTRY_{symbol}] 🔍🔍🔍 ОТЛАДКА: Запрос всех закрытых сделок для {symbol}")
-        if all_closed_trades:
-            logger.info(f"[LOSS_REENTRY_{symbol}] ✅ ВСЕГО найдено закрытых сделок в БД: {len(all_closed_trades)}")
-            logger.info(f"[LOSS_REENTRY_{symbol}] 📋 Показываем ВСЕ найденные сделки (первые 10):")
-            for idx, trade in enumerate(all_closed_trades[:10]):  # Показываем первые 10
-                trade_pnl = trade.get('pnl', 'N/A')
-                trade_exit = trade.get('exit_time') or trade.get('exit_timestamp')
-                trade_id = trade.get('id', 'N/A')
-                trade_status_icon = "✅" if (isinstance(trade_pnl, (int, float)) and float(trade_pnl) >= 0) else "❌"
-                logger.info(f"[LOSS_REENTRY_{symbol}]    {trade_status_icon} Сделка #{idx+1}: ID={trade_id}, PnL={trade_pnl}, exit={trade_exit}")
-        else:
-            logger.warning(f"[LOSS_REENTRY_{symbol}] ⚠️ НЕ НАЙДЕНО закрытых сделок для {symbol}!")
-        logger.info(f"[LOSS_REENTRY_{symbol}] ════════════════════════════════════════════════════")
-        
-        # ✅ КРИТИЧНО ИСПРАВЛЕНО: Логика проверки в зависимости от N
-        # Если N=1: проверяем только последнюю сделку
-        # Если N>1: проверяем последние N сделок подряд - блокируем ТОЛЬКО если ВСЕ N сделок убыточные
-        
-        # Берем последние N сделок для проверки
-        trades_to_check = all_closed_trades[:loss_reentry_count] if all_closed_trades else []
-        
         # Если нет закрытых сделок - разрешаем вход
-        if not trades_to_check or len(trades_to_check) < loss_reentry_count:
+        if not closed_trades or len(closed_trades) < loss_reentry_count:
             return {
                 'allowed': True,
-                'reason': f'Недостаточно закрытых сделок ({len(trades_to_check) if trades_to_check else 0} < {loss_reentry_count})',
+                'reason': f'Недостаточно закрытых сделок ({len(closed_trades) if closed_trades else 0} < {loss_reentry_count})',
                 'candles_passed': None
             }
         
         # ✅ ИСПРАВЛЕНО: Проверяем, все ли последние N сделок были в минус
         # Важно: проверяем именно ПОСЛЕДНИЕ N сделок по времени закрытия (они уже отсортированы DESC)
         all_losses = True
-        trade_pnls = []
-        
-        # ✅ КРИТИЧНО: Логируем ВСЕ полученные сделки для отладки
-        logger.info(f"[LOSS_REENTRY_{symbol}] 🔍 Получено {len(trades_to_check)} сделок для проверки (запрошено {loss_reentry_count})")
-        
-        for idx, trade in enumerate(trades_to_check):
+        for trade in closed_trades:
             pnl = trade.get('pnl', 0)
-            exit_time = trade.get('exit_time') or trade.get('exit_timestamp')
-            entry_time = trade.get('entry_time') or trade.get('entry_timestamp')
-            trade_id = trade.get('id', 'N/A')
-            
-            # ✅ КРИТИЧНО: Логируем СЫРОЕ значение PnL из БД для отладки
-            logger.info(f"[LOSS_REENTRY_{symbol}] 🔍 Сделка #{idx+1} (ID={trade_id}): СЫРОЕ значение pnl={pnl} (тип={type(pnl).__name__})")
-            
             # ✅ КРИТИЧНО: Проверяем что PnL определен и действительно отрицательный (строго < 0)
             try:
-                # ✅ УБИРАЕМ дефолтное значение 0, чтобы явно видеть None
-                if pnl is None:
-                    logger.warning(f"[LOSS_REENTRY_{symbol}] ⚠️ Сделка #{idx+1} (ID={trade_id}): PnL = None, считаем безубыток (разрешаем вход)")
-                    all_losses = False
-                    break
-                
-                pnl_float = float(pnl)
-                trade_status = "✅ ПРИБЫЛЬ" if pnl_float > 0 else "❌ УБЫТОК" if pnl_float < 0 else "➖ БЕЗУБЫТОК"
-                trade_pnls.append(f"#{idx+1}: {trade_status} PnL={pnl_float:.4f}, exit={exit_time}, id={trade_id}")
-                
-                # ✅ КРИТИЧНО: Логируем каждую сделку отдельно для отладки
-                logger.info(f"[LOSS_REENTRY_{symbol}] Сделка #{idx+1}: ID={trade_id}, PnL={pnl_float:.4f} (проверка: >= 0? {pnl_float >= 0}), exit_time={exit_time}, entry_time={entry_time}")
-                
+                pnl_float = float(pnl) if pnl is not None else 0.0
                 # Если хотя бы одна сделка >= 0 (прибыльная или безубыточная) - не все в минус
                 if pnl_float >= 0:
                     all_losses = False
-                    logger.info(f"[LOSS_REENTRY_{symbol}] ✅ НАЙДЕНА ПРИБЫЛЬНАЯ СДЕЛКА! Сделка #{idx+1}: PnL={pnl_float:.4f}, exit={exit_time} - фильтр НЕ блокирует!")
                     break
-            except (ValueError, TypeError) as e:
+            except (ValueError, TypeError):
                 # Если не удалось преобразовать PnL - считаем что не убыточная
                 all_losses = False
-                logger.error(f"[LOSS_REENTRY_{symbol}] ❌ Ошибка преобразования PnL для сделки #{idx+1}: pnl={pnl}, ошибка={e}, разрешаем вход")
                 break
-            except (ValueError, TypeError) as e:
-                # Если не удалось преобразовать PnL - считаем что не убыточная
-                all_losses = False
-                logger.error(f"[LOSS_REENTRY_{symbol}] ❌ Ошибка преобразования PnL для сделки #{idx+1}: pnl={pnl} (тип={type(pnl).__name__}), ошибка={e}, разрешаем вход")
-                break
-        
-        logger.info(f"[LOSS_REENTRY_{symbol}] 📊 ИТОГО проверки: {len(trade_pnls)} сделок, all_losses={all_losses}")
-        logger.debug(f"[LOSS_REENTRY_{symbol}] Детали сделок: {', '.join(trade_pnls)}")
         
         # ✅ КРИТИЧНО: Если НЕ ВСЕ последние N сделок в минус - РАЗРЕШАЕМ вход (фильтр НЕ работает)
         if not all_losses:
@@ -656,16 +598,12 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
             }
         
         # Все последние N сделок в минус - проверяем количество прошедших свечей
-        last_trade = trades_to_check[0]  # Самая последняя закрытая сделка (первая в списке после сортировки DESC)
+        last_trade = closed_trades[0]  # Самая последняя закрытая сделка
         
         # Получаем timestamp закрытия последней сделки
         exit_timestamp = last_trade.get('exit_timestamp')
-        exit_time_str = last_trade.get('exit_time')
-        
-        # ✅ ОТЛАДКА: Логируем информацию о сделке
-        logger.debug(f"[LOSS_REENTRY_{symbol}] Последняя убыточная сделка: exit_timestamp={exit_timestamp}, exit_time={exit_time_str}, pnl={last_trade.get('pnl')}")
-        
         if not exit_timestamp:
+            exit_time_str = last_trade.get('exit_time')
             if exit_time_str:
                 try:
                     from datetime import datetime
@@ -674,69 +612,35 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
                         exit_timestamp = int(exit_dt.timestamp())
                     else:
                         exit_timestamp = int(exit_time_str)
-                except Exception as e:
-                    logger.error(f"[LOSS_REENTRY_{symbol}] Ошибка преобразования exit_time: {e}")
+                except:
                     return {'allowed': True, 'reason': 'Не удалось получить время закрытия', 'candles_passed': None}
             else:
-                logger.warning(f"[LOSS_REENTRY_{symbol}] Нет exit_timestamp и exit_time")
                 return {'allowed': True, 'reason': 'Нет данных о времени закрытия', 'candles_passed': None}
         
         # Если exit_timestamp в миллисекундах, конвертируем в секунды
-        original_exit_timestamp = exit_timestamp
         if exit_timestamp > 1e12:
             exit_timestamp = exit_timestamp / 1000
-        
-        logger.debug(f"[LOSS_REENTRY_{symbol}] exit_timestamp после конвертации: {exit_timestamp} (было {original_exit_timestamp})")
-        
-        # ✅ ИСПРАВЛЕНО: Конвертируем loss_reentry_candles в int ДО использования
-        try:
-            loss_reentry_candles_int = int(loss_reentry_candles) if loss_reentry_candles is not None else 3
-        except (ValueError, TypeError):
-            loss_reentry_candles_int = 3
         
         # Подсчитываем количество свечей, прошедших с момента закрытия
         CANDLE_INTERVAL_SECONDS = 6 * 3600  # 6 часов
         
         if not candles or len(candles) == 0:
-            logger.warning(f"[LOSS_REENTRY_{symbol}] Нет свечей для проверки! Используем текущее время")
-            # ✅ ИСПРАВЛЕНО: Если нет свечей, используем текущее время
-            import time
-            last_candle_timestamp = time.time()
-        else:
-            # ✅ ИСПРАВЛЕНО: Получаем timestamp последней свечи (проверяем оба варианта: 'timestamp' и 'time')
-            last_candle = candles[-1]
-            last_candle_timestamp = last_candle.get('timestamp') or last_candle.get('time', 0)
-            if not last_candle_timestamp or last_candle_timestamp == 0:
-                logger.warning(f"[LOSS_REENTRY_{symbol}] last_candle_timestamp = 0! Используем текущее время. Свечи: {len(candles)}, последняя свеча: {last_candle}")
-                import time
-                last_candle_timestamp = time.time()
-            else:
-                if last_candle_timestamp > 1e12:
-                    last_candle_timestamp = last_candle_timestamp / 1000
+            return {'allowed': True, 'reason': 'Нет свечей для проверки', 'candles_passed': None}
         
-        # ✅ КРИТИЧНО: Если сделка закрыта ПОСЛЕ последней свечи - используем текущее время
-        # Это происходит когда свечи устарели или не обновлены
-        import time
-        current_time = time.time()
-        
-        # Определяем время для расчета: если сделка закрыта после последней свечи - используем текущее время
-        if exit_timestamp > last_candle_timestamp:
-            # Сделка закрыта после последней свечи - используем текущее время
-            calculation_timestamp = current_time
-            logger.debug(f"[LOSS_REENTRY_{symbol}] ⚠️ Сделка закрыта ПОСЛЕ последней свечи (exit={exit_timestamp} > last_candle={last_candle_timestamp}), используем текущее время: {calculation_timestamp}")
-        else:
-            calculation_timestamp = last_candle_timestamp
-            logger.debug(f"[LOSS_REENTRY_{symbol}] ✅ Сделка закрыта ДО последней свечи, используем last_candle_timestamp: {calculation_timestamp}")
+        # Получаем timestamp последней свечи
+        last_candle = candles[-1]
+        last_candle_timestamp = last_candle.get('timestamp', 0)
+        if last_candle_timestamp > 1e12:
+            last_candle_timestamp = last_candle_timestamp / 1000
         
         # ✅ ИСПРАВЛЕНО: Подсчитываем количество свечей с момента закрытия
         # Свечи уже отсортированы по времени (старые -> новые)
         candles_passed = 0
         
-        # ✅ ИСПРАВЛЕНО: Ищем первую свечу, которая ПОЛНОСТЬЮ позже времени закрытия
+        # Ищем первую свечу, которая ПОЛНОСТЬЮ позже времени закрытия
         # Свеча считается прошедшей, если её начало >= времени закрытия
-        # Проверяем оба варианта ключа: 'timestamp' и 'time'
         for i, candle in enumerate(candles):
-            candle_timestamp = candle.get('timestamp') or candle.get('time', 0)
+            candle_timestamp = candle.get('timestamp', 0)
             if candle_timestamp > 1e12:
                 candle_timestamp = candle_timestamp / 1000
             
@@ -746,24 +650,23 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
                 break
         
         # ✅ ИСПРАВЛЕНО: Если не нашли свечей через перебор, считаем по времени
-        # Используем calculation_timestamp (текущее время если сделка после последней свечи)
+        # Это более надежный метод для 6h свечей
         if candles_passed == 0:
-            time_diff_seconds = calculation_timestamp - exit_timestamp
-            logger.debug(f"[LOSS_REENTRY_{symbol}] Перебор не нашел свечей, считаем по времени: diff={time_diff_seconds}s, calc_time={calculation_timestamp}, exit={exit_timestamp}")
+            time_diff_seconds = last_candle_timestamp - exit_timestamp
             if time_diff_seconds > 0:
                 # Считаем количество полных 6-часовых интервалов
                 candles_passed = max(1, int(time_diff_seconds / CANDLE_INTERVAL_SECONDS))
-                logger.debug(f"[LOSS_REENTRY_{symbol}] Подсчитано по времени: {candles_passed} свечей (time_diff={time_diff_seconds}s / {CANDLE_INTERVAL_SECONDS}s)")
-            else:
-                logger.warning(f"[LOSS_REENTRY_{symbol}] time_diff_seconds <= 0: {time_diff_seconds} (calc_time={calculation_timestamp}, exit={exit_timestamp})")
         
-        # ✅ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: Если расчетное время явно после закрытия
-        if candles_passed == 0 and calculation_timestamp > exit_timestamp:
-            # Минимум 1 свеча прошла, если текущее время после закрытия
+        # ✅ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: Если последняя свеча явно после закрытия
+        if candles_passed == 0 and last_candle_timestamp > exit_timestamp:
+            # Минимум 1 свеча прошла, если текущая свеча после закрытия
             candles_passed = 1
-            logger.debug(f"[LOSS_REENTRY_{symbol}] Установлено candles_passed=1 через дополнительную проверку")
         
-        logger.debug(f"[LOSS_REENTRY_{symbol}] ИТОГО: candles_passed={candles_passed}, required={loss_reentry_candles_int}, exit_timestamp={exit_timestamp}, last_candle_timestamp={last_candle_timestamp}")
+        # ✅ ИСПРАВЛЕНО: Конвертируем loss_reentry_candles в int для корректного сравнения
+        try:
+            loss_reentry_candles_int = int(loss_reentry_candles) if loss_reentry_candles is not None else 3
+        except (ValueError, TypeError):
+            loss_reentry_candles_int = 3
         
         # Проверяем, прошло ли достаточно свечей
         if candles_passed < loss_reentry_candles_int:
@@ -1411,17 +1314,9 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                         loss_reentry_result = _check_loss_reentry_protection_static(
                             symbol, candles, loss_reentry_count, loss_reentry_candles, individual_settings
                         )
-                        
-                        # ✅ КРИТИЧНО: Логируем результат проверки для отладки
-                        logger.info(f"[LOSS_REENTRY_{symbol}] 🔍 Результат проверки: {loss_reentry_result}")
-                        
                         if loss_reentry_result:
-                            allowed_value = loss_reentry_result.get('allowed', True)
-                            blocked_value = not allowed_value
-                            logger.info(f"[LOSS_REENTRY_{symbol}] 🔍 allowed={allowed_value}, blocked={blocked_value}, reason={loss_reentry_result.get('reason', 'N/A')}")
-                            
                             loss_reentry_info = {
-                                'blocked': blocked_value,
+                                'blocked': not loss_reentry_result.get('allowed', True),
                                 'reason': loss_reentry_result.get('reason', ''),
                                 'filter_type': 'loss_reentry_protection',
                                 'candles_passed': loss_reentry_result.get('candles_passed'),
@@ -1429,7 +1324,6 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                                 'loss_count': loss_reentry_count
                             }
                         else:
-                            logger.warning(f"[LOSS_REENTRY_{symbol}] ⚠️ loss_reentry_result is None/empty, разрешаем вход")
                             loss_reentry_info = {
                                 'blocked': False,
                                 'reason': 'Защита от повторных входов: проверка не выполнена',
