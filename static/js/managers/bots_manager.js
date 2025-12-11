@@ -3513,8 +3513,8 @@ class BotsManager {
             trailing_take_distance: 0.5,
             trailing_update_interval: 3.0,
             max_position_hours: 0,
-                    break_even_protection: true,
-                    break_even_trigger: 20.0,
+            break_even_protection: true,
+            break_even_trigger: 20.0,
                     loss_reentry_protection: true,
                     loss_reentry_count: 1,
                     loss_reentry_candles: 3,
@@ -5903,7 +5903,7 @@ class BotsManager {
         console.log(`[BotsManager] 🔍 originalConfig ключи:`, Object.keys(this.originalConfig.autoBot));
         console.log(`[BotsManager] 🔍 trailing_stop_activation в originalConfig:`, this.originalConfig.autoBot.trailing_stop_activation);
         console.log(`[BotsManager] 🔍 trailing_stop_distance в originalConfig:`, this.originalConfig.autoBot.trailing_stop_distance);
-            console.log(`[BotsManager] 🔍 break_even_trigger в originalConfig:`, this.originalConfig.autoBot.break_even_trigger_percent ?? this.originalConfig.autoBot.break_even_trigger);
+        console.log(`[BotsManager] 🔍 break_even_trigger в originalConfig:`, this.originalConfig.autoBot.break_even_trigger_percent ?? this.originalConfig.autoBot.break_even_trigger);
             
             // Защита от повторных входов после убытка
             const lossReentryProtectionEl = document.getElementById('lossReentryProtection');

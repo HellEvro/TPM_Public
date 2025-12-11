@@ -564,13 +564,9 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
             offset=0
         )
         
-        # Если нет закрытых сделок - разрешаем вход
+        # Если нет закрытых сделок - разрешаем вход, НЕ показываем фильтр
         if not closed_trades or len(closed_trades) < loss_reentry_count:
-            return {
-                'allowed': True,
-                'reason': f'Недостаточно закрытых сделок ({len(closed_trades) if closed_trades else 0} < {loss_reentry_count})',
-                'candles_passed': None
-            }
+            return None  # Недостаточно сделок - фильтр не применяется
         
         # ✅ ИСПРАВЛЕНО: Проверяем, все ли последние N сделок были в минус
         # Важно: проверяем именно ПОСЛЕДНИЕ N сделок по времени закрытия (они уже отсортированы DESC)
@@ -590,12 +586,9 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
                 break
         
         # ✅ КРИТИЧНО: Если НЕ ВСЕ последние N сделок в минус - РАЗРЕШАЕМ вход (фильтр НЕ работает)
+        # НЕ возвращаем информацию - фильтр не применяется, не показываем в UI
         if not all_losses:
-            return {
-                'allowed': True,
-                'reason': f'Не все последние {loss_reentry_count} сделок в минус - есть прибыльные сделки, фильтр не применяется',
-                'candles_passed': None
-            }
+            return None  # Фильтр не применяется, не показываем в UI
         
         # Все последние N сделок в минус - проверяем количество прошедших свечей
         last_trade = closed_trades[0]  # Самая последняя закрытая сделка
@@ -613,25 +606,9 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
                     else:
                         exit_timestamp = int(exit_time_str)
                 except:
-                    return {'allowed': True, 'reason': 'Не удалось получить время закрытия', 'candles_passed': None}
+                    return None  # Ошибка - не показываем фильтр
             else:
-                return {'allowed': True, 'reason': 'Нет данных о времени закрытия', 'candles_passed': None}
-        
-        if not exit_timestamp:
-            if exit_time_str:
-                try:
-                    from datetime import datetime
-                    if isinstance(exit_time_str, str):
-                        exit_dt = datetime.fromisoformat(exit_time_str.replace('Z', '+00:00'))
-                        exit_timestamp = int(exit_dt.timestamp())
-                    else:
-                        exit_timestamp = int(exit_time_str)
-                except Exception as e:
-                    logger.error(f"[LOSS_REENTRY_{symbol}] Ошибка преобразования exit_time: {e}")
-                    return {'allowed': True, 'reason': 'Не удалось получить время закрытия', 'candles_passed': None}
-            else:
-                logger.warning(f"[LOSS_REENTRY_{symbol}] Нет exit_timestamp и exit_time")
-                return {'allowed': True, 'reason': 'Нет данных о времени закрытия', 'candles_passed': None}
+                return None  # Нет данных - не показываем фильтр
         
         # Если exit_timestamp в миллисекундах, конвертируем в секунды
         if exit_timestamp > 1e12:
@@ -641,7 +618,7 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         CANDLE_INTERVAL_SECONDS = 6 * 3600  # 6 часов
         
         if not candles or len(candles) == 0:
-            return {'allowed': True, 'reason': 'Нет свечей для проверки', 'candles_passed': None}
+            return None  # Нет свечей - не показываем фильтр
         
         # Получаем timestamp последней свечи
         last_candle = candles[-1]
@@ -686,17 +663,15 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         
         # Проверяем, прошло ли достаточно свечей
         if candles_passed < loss_reentry_candles_int:
+            # ✅ ФИЛЬТР БЛОКИРУЕТ - показываем в UI
             return {
                 'allowed': False,
                 'reason': f'Последние {loss_reentry_count} сделок в минус, прошло только {candles_passed} свечей (требуется {loss_reentry_candles_int})',
                 'candles_passed': candles_passed
             }
         
-        return {
-            'allowed': True,
-            'reason': f'Прошло {candles_passed} свечей с последнего убытка (требуется {loss_reentry_candles})',
-            'candles_passed': candles_passed
-        }
+        # ✅ Прошло достаточно свечей - фильтр НЕ блокирует и НЕ показываем в UI
+        return None
         
     except Exception as e:
         # При ошибке разрешаем вход (безопаснее, как в bot_class.py)
@@ -1322,9 +1297,9 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                         )
                         
                         if loss_reentry_result:
+                            # ✅ ФИЛЬТР ВОЗВРАТИЛ РЕЗУЛЬТАТ - значит он РЕАЛЬНО блокирует (иначе вернул бы None)
                             allowed_value = loss_reentry_result.get('allowed', True)
                             blocked_value = not allowed_value
-                            logger.info(f"[LOSS_REENTRY_{symbol}] 🔍 allowed={allowed_value}, blocked={blocked_value}, reason={loss_reentry_result.get('reason', 'N/A')}")
                             
                             loss_reentry_info = {
                                 'blocked': blocked_value,
@@ -1335,31 +1310,18 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                                 'loss_count': loss_reentry_count
                             }
                         else:
-                            logger.warning(f"[LOSS_REENTRY_{symbol}] ⚠️ loss_reentry_result is None/empty, разрешаем вход")
-                            loss_reentry_info = {
-                                'blocked': False,
-                                'reason': 'Защита от повторных входов: проверка не выполнена',
-                                'filter_type': 'loss_reentry_protection'
-                            }
+                            # ✅ ФИЛЬТР НЕ ПРИМЕНЯЕТСЯ (вернул None) - не показываем в UI
+                            loss_reentry_info = None
                     else:
-                        loss_reentry_info = {
-                            'blocked': False,
-                            'reason': 'Защита от повторных входов: выключена',
-                            'filter_type': 'loss_reentry_protection'
-                        }
+                        # ✅ Фильтр выключен - не показываем в UI
+                        loss_reentry_info = None
                 else:
-                    loss_reentry_info = {
-                        'blocked': False,
-                        'reason': 'Недостаточно свечей для проверки',
-                        'filter_type': 'loss_reentry_protection'
-                    }
+                    # ✅ Недостаточно свечей - не показываем фильтр
+                    loss_reentry_info = None
             except Exception as e:
                 logger.debug(f"{symbol}: Ошибка проверки защиты от повторных входов для UI: {e}")
-                loss_reentry_info = {
-                    'blocked': False,
-                    'reason': f'Ошибка проверки: {str(e)}',
-                    'filter_type': 'loss_reentry_protection'
-                }
+                # ✅ Ошибка - не показываем фильтр
+                loss_reentry_info = None
         
         # ✅ ПРИМЕНЯЕМ БЛОКИРОВКУ ПО SCOPE
         # Scope фильтр (если монета в черном списке или не в белом)
