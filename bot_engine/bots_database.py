@@ -5643,7 +5643,7 @@ class BotsDatabase:
                     query += " ORDER BY exit_timestamp DESC, entry_timestamp DESC, created_at DESC"
                 else:
                     # Для открытых сделок сортируем по времени входа
-                query += " ORDER BY entry_timestamp DESC, created_at DESC"
+                    query += " ORDER BY entry_timestamp DESC, created_at DESC"
                 
                 if limit:
                     query += " LIMIT ? OFFSET ?"
