@@ -586,24 +586,35 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
             entry_time = trade.get('entry_time') or trade.get('entry_timestamp')
             trade_id = trade.get('id', 'N/A')
             
+            # ✅ КРИТИЧНО: Логируем СЫРОЕ значение PnL из БД для отладки
+            logger.info(f"[LOSS_REENTRY_{symbol}] 🔍 Сделка #{idx+1} (ID={trade_id}): СЫРОЕ значение pnl={pnl} (тип={type(pnl).__name__})")
+            
             # ✅ КРИТИЧНО: Проверяем что PnL определен и действительно отрицательный (строго < 0)
             try:
-                pnl_float = float(pnl) if pnl is not None else 0.0
+                # ✅ УБИРАЕМ дефолтное значение 0, чтобы явно видеть None
+                if pnl is None:
+                    logger.warning(f"[LOSS_REENTRY_{symbol}] ⚠️ Сделка #{idx+1} (ID={trade_id}): PnL = None, считаем безубыток (разрешаем вход)")
+                    all_losses = False
+                    break
+                
+                pnl_float = float(pnl)
                 trade_status = "✅ ПРИБЫЛЬ" if pnl_float > 0 else "❌ УБЫТОК" if pnl_float < 0 else "➖ БЕЗУБЫТОК"
                 trade_pnls.append(f"#{idx+1}: {trade_status} PnL={pnl_float:.4f}, exit={exit_time}, id={trade_id}")
                 
                 # ✅ КРИТИЧНО: Логируем каждую сделку отдельно для отладки
-                logger.info(f"[LOSS_REENTRY_{symbol}] Сделка #{idx+1}: ID={trade_id}, PnL={pnl_float:.4f}, exit_time={exit_time}, entry_time={entry_time}")
+                logger.info(f"[LOSS_REENTRY_{symbol}] Сделка #{idx+1}: ID={trade_id}, PnL={pnl_float:.4f} (проверка: >= 0? {pnl_float >= 0}), exit_time={exit_time}, entry_time={entry_time}")
                 
-                # Если хотя бы одна сделка >= 0 (прибыльная или безубыточная) - не все в минус
+                # ✅ КРИТИЧНО: Если хотя бы одна сделка >= 0 (прибыльная или безубыточная) - не все в минус
                 if pnl_float >= 0:
                     all_losses = False
-                    logger.info(f"[LOSS_REENTRY_{symbol}] ✅ НАЙДЕНА ПРИБЫЛЬНАЯ СДЕЛКА! Сделка #{idx+1}: PnL={pnl_float:.4f}, exit={exit_time} - фильтр НЕ блокирует!")
+                    logger.info(f"[LOSS_REENTRY_{symbol}] ✅✅✅ НАЙДЕНА ПРИБЫЛЬНАЯ/БЕЗУБЫТОЧНАЯ СДЕЛКА! Сделка #{idx+1}: PnL={pnl_float:.4f}, exit={exit_time} - фильтр НЕ блокирует (all_losses={all_losses})!")
                     break
+                else:
+                    logger.info(f"[LOSS_REENTRY_{symbol}] ❌ Сделка #{idx+1}: PnL={pnl_float:.4f} < 0 (убыток), продолжаем проверку...")
             except (ValueError, TypeError) as e:
                 # Если не удалось преобразовать PnL - считаем что не убыточная
                 all_losses = False
-                logger.error(f"[LOSS_REENTRY_{symbol}] ❌ Ошибка преобразования PnL для сделки #{idx+1}: pnl={pnl}, ошибка={e}")
+                logger.error(f"[LOSS_REENTRY_{symbol}] ❌ Ошибка преобразования PnL для сделки #{idx+1}: pnl={pnl} (тип={type(pnl).__name__}), ошибка={e}, разрешаем вход")
                 break
         
         logger.info(f"[LOSS_REENTRY_{symbol}] 📊 ИТОГО проверки: {len(trade_pnls)} сделок, all_losses={all_losses}")
@@ -611,11 +622,14 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         
         # ✅ КРИТИЧНО: Если НЕ ВСЕ последние N сделок в минус - РАЗРЕШАЕМ вход (фильтр НЕ работает)
         if not all_losses:
+            logger.info(f"[LOSS_REENTRY_{symbol}] ✅✅✅ ФИЛЬТР НЕ БЛОКИРУЕТ: all_losses={all_losses}, разрешаем вход")
             return {
                 'allowed': True,
                 'reason': f'Не все последние {loss_reentry_count} сделок в минус - есть прибыльные сделки, фильтр не применяется',
                 'candles_passed': None
             }
+        
+        logger.info(f"[LOSS_REENTRY_{symbol}] ⚠️ ВСЕ последние {loss_reentry_count} сделок в минус, проверяем количество свечей...")
         
         # Все последние N сделок в минус - проверяем количество прошедших свечей
         last_trade = closed_trades[0]  # Самая последняя закрытая сделка
@@ -1373,9 +1387,17 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                         loss_reentry_result = _check_loss_reentry_protection_static(
                             symbol, candles, loss_reentry_count, loss_reentry_candles, individual_settings
                         )
+                        
+                        # ✅ КРИТИЧНО: Логируем результат проверки для отладки
+                        logger.info(f"[LOSS_REENTRY_{symbol}] 🔍 Результат проверки: {loss_reentry_result}")
+                        
                         if loss_reentry_result:
+                            allowed_value = loss_reentry_result.get('allowed', True)
+                            blocked_value = not allowed_value
+                            logger.info(f"[LOSS_REENTRY_{symbol}] 🔍 allowed={allowed_value}, blocked={blocked_value}, reason={loss_reentry_result.get('reason', 'N/A')}")
+                            
                             loss_reentry_info = {
-                                'blocked': not loss_reentry_result.get('allowed', True),
+                                'blocked': blocked_value,
                                 'reason': loss_reentry_result.get('reason', ''),
                                 'filter_type': 'loss_reentry_protection',
                                 'candles_passed': loss_reentry_result.get('candles_passed'),
@@ -1383,6 +1405,7 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                                 'loss_count': loss_reentry_count
                             }
                         else:
+                            logger.warning(f"[LOSS_REENTRY_{symbol}] ⚠️ loss_reentry_result is None/empty, разрешаем вход")
                             loss_reentry_info = {
                                 'blocked': False,
                                 'reason': 'Защита от повторных входов: проверка не выполнена',
