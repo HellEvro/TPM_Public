@@ -157,6 +157,60 @@ def _timestamp_to_iso(raw_value):
     return datetime.fromtimestamp(ts).isoformat()
 
 
+def _check_if_trade_already_closed(bot_id, symbol, entry_price, entry_time_str):
+    """✅ УПРОЩЕНО: Проверяет, была ли позиция уже закрыта ранее (предотвращает дубликаты)"""
+    if not entry_price or entry_price <= 0:
+        return False
+    
+    try:
+        from bot_engine.bots_database import get_bots_database
+        bots_db = get_bots_database()
+        
+        # Получаем entry_timestamp
+        entry_timestamp = None
+        if entry_time_str:
+            try:
+                entry_time = datetime.fromisoformat(entry_time_str.replace('Z', ''))
+                entry_timestamp = entry_time.timestamp() * 1000
+            except Exception:
+                pass
+        
+        # Проверяем последние 10 закрытых сделок
+        existing_trades = bots_db.get_bot_trades_history(
+            bot_id=bot_id,
+            symbol=symbol,
+            status='CLOSED',
+            limit=10
+        )
+        
+        if not existing_trades:
+            return False
+        
+        # Проверяем на дубликаты
+        for existing_trade in existing_trades:
+            existing_entry_price = existing_trade.get('entry_price')
+            existing_entry_ts = existing_trade.get('entry_timestamp')
+            existing_close_reason = existing_trade.get('close_reason')
+            
+            # Сравниваем цену входа (погрешность для float)
+            price_match = existing_entry_price and abs(float(existing_entry_price) - float(entry_price)) < 0.0001
+            
+            # Сравниваем timestamp если есть (погрешность 1 минута)
+            timestamp_match = True
+            if entry_timestamp and existing_entry_ts:
+                timestamp_match = abs(float(existing_entry_ts) - float(entry_timestamp)) < 60000
+            
+            # Если совпадает цена и timestamp, и это MANUAL_CLOSE - это дубликат
+            if price_match and timestamp_match and existing_close_reason == 'MANUAL_CLOSE':
+                logger.debug(f"[SYNC_EXCHANGE] ⏭️ Позиция {symbol} уже была закрыта ранее (entry={entry_price:.6f})")
+                return True
+        
+        return False
+    except Exception as e:
+        logger.debug(f"[SYNC_EXCHANGE] ⚠️ Ошибка проверки дубликатов для {symbol}: {e}")
+        return False
+
+
 def _needs_price_update(position_side, desired_price, existing_price, tolerance=1e-6):
     if desired_price is None:
         return False
@@ -2752,37 +2806,18 @@ def sync_bots_with_exchange():
             
             # ✅ Не логируем общее количество (избыточно)
             
-            # Получаем символы ботов в системе для фильтрации
+            # ✅ УПРОЩЕНО: Получаем список ботов один раз и проверяем напрямую
             with bots_data_lock:
-                system_bot_symbols = set(bots_data['bots'].keys())
+                bot_items = list(bots_data['bots'].items())  # Копия для безопасной итерации
             
-            # Разделяем позиции на бирже на "с ботом" и "без бота"
-            positions_with_bots = {}
-            positions_without_bots = {}
-            
-            for symbol, pos_data in exchange_positions.items():
-                # ✅ Символы в exchange_positions уже нормализованы (без USDT через clean_symbol)
-                # Символы в system_bot_symbols тоже без USDT
-                # Проверяем прямое совпадение
-                if symbol in system_bot_symbols:
-                    positions_with_bots[symbol] = pos_data
-                else:
-                    positions_without_bots[symbol] = pos_data
-            
-            # Логируем только итоговый результат
-            
-            # Синхронизируем только с позициями, для которых есть боты
             synchronized_bots = 0
-            
-            # ✅ ИСПРАВЛЕНИЕ: Используем list() для безопасной итерации (предотвращаем "dictionary changed size during iteration")
-            with bots_data_lock:
-                bot_items = list(bots_data['bots'].items())  # Создаем копию списка
             
             for symbol, bot_data in bot_items:
                     try:
-                        if symbol in positions_with_bots:
+                        # Проверяем, есть ли позиция на бирже для этого бота
+                        if symbol in exchange_positions:
                             # Есть позиция на бирже - обновляем данные бота
-                            exchange_pos = positions_with_bots[symbol]
+                            exchange_pos = exchange_positions[symbol]
                             
                             # Получаем старые данные для логирования
                             with bots_data_lock:
@@ -2842,6 +2877,8 @@ def sync_bots_with_exchange():
                             old_position_size = bot_data.get('position_size', 0)
                             manual_closed = True  # Если мы здесь, значит бот был в позиции
 
+                            # ✅ УПРОЩЕНО: Получаем данные для проверки дубликатов
+                            entry_time_str = bot_data.get('position_start_time') or bot_data.get('entry_time')
                             exit_price = None
                             entry_price = None
                             pnl_usdt = 0.0
@@ -2853,6 +2890,10 @@ def sync_bots_with_exchange():
                                 entry_price = float(bot_data.get('entry_price') or 0.0)
                             except (TypeError, ValueError):
                                 entry_price = 0.0
+                            
+                            # ✅ УПРОЩЕНО: Проверяем дубликаты сразу после получения entry_price
+                            bot_id = bot_data.get('id') or symbol
+                            already_closed_trade = _check_if_trade_already_closed(bot_id, symbol, entry_price, entry_time_str)
 
                             # Получаем рыночную цену для фиксации закрытия
                             if manual_closed:
@@ -2890,7 +2931,7 @@ def sync_bots_with_exchange():
                                     roi_percent = (pnl_usdt / margin_val) * 100.0
 
                             if manual_closed:
-                                entry_time_str = bot_data.get('position_start_time') or bot_data.get('entry_time')
+                                # entry_time_str уже получен выше
                                 duration_hours = 0.0
                                 if entry_time_str:
                                     try:
@@ -2911,57 +2952,6 @@ def sync_bots_with_exchange():
                                     'price_movement': ((exit_price - entry_price) / entry_price * 100.0) if entry_price else 0.0
                                 }
 
-                                bot_id = bot_data.get('id') or symbol
-                                
-                                # ✅ ПРОВЕРКА: Проверяем, не была ли уже закрыта эта позиция ранее
-                                # Это предотвращает повторную обработку одной и той же закрытой позиции
-                                from bot_engine.bots_database import get_bots_database
-                                from datetime import datetime
-                                bots_db = get_bots_database()
-                                
-                                entry_time_str = bot_data.get('position_start_time') or bot_data.get('entry_time')
-                                entry_timestamp = None
-                                if entry_time_str:
-                                    try:
-                                        entry_time = datetime.fromisoformat(entry_time_str.replace('Z', ''))
-                                        entry_timestamp = entry_time.timestamp() * 1000
-                                    except Exception:
-                                        pass
-                                
-                                # Проверяем, есть ли уже закрытая сделка с такими же параметрами
-                                already_closed_trade = False
-                                if entry_price and entry_price > 0:
-                                    try:
-                                        existing_trades = bots_db.get_bot_trades_history(
-                                            bot_id=bot_id,
-                                            symbol=symbol,
-                                            status='CLOSED',
-                                            limit=10  # Проверяем последние 10 закрытых сделок
-                                        )
-                                        
-                                        if existing_trades:
-                                            for existing_trade in existing_trades:
-                                                existing_entry_price = existing_trade.get('entry_price')
-                                                existing_entry_ts = existing_trade.get('entry_timestamp')
-                                                existing_close_reason = existing_trade.get('close_reason')
-                                                
-                                                # Сравниваем entry_price (с небольшой погрешностью для float)
-                                                price_match = existing_entry_price and abs(float(existing_entry_price) - float(entry_price)) < 0.0001
-                                                
-                                                # Если есть entry_timestamp, сравниваем и его
-                                                timestamp_match = True
-                                                if entry_timestamp and existing_entry_ts:
-                                                    # Считаем совпадением, если разница меньше 1 минуты (60000 мс)
-                                                    timestamp_match = abs(float(existing_entry_ts) - float(entry_timestamp)) < 60000
-                                                
-                                                # Если цена совпадает и (timestamp совпадает или его нет), и это MANUAL_CLOSE - это дубликат
-                                                if price_match and timestamp_match and existing_close_reason == 'MANUAL_CLOSE':
-                                                    already_closed_trade = True
-                                                    logger.debug(f"[SYNC_EXCHANGE] ⏭️ Позиция {symbol} уже была закрыта ранее (entry={entry_price:.6f}), пропускаем обработку")
-                                                    break
-                                    except Exception as check_error:
-                                        logger.debug(f"[SYNC_EXCHANGE] ⚠️ Ошибка проверки закрытых сделок для {symbol}: {check_error}")
-                                
                                 if not already_closed_trade:
                                     # КРИТИЧНО: Логируем только если это была позиция бота (бот был в позиции)
                                     # Это НЕ ручные сделки трейдера, а закрытие позиций ботов вручную на бирже
@@ -3028,22 +3018,8 @@ def sync_bots_with_exchange():
                                     # Позиция уже была обработана ранее - просто удаляем бота без повторного логирования
                                     logger.debug(f"[SYNC_EXCHANGE] ⏭️ {symbol}: позиция уже была обработана ранее, пропускаем повторное логирование")
                             
-                            # ✅ ПРОВЕРЯЕМ ДЕЛИСТИНГ: Получаем статус инструмента
-                            try:
-                                from bots_modules.imports_and_globals import get_exchange
-                                exchange_obj = get_exchange()
-                                if exchange_obj and hasattr(exchange_obj, 'get_instrument_status'):
-                                    status_info = exchange_obj.get_instrument_status(f"{symbol}USDT")
-                                    if status_info and status_info.get('is_delisting'):
-                                        logger.warning(f"[SYNC_EXCHANGE] ⚠️ {symbol}: ДЕЛИСТИНГ обнаружен! Статус: {status_info.get('status')}")
-                                        logger.info(f"[SYNC_EXCHANGE] 🗑️ {symbol}: Удаляем бота (делистинг: {status_info.get('status')})")
-                                    else:
-                                        logger.info(f"[SYNC_EXCHANGE] 🗑️ {symbol}: Удаляем бота (позиция закрыта на бирже, статус: {old_status})")
-                                else:
-                                    logger.info(f"[SYNC_EXCHANGE] 🗑️ {symbol}: Удаляем бота (позиция закрыта на бирже, статус: {old_status})")
-                            except Exception as e:
-                                logger.error(f"[SYNC_EXCHANGE] ❌ Ошибка проверки статуса {symbol}: {e}")
-                                logger.info(f"[SYNC_EXCHANGE] 🗑️ {symbol}: Удаляем бота (позиция закрыта на бирже)")
+                            # ✅ УПРОЩЕНО: Логируем удаление бота (делистинг проверяется в отдельной функции)
+                            logger.info(f"[SYNC_EXCHANGE] 🗑️ {symbol}: Удаляем бота (позиция закрыта на бирже, статус: {old_status})")
                             
                             # Удаляем бота из системы (с блокировкой!)
                             with bots_data_lock:
