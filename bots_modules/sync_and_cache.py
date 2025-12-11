@@ -1935,8 +1935,10 @@ def cleanup_inactive_bots():
                 
                 # Убрали хардкод - теперь проверяем только реальные позиции на бирже
                 
-                # Пропускаем ботов в статусе 'idle' - они могут быть в ожидании
-                if bot_status == 'idle':
+                # ✅ КРИТИЧНО: Пропускаем ботов в статусе 'idle' или 'running' - они могут быть активными!
+                # 'running' означает что бот работает (не в позиции, но активен)
+                # 'idle' означает что бот в ожидании сигнала
+                if bot_status in ['idle', 'running']:
                     continue
                 
                 # КРИТИЧЕСКИ ВАЖНО: Не удаляем ботов, которые только что загружены
@@ -1954,22 +1956,29 @@ def cleanup_inactive_bots():
                 
                 # Проверяем время последнего обновления
                 if last_update_str:
-                    try:
-                        last_update = datetime.fromisoformat(last_update_str.replace('Z', '+00:00'))
-                        time_since_update = current_time - last_update.timestamp()
-                        
-                        if time_since_update >= SystemConfig.INACTIVE_BOT_TIMEOUT:
-                            logger.warning(f" ⏰ Бот {symbol} неактивен {time_since_update//60:.0f} мин (статус: {bot_status})")
-                            bots_to_remove.append(symbol)
+                    # ✅ ИСПРАВЛЕНО: Обрабатываем некорректные значения типа 'Никогда'
+                    if isinstance(last_update_str, str) and last_update_str.lower() in ['никогда', 'never', '']:
+                        logger.debug(f" ⚠️ Бот {symbol} имеет некорректное значение last_update='{last_update_str}' - проверяем created_at")
+                        # Пропускаем проверку last_update, проверяем created_at ниже
+                        last_update_str = None
+                    else:
+                        try:
+                            last_update = datetime.fromisoformat(last_update_str.replace('Z', '+00:00'))
+                            time_since_update = current_time - last_update.timestamp()
                             
-                            # Логируем удаление неактивного бота в историю
-                            # log_bot_stop(symbol, f"Неактивен {time_since_update//60:.0f} мин (статус: {bot_status})")  # TODO: Функция не определена
-                        else:
-                            logger.info(f" ⏳ Бот {symbol} неактивен {time_since_update//60:.0f} мин, ждем до {SystemConfig.INACTIVE_BOT_TIMEOUT//60} мин")
-                    except Exception as e:
-                        logger.error(f" ❌ Ошибка парсинга времени для {symbol}: {e}")
-                        # Если не можем распарсить время, считаем бота неактивным
-                        bots_to_remove.append(symbol)
+                            if time_since_update >= SystemConfig.INACTIVE_BOT_TIMEOUT:
+                                logger.warning(f" ⏰ Бот {symbol} неактивен {time_since_update//60:.0f} мин (статус: {bot_status})")
+                                bots_to_remove.append(symbol)
+                                
+                                # Логируем удаление неактивного бота в историю
+                                # log_bot_stop(symbol, f"Неактивен {time_since_update//60:.0f} мин (статус: {bot_status})")  # TODO: Функция не определена
+                            else:
+                                logger.debug(f" ⏳ Бот {symbol} активен (последнее обновление {time_since_update//60:.0f} мин назад)")
+                                continue  # Бот активен - пропускаем удаление
+                        except Exception as e:
+                            logger.error(f" ❌ Ошибка парсинга времени для {symbol}: {e}, значение='{last_update_str}'")
+                            # Если не можем распарсить время - проверяем created_at ниже
+                            last_update_str = None
                 else:
                     # ✅ КРИТИЧНО: Если нет last_update, проверяем created_at
                     # Свежесозданные боты не должны удаляться!
@@ -2752,8 +2761,10 @@ def sync_bots_with_exchange():
             positions_without_bots = {}
             
             for symbol, pos_data in exchange_positions.items():
-                # Проверяем как символ без USDT, так и с USDT
-                if symbol in system_bot_symbols or f"{symbol}USDT" in system_bot_symbols:
+                # ✅ Символы в exchange_positions уже нормализованы (без USDT через clean_symbol)
+                # Символы в system_bot_symbols тоже без USDT
+                # Проверяем прямое совпадение
+                if symbol in system_bot_symbols:
                     positions_with_bots[symbol] = pos_data
                 else:
                     positions_without_bots[symbol] = pos_data
