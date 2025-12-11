@@ -2808,11 +2808,18 @@ def sync_bots_with_exchange():
                         else:
                             # Нет позиции на бирже - проверяем статус инструмента
                             old_status = bot_data.get('status', 'UNKNOWN')
-                            old_position_size = bot_data.get('position_size', 0)
-                            manual_closed = old_status in [
+                            
+                            # ✅ КРИТИЧНО: Обрабатываем ТОЛЬКО ботов, которые были в позиции!
+                            # Пропускаем ботов со статусом idle, running, paused и т.д. - они не были в позиции
+                            if old_status not in [
                                 BOT_STATUS.get('IN_POSITION_LONG'),
                                 BOT_STATUS.get('IN_POSITION_SHORT')
-                            ]
+                            ]:
+                                # Бот не был в позиции - просто пропускаем его
+                                continue
+                            
+                            old_position_size = bot_data.get('position_size', 0)
+                            manual_closed = True  # Если мы здесь, значит бот был в позиции
 
                             exit_price = None
                             entry_price = None
