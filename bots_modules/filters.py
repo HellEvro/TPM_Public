@@ -554,15 +554,28 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         from bot_engine.bots_database import get_bots_database
         bots_db = get_bots_database()
         
-        # Получаем последние N закрытых сделок по символу, отсортированные по времени закрытия (новые первыми)
-        closed_trades = bots_db.get_bot_trades_history(
+        # ✅ КРИТИЧНО: Получаем ВСЕ последние закрытые сделки для отладки (не только N, а больше)
+        # Чтобы увидеть, нет ли более новой сделки, которая не попала в выборку
+        all_closed_trades = bots_db.get_bot_trades_history(
             bot_id=None,
             symbol=symbol,
             status='CLOSED',
             decision_source=None,
-            limit=loss_reentry_count,
+            limit=10,  # Берем больше сделок для отладки
             offset=0
         )
+        
+        # ✅ Логируем ВСЕ найденные сделки для отладки
+        if all_closed_trades:
+            logger.info(f"[LOSS_REENTRY_{symbol}] 🔍 ВСЕГО найдено закрытых сделок в БД: {len(all_closed_trades)}")
+            for idx, trade in enumerate(all_closed_trades[:5]):  # Показываем первые 5
+                trade_pnl = trade.get('pnl', 'N/A')
+                trade_exit = trade.get('exit_time') or trade.get('exit_timestamp')
+                trade_id = trade.get('id', 'N/A')
+                logger.info(f"[LOSS_REENTRY_{symbol}] Сделка #{idx+1}: ID={trade_id}, PnL={trade_pnl}, exit={trade_exit}")
+        
+        # Берем только первые N сделок для проверки фильтра
+        closed_trades = all_closed_trades[:loss_reentry_count] if all_closed_trades else []
         
         # Если нет закрытых сделок - разрешаем вход
         if not closed_trades or len(closed_trades) < loss_reentry_count:
