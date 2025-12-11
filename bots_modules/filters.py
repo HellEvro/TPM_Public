@@ -598,6 +598,7 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         
         all_losses = True
         trade_pnls = []
+        last_loss_trade = None  # ✅ КРИТИЧНО: Сохраняем последнюю убыточную сделку для подсчета свечей
         
         # ✅ КРИТИЧНО: Логируем какие сделки проверяем
         if loss_reentry_count == 1:
@@ -627,17 +628,19 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
                 trade_status = "✅ ПРИБЫЛЬ" if pnl_float > 0 else "❌ УБЫТОК" if pnl_float < 0 else "➖ БЕЗУБЫТОК"
                 trade_pnls.append(f"#{idx+1}: {trade_status} PnL={pnl_float:.4f}, exit={exit_time}, id={trade_id}")
                 
-                # ✅ КРИТИЧНО: Логируем последнюю сделку для отладки
-                logger.info(f"[LOSS_REENTRY_{symbol}] 🔍 ПОСЛЕДНЯЯ сделка: ID={trade_id}, PnL={pnl_float:.4f} (проверка: >= 0? {pnl_float >= 0}), exit_time={exit_time}, entry_time={entry_time}")
+                # ✅ КРИТИЧНО: Логируем каждую сделку для отладки
+                logger.info(f"[LOSS_REENTRY_{symbol}] Сделка #{idx+1}: ID={trade_id}, PnL={pnl_float:.4f} (проверка: >= 0? {pnl_float >= 0}), exit_time={exit_time}, entry_time={entry_time}")
                 
-                # ✅ КРИТИЧНО: Проверяем последнюю сделку
+                # ✅ КРИТИЧНО: Если хотя бы одна сделка >= 0 (прибыльная или безубыточная) - не все в минус
                 if pnl_float >= 0:
                     all_losses = False
-                    logger.info(f"[LOSS_REENTRY_{symbol}] ✅✅✅ ПОСЛЕДНЯЯ сделка ПРИБЫЛЬНАЯ! PnL={pnl_float:.4f}, exit={exit_time} - фильтр НЕ блокирует!")
+                    logger.info(f"[LOSS_REENTRY_{symbol}] ✅✅✅ НАЙДЕНА ПРИБЫЛЬНАЯ СДЕЛКА! Сделка #{idx+1}: PnL={pnl_float:.4f}, exit={exit_time} - фильтр НЕ блокирует!")
                     break
                 else:
-                    all_losses = True
-                    logger.info(f"[LOSS_REENTRY_{symbol}] ❌ ПОСЛЕДНЯЯ сделка УБЫТОЧНАЯ! PnL={pnl_float:.4f}, exit={exit_time} - нужно проверить количество свечей")
+                    # ✅ КРИТИЧНО: Сохраняем последнюю убыточную сделку (она может быть самой новой)
+                    if last_loss_trade is None:
+                        last_loss_trade = trade
+                    logger.info(f"[LOSS_REENTRY_{symbol}] ❌ Сделка #{idx+1}: PnL={pnl_float:.4f} < 0 (убыток), продолжаем проверку...")
             except (ValueError, TypeError) as e:
                 # Если не удалось преобразовать PnL - считаем что не убыточная
                 all_losses = False
@@ -661,17 +664,17 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         # ✅ КРИТИЧНО: Все последние N сделок в минус - берем ПОСЛЕДНЮЮ УБЫТОЧНУЮ для подсчета свечей
         # Это должна быть первая сделка в списке (самая новая), так как они отсортированы DESC
         if not last_loss_trade:
-            # Если почему-то не сохранилась - берем первую из проверенных
-            last_loss_trade = closed_trades[0]
+            # Если почему-то не сохранилась - берем первую из проверенных (самую новую)
+            last_loss_trade = trades_to_check[0]
         
         logger.info(f"[LOSS_REENTRY_{symbol}] ✅ Используем ПОСЛЕДНЮЮ УБЫТОЧНУЮ сделку (ID={last_loss_trade.get('id', 'N/A')}) для подсчета свечей")
         
-        # Получаем timestamp закрытия последней сделки
-        exit_timestamp = last_trade.get('exit_timestamp')
-        exit_time_str = last_trade.get('exit_time')
+        # ✅ КРИТИЧНО: Получаем timestamp закрытия ПОСЛЕДНЕЙ УБЫТОЧНОЙ сделки
+        exit_timestamp = last_loss_trade.get('exit_timestamp')
+        exit_time_str = last_loss_trade.get('exit_time')
         
         # ✅ ОТЛАДКА: Логируем информацию о сделке
-        logger.debug(f"[LOSS_REENTRY_{symbol}] Последняя убыточная сделка: exit_timestamp={exit_timestamp}, exit_time={exit_time_str}, pnl={last_trade.get('pnl')}")
+        logger.debug(f"[LOSS_REENTRY_{symbol}] Последняя убыточная сделка: exit_timestamp={exit_timestamp}, exit_time={exit_time_str}, pnl={last_loss_trade.get('pnl')}, ID={last_loss_trade.get('id', 'N/A')}")
         
         if not exit_timestamp:
             if exit_time_str:
