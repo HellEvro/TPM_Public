@@ -822,13 +822,18 @@ def load_bots_state():
                         
                         bot_status = bot_data.get('status', 'UNKNOWN')
                         
-                        # ✅ КРИТИЧНО: НЕ загружаем ботов со статусом in_position_* при старте!
-                        # Эти боты должны быть либо удалены из БД при закрытии позиции, 
-                        # либо переведены в статус idle. sync_bots_with_exchange() проверит позиции
-                        # и либо обновит статус, либо удалит, если позиции нет на бирже.
-                        # Загрузка таких ботов приводит к их повторному добавлению и немедленному удалению.
+                        # ✅ КРИТИЧНО: НЕ загружаем ботов со статусом in_position_* при старте из БД!
+                        # Эти боты будут проверены sync_bots_with_exchange() - если позиция есть на бирже,
+                        # бот будет создан заново. Если позиции нет - бот не будет загружен вообще.
+                        # Это предотвращает загрузку несуществующих ботов с закрытыми позициями.
                         if bot_status in ['in_position_long', 'in_position_short']:
-                            logger.debug(f" ⏭️ Пропускаем бота {symbol} со статусом {bot_status} - будет проверен sync_bots_with_exchange()")
+                            logger.debug(f" ⏭️ Пропускаем бота {symbol} со статусом {bot_status} - будет проверен sync_bots_with_exchange() на реальные позиции")
+                            continue
+                        
+                        # ✅ КРИТИЧНО: НЕ загружаем ботов в статусе IDLE - они не имеют позиций!
+                        # Боты в статусе IDLE должны удаляться при закрытии позиций, а не оставаться в БД.
+                        if bot_status == 'idle':
+                            logger.debug(f" ⏭️ Пропускаем бота {symbol} со статусом {bot_status} - бот без позиции должен быть удален")
                             continue
                         
                         # ВАЖНО: НЕ проверяем зрелость при восстановлении!
@@ -1813,16 +1818,12 @@ def sync_positions_with_exchange():
                     has_active_orders = check_active_orders(symbol)
                     
                     if not has_active_orders:
-                        # Только если нет активных ордеров, сбрасываем бота
+                        # ✅ КРИТИЧНО: УДАЛЯЕМ бота, а не переводим в IDLE - позиции нет на бирже!
                         with bots_data_lock:
                             if symbol in bots_data['bots']:
-                                bots_data['bots'][symbol]['status'] = 'idle'
-                                bots_data['bots'][symbol]['position_side'] = None
-                                bots_data['bots'][symbol]['entry_price'] = None
-                                bots_data['bots'][symbol]['unrealized_pnl'] = 0
-                                bots_data['bots'][symbol]['last_update'] = datetime.now().isoformat()
+                                del bots_data['bots'][symbol]
                                 synced_count += 1
-                                logger.info(f"[POSITION_SYNC] ✅ Сброшен статус бота {symbol} на 'idle' (позиция закрыта)")
+                                logger.info(f"[POSITION_SYNC] 🗑️ Удален бот {symbol} - позиция закрыта на бирже")
                     else:
                         logger.info(f"[POSITION_SYNC] ⏳ Бот {symbol} имеет активные ордера - оставляем в позиции")
                         
