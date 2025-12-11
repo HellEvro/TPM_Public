@@ -2884,80 +2884,121 @@ def sync_bots_with_exchange():
                                 }
 
                                 bot_id = bot_data.get('id') or symbol
-                                # КРИТИЧНО: Логируем только если это была позиция бота (бот был в позиции)
-                                # Это НЕ ручные сделки трейдера, а закрытие позиций ботов вручную на бирже
-                                history_log_position_closed(
-                                    bot_id=bot_id,
-                                    symbol=symbol,
-                                    direction=direction or 'UNKNOWN',
-                                    exit_price=exit_price or entry_price or 0.0,
-                                    pnl=pnl_usdt,
-                                    roi=roi_percent,
-                                    reason='MANUAL_CLOSE',
-                                    entry_data=entry_data,
-                                    market_data=market_data,
-                                    is_simulated=False  # КРИТИЧНО: это сделки ботов, закрытые вручную на бирже
-                                )
                                 
-                                # КРИТИЧНО: Также сохраняем в bots_data.db для истории торговли ботов
-                                try:
-                                    from bot_engine.bots_database import get_bots_database
-                                    from datetime import datetime
-                                    bots_db = get_bots_database()
+                                # ✅ ПРОВЕРКА: Проверяем, не была ли уже закрыта эта позиция ранее
+                                # Это предотвращает повторную обработку одной и той же закрытой позиции
+                                from bot_engine.bots_database import get_bots_database
+                                from datetime import datetime
+                                bots_db = get_bots_database()
+                                
+                                entry_time_str = bot_data.get('position_start_time') or bot_data.get('entry_time')
+                                entry_timestamp = None
+                                if entry_time_str:
+                                    try:
+                                        entry_time = datetime.fromisoformat(entry_time_str.replace('Z', ''))
+                                        entry_timestamp = entry_time.timestamp() * 1000
+                                    except Exception:
+                                        pass
+                                
+                                # Проверяем, есть ли уже закрытая сделка с такими же параметрами
+                                already_closed_trade = False
+                                if entry_price and entry_price > 0:
+                                    try:
+                                        existing_trades = bots_db.get_bot_trades_history(
+                                            bot_id=bot_id,
+                                            symbol=symbol,
+                                            status='CLOSED',
+                                            limit=10  # Проверяем последние 10 закрытых сделок
+                                        )
+                                        
+                                        if existing_trades:
+                                            for existing_trade in existing_trades:
+                                                existing_entry_price = existing_trade.get('entry_price')
+                                                existing_entry_ts = existing_trade.get('entry_timestamp')
+                                                existing_close_reason = existing_trade.get('close_reason')
+                                                
+                                                # Сравниваем entry_price (с небольшой погрешностью для float)
+                                                price_match = existing_entry_price and abs(float(existing_entry_price) - float(entry_price)) < 0.0001
+                                                
+                                                # Если есть entry_timestamp, сравниваем и его
+                                                timestamp_match = True
+                                                if entry_timestamp and existing_entry_ts:
+                                                    # Считаем совпадением, если разница меньше 1 минуты (60000 мс)
+                                                    timestamp_match = abs(float(existing_entry_ts) - float(entry_timestamp)) < 60000
+                                                
+                                                # Если цена совпадает и (timestamp совпадает или его нет), и это MANUAL_CLOSE - это дубликат
+                                                if price_match and timestamp_match and existing_close_reason == 'MANUAL_CLOSE':
+                                                    already_closed_trade = True
+                                                    logger.debug(f"[SYNC_EXCHANGE] ⏭️ Позиция {symbol} уже была закрыта ранее (entry={entry_price:.6f}), пропускаем обработку")
+                                                    break
+                                    except Exception as check_error:
+                                        logger.debug(f"[SYNC_EXCHANGE] ⚠️ Ошибка проверки закрытых сделок для {symbol}: {check_error}")
+                                
+                                if not already_closed_trade:
+                                    # КРИТИЧНО: Логируем только если это была позиция бота (бот был в позиции)
+                                    # Это НЕ ручные сделки трейдера, а закрытие позиций ботов вручную на бирже
+                                    history_log_position_closed(
+                                        bot_id=bot_id,
+                                        symbol=symbol,
+                                        direction=direction or 'UNKNOWN',
+                                        exit_price=exit_price or entry_price or 0.0,
+                                        pnl=pnl_usdt,
+                                        roi=roi_percent,
+                                        reason='MANUAL_CLOSE',
+                                        entry_data=entry_data,
+                                        market_data=market_data,
+                                        is_simulated=False  # КРИТИЧНО: это сделки ботов, закрытые вручную на бирже
+                                    )
                                     
-                                    entry_time_str = bot_data.get('position_start_time') or bot_data.get('entry_time')
-                                    entry_timestamp = None
-                                    if entry_time_str:
-                                        try:
-                                            entry_time = datetime.fromisoformat(entry_time_str.replace('Z', ''))
-                                            entry_timestamp = entry_time.timestamp() * 1000
-                                        except Exception:
-                                            pass
-                                    
-                                    trade_data = {
-                                        'bot_id': bot_id,
-                                        'symbol': symbol,
-                                        'direction': direction or 'UNKNOWN',
-                                        'entry_price': entry_price or 0.0,
-                                        'exit_price': exit_price or entry_price or 0.0,
-                                        'entry_time': entry_time_str,
-                                        'exit_time': datetime.now().isoformat(),
-                                        'entry_timestamp': entry_timestamp,
-                                        'exit_timestamp': datetime.now().timestamp() * 1000,
-                                        'position_size_usdt': bot_data.get('volume_value'),
-                                        'position_size_coins': position_size_coins,
-                                        'pnl': pnl_usdt,
-                                        'roi': roi_percent,
-                                        'status': 'CLOSED',
-                                        'close_reason': 'MANUAL_CLOSE',
-                                        'decision_source': bot_data.get('decision_source', 'SCRIPT'),
-                                        'ai_decision_id': bot_data.get('ai_decision_id'),
-                                        'ai_confidence': bot_data.get('ai_confidence'),
-                                        'entry_rsi': None,  # TODO: получить из entry_data если есть
-                                        'exit_rsi': None,
-                                        'entry_trend': entry_data.get('trend'),
-                                        'exit_trend': None,
-                                        'entry_volatility': entry_data.get('volatility'),
-                                        'entry_volume_ratio': None,
-                                        'is_successful': pnl_usdt > 0 if pnl_usdt else False,
-                                        'is_simulated': False,
-                                        'source': 'bot_manual_close',
-                                        'order_id': None,
-                                        'extra_data': {
-                                            'entry_data': entry_data,
-                                            'market_data': market_data
+                                    # КРИТИЧНО: Также сохраняем в bots_data.db для истории торговли ботов
+                                    try:
+                                        trade_data = {
+                                            'bot_id': bot_id,
+                                            'symbol': symbol,
+                                            'direction': direction or 'UNKNOWN',
+                                            'entry_price': entry_price or 0.0,
+                                            'exit_price': exit_price or entry_price or 0.0,
+                                            'entry_time': entry_time_str,
+                                            'exit_time': datetime.now().isoformat(),
+                                            'entry_timestamp': entry_timestamp,
+                                            'exit_timestamp': datetime.now().timestamp() * 1000,
+                                            'position_size_usdt': bot_data.get('volume_value'),
+                                            'position_size_coins': position_size_coins,
+                                            'pnl': pnl_usdt,
+                                            'roi': roi_percent,
+                                            'status': 'CLOSED',
+                                            'close_reason': 'MANUAL_CLOSE',
+                                            'decision_source': bot_data.get('decision_source', 'SCRIPT'),
+                                            'ai_decision_id': bot_data.get('ai_decision_id'),
+                                            'ai_confidence': bot_data.get('ai_confidence'),
+                                            'entry_rsi': None,  # TODO: получить из entry_data если есть
+                                            'exit_rsi': None,
+                                            'entry_trend': entry_data.get('trend'),
+                                            'exit_trend': None,
+                                            'entry_volatility': entry_data.get('volatility'),
+                                            'entry_volume_ratio': None,
+                                            'is_successful': pnl_usdt > 0 if pnl_usdt else False,
+                                            'is_simulated': False,
+                                            'source': 'bot_manual_close',
+                                            'order_id': None,
+                                            'extra_data': {
+                                                'entry_data': entry_data,
+                                                'market_data': market_data
+                                            }
                                         }
-                                    }
-                                    
-                                    trade_id = bots_db.save_bot_trade_history(trade_data)
-                                    if trade_id:
-                                        logger.info(f"[SYNC_EXCHANGE] ✅ История сделки {symbol} сохранена в bots_data.db (ID: {trade_id})")
-                                except Exception as bots_db_error:
-                                    logger.warning(f"[SYNC_EXCHANGE] ⚠️ Ошибка сохранения истории в bots_data.db: {bots_db_error}")
-                                logger.info(
-                                    f"[SYNC_EXCHANGE] ✋ {symbol}: позиция закрыта вручную на бирже "
-                                    f"(entry={entry_price:.6f}, exit={exit_price:.6f}, pnl={pnl_usdt:.2f} USDT)"
-                                )
+                                        
+                                        trade_id = bots_db.save_bot_trade_history(trade_data)
+                                        if trade_id:
+                                            logger.info(f"[SYNC_EXCHANGE] ✅ История сделки {symbol} сохранена в bots_data.db (ID: {trade_id})")
+                                    except Exception as bots_db_error:
+                                        logger.warning(f"[SYNC_EXCHANGE] ⚠️ Ошибка сохранения истории в bots_data.db: {bots_db_error}")
+                                    logger.info(
+                                        f"[SYNC_EXCHANGE] ✋ {symbol}: позиция закрыта вручную на бирже "
+                                        f"(entry={entry_price:.6f}, exit={exit_price:.6f}, pnl={pnl_usdt:.2f} USDT)"
+                                    )
+                                else:
+                                    # Позиция уже была обработана ранее - просто удаляем бота без повторного логирования
+                                    logger.debug(f"[SYNC_EXCHANGE] ⏭️ {symbol}: позиция уже была обработана ранее, пропускаем повторное логирование")
                             
                             # ✅ ПРОВЕРЯЕМ ДЕЛИСТИНГ: Получаем статус инструмента
                             try:
