@@ -617,22 +617,6 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
             else:
                 return {'allowed': True, 'reason': 'Нет данных о времени закрытия', 'candles_passed': None}
         
-        if not exit_timestamp:
-            if exit_time_str:
-                try:
-                    from datetime import datetime
-                    if isinstance(exit_time_str, str):
-                        exit_dt = datetime.fromisoformat(exit_time_str.replace('Z', '+00:00'))
-                        exit_timestamp = int(exit_dt.timestamp())
-                    else:
-                        exit_timestamp = int(exit_time_str)
-                except Exception as e:
-                    logger.error(f"[LOSS_REENTRY_{symbol}] Ошибка преобразования exit_time: {e}")
-                    return {'allowed': True, 'reason': 'Не удалось получить время закрытия', 'candles_passed': None}
-            else:
-                logger.warning(f"[LOSS_REENTRY_{symbol}] Нет exit_timestamp и exit_time")
-                return {'allowed': True, 'reason': 'Нет данных о времени закрытия', 'candles_passed': None}
-        
         # Если exit_timestamp в миллисекундах, конвертируем в секунды
         if exit_timestamp > 1e12:
             exit_timestamp = exit_timestamp / 1000
@@ -700,6 +684,16 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         
     except Exception as e:
         # При ошибке разрешаем вход (безопаснее, как в bot_class.py)
+        logger.error(f"{symbol}: ❌ Ошибка проверки защиты от повторных входов (static): {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
+        return {
+            'allowed': True,
+            'reason': f'Ошибка проверки: {str(e)}',
+            'candles_passed': None
+        }
+        
+    except Exception as e:
         logger.debug(f"{symbol}: Ошибка проверки защиты от повторных входов: {e}")
         return {'allowed': True, 'reason': f'Ошибка проверки: {str(e)}', 'candles_passed': None}
 
@@ -1320,14 +1314,9 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                         loss_reentry_result = _check_loss_reentry_protection_static(
                             symbol, candles, loss_reentry_count, loss_reentry_candles, individual_settings
                         )
-                        
                         if loss_reentry_result:
-                            allowed_value = loss_reentry_result.get('allowed', True)
-                            blocked_value = not allowed_value
-                            logger.info(f"[LOSS_REENTRY_{symbol}] 🔍 allowed={allowed_value}, blocked={blocked_value}, reason={loss_reentry_result.get('reason', 'N/A')}")
-                            
                             loss_reentry_info = {
-                                'blocked': blocked_value,
+                                'blocked': not loss_reentry_result.get('allowed', True),
                                 'reason': loss_reentry_result.get('reason', ''),
                                 'filter_type': 'loss_reentry_protection',
                                 'candles_passed': loss_reentry_result.get('candles_passed'),
@@ -1335,7 +1324,6 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                                 'loss_count': loss_reentry_count
                             }
                         else:
-                            logger.warning(f"[LOSS_REENTRY_{symbol}] ⚠️ loss_reentry_result is None/empty, разрешаем вход")
                             loss_reentry_info = {
                                 'blocked': False,
                                 'reason': 'Защита от повторных входов: проверка не выполнена',
