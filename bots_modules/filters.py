@@ -663,6 +663,19 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
                 if last_candle_timestamp > 1e12:
                     last_candle_timestamp = last_candle_timestamp / 1000
         
+        # ✅ КРИТИЧНО: Если сделка закрыта ПОСЛЕ последней свечи - используем текущее время
+        # Это происходит когда свечи устарели или не обновлены
+        import time
+        current_time = time.time()
+        
+        # Определяем время для расчета: если сделка закрыта после последней свечи - используем текущее время
+        if exit_timestamp > last_candle_timestamp:
+            # Сделка закрыта после последней свечи - используем текущее время
+            calculation_timestamp = current_time
+            logger.debug(f"[LOSS_REENTRY_{symbol}] Сделка закрыта ПОСЛЕ последней свечи (exit={exit_timestamp} > last_candle={last_candle_timestamp}), используем текущее время: {calculation_timestamp}")
+        else:
+            calculation_timestamp = last_candle_timestamp
+        
         # ✅ ИСПРАВЛЕНО: Подсчитываем количество свечей с момента закрытия
         # Свечи уже отсортированы по времени (старые -> новые)
         candles_passed = 0
@@ -681,20 +694,20 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
                 break
         
         # ✅ ИСПРАВЛЕНО: Если не нашли свечей через перебор, считаем по времени
-        # Это более надежный метод для 6h свечей
+        # Используем calculation_timestamp (текущее время если сделка после последней свечи)
         if candles_passed == 0:
-            time_diff_seconds = last_candle_timestamp - exit_timestamp
-            logger.debug(f"[LOSS_REENTRY_{symbol}] Перебор не нашел свечей, считаем по времени: diff={time_diff_seconds}s, last_candle={last_candle_timestamp}, exit={exit_timestamp}")
+            time_diff_seconds = calculation_timestamp - exit_timestamp
+            logger.debug(f"[LOSS_REENTRY_{symbol}] Перебор не нашел свечей, считаем по времени: diff={time_diff_seconds}s, calc_time={calculation_timestamp}, exit={exit_timestamp}")
             if time_diff_seconds > 0:
                 # Считаем количество полных 6-часовых интервалов
                 candles_passed = max(1, int(time_diff_seconds / CANDLE_INTERVAL_SECONDS))
                 logger.debug(f"[LOSS_REENTRY_{symbol}] Подсчитано по времени: {candles_passed} свечей (time_diff={time_diff_seconds}s / {CANDLE_INTERVAL_SECONDS}s)")
             else:
-                logger.warning(f"[LOSS_REENTRY_{symbol}] time_diff_seconds <= 0: {time_diff_seconds} (last_candle={last_candle_timestamp}, exit={exit_timestamp})")
+                logger.warning(f"[LOSS_REENTRY_{symbol}] time_diff_seconds <= 0: {time_diff_seconds} (calc_time={calculation_timestamp}, exit={exit_timestamp})")
         
-        # ✅ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: Если последняя свеча явно после закрытия
-        if candles_passed == 0 and last_candle_timestamp > exit_timestamp:
-            # Минимум 1 свеча прошла, если текущая свеча после закрытия
+        # ✅ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: Если расчетное время явно после закрытия
+        if candles_passed == 0 and calculation_timestamp > exit_timestamp:
+            # Минимум 1 свеча прошла, если текущее время после закрытия
             candles_passed = 1
             logger.debug(f"[LOSS_REENTRY_{symbol}] Установлено candles_passed=1 через дополнительную проверку")
         
