@@ -637,15 +637,26 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         
         logger.debug(f"[LOSS_REENTRY_{symbol}] exit_timestamp после конвертации: {exit_timestamp} (было {original_exit_timestamp})")
         
+        # ✅ ИСПРАВЛЕНО: Конвертируем loss_reentry_candles в int ДО использования
+        try:
+            loss_reentry_candles_int = int(loss_reentry_candles) if loss_reentry_candles is not None else 3
+        except (ValueError, TypeError):
+            loss_reentry_candles_int = 3
+        
         # Подсчитываем количество свечей, прошедших с момента закрытия
         CANDLE_INTERVAL_SECONDS = 6 * 3600  # 6 часов
         
         if not candles or len(candles) == 0:
+            logger.warning(f"[LOSS_REENTRY_{symbol}] Нет свечей для проверки!")
             return {'allowed': True, 'reason': 'Нет свечей для проверки', 'candles_passed': None}
         
         # Получаем timestamp последней свечи
         last_candle = candles[-1]
         last_candle_timestamp = last_candle.get('timestamp', 0)
+        if not last_candle_timestamp or last_candle_timestamp == 0:
+            logger.error(f"[LOSS_REENTRY_{symbol}] КРИТИЧНО: last_candle_timestamp = 0! Свечи: {len(candles)}, последняя свеча: {last_candle}")
+            return {'allowed': True, 'reason': 'Ошибка: timestamp последней свечи = 0', 'candles_passed': None}
+        
         if last_candle_timestamp > 1e12:
             last_candle_timestamp = last_candle_timestamp / 1000
         
@@ -683,13 +694,7 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
             candles_passed = 1
             logger.debug(f"[LOSS_REENTRY_{symbol}] Установлено candles_passed=1 через дополнительную проверку")
         
-        logger.debug(f"[LOSS_REENTRY_{symbol}] ИТОГО: candles_passed={candles_passed}, required={loss_reentry_candles_int}")
-        
-        # ✅ ИСПРАВЛЕНО: Конвертируем loss_reentry_candles в int для корректного сравнения
-        try:
-            loss_reentry_candles_int = int(loss_reentry_candles) if loss_reentry_candles is not None else 3
-        except (ValueError, TypeError):
-            loss_reentry_candles_int = 3
+        logger.debug(f"[LOSS_REENTRY_{symbol}] ИТОГО: candles_passed={candles_passed}, required={loss_reentry_candles_int}, exit_timestamp={exit_timestamp}, last_candle_timestamp={last_candle_timestamp}")
         
         # Проверяем, прошло ли достаточно свечей
         if candles_passed < loss_reentry_candles_int:
