@@ -647,18 +647,21 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         CANDLE_INTERVAL_SECONDS = 6 * 3600  # 6 часов
         
         if not candles or len(candles) == 0:
-            logger.warning(f"[LOSS_REENTRY_{symbol}] Нет свечей для проверки!")
-            return {'allowed': True, 'reason': 'Нет свечей для проверки', 'candles_passed': None}
-        
-        # Получаем timestamp последней свечи
-        last_candle = candles[-1]
-        last_candle_timestamp = last_candle.get('timestamp', 0)
-        if not last_candle_timestamp or last_candle_timestamp == 0:
-            logger.error(f"[LOSS_REENTRY_{symbol}] КРИТИЧНО: last_candle_timestamp = 0! Свечи: {len(candles)}, последняя свеча: {last_candle}")
-            return {'allowed': True, 'reason': 'Ошибка: timestamp последней свечи = 0', 'candles_passed': None}
-        
-        if last_candle_timestamp > 1e12:
-            last_candle_timestamp = last_candle_timestamp / 1000
+            logger.warning(f"[LOSS_REENTRY_{symbol}] Нет свечей для проверки! Используем текущее время")
+            # ✅ ИСПРАВЛЕНО: Если нет свечей, используем текущее время
+            import time
+            last_candle_timestamp = time.time()
+        else:
+            # Получаем timestamp последней свечи
+            last_candle = candles[-1]
+            last_candle_timestamp = last_candle.get('timestamp', 0)
+            if not last_candle_timestamp or last_candle_timestamp == 0:
+                logger.warning(f"[LOSS_REENTRY_{symbol}] last_candle_timestamp = 0! Используем текущее время. Свечи: {len(candles)}, последняя свеча: {last_candle}")
+                import time
+                last_candle_timestamp = time.time()
+            else:
+                if last_candle_timestamp > 1e12:
+                    last_candle_timestamp = last_candle_timestamp / 1000
         
         # ✅ ИСПРАВЛЕНО: Подсчитываем количество свечей с момента закрытия
         # Свечи уже отсортированы по времени (старые -> новые)
