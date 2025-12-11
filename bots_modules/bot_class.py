@@ -809,9 +809,9 @@ class NewTradingBot:
                     logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Нет свечей для проверки защиты от повторных входов")
                     return {'allowed': True, 'reason': 'No candles provided'}
                 
-                # Получаем timestamp последней свечи
+                # ✅ ИСПРАВЛЕНО: Получаем timestamp последней свечи (проверяем оба варианта: 'timestamp' и 'time')
                 last_candle = candles[-1]  # Последняя свеча - самая новая
-                last_candle_timestamp = last_candle.get('timestamp', 0)
+                last_candle_timestamp = last_candle.get('timestamp') or last_candle.get('time', 0)
                 
                 # Если timestamp в миллисекундах, конвертируем в секунды
                 if last_candle_timestamp > 1e12:
@@ -821,9 +821,10 @@ class NewTradingBot:
                 # Свечи уже отсортированы по времени (старые -> новые)
                 candles_passed = 0
                 
-                # Ищем первую свечу, которая ПОЛНОСТЬЮ позже времени закрытия
+                # ✅ ИСПРАВЛЕНО: Ищем первую свечу, которая ПОЛНОСТЬЮ позже времени закрытия
+                # Проверяем оба варианта ключа: 'timestamp' и 'time'
                 for i, candle in enumerate(candles):
-                    candle_timestamp = candle.get('timestamp', 0)
+                    candle_timestamp = candle.get('timestamp') or candle.get('time', 0)
                     if candle_timestamp > 1e12:
                         candle_timestamp = candle_timestamp / 1000
                     

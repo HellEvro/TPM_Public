@@ -652,9 +652,9 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
             import time
             last_candle_timestamp = time.time()
         else:
-            # Получаем timestamp последней свечи
+            # ✅ ИСПРАВЛЕНО: Получаем timestamp последней свечи (проверяем оба варианта: 'timestamp' и 'time')
             last_candle = candles[-1]
-            last_candle_timestamp = last_candle.get('timestamp', 0)
+            last_candle_timestamp = last_candle.get('timestamp') or last_candle.get('time', 0)
             if not last_candle_timestamp or last_candle_timestamp == 0:
                 logger.warning(f"[LOSS_REENTRY_{symbol}] last_candle_timestamp = 0! Используем текущее время. Свечи: {len(candles)}, последняя свеча: {last_candle}")
                 import time
@@ -667,10 +667,11 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         # Свечи уже отсортированы по времени (старые -> новые)
         candles_passed = 0
         
-        # Ищем первую свечу, которая ПОЛНОСТЬЮ позже времени закрытия
+        # ✅ ИСПРАВЛЕНО: Ищем первую свечу, которая ПОЛНОСТЬЮ позже времени закрытия
         # Свеча считается прошедшей, если её начало >= времени закрытия
+        # Проверяем оба варианта ключа: 'timestamp' и 'time'
         for i, candle in enumerate(candles):
-            candle_timestamp = candle.get('timestamp', 0)
+            candle_timestamp = candle.get('timestamp') or candle.get('time', 0)
             if candle_timestamp > 1e12:
                 candle_timestamp = candle_timestamp / 1000
             
