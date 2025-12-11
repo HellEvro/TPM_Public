@@ -576,25 +576,38 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         # Важно: проверяем именно ПОСЛЕДНИЕ N сделок по времени закрытия (они уже отсортированы DESC)
         all_losses = True
         trade_pnls = []
+        
+        # ✅ КРИТИЧНО: Логируем ВСЕ полученные сделки для отладки
+        logger.info(f"[LOSS_REENTRY_{symbol}] 🔍 Получено {len(closed_trades)} сделок для проверки (запрошено {loss_reentry_count})")
+        
         for idx, trade in enumerate(closed_trades):
             pnl = trade.get('pnl', 0)
             exit_time = trade.get('exit_time') or trade.get('exit_timestamp')
+            entry_time = trade.get('entry_time') or trade.get('entry_timestamp')
+            trade_id = trade.get('id', 'N/A')
+            
             # ✅ КРИТИЧНО: Проверяем что PnL определен и действительно отрицательный (строго < 0)
             try:
                 pnl_float = float(pnl) if pnl is not None else 0.0
-                trade_pnls.append(f"#{idx+1}: PnL={pnl_float}, exit={exit_time}")
+                trade_status = "✅ ПРИБЫЛЬ" if pnl_float > 0 else "❌ УБЫТОК" if pnl_float < 0 else "➖ БЕЗУБЫТОК"
+                trade_pnls.append(f"#{idx+1}: {trade_status} PnL={pnl_float:.4f}, exit={exit_time}, id={trade_id}")
+                
+                # ✅ КРИТИЧНО: Логируем каждую сделку отдельно для отладки
+                logger.info(f"[LOSS_REENTRY_{symbol}] Сделка #{idx+1}: ID={trade_id}, PnL={pnl_float:.4f}, exit_time={exit_time}, entry_time={entry_time}")
+                
                 # Если хотя бы одна сделка >= 0 (прибыльная или безубыточная) - не все в минус
                 if pnl_float >= 0:
                     all_losses = False
-                    logger.debug(f"[LOSS_REENTRY_{symbol}] Найдена прибыльная сделка среди последних {loss_reentry_count}: PnL={pnl_float}")
+                    logger.info(f"[LOSS_REENTRY_{symbol}] ✅ НАЙДЕНА ПРИБЫЛЬНАЯ СДЕЛКА! Сделка #{idx+1}: PnL={pnl_float:.4f}, exit={exit_time} - фильтр НЕ блокирует!")
                     break
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as e:
                 # Если не удалось преобразовать PnL - считаем что не убыточная
                 all_losses = False
-                logger.warning(f"[LOSS_REENTRY_{symbol}] Ошибка преобразования PnL: {pnl}")
+                logger.error(f"[LOSS_REENTRY_{symbol}] ❌ Ошибка преобразования PnL для сделки #{idx+1}: pnl={pnl}, ошибка={e}")
                 break
         
-        logger.debug(f"[LOSS_REENTRY_{symbol}] Проверка последних {loss_reentry_count} сделок: {', '.join(trade_pnls)}, all_losses={all_losses}")
+        logger.info(f"[LOSS_REENTRY_{symbol}] 📊 ИТОГО проверки: {len(trade_pnls)} сделок, all_losses={all_losses}")
+        logger.debug(f"[LOSS_REENTRY_{symbol}] Детали сделок: {', '.join(trade_pnls)}")
         
         # ✅ КРИТИЧНО: Если НЕ ВСЕ последние N сделок в минус - РАЗРЕШАЕМ вход (фильтр НЕ работает)
         if not all_losses:
