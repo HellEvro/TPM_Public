@@ -624,27 +624,33 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         if last_candle_timestamp > 1e12:
             last_candle_timestamp = last_candle_timestamp / 1000
         
-        # Подсчитываем количество свечей с момента закрытия
+        # ✅ ИСПРАВЛЕНО: Подсчитываем количество свечей с момента закрытия
+        # Свечи уже отсортированы по времени (старые -> новые)
         candles_passed = 0
+        
+        # Ищем первую свечу, которая ПОЛНОСТЬЮ позже времени закрытия
+        # Свеча считается прошедшей, если её начало >= времени закрытия
         for i, candle in enumerate(candles):
             candle_timestamp = candle.get('timestamp', 0)
             if candle_timestamp > 1e12:
                 candle_timestamp = candle_timestamp / 1000
             
-            if candle_timestamp > exit_timestamp:
+            # Если начало свечи >= времени закрытия, считаем эту и все последующие свечи
+            if candle_timestamp >= exit_timestamp:
                 candles_passed = len(candles) - i
                 break
         
-        # Если не нашли свечей после закрытия, считаем по времени
+        # ✅ ИСПРАВЛЕНО: Если не нашли свечей через перебор, считаем по времени
+        # Это более надежный метод для 6h свечей
         if candles_passed == 0:
             time_diff_seconds = last_candle_timestamp - exit_timestamp
             if time_diff_seconds > 0:
-                candles_passed = int(time_diff_seconds / CANDLE_INTERVAL_SECONDS)
+                # Считаем количество полных 6-часовых интервалов
+                candles_passed = max(1, int(time_diff_seconds / CANDLE_INTERVAL_SECONDS))
         
-        # ✅ ИСПРАВЛЕНО: Если последняя свеча совпадает с временем закрытия или позже - считаем её как прошедшую
-        # Проверяем, находится ли последняя свеча после времени закрытия
-        if candles_passed == 0 and last_candle_timestamp >= exit_timestamp:
-            # Если последняя свеча >= времени закрытия, значит прошла минимум 1 свеча
+        # ✅ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: Если последняя свеча явно после закрытия
+        if candles_passed == 0 and last_candle_timestamp > exit_timestamp:
+            # Минимум 1 свеча прошла, если текущая свеча после закрытия
             candles_passed = 1
         
         # ✅ ИСПРАВЛЕНО: Конвертируем loss_reentry_candles в int для корректного сравнения
