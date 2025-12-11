@@ -2756,11 +2756,6 @@ def sync_bots_with_exchange():
             with bots_data_lock:
                 system_bot_symbols = set(bots_data['bots'].keys())
             
-            # ✅ ОТЛАДКА: Логируем для диагностики
-            logger.debug(f"[SYNC_EXCHANGE] 📊 Позиций на бирже: {len(exchange_positions)}, Ботов в системе: {len(system_bot_symbols)}")
-            logger.debug(f"[SYNC_EXCHANGE] 🔍 Символы позиций: {sorted(exchange_positions.keys())[:10]}")
-            logger.debug(f"[SYNC_EXCHANGE] 🔍 Символы ботов: {sorted(system_bot_symbols)[:10]}")
-            
             # Разделяем позиции на бирже на "с ботом" и "без бота"
             positions_with_bots = {}
             positions_without_bots = {}
@@ -2773,8 +2768,6 @@ def sync_bots_with_exchange():
                     positions_with_bots[symbol] = pos_data
                 else:
                     positions_without_bots[symbol] = pos_data
-            
-            logger.debug(f"[SYNC_EXCHANGE] ✅ Позиций с ботами: {len(positions_with_bots)}, без ботов: {len(positions_without_bots)}")
             
             # Логируем только итоговый результат
             
