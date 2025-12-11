@@ -672,9 +672,10 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         if exit_timestamp > last_candle_timestamp:
             # Сделка закрыта после последней свечи - используем текущее время
             calculation_timestamp = current_time
-            logger.debug(f"[LOSS_REENTRY_{symbol}] Сделка закрыта ПОСЛЕ последней свечи (exit={exit_timestamp} > last_candle={last_candle_timestamp}), используем текущее время: {calculation_timestamp}")
+            logger.debug(f"[LOSS_REENTRY_{symbol}] ⚠️ Сделка закрыта ПОСЛЕ последней свечи (exit={exit_timestamp} > last_candle={last_candle_timestamp}), используем текущее время: {calculation_timestamp}")
         else:
             calculation_timestamp = last_candle_timestamp
+            logger.debug(f"[LOSS_REENTRY_{symbol}] ✅ Сделка закрыта ДО последней свечи, используем last_candle_timestamp: {calculation_timestamp}")
         
         # ✅ ИСПРАВЛЕНО: Подсчитываем количество свечей с момента закрытия
         # Свечи уже отсортированы по времени (старые -> новые)
