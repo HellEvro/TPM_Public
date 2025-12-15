@@ -564,38 +564,26 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
             offset=0
         )
         
-        # ✅ ДИАГНОСТИКА: Логируем для отладки
-        logger.debug(f"[LOSS_REENTRY_{symbol}] Проверка: найдено {len(closed_trades) if closed_trades else 0} закрытых сделок (требуется {loss_reentry_count})")
-        
         # Если нет закрытых сделок - разрешаем вход, НЕ показываем фильтр
         if not closed_trades or len(closed_trades) < loss_reentry_count:
-            logger.debug(f"[LOSS_REENTRY_{symbol}] ✅ Фильтр НЕ применяется: недостаточно сделок ({len(closed_trades) if closed_trades else 0} < {loss_reentry_count})")
             return None  # Недостаточно сделок - фильтр не применяется
         
         # ✅ ИСПРАВЛЕНО: Проверяем, все ли последние N сделок были в минус
         # Важно: проверяем именно ПОСЛЕДНИЕ N сделок по времени закрытия (они уже отсортированы DESC)
         all_losses = True
-        loss_details = []
-        for idx, trade in enumerate(closed_trades):
+        for trade in closed_trades:
             pnl = trade.get('pnl', 0)
-            exit_time = trade.get('exit_time') or trade.get('exit_timestamp')
             # ✅ КРИТИЧНО: Проверяем что PnL определен и действительно отрицательный (строго < 0)
             try:
                 pnl_float = float(pnl) if pnl is not None else 0.0
-                loss_details.append(f"#{idx+1}: PnL={pnl_float:.4f} USDT")
                 # Если хотя бы одна сделка >= 0 (прибыльная или безубыточная) - не все в минус
                 if pnl_float >= 0:
                     all_losses = False
-                    logger.debug(f"[LOSS_REENTRY_{symbol}] ❌ НЕ все в минус: сделка #{idx+1} имеет PnL={pnl_float:.4f} >= 0")
                     break
-            except (ValueError, TypeError) as e:
+            except (ValueError, TypeError):
                 # Если не удалось преобразовать PnL - считаем что не убыточная
-                logger.warning(f"[LOSS_REENTRY_{symbol}] ⚠️ Ошибка преобразования PnL для сделки #{idx+1}: {pnl}, ошибка: {e}")
                 all_losses = False
                 break
-        
-        if all_losses:
-            logger.info(f"[LOSS_REENTRY_{symbol}] 🚫 ВСЕ {loss_reentry_count} последних сделок в минус: {', '.join(loss_details)}")
         
         # ✅ КРИТИЧНО: Если НЕ ВСЕ последние N сделок в минус - РАЗРЕШАЕМ вход (фильтр НЕ работает)
         # НЕ возвращаем информацию - фильтр не применяется, не показываем в UI
@@ -674,19 +662,15 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
             loss_reentry_candles_int = 3
         
         # Проверяем, прошло ли достаточно свечей
-        logger.debug(f"[LOSS_REENTRY_{symbol}] Прошло свечей: {candles_passed}, требуется: {loss_reentry_candles_int}")
         if candles_passed < loss_reentry_candles_int:
             # ✅ ФИЛЬТР БЛОКИРУЕТ - показываем в UI
-            reason = f'Последние {loss_reentry_count} сделок в минус, прошло только {candles_passed} свечей (требуется {loss_reentry_candles_int})'
-            logger.warning(f"[LOSS_REENTRY_{symbol}] 🚫 ФИЛЬТР БЛОКИРУЕТ ВХОД: {reason}")
             return {
                 'allowed': False,
-                'reason': reason,
+                'reason': f'Последние {loss_reentry_count} сделок в минус, прошло только {candles_passed} свечей (требуется {loss_reentry_candles_int})',
                 'candles_passed': candles_passed
             }
         
         # ✅ Прошло достаточно свечей - фильтр НЕ блокирует и НЕ показываем в UI
-        logger.debug(f"[LOSS_REENTRY_{symbol}] ✅ Прошло достаточно свечей ({candles_passed} >= {loss_reentry_candles_int}) - фильтр НЕ блокирует")
         return None
         
     except Exception as e:
@@ -1426,9 +1410,11 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
         if signal in ['ENTER_LONG', 'ENTER_SHORT']:
             logger.info(f"🎯 {symbol}: RSI={rsi:.1f} {trend_emoji}{trend_display} (${current_price:.4f}) → {signal}")
         elif signal == 'WAIT' and rsi <= SystemConfig.RSI_OVERSOLD and trend == 'DOWN' and avoid_down_trend:
-            logger.debug(f"🚫 {symbol}: RSI={rsi:.1f} {trend_emoji}{trend_display} LONG заблокирован (фильтр DOWN тренда)")
+            # Убрано избыточное логирование
+            pass
         elif signal == 'WAIT' and rsi >= SystemConfig.RSI_OVERBOUGHT and trend == 'UP' and avoid_up_trend:
-            logger.debug(f"🚫 {symbol}: RSI={rsi:.1f} {trend_emoji}{trend_display} SHORT заблокирован (фильтр UP тренда)")
+            # Убрано избыточное логирование
+            pass
         
         debug_payload = {
             'source': data_source,
