@@ -285,7 +285,7 @@ def check_coin_maturity_with_storage(symbol, candles):
     """Проверяет зрелость монеты с использованием постоянного хранилища"""
     # Сначала проверяем постоянное хранилище
     if is_coin_mature_stored(symbol):
-        logger.debug(f" {symbol}: найдена в постоянном хранилище зрелых монет")
+        # Убрано избыточное логирование
         return {
             'is_mature': True,
             'details': {'stored': True, 'from_storage': True}
@@ -374,8 +374,7 @@ def check_coin_maturity(symbol, candles):
         if not is_mature:
             failed_checks = [check for check, passed in maturity_checks.items() if not passed]
             reason = f'Не пройдены проверки: {", ".join(failed_checks)}'
-            logger.debug(f"{symbol}: {reason}")
-            logger.debug(f"{symbol}: Свечи={len(candles)}, RSI={rsi_min:.1f}-{rsi_max:.1f}")
+            # Убрано избыточное логирование
         else:
             reason = None  # Для зрелых монет reason не нужен
         
