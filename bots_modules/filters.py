@@ -2158,9 +2158,38 @@ def process_auto_bot_signals(exchange_obj=None):
                 logger.info(f" 🚀 Создаем бота для {symbol} ({coin['signal']}, RSI: {coin['rsi']:.1f})")
                 new_bot = create_new_bot(symbol, exchange_obj=exchange_obj)
                 
-                # ✅ КРИТИЧНО: Сразу входим в позицию!
+                # ✅ КРИТИЧНО: Проверяем should_open_long/short ПЕРЕД входом в позицию!
+                # Это важно, так как там проверяется фильтр loss_reentry_protection
                 signal = coin['signal']
                 direction = 'LONG' if signal == 'ENTER_LONG' else 'SHORT'
+                
+                # Получаем свечи для проверки
+                candles = None
+                if symbol in coins_rsi_data.get('candles_cache', {}):
+                    candles = coins_rsi_data['candles_cache'][symbol].get('candles')
+                
+                if not candles:
+                    try:
+                        candles_data = get_coin_candles_only(symbol, exchange_obj=exchange_obj)
+                        if candles_data:
+                            candles = candles_data.get('candles')
+                    except Exception:
+                        pass
+                
+                # Получаем RSI и тренд
+                rsi = coin.get('rsi') or coin.get('rsi6h', 50)
+                trend = coin.get('trend') or coin.get('trend6h', 'NEUTRAL')
+                
+                # ✅ КРИТИЧНО: Проверяем should_open_long/short ПЕРЕД входом!
+                if direction == 'LONG':
+                    if not new_bot.should_open_long(rsi, trend, candles):
+                        logger.warning(f" 🚫 {symbol}: should_open_long вернул False - пропускаем вход в позицию")
+                        continue
+                else:  # SHORT
+                    if not new_bot.should_open_short(rsi, trend, candles):
+                        logger.warning(f" 🚫 {symbol}: should_open_short вернул False - пропускаем вход в позицию")
+                        continue
+                
                 logger.info(f" 📈 Входим в позицию {direction} для {symbol}")
                 new_bot.enter_position(direction)
                 
