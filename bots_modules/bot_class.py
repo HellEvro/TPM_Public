@@ -555,8 +555,9 @@ class NewTradingBot:
             # ⚠️ ПРИМЕНЯЕМ ТОЛЬКО если позиция НЕ открыта
             if not is_in_position:
                 loss_reentry_result = self.check_loss_reentry_protection(candles)
-                if not loss_reentry_result['allowed']:
-                    logger.info(f"[NEW_BOT_{self.symbol}] 🚫 Защита от повторных входов блокирует LONG: {loss_reentry_result['reason']}")
+                # ✅ КРИТИЧНО: Строгая проверка - если allowed == False, БЛОКИРУЕМ вход
+                if loss_reentry_result.get('allowed') is False:
+                    logger.error(f"[NEW_BOT_{self.symbol}] 🚫🚫🚫 ЗАЩИТА ОТ ПОВТОРНЫХ ВХОДОВ БЛОКИРУЕТ LONG! 🚫🚫🚫 Причина: {loss_reentry_result.get('reason', 'Unknown')}")
                     return False
             else:
                 logger.debug(f"[NEW_BOT_{self.symbol}] ⏭️ Пропуск фильтра защиты от повторных входов: позиция уже открыта (status={self.status}, position_side={self.position_side})")
@@ -661,8 +662,9 @@ class NewTradingBot:
             # ⚠️ ПРИМЕНЯЕМ ТОЛЬКО если позиция НЕ открыта
             if not is_in_position:
                 loss_reentry_result = self.check_loss_reentry_protection(candles)
-                if not loss_reentry_result['allowed']:
-                    logger.info(f"[NEW_BOT_{self.symbol}] 🚫 Защита от повторных входов блокирует SHORT: {loss_reentry_result['reason']}")
+                # ✅ КРИТИЧНО: Строгая проверка - если allowed == False, БЛОКИРУЕМ вход
+                if loss_reentry_result.get('allowed') is False:
+                    logger.error(f"[NEW_BOT_{self.symbol}] 🚫🚫🚫 ЗАЩИТА ОТ ПОВТОРНЫХ ВХОДОВ БЛОКИРУЕТ SHORT! 🚫🚫🚫 Причина: {loss_reentry_result.get('reason', 'Unknown')}")
                     return False
             else:
                 logger.debug(f"[NEW_BOT_{self.symbol}] ⏭️ Пропуск фильтра защиты от повторных входов: позиция уже открыта (status={self.status}, position_side={self.position_side})")
