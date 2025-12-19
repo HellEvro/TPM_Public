@@ -366,6 +366,12 @@ class AutoTrainer:
             True если успешно
         """
         try:
+            # УЛУЧШЕНИЕ: Проверяем существование скрипта перед запуском
+            if not script_path.exists():
+                logger.error(f"[AutoTrainer] ❌ Скрипт не найден: {script_path}")
+                logger.error(f"[AutoTrainer]    Полный путь: {script_path.absolute()}")
+                return False
+            
             cmd = [sys.executable, str(script_path)]
             if args:
                 cmd.extend([str(arg) for arg in args])
@@ -383,7 +389,32 @@ class AutoTrainer:
                 logger.info(f"[AutoTrainer] ✅ {model_name} успешно обучен")
                 return True
             else:
-                logger.error(f"[AutoTrainer] ❌ Ошибка обучения {model_name}: {result.stderr}")
+                # УЛУЧШЕНИЕ: Логируем и stdout и stderr для полной диагностики
+                error_output = ""
+                
+                # Собираем вывод из stderr
+                if result.stderr:
+                    error_output += f"STDERR:\n{result.stderr}\n"
+                
+                # Собираем вывод из stdout (могут быть ошибки и там)
+                if result.stdout:
+                    # Проверяем, есть ли в stdout признаки ошибки
+                    stdout_lines = result.stdout.strip().split('\n')
+                    error_lines = [line for line in stdout_lines if any(keyword in line.upper() for keyword in ['ERROR', 'EXCEPTION', 'TRACEBACK', 'FAILED', 'FAIL'])]
+                    if error_lines:
+                        error_output += f"STDOUT (ошибки):\n" + "\n".join(error_lines) + "\n"
+                    # Если stderr пустой, показываем последние строки stdout
+                    elif not result.stderr:
+                        error_output += f"STDOUT (последние строки):\n" + "\n".join(stdout_lines[-10:]) + "\n"
+                
+                # Ограничиваем длину вывода (первые 1000 символов)
+                if len(error_output) > 1000:
+                    error_preview = error_output[:1000]
+                    error_preview += f"\n... (еще {len(error_output) - 1000} символов)"
+                    logger.error(f"[AutoTrainer] ❌ Ошибка обучения {model_name}:\n{error_preview}")
+                else:
+                    logger.error(f"[AutoTrainer] ❌ Ошибка обучения {model_name}:\n{error_output}")
+                
                 return False
         
         except subprocess.TimeoutExpired:
