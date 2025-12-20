@@ -438,11 +438,31 @@ class BotsManager {
         const sellFilterBtn = document.querySelector('.rsi-filter-btn[data-filter="sell-zone"]');
         
         if (buyFilterBtn) {
-            buyFilterBtn.innerHTML = `🟢 ≤${this.rsiLongThreshold}`;
+            // Сохраняем счетчик при обновлении текста
+            const countEl = buyFilterBtn.querySelector('#filterBuyZoneCount');
+            // Извлекаем число из счетчика (может быть в формате " (6)" или "6")
+            let count = '0';
+            if (countEl) {
+                const countText = countEl.textContent.trim();
+                // Извлекаем число из строки вида " (6)" или "6"
+                const match = countText.match(/\d+/);
+                count = match ? match[0] : '0';
+            }
+            buyFilterBtn.innerHTML = `🟢 ≤${this.rsiLongThreshold} (<span id="filterBuyZoneCount">${count}</span>)`;
         }
         
         if (sellFilterBtn) {
-            sellFilterBtn.innerHTML = `🔴 ≥${this.rsiShortThreshold}`;
+            // Сохраняем счетчик при обновлении текста
+            const countEl = sellFilterBtn.querySelector('#filterSellZoneCount');
+            // Извлекаем число из счетчика (может быть в формате " (6)" или "6")
+            let count = '0';
+            if (countEl) {
+                const countText = countEl.textContent.trim();
+                // Извлекаем число из строки вида " (6)" или "6"
+                const match = countText.match(/\d+/);
+                count = match ? match[0] : '0';
+            }
+            sellFilterBtn.innerHTML = `🔴 ≥${this.rsiShortThreshold} (<span id="filterSellZoneCount">${count}</span>)`;
         }
         
         // Обновляем подписи тренд-фильтров с RSI значениями
@@ -1261,8 +1281,8 @@ class BotsManager {
         const allCount = this.coinsRsiData.length;
         const longCount = this.coinsRsiData.filter(coin => this.getEffectiveSignal(coin) === 'ENTER_LONG').length;
         const shortCount = this.coinsRsiData.filter(coin => this.getEffectiveSignal(coin) === 'ENTER_SHORT').length;
-        const buyZoneCount = this.coinsRsiData.filter(coin => coin.rsi6h && coin.rsi6h <= 29).length;
-        const sellZoneCount = this.coinsRsiData.filter(coin => coin.rsi6h && coin.rsi6h >= 71).length;
+        const buyZoneCount = this.coinsRsiData.filter(coin => coin.rsi6h && coin.rsi6h <= this.rsiLongThreshold).length;
+        const sellZoneCount = this.coinsRsiData.filter(coin => coin.rsi6h && coin.rsi6h >= this.rsiShortThreshold).length;
         const trendUpCount = this.coinsRsiData.filter(coin => coin.trend6h === 'UP').length;
         const trendDownCount = this.coinsRsiData.filter(coin => coin.trend6h === 'DOWN').length;
         const manualPositionCount = this.coinsRsiData.filter(coin => coin.manual_position === true).length;
