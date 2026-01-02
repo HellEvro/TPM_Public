@@ -84,8 +84,72 @@ class ParameterQualityPredictor:
             if os.path.exists(self.model_file) and os.path.exists(self.scaler_file):
                 self.model = joblib.load(self.model_file)
                 self.scaler = joblib.load(self.scaler_file)
-                self.is_trained = True
-                logger.info("✅ Загружена модель предсказания качества параметров")
+                
+                # УЛУЧШЕНИЕ: Проверяем совместимость количества признаков
+                # Генерируем тестовые признаки для проверки
+                test_rsi_params = {
+                    'oversold': 29,
+                    'overbought': 71,
+                    'exit_long_with_trend': 65,
+                    'exit_long_against_trend': 60,
+                    'exit_short_with_trend': 35,
+                    'exit_short_against_trend': 40
+                }
+                test_risk_params = {
+                    'stop_loss': 15.0,
+                    'take_profit': 20.0,
+                    'trailing_stop_activation': 30.0,
+                    'trailing_stop_distance': 5.0
+                }
+                test_features = self._extract_features(test_rsi_params, test_risk_params)
+                expected_features = test_features.shape[1]
+                
+                # Проверяем количество признаков в scaler
+                scaler_features = None
+                if hasattr(self.scaler, 'n_features_in_'):
+                    scaler_features = self.scaler.n_features_in_
+                elif hasattr(self.scaler, 'mean_') and self.scaler.mean_ is not None:
+                    scaler_features = len(self.scaler.mean_)
+                else:
+                    # Для старых версий sklearn проверяем через transform
+                    try:
+                        test_scaled = self.scaler.transform(test_features)
+                        scaler_features = test_features.shape[1]  # Если успешно, значит совместимо
+                    except ValueError as ve:
+                        # Извлекаем количество из ошибки
+                        error_msg = str(ve)
+                        if 'expecting' in error_msg and 'features' in error_msg:
+                            import re
+                            match = re.search(r'expecting (\d+) features', error_msg)
+                            if match:
+                                scaler_features = int(match.group(1))
+                
+                if scaler_features is not None and scaler_features != expected_features:
+                    # Проверяем, поддерживает ли legacy режим это количество признаков
+                    if scaler_features in [7, 8]:
+                        logger.info(
+                            f"ℹ️ Модель ожидает {scaler_features} признаков (старая версия), "
+                            f"текущая версия генерирует {expected_features}. "
+                            f"Будет использоваться legacy режим для обратной совместимости."
+                        )
+                        # Модель может использоваться с legacy режимом
+                        self.is_trained = True
+                        logger.info(f"✅ Загружена модель предсказания качества параметров (legacy режим: {scaler_features} признаков)")
+                    else:
+                        logger.warning(
+                            f"⚠️ Несовместимость признаков: модель ожидает {scaler_features} признаков, "
+                            f"а текущая версия генерирует {expected_features}. "
+                            f"Legacy режим не поддерживает {scaler_features} признаков. "
+                            f"Модель нужно переобучить!"
+                        )
+                        # Не помечаем модель как обученную, чтобы она не использовалась
+                        self.is_trained = False
+                        self.model = None
+                        self.scaler = StandardScaler()  # Сбрасываем scaler
+                        return
+                else:
+                    self.is_trained = True
+                    logger.info(f"✅ Загружена модель предсказания качества параметров ({expected_features} признаков)")
         except Exception as e:
             logger.debug(f"⚠️ Ошибка загрузки модели: {e}")
             self.is_trained = False
@@ -100,20 +164,68 @@ class ParameterQualityPredictor:
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения модели: {e}")
     
-    def _extract_features(self, rsi_params: Dict, risk_params: Optional[Dict] = None) -> np.ndarray:
+    def _extract_features_legacy(self, rsi_params: Dict, risk_params: Optional[Dict] = None, 
+                                 num_features: int = 7) -> np.ndarray:
         """
-        Извлечь признаки из параметров для обучения
-        
-        УЛУЧШЕННАЯ ВЕРСИЯ: Добавлены производные признаки для лучшего предсказания
+        Старая версия извлечения признаков (для обратной совместимости)
         
         Args:
             rsi_params: Параметры RSI
             risk_params: Параметры риск-менеджмента (опционально)
+            num_features: Количество признаков (7 или 8)
         
         Returns:
             Массив признаков
         """
-        # Базовые параметры RSI
+        features = [
+            rsi_params.get('oversold', 29),
+            rsi_params.get('overbought', 71),
+            rsi_params.get('exit_long_with_trend', 65),
+            rsi_params.get('exit_long_against_trend', 60),
+            rsi_params.get('exit_short_with_trend', 35),
+            rsi_params.get('exit_short_against_trend', 40),
+        ]
+        
+        # Добавляем риск-параметры в зависимости от требуемого количества
+        if num_features == 7:
+            # Старая версия: 6 RSI + 1 риск-параметр
+            if risk_params:
+                features.append(risk_params.get('stop_loss', 15.0))
+            else:
+                features.append(0)
+        elif num_features == 8:
+            # Версия с 8 признаками: 6 RSI + 2 риск-параметра
+            if risk_params:
+                features.append(risk_params.get('stop_loss', 15.0))
+                features.append(risk_params.get('take_profit', 20.0))
+            else:
+                features.extend([0, 0])
+        else:
+            # Fallback: используем 7 признаков
+            if risk_params:
+                features.append(risk_params.get('stop_loss', 15.0))
+            else:
+                features.append(0)
+        
+        return np.array(features).reshape(1, -1)
+    
+    def _extract_features(self, rsi_params: Dict, risk_params: Optional[Dict] = None, 
+                         use_extended: bool = True, expected_count: Optional[int] = None) -> np.ndarray:
+        """
+        Извлечь признаки из параметров для обучения
+        
+        УЛУЧШЕННАЯ ВЕРСИЯ: Добавлены производные признаки для лучшего предсказания
+        Поддерживает обратную совместимость со старыми моделями
+        
+        Args:
+            rsi_params: Параметры RSI
+            risk_params: Параметры риск-менеджмента (опционально)
+            use_extended: Использовать расширенные признаки (для новых моделей)
+        
+        Returns:
+            Массив признаков
+        """
+        # Базовые параметры RSI (всегда используются)
         oversold = rsi_params.get('oversold', 29)
         overbought = rsi_params.get('overbought', 71)
         exit_long_with = rsi_params.get('exit_long_with_trend', 65)
@@ -122,7 +234,7 @@ class ParameterQualityPredictor:
         exit_short_against = rsi_params.get('exit_short_against_trend', 40)
         
         features = [
-            # Базовые параметры
+            # Базовые параметры (6 признаков)
             oversold,
             overbought,
             exit_long_with,
@@ -131,11 +243,36 @@ class ParameterQualityPredictor:
             exit_short_against,
         ]
         
-        # УЛУЧШЕНИЕ: Добавляем производные признаки для лучшего предсказания
+        # Старая версия (для обратной совместимости): только базовые + риск-параметры
+        if not use_extended:
+            # Определяем, сколько признаков нужно на основе ожидаемого количества
+            # Если не указано, используем 8 (6 базовых + 2 риск-параметра)
+            # Но если модель ожидает 7, используем только 1 риск-параметр
+            target_count = expected_count if expected_count is not None else 8
+            
+            if target_count == 7:
+                # Старая модель с 7 признаками: 6 базовых + 1 риск-параметр
+                if risk_params:
+                    stop_loss = risk_params.get('stop_loss', 15.0)
+                    features.append(stop_loss)
+                else:
+                    features.append(0)
+            else:
+                # Стандартная старая версия: 6 базовых + 2 риск-параметра = 8
+                if risk_params:
+                    stop_loss = risk_params.get('stop_loss', 15.0)
+                    take_profit = risk_params.get('take_profit', 20.0)
+                    features.extend([stop_loss, take_profit])
+                else:
+                    features.extend([0, 0])
+            
+            return np.array(features).reshape(1, -1)
+        
+        # НОВАЯ ВЕРСИЯ: Расширенные признаки
         # Ширина зон входа/выхода
-        long_entry_zone_width = overbought - oversold  # Ширина зоны между oversold и overbought
-        long_exit_zone_width = exit_long_with - exit_long_against  # Ширина зоны выхода LONG
-        short_exit_zone_width = exit_short_against - exit_short_with  # Ширина зоны выхода SHORT
+        long_entry_zone_width = overbought - oversold
+        long_exit_zone_width = exit_long_with - exit_long_against
+        short_exit_zone_width = exit_short_against - exit_short_with
         
         features.extend([
             long_entry_zone_width,
@@ -144,7 +281,7 @@ class ParameterQualityPredictor:
         ])
         
         # Отношения параметров (нормализованные)
-        oversold_ratio = oversold / 50.0  # Нормализация к середине диапазона
+        oversold_ratio = oversold / 50.0
         overbought_ratio = overbought / 50.0
         exit_long_with_ratio = exit_long_with / 50.0
         exit_short_with_ratio = exit_short_with / 50.0
@@ -156,9 +293,9 @@ class ParameterQualityPredictor:
             exit_short_with_ratio,
         ])
         
-        # Разница между входом и выходом (важна для прибыльности)
-        long_entry_exit_diff = exit_long_with - oversold  # Разница между входом LONG и выходом
-        short_entry_exit_diff = overbought - exit_short_with  # Разница между входом SHORT и выходом
+        # Разница между входом и выходом
+        long_entry_exit_diff = exit_long_with - oversold
+        short_entry_exit_diff = overbought - exit_short_with
         
         features.extend([
             long_entry_exit_diff,
@@ -180,8 +317,8 @@ class ParameterQualityPredictor:
             ])
             
             # Производные признаки для риск-параметров
-            risk_reward_ratio = take_profit / max(stop_loss, 0.1)  # Соотношение риск/награда
-            trailing_coverage = trailing_distance / max(trailing_activation, 0.1)  # Покрытие трейлингом
+            risk_reward_ratio = take_profit / max(stop_loss, 0.1)
+            trailing_coverage = trailing_distance / max(trailing_activation, 0.1)
             
             features.extend([
                 risk_reward_ratio,
@@ -482,12 +619,101 @@ class ParameterQualityPredictor:
             return 0.0  # Нейтральное значение если модель не обучена
         
         try:
-            features = self._extract_features(rsi_params, risk_params)
+            # УЛУЧШЕНИЕ: Проверяем совместимость количества признаков ПЕРЕД извлечением
+            expected_features = None
+            if hasattr(self.scaler, 'n_features_in_'):
+                expected_features = self.scaler.n_features_in_
+            elif hasattr(self.scaler, 'mean_') and self.scaler.mean_ is not None:
+                expected_features = len(self.scaler.mean_)
+            
+            # Определяем, какую версию признаков использовать
+            if expected_features is not None and expected_features < 21:
+                # Старая модель - используем legacy версию сразу
+                logger.debug(
+                    f"⚠️ Модель ожидает {expected_features} признаков (старая версия). "
+                    f"Используем legacy режим для обратной совместимости"
+                )
+                features = self._extract_features_legacy(rsi_params, risk_params, num_features=expected_features)
+            else:
+                # Новая модель или не можем определить - используем новую версию
+                features = self._extract_features(rsi_params, risk_params)
+                
+                # Если не удалось определить через атрибуты, пробуем через попытку transform
+                if expected_features is None:
+                    try:
+                        # Пробуем transform с текущими признаками - если не совпадает, получим ошибку
+                        test_features = features.copy()
+                        self.scaler.transform(test_features)
+                        # Если успешно - количество совпадает
+                        expected_features = features.shape[1]
+                    except ValueError as ve:
+                        # Извлекаем количество из ошибки
+                        error_msg = str(ve)
+                        import re
+                        match = re.search(r'expecting (\d+) features', error_msg)
+                        if match:
+                            expected_features = int(match.group(1))
+                            # Используем legacy версию
+                            logger.debug(
+                                f"⚠️ Модель ожидает {expected_features} признаков (обнаружено из ошибки). "
+                                f"Используем legacy режим для обратной совместимости"
+                            )
+                            features = self._extract_features_legacy(rsi_params, risk_params, num_features=expected_features)
+                else:
+                    # Проверяем совместимость
+                    actual_features = features.shape[1]
+                    if actual_features != expected_features:
+                        # Используем legacy версию
+                        logger.debug(
+                            f"⚠️ Модель ожидает {expected_features} признаков, получено {actual_features}. "
+                            f"Используем legacy режим для обратной совместимости"
+                        )
+                        features = self._extract_features_legacy(rsi_params, risk_params, num_features=expected_features)
+            
             features_scaled = self.scaler.transform(features)
             quality = self.model.predict(features_scaled)[0]
             # НЕ ограничиваем - модель может предсказывать отрицательные значения
             # Это важно для различения плохих и хороших параметров
             return float(quality)
+        except ValueError as ve:
+            # Специальная обработка ошибки несовместимости признаков
+            error_msg = str(ve)
+            if 'expecting' in error_msg and 'features' in error_msg:
+                # Извлекаем количество ожидаемых признаков из ошибки
+                import re
+                match = re.search(r'expecting (\d+) features', error_msg)
+                if match:
+                    expected_features = int(match.group(1))
+                    # Пробуем использовать legacy режим
+                    if expected_features in [7, 8]:
+                        try:
+                            logger.debug(
+                                f"⚠️ Модель ожидает {expected_features} признаков (обнаружено из ошибки), "
+                                f"используем legacy режим для обратной совместимости"
+                            )
+                            features = self._extract_features_legacy(rsi_params, risk_params, num_features=expected_features)
+                            features_scaled = self.scaler.transform(features)
+                            quality = self.model.predict(features_scaled)[0]
+                            return float(quality)
+                        except Exception as e2:
+                            logger.warning(
+                                f"⚠️ Не удалось использовать legacy режим: {e2}. "
+                                f"Модель нужно переобучить с новыми признаками!"
+                            )
+                    else:
+                        logger.warning(
+                            f"⚠️ Несовместимость признаков модели: {error_msg}. "
+                            f"Модель ожидает {expected_features} признаков, но legacy режим не поддерживает это количество. "
+                            f"Модель нужно переобучить с новыми признаками!"
+                        )
+                else:
+                    logger.warning(
+                        f"⚠️ Несовместимость признаков модели: {error_msg}. "
+                        f"Модель нужно переобучить с новыми признаками!"
+                    )
+            else:
+                logger.debug(f"⚠️ Ошибка предсказания: {ve}")
+            return 0.0
         except Exception as e:
             logger.debug(f"⚠️ Ошибка предсказания: {e}")
             return 0.0
