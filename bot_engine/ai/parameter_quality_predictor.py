@@ -21,14 +21,15 @@ from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import cross_val_score
 import joblib
+
+logger = logging.getLogger('AI.ParameterQualityPredictor')
+
 try:
     from xgboost import XGBRegressor
     XGBOOST_AVAILABLE = True
 except ImportError:
     XGBOOST_AVAILABLE = False
     logger.debug("⚠️ XGBoost недоступен, используем GradientBoostingRegressor")
-
-logger = logging.getLogger('AI.ParameterQualityPredictor')
 
 
 class ParameterQualityPredictor:
@@ -65,6 +66,7 @@ class ParameterQualityPredictor:
         self.model = None
         self.scaler = StandardScaler()
         self.is_trained = False
+        self.expected_features = None  # Количество признаков, которое ожидает загруженная модель
         
         # Подключаемся к БД
         try:
@@ -132,6 +134,8 @@ class ParameterQualityPredictor:
                             f"текущая версия генерирует {expected_features}. "
                             f"Будет использоваться legacy режим для обратной совместимости."
                         )
+                        # Сохраняем количество признаков для использования в predict_quality
+                        self.expected_features = scaler_features
                         # Модель может использоваться с legacy режимом
                         self.is_trained = True
                         logger.info(f"✅ Загружена модель предсказания качества параметров (legacy режим: {scaler_features} признаков)")
@@ -146,8 +150,11 @@ class ParameterQualityPredictor:
                         self.is_trained = False
                         self.model = None
                         self.scaler = StandardScaler()  # Сбрасываем scaler
+                        self.expected_features = None
                         return
                 else:
+                    # Количество признаков совпадает - используем новую версию
+                    self.expected_features = expected_features
                     self.is_trained = True
                     logger.info(f"✅ Загружена модель предсказания качества параметров ({expected_features} признаков)")
         except Exception as e:
@@ -581,6 +588,8 @@ class ParameterQualityPredictor:
             blocked_count = sum(1 for s in training_data if s.get('blocked', False))
             
             self.is_trained = True
+            # Устанавливаем expected_features на количество признаков новой версии
+            self.expected_features = X.shape[1]
             self._save_model()
             
             return {
@@ -619,12 +628,14 @@ class ParameterQualityPredictor:
             return 0.0  # Нейтральное значение если модель не обучена
         
         try:
-            # УЛУЧШЕНИЕ: Проверяем совместимость количества признаков ПЕРЕД извлечением
-            expected_features = None
-            if hasattr(self.scaler, 'n_features_in_'):
-                expected_features = self.scaler.n_features_in_
-            elif hasattr(self.scaler, 'mean_') and self.scaler.mean_ is not None:
-                expected_features = len(self.scaler.mean_)
+            # УЛУЧШЕНИЕ: Используем сохраненное значение expected_features из _load_model
+            # Если оно не определено, пытаемся определить через атрибуты scaler
+            expected_features = self.expected_features
+            if expected_features is None:
+                if hasattr(self.scaler, 'n_features_in_'):
+                    expected_features = self.scaler.n_features_in_
+                elif hasattr(self.scaler, 'mean_') and self.scaler.mean_ is not None:
+                    expected_features = len(self.scaler.mean_)
             
             # Определяем, какую версию признаков использовать
             if expected_features is not None and expected_features < 21:
