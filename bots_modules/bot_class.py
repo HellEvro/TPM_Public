@@ -746,7 +746,11 @@ class NewTradingBot:
                 # ✅ КРИТИЧНО: Если нет закрытых сделок или недостаточно - РАЗРЕШАЕМ вход
                 # (фильтр не применяется, если недостаточно истории)
                 if not closed_trades or len(closed_trades) < loss_reentry_count:
+                    logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Защита от повторных входов: недостаточно закрытых сделок ({len(closed_trades) if closed_trades else 0} < {loss_reentry_count}) - РАЗРЕШАЕМ вход")
                     return {'allowed': True, 'reason': f'Not enough closed trades ({len(closed_trades) if closed_trades else 0} < {loss_reentry_count})'}
+                
+                # ✅ КРИТИЧНО: Логируем что получили из БД для диагностики
+                logger.error(f"[NEW_BOT_{self.symbol}] 🔍 ЗАЩИТА ОТ ПОВТОРНЫХ ВХОДОВ: Получено {len(closed_trades)} закрытых сделок из БД")
                 
                 # ✅ ИСПРАВЛЕНО: Проверяем, все ли последние N сделок были с отрицательным результатом (pnl < 0)
                 # Важно: проверяем именно ПОСЛЕДНИЕ N сделок по времени закрытия (уже отсортированы DESC)
@@ -755,18 +759,24 @@ class NewTradingBot:
                 for idx, trade in enumerate(closed_trades):
                     pnl = trade.get('pnl', 0)
                     exit_time = trade.get('exit_time') or trade.get('exit_timestamp')
+                    exit_timestamp = trade.get('exit_timestamp')
+                    close_reason = trade.get('close_reason')
+                    is_simulated = trade.get('is_simulated', False)
+                    
                     # ✅ КРИТИЧНО: Проверяем что PnL определен и действительно отрицательный (строго < 0)
                     try:
                         pnl_float = float(pnl) if pnl is not None else 0.0
-                        pnl_details.append(f"#{idx+1}: PnL={pnl_float:.4f} USDT")
+                        pnl_details.append(f"#{idx+1}: PnL={pnl_float:.4f} USDT, exit_time={exit_time}, simulated={is_simulated}")
+                        logger.error(f"[NEW_BOT_{self.symbol}] 🔍 Сделка #{idx+1}: PnL={pnl_float:.4f}, exit_timestamp={exit_timestamp}, close_reason={close_reason}, is_simulated={is_simulated}")
+                        
                         # Если хотя бы одна сделка >= 0 (прибыльная или безубыточная) - не все в минус
                         if pnl_float >= 0:
                             all_losses = False
-                            logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Сделка #{idx+1} имеет PnL={pnl_float:.4f} >= 0 - фильтр НЕ блокирует!")
+                            logger.error(f"[NEW_BOT_{self.symbol}] 🚫 Сделка #{idx+1} имеет PnL={pnl_float:.4f} >= 0 - фильтр НЕ блокирует! РАЗРЕШАЕМ вход!")
                             break
                     except (ValueError, TypeError) as e:
                         # Если не удалось преобразовать PnL - считаем что не убыточная
-                        logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка преобразования PnL для сделки #{idx+1}: pnl={pnl}, тип={type(pnl)}, ошибка={e}")
+                        logger.error(f"[NEW_BOT_{self.symbol}] ❌ ОШИБКА преобразования PnL для сделки #{idx+1}: pnl={pnl}, тип={type(pnl)}, ошибка={e} - РАЗРЕШАЕМ вход")
                         all_losses = False
                         break
                 
