@@ -743,7 +743,7 @@ class NewTradingBot:
                     offset=0
                 )
                 
-                # ✅ КРИТИЧНО: Если нет сделок в bot_trades_history, пробуем из closed_pnl_history (UI сделки)
+                # ✅ КРИТИЧНО: Если нет сделок в bot_trades_history или недостаточно, дополняем из closed_pnl_history (UI сделки)
                 if not closed_trades or len(closed_trades) < loss_reentry_count:
                     try:
                         from app.app_database import get_app_database
@@ -755,8 +755,13 @@ class NewTradingBot:
                             # Сортируем по close_timestamp DESC (новые первыми)
                             symbol_closed_pnl.sort(key=lambda x: x.get('close_timestamp', 0), reverse=True)
                             
-                            # Преобразуем формат для совместимости
-                            for pnl_trade in symbol_closed_pnl[:loss_reentry_count]:
+                            # Если closed_trades пустой - создаем список
+                            if not closed_trades:
+                                closed_trades = []
+                            
+                            # Дополняем до нужного количества
+                            needed_count = loss_reentry_count - len(closed_trades)
+                            for pnl_trade in symbol_closed_pnl[:needed_count]:
                                 trade = {
                                     'pnl': pnl_trade.get('closed_pnl'),  # ⬅️ В closed_pnl_history поле называется closed_pnl
                                     'exit_time': pnl_trade.get('close_time'),
@@ -764,9 +769,12 @@ class NewTradingBot:
                                     'close_reason': 'MANUAL_CLOSE',
                                     'is_simulated': False
                                 }
-                                if not closed_trades:
-                                    closed_trades = []
                                 closed_trades.append(trade)
+                            
+                            # Сортируем объединенный список по exit_timestamp DESC
+                            closed_trades.sort(key=lambda x: x.get('exit_timestamp') or 0, reverse=True)
+                            # Берем только последние N
+                            closed_trades = closed_trades[:loss_reentry_count]
                     except Exception as app_db_error:
                         logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось загрузить из closed_pnl_history: {app_db_error}")
                 
