@@ -132,7 +132,7 @@ class ParameterQualityPredictor:
                 
                 if scaler_features is not None and scaler_features != expected_features:
                     # Проверяем, поддерживает ли legacy режим это количество признаков
-                    if scaler_features in [7, 8]:
+                    if scaler_features in [7, 8, 10]:
                         logger.info(
                             f"ℹ️ Модель ожидает {scaler_features} признаков (старая версия), "
                             f"текущая версия генерирует {expected_features}. "
@@ -211,6 +211,23 @@ class ParameterQualityPredictor:
                 features.append(risk_params.get('take_profit', 20.0))
             else:
                 features.extend([0, 0])
+        elif num_features == 10:
+            # Версия с 10 признаками: 6 RSI + 2 риск-параметра + 2 производных признака
+            oversold = rsi_params.get('oversold', 29)
+            overbought = rsi_params.get('overbought', 71)
+            exit_long_with = rsi_params.get('exit_long_with_trend', 65)
+            exit_short_with = rsi_params.get('exit_short_with_trend', 35)
+            
+            if risk_params:
+                features.append(risk_params.get('stop_loss', 15.0))
+                features.append(risk_params.get('take_profit', 20.0))
+            else:
+                features.extend([0, 0])
+            
+            # Добавляем 2 производных признака: ширина зон входа/выхода
+            long_entry_zone_width = overbought - oversold
+            long_exit_zone_width = exit_long_with - oversold
+            features.extend([long_entry_zone_width, long_exit_zone_width])
         else:
             # Fallback: используем 7 признаков
             if risk_params:
@@ -705,7 +722,7 @@ class ParameterQualityPredictor:
                 if match:
                     expected_features = int(match.group(1))
                     # Пробуем использовать legacy режим
-                    if expected_features in [7, 8]:
+                    if expected_features in [7, 8, 10]:
                         try:
                             logger.debug(
                                 f"⚠️ Модель ожидает {expected_features} признаков (обнаружено из ошибки), "
