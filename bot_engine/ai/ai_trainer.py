@@ -356,6 +356,131 @@ class AITrainer:
             'ai_total_pnl': ai_meta.get('total_pnl', 0.0),
         }
     
+    def _generate_adaptive_params(self, symbol: str, rsi_history: List[float], 
+                                   base_oversold: float, base_overbought: float,
+                                   base_exit_long_with: float, base_exit_long_against: float,
+                                   base_exit_short_with: float, base_exit_short_against: float,
+                                   rng, base_params: Dict) -> Dict:
+        """
+        Генерирует адаптивные параметры на основе анализа реальных RSI значений монеты.
+        
+        ИИ анализирует историю RSI и генерирует параметры, которые:
+        1. Адаптируются под реальный диапазон RSI монеты
+        2. Не ограничены жесткими границами из конфига
+        3. Учитывают изменения в поведении маркетмейкера
+        4. Используют ML модель для предсказания качества параметров
+        
+        Args:
+            symbol: Символ монеты
+            rsi_history: История RSI значений
+            base_*: Базовые параметры из конфига (используются как отправная точка)
+            rng: Генератор случайных чисел
+            base_params: Базовые параметры для ML модели
+        
+        Returns:
+            Словарь с адаптивными RSI параметрами
+        """
+        # Анализируем реальные RSI значения
+        valid_rsi = [r for r in rsi_history if r is not None and 0 <= r <= 100]
+        if not valid_rsi:
+            # Fallback: используем базовые параметры с небольшими вариациями
+            return {
+                'oversold': max(10, min(50, base_oversold + rng.randint(-10, 10))),
+                'overbought': max(50, min(90, base_overbought + rng.randint(-10, 10))),
+                'exit_long_with_trend': max(40, min(80, base_exit_long_with + rng.randint(-15, 15))),
+                'exit_long_against_trend': max(35, min(75, base_exit_long_against + rng.randint(-15, 15))),
+                'exit_short_with_trend': max(20, min(60, base_exit_short_with + rng.randint(-15, 15))),
+                'exit_short_against_trend': max(25, min(65, base_exit_short_against + rng.randint(-15, 15)))
+            }
+        
+        rsi_min = min(valid_rsi)
+        rsi_max = max(valid_rsi)
+        rsi_mean = sum(valid_rsi) / len(valid_rsi)
+        rsi_std = (sum((x - rsi_mean) ** 2 for x in valid_rsi) / len(valid_rsi)) ** 0.5
+        
+        # Вычисляем процентили для более точной адаптации
+        sorted_rsi = sorted(valid_rsi)
+        rsi_p10 = sorted_rsi[int(len(sorted_rsi) * 0.10)]  # 10-й процентиль
+        rsi_p90 = sorted_rsi[int(len(sorted_rsi) * 0.90)]  # 90-й процентиль
+        rsi_p25 = sorted_rsi[int(len(sorted_rsi) * 0.25)]  # 25-й процентиль
+        rsi_p75 = sorted_rsi[int(len(sorted_rsi) * 0.75)]  # 75-й процентиль
+        
+        # Генерируем параметры на основе анализа рынка
+        # Oversold: используем процентили и реальный min, но не ограничиваем жестко
+        # Если RSI редко опускается ниже 30, адаптируем порог выше
+        if rsi_p10 > base_oversold:
+            # RSI редко в зоне oversold - адаптируем порог
+            adaptive_oversold = max(10, min(60, rsi_p10 - 2 + rng.uniform(-3, 3)))
+        else:
+            # RSI часто в зоне oversold - используем базовый с вариацией
+            adaptive_oversold = max(10, min(60, base_oversold + rng.uniform(-10, 10)))
+        
+        # Overbought: аналогично
+        if rsi_p90 < base_overbought:
+            # RSI редко в зоне overbought - адаптируем порог
+            adaptive_overbought = max(40, min(90, rsi_p90 + 2 + rng.uniform(-3, 3)))
+        else:
+            # RSI часто в зоне overbought - используем базовый с вариацией
+            adaptive_overbought = max(40, min(90, base_overbought + rng.uniform(-10, 10)))
+        
+        # Exit параметры: адаптируем на основе медианы и процентилей
+        # Exit LONG with trend: должен быть выше медианы, но не слишком высоко
+        adaptive_exit_long_with = max(40, min(80, rsi_p75 + rng.uniform(-5, 10)))
+        
+        # Exit LONG against trend: чуть ниже exit_long_with
+        adaptive_exit_long_against = max(35, min(75, adaptive_exit_long_with - 5 + rng.uniform(-5, 5)))
+        
+        # Exit SHORT with trend: должен быть ниже медианы, но не слишком низко
+        adaptive_exit_short_with = max(20, min(60, rsi_p25 + rng.uniform(-10, 5)))
+        
+        # Exit SHORT against trend: чуть выше exit_short_with
+        adaptive_exit_short_against = max(25, min(65, adaptive_exit_short_with + 5 + rng.uniform(-5, 5)))
+        
+        # Если есть ML модель - используем её для оптимизации параметров
+        if self.param_quality_predictor and self.param_quality_predictor.is_trained:
+            # Генерируем несколько вариантов и выбираем лучший по предсказанию ML
+            best_params = None
+            best_quality = float('-inf')
+            
+            for _ in range(10):  # Пробуем 10 вариантов
+                test_params = {
+                    'oversold': max(10, min(60, adaptive_oversold + rng.uniform(-5, 5))),
+                    'overbought': max(40, min(90, adaptive_overbought + rng.uniform(-5, 5))),
+                    'exit_long_with_trend': max(40, min(80, adaptive_exit_long_with + rng.uniform(-5, 5))),
+                    'exit_long_against_trend': max(35, min(75, adaptive_exit_long_against + rng.uniform(-5, 5))),
+                    'exit_short_with_trend': max(20, min(60, adaptive_exit_short_with + rng.uniform(-5, 5))),
+                    'exit_short_against_trend': max(25, min(65, adaptive_exit_short_against + rng.uniform(-5, 5)))
+                }
+                
+                try:
+                    quality = self.param_quality_predictor.predict_quality(test_params)
+                    if quality > best_quality:
+                        best_quality = quality
+                        best_params = test_params
+                except:
+                    pass
+            
+            if best_params and best_quality > 0:
+                logger.info(f"   🤖 {symbol}: ML модель оптимизировала параметры (качество: {best_quality:.3f})")
+                return best_params
+        
+        # Возвращаем адаптивные параметры
+        result = {
+            'oversold': round(adaptive_oversold, 1),
+            'overbought': round(adaptive_overbought, 1),
+            'exit_long_with_trend': round(adaptive_exit_long_with, 1),
+            'exit_long_against_trend': round(adaptive_exit_long_against, 1),
+            'exit_short_with_trend': round(adaptive_exit_short_with, 1),
+            'exit_short_against_trend': round(adaptive_exit_short_against, 1)
+        }
+        
+        logger.info(
+            f"   🧠 {symbol}: адаптивные параметры на основе RSI анализа "
+            f"(min={rsi_min:.1f}, max={rsi_max:.1f}, mean={rsi_mean:.1f}, std={rsi_std:.1f})"
+        )
+        
+        return result
+
     def _mutate_flag(self, key: str, base_value: bool, rng) -> bool:
         """
         Переключает флаг в обучении, если это разрешено тренировочным конфигом.
@@ -3235,25 +3360,14 @@ class AITrainer:
                                 coin_rsi_params = suggested_params
                                 logger.debug(f"   🎯 {symbol}: получили новую комбинацию параметров из трекера")
                         
-                        # Fallback: генерируем случайные (только если ML и трекер не помогли)
-                        # УЛУЧШЕНИЕ: Расширенные диапазоны для увеличения вероятности генерации сделок
+                        # Fallback: генерируем адаптивные параметры на основе анализа рынка
                         if not coin_rsi_params:
-                            # Увеличиваем вариацию для большего разнообразия и вероятности входа
-                            expanded_variation = variation_range + 3  # Расширяем диапазон
-                            exit_variation = 10  # Увеличиваем вариацию выходов
-                            
-                            # УЛУЧШЕНИЕ: Используем более широкие диапазоны для увеличения вероятности входа
-                            # Oversold: расширяем до 18-38 (было 20-35) для большего покрытия
-                            # Overbought: расширяем до 62-82 (было 65-80) для большего покрытия
-                            coin_rsi_params = {
-                                'oversold': max(18, min(38, coin_base_rsi_oversold + coin_rng.randint(-expanded_variation, expanded_variation))),
-                                'overbought': max(62, min(82, coin_base_rsi_overbought + coin_rng.randint(-expanded_variation, expanded_variation))),
-                                'exit_long_with_trend': max(52, min(72, coin_base_exit_long_with + coin_rng.randint(-exit_variation, exit_variation))),
-                                'exit_long_against_trend': max(48, min(68, coin_base_exit_long_against + coin_rng.randint(-exit_variation, exit_variation))),
-                                'exit_short_with_trend': max(22, min(42, coin_base_exit_short_with + coin_rng.randint(-exit_variation, exit_variation))),
-                                'exit_short_against_trend': max(28, min(48, coin_base_exit_short_against + coin_rng.randint(-exit_variation, exit_variation)))
-                            }
-                            logger.debug(f"   🎲 {symbol}: сгенерировали случайные RSI параметры с расширенными диапазонами (ML модель недоступна)")
+                            coin_rsi_params = self._generate_adaptive_params(
+                                symbol, rsi_history, coin_base_rsi_oversold, coin_base_rsi_overbought,
+                                coin_base_exit_long_with, coin_base_exit_long_against,
+                                coin_base_exit_short_with, coin_base_exit_short_against,
+                                coin_rng, base_params
+                            )
 
                     if symbol_idx <= 5 or symbol_idx % progress_interval == 0:
                         logger.info(f"   ⚙️ {symbol}: RSI params {coin_rsi_params}, seed {coin_seed}")
@@ -3369,22 +3483,29 @@ class AITrainer:
                         rsi_std = (sum((x - rsi_mean) ** 2 for x in rsi_values) / len(rsi_values)) ** 0.5
                         
                         # Адаптируем параметры входа на основе реального диапазона RSI монеты
-                        # Если RSI монеты редко опускается ниже 30, увеличиваем oversold порог
-                        # Если RSI монеты редко поднимается выше 70, уменьшаем overbought порог
+                        # УЛУЧШЕНИЕ: Всегда проверяем, попадает ли RSI в зоны, и адаптируем при необходимости
                         adaptive_oversold = coin_RSI_OVERSOLD
                         adaptive_overbought = coin_RSI_OVERBOUGHT
                         
-                        # Если RSI монеты редко входит в зону oversold - расширяем диапазон
-                        if rsi_min > coin_RSI_OVERSOLD + 5:
-                            # RSI редко опускается ниже порога - увеличиваем порог для большей вероятности входа
-                            adaptive_oversold = min(35, max(coin_RSI_OVERSOLD, int(rsi_min - 2)))
-                            logger.debug(f"   📊 {symbol}: RSI min={rsi_min:.1f}, адаптируем oversold: {coin_RSI_OVERSOLD} → {adaptive_oversold}")
+                        # Проверяем, сколько раз RSI попадает в зоны входа
+                        rsi_in_long_zone_count = sum(1 for r in rsi_values if r <= coin_RSI_OVERSOLD)
+                        rsi_in_short_zone_count = sum(1 for r in rsi_values if r >= coin_RSI_OVERBOUGHT)
                         
-                        # Если RSI монеты редко входит в зону overbought - расширяем диапазон
-                        if rsi_max < coin_RSI_OVERBOUGHT - 5:
-                            # RSI редко поднимается выше порога - уменьшаем порог для большей вероятности входа
-                            adaptive_overbought = max(65, min(coin_RSI_OVERBOUGHT, int(rsi_max + 2)))
-                            logger.debug(f"   📊 {symbol}: RSI max={rsi_max:.1f}, адаптируем overbought: {coin_RSI_OVERBOUGHT} → {adaptive_overbought}")
+                        # Если RSI не попадает в зону LONG (oversold) - адаптируем порог
+                        if rsi_in_long_zone_count == 0 or rsi_min > coin_RSI_OVERSOLD:
+                            # RSI никогда не опускается ниже порога - увеличиваем порог для генерации сделок
+                            # УЛУЧШЕНИЕ: Расширяем диапазон до 50 (вместо 35), чтобы покрыть монеты с высоким RSI
+                            # Устанавливаем порог чуть ниже min для гарантированного входа
+                            adaptive_oversold = min(50, max(coin_RSI_OVERSOLD, int(rsi_min - 1)))
+                            logger.info(f"   📊 {symbol}: RSI min={rsi_min:.1f}, oversold={coin_RSI_OVERSOLD}, попаданий в зону LONG: {rsi_in_long_zone_count} → адаптируем oversold: {coin_RSI_OVERSOLD} → {adaptive_oversold}")
+                        
+                        # Если RSI не попадает в зону SHORT (overbought) - адаптируем порог
+                        if rsi_in_short_zone_count == 0 or rsi_max < coin_RSI_OVERBOUGHT:
+                            # RSI никогда не поднимается выше порога - уменьшаем порог для генерации сделок
+                            # УЛУЧШЕНИЕ: Расширяем диапазон до 50 (вместо 65), чтобы покрыть монеты с низким RSI
+                            # Устанавливаем порог чуть выше max для гарантированного входа
+                            adaptive_overbought = max(50, min(coin_RSI_OVERBOUGHT, int(rsi_max + 1)))
+                            logger.info(f"   📊 {symbol}: RSI max={rsi_max:.1f}, overbought={coin_RSI_OVERBOUGHT}, попаданий в зону SHORT: {rsi_in_short_zone_count} → адаптируем overbought: {coin_RSI_OVERBOUGHT} → {adaptive_overbought}")
                         
                         # Применяем адаптивные значения
                         coin_RSI_OVERSOLD = adaptive_oversold

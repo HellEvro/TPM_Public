@@ -753,20 +753,34 @@ class ParameterQualityPredictor:
         # Генерируем больше вариантов, чтобы найти хорошие
         max_attempts = num_suggestions * 20  # Увеличиваем для лучшего поиска
         
+        # УЛУЧШЕНИЕ: Убираем жесткие ограничения, позволяем ИИ генерировать параметры свободно
+        # Базовые значения используются как отправная точка, но ИИ может выходить за их пределы
+        base_oversold = base_params.get('oversold', 29)
+        base_overbought = base_params.get('overbought', 71)
+        base_exit_long_with = base_params.get('exit_long_with_trend', 65)
+        base_exit_long_against = base_params.get('exit_long_against_trend', 60)
+        base_exit_short_with = base_params.get('exit_short_with_trend', 35)
+        base_exit_short_against = base_params.get('exit_short_against_trend', 40)
+        
         for _ in range(max_attempts):
+            # Генерируем параметры с широким диапазоном вариации
+            # ИИ может генерировать параметры от 10 до 90 для RSI (разумные границы)
+            # Вариация может быть до ±20 от базового значения
+            variation_range = 20  # Широкий диапазон для адаптации
+            
             rsi_params = {
-                'oversold': max(20, min(35, 
-                    base_params.get('oversold', 29) + random.randint(-7, 7))),
-                'overbought': max(65, min(80,
-                    base_params.get('overbought', 71) + random.randint(-7, 7))),
-                'exit_long_with_trend': max(55, min(70,
-                    base_params.get('exit_long_with_trend', 65) + random.randint(-10, 10))),
-                'exit_long_against_trend': max(50, min(65,
-                    base_params.get('exit_long_against_trend', 60) + random.randint(-10, 10))),
-                'exit_short_with_trend': max(25, min(40,
-                    base_params.get('exit_short_with_trend', 35) + random.randint(-10, 10))),
-                'exit_short_against_trend': max(30, min(45,
-                    base_params.get('exit_short_against_trend', 40) + random.randint(-10, 10)))
+                'oversold': max(10, min(60, 
+                    base_oversold + random.randint(-variation_range, variation_range))),
+                'overbought': max(40, min(90,
+                    base_overbought + random.randint(-variation_range, variation_range))),
+                'exit_long_with_trend': max(30, min(85,
+                    base_exit_long_with + random.randint(-variation_range, variation_range))),
+                'exit_long_against_trend': max(25, min(80,
+                    base_exit_long_against + random.randint(-variation_range, variation_range))),
+                'exit_short_with_trend': max(15, min(70,
+                    base_exit_short_with + random.randint(-variation_range, variation_range))),
+                'exit_short_against_trend': max(20, min(75,
+                    base_exit_short_against + random.randint(-variation_range, variation_range)))
             }
             
             quality = self.predict_quality(rsi_params, risk_params)
