@@ -733,7 +733,7 @@ class NewTradingBot:
                 bots_db = get_bots_database()
                 
                 # ✅ КРИТИЧНО: Получаем последние N закрытых сделок по текущей монете
-                # Сортировка по exit_timestamp DESC - самые последние закрытые сделки первыми
+                # Сначала пробуем из bot_trades_history (сделки ботов)
                 closed_trades = bots_db.get_bot_trades_history(
                     bot_id=None,
                     symbol=self.symbol,  # ⬅️ Только для текущей монеты
@@ -742,6 +742,33 @@ class NewTradingBot:
                     limit=loss_reentry_count,  # ⬅️ Последние N сделок
                     offset=0
                 )
+                
+                # ✅ КРИТИЧНО: Если нет сделок в bot_trades_history, пробуем из closed_pnl_history (UI сделки)
+                if not closed_trades or len(closed_trades) < loss_reentry_count:
+                    try:
+                        from app.app_database import get_app_database
+                        app_db = get_app_database()
+                        if app_db:
+                            # Читаем из closed_pnl_history
+                            all_closed_pnl = app_db.load_closed_pnl_history(sort_by='time', period='all')
+                            symbol_closed_pnl = [t for t in all_closed_pnl if t.get('symbol') == self.symbol]
+                            # Сортируем по close_timestamp DESC (новые первыми)
+                            symbol_closed_pnl.sort(key=lambda x: x.get('close_timestamp', 0), reverse=True)
+                            
+                            # Преобразуем формат для совместимости
+                            for pnl_trade in symbol_closed_pnl[:loss_reentry_count]:
+                                trade = {
+                                    'pnl': pnl_trade.get('closed_pnl'),  # ⬅️ В closed_pnl_history поле называется closed_pnl
+                                    'exit_time': pnl_trade.get('close_time'),
+                                    'exit_timestamp': pnl_trade.get('close_timestamp'),
+                                    'close_reason': 'MANUAL_CLOSE',
+                                    'is_simulated': False
+                                }
+                                if not closed_trades:
+                                    closed_trades = []
+                                closed_trades.append(trade)
+                    except Exception as app_db_error:
+                        logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось загрузить из closed_pnl_history: {app_db_error}")
                 
                 # ✅ КРИТИЧНО: Если нет закрытых сделок или недостаточно - РАЗРЕШАЕМ вход
                 # (фильтр не применяется, если недостаточно истории)
