@@ -4392,18 +4392,33 @@ class AITrainer:
                 logger.info(f"   🤖 ML модель использована для генерации параметров: {ml_params_generated_count} раз")
             logger.info("=" * 80)
             
-            # ВАЖНО: Обучаем ML модель на собранных данных
+            # ВАЖНО: Обучаем/переобучаем ML модель на собранных данных
             # Это позволит AI в будущем генерировать оптимальные параметры вместо случайных
             ml_training_metrics = None
             if self.param_quality_predictor:
                 try:
                     logger.info("=" * 80)
-                    logger.info("🤖 ОБУЧЕНИЕ ML МОДЕЛИ ПРЕДСКАЗАНИЯ КАЧЕСТВА ПАРАМЕТРОВ")
+                    logger.info("🤖 ОБУЧЕНИЕ/ПЕРЕОБУЧЕНИЕ ML МОДЕЛИ ПРЕДСКАЗАНИЯ КАЧЕСТВА ПАРАМЕТРОВ")
                     logger.info("=" * 80)
                     logger.info("   💡 AI учится на успешных/неуспешных параметрах")
                     logger.info("   💡 В будущем будет генерировать оптимальные параметры вместо случайных")
+                    logger.info("   💡 Модель автоматически переобучается при накоплении новых данных")
                     
-                    ml_training_metrics = self.param_quality_predictor.train(min_samples=50)
+                    # УЛУЧШЕНИЕ: Проверяем, нужно ли переобучение
+                    should_retrain = self._should_retrain_parameter_quality_model()
+                    
+                    if should_retrain['retrain']:
+                        logger.info(f"   🔄 Переобучение модели: {should_retrain['reason']}")
+                        ml_training_metrics = self.param_quality_predictor.train(min_samples=50)
+                    else:
+                        logger.info(f"   ℹ️ Переобучение не требуется: {should_retrain['reason']}")
+                        # Проверяем текущее состояние модели
+                        if self.param_quality_predictor.is_trained:
+                            logger.info("   ✅ Модель уже обучена и актуальна")
+                        else:
+                            # Модель не обучена - обучаем
+                            logger.info("   🎓 Первичное обучение модели...")
+                            ml_training_metrics = self.param_quality_predictor.train(min_samples=50)
                     if ml_training_metrics and ml_training_metrics.get('success'):
                         logger.info("   ✅ ML модель обучена! Теперь AI будет генерировать оптимальные параметры")
                         logger.info(f"   📊 R² score: {ml_training_metrics.get('r2_score', 0):.3f}")
@@ -4827,6 +4842,74 @@ class AITrainer:
         except Exception as sample_error:
             logger.debug(f"⚠️ Не удалось подготовить решение AI {decision.get('id')}: {sample_error}")
             return None
+    
+    def _should_retrain_parameter_quality_model(self) -> Dict[str, Any]:
+        """
+        Определяет, нужно ли переобучать модель предсказания качества параметров.
+        
+        Проверяет:
+        1. Накопилось ли достаточно новых данных
+        2. Снизилось ли качество модели
+        3. Прошло ли достаточно времени с последнего обучения
+        
+        Returns:
+            Словарь с решением: {'retrain': bool, 'reason': str}
+        """
+        if not self.param_quality_predictor:
+            return {'retrain': False, 'reason': 'ParameterQualityPredictor не инициализирован'}
+        
+        try:
+            # Проверяем количество новых образцов в БД
+            if self.param_quality_predictor.ai_db:
+                training_data = self.param_quality_predictor.ai_db.get_trades_for_training(
+                    simulated=True, real=True, exchange=True, min_trades=0
+                )
+                current_samples_count = len(training_data)
+                
+                # Если модель не обучена - нужно обучить
+                if not self.param_quality_predictor.is_trained:
+                    if current_samples_count >= 50:
+                        return {'retrain': True, 'reason': f'Модель не обучена, есть {current_samples_count} образцов (нужно минимум 50)'}
+                    else:
+                        return {'retrain': False, 'reason': f'Модель не обучена, недостаточно данных: {current_samples_count} < 50'}
+                
+                # Если модель обучена - проверяем, нужно ли переобучение
+                # Получаем количество образцов, на которых была обучена модель
+                last_trained_samples = getattr(self.param_quality_predictor, '_last_trained_samples_count', 0)
+                
+                # Если накопилось достаточно новых данных (минимум 20% от предыдущего обучения)
+                new_samples_threshold = max(10, int(last_trained_samples * 0.2))
+                new_samples = current_samples_count - last_trained_samples
+                
+                if new_samples >= new_samples_threshold:
+                    return {
+                        'retrain': True,
+                        'reason': f'Накопилось {new_samples} новых образцов (было {last_trained_samples}, стало {current_samples_count}, порог: {new_samples_threshold})'
+                    }
+                
+                # Проверяем время с последнего обучения (если прошло больше 7 дней)
+                last_trained_time = getattr(self.param_quality_predictor, '_last_trained_time', None)
+                if last_trained_time:
+                    from datetime import datetime, timedelta
+                    time_since_training = datetime.now() - last_trained_time
+                    if isinstance(time_since_training, timedelta):
+                        days_since_training = time_since_training.days
+                        if days_since_training >= 7:
+                            return {
+                                'retrain': True,
+                                'reason': f'Прошло {days_since_training} дней с последнего обучения (порог: 7 дней)'
+                            }
+                
+                return {
+                    'retrain': False,
+                    'reason': f'Достаточно данных ({current_samples_count} образцов), новых: {new_samples} < {new_samples_threshold}'
+                }
+            else:
+                return {'retrain': False, 'reason': 'AI Database недоступна'}
+        except Exception as e:
+            logger.debug(f"⚠️ Ошибка проверки необходимости переобучения: {e}")
+            # В случае ошибки - переобучаем для безопасности
+            return {'retrain': True, 'reason': f'Ошибка проверки, переобучаем для безопасности: {e}'}
     
     def retrain_on_ai_decisions(self, force: bool = False) -> int:
         """

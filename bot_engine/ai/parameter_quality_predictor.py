@@ -68,6 +68,10 @@ class ParameterQualityPredictor:
         self.is_trained = False
         self.expected_features = None  # Количество признаков, которое ожидает загруженная модель
         
+        # Метаданные для автоматического переобучения
+        self._last_trained_samples_count = 0
+        self._last_trained_time = None
+        
         # Подключаемся к БД
         try:
             from bot_engine.ai.ai_database import get_ai_database
@@ -590,6 +594,11 @@ class ParameterQualityPredictor:
             self.is_trained = True
             # Устанавливаем expected_features на количество признаков новой версии
             self.expected_features = X.shape[1]
+            
+            # Сохраняем метаданные о последнем обучении для автоматического переобучения
+            self._last_trained_samples_count = samples_count
+            self._last_trained_time = datetime.now()
+            
             self._save_model()
             
             return {
