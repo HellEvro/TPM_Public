@@ -593,12 +593,29 @@ class AICandlesLoader:
         return '1000'  # По умолчанию 1000 свечей для обучения ИИ
     
     def _load_existing_candles(self) -> Dict:
-        """Загрузить существующие свечи из БД"""
+        """Загрузить существующие свечи из БД (ограничено до 1000 последних для каждого символа)"""
         if not self.ai_db:
             return {}
         
         try:
-            return self.ai_db.get_all_candles_dict(timeframe='6h')
+            # Загружаем все свечи из БД
+            all_candles = self.ai_db.get_all_candles_dict(timeframe='6h')
+            
+            # КРИТИЧНО: Ограничиваем до 1000 последних свечей для каждого символа
+            # Это предотвращает раздувание БД и оптимизирует использование памяти
+            MAX_CANDLES_PER_SYMBOL = 1000
+            limited_candles = {}
+            
+            for symbol, candles_list in all_candles.items():
+                if candles_list and len(candles_list) > MAX_CANDLES_PER_SYMBOL:
+                    # Сортируем от старых к новым и берем последние 1000
+                    candles_sorted = sorted(candles_list, key=lambda x: x.get('time', 0))
+                    limited_candles[symbol] = candles_sorted[-MAX_CANDLES_PER_SYMBOL:]
+                    logger.debug(f"   📊 {symbol}: загружено {len(limited_candles[symbol])} последних свечей из БД (было {len(candles_list)})")
+                else:
+                    limited_candles[symbol] = candles_list
+            
+            return limited_candles
         except Exception as e:
             logger.warning(f"⚠️ Ошибка загрузки существующих свечей из БД: {e}")
             return {}
@@ -620,6 +637,8 @@ class AICandlesLoader:
         
         try:
             # Преобразуем формат данных для БД
+            # КРИТИЧНО: Ограничиваем до 1000 последних свечей для каждого символа
+            MAX_CANDLES_PER_SYMBOL = 1000
             db_candles_data = {}
             for symbol, candle_info in candles_data.items():
                 if isinstance(candle_info, dict):
@@ -628,7 +647,13 @@ class AICandlesLoader:
                     candles = candle_info if isinstance(candle_info, list) else []
                 
                 if candles:
-                    db_candles_data[symbol] = candles
+                    # КРИТИЧНО: Ограничиваем до 1000 последних (самых новых) свечей перед сохранением
+                    # Сортируем от старых к новым и берем последние 1000
+                    candles_sorted = sorted(candles, key=lambda x: x.get('time', 0))
+                    if len(candles_sorted) > MAX_CANDLES_PER_SYMBOL:
+                        candles_sorted = candles_sorted[-MAX_CANDLES_PER_SYMBOL:]
+                        logger.debug(f"   📊 {symbol}: перед сохранением ограничено до {MAX_CANDLES_PER_SYMBOL} последних свечей (было {len(candles)})")
+                    db_candles_data[symbol] = candles_sorted
             
             if db_candles_data:
                 saved_results = self.ai_db.save_candles_batch(db_candles_data, timeframe='6h')
