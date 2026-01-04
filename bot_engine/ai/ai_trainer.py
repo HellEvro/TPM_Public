@@ -4743,23 +4743,84 @@ class AITrainer:
         
         try:
             # Подготавливаем признаки из market_data
+            # ВАЖНО: Должно быть 7 признаков, как при обучении (строки 1584-1592)
             features = []
             
             rsi = market_data.get('rsi', 50)
             trend = market_data.get('trend', 'NEUTRAL')
             price = market_data.get('price', 0)
+            direction = market_data.get('direction', 'LONG')
+            volatility = market_data.get('volatility', 0)
+            volume_ratio = market_data.get('volume_ratio', 1.0)
             
-            # Упрощенная подготовка признаков
+            # Генерируем те же 7 признаков, что и при обучении:
+            # 1. entry_rsi
             features.append(rsi)
-            features.append(1 if trend == 'UP' else (0 if trend == 'DOWN' else 0.5))
-            features.append(price)
+            # 2. entry_volatility
+            features.append(volatility)
+            # 3. entry_volume_ratio
+            features.append(volume_ratio)
+            # 4. trend UP (1.0 или 0.0)
+            features.append(1.0 if trend == 'UP' else 0.0)
+            # 5. trend DOWN (1.0 или 0.0)
+            features.append(1.0 if trend == 'DOWN' else 0.0)
+            # 6. direction LONG (1.0 или 0.0)
+            features.append(1.0 if direction == 'LONG' else 0.0)
+            # 7. entry_price / 1000.0
+            features.append(price / 1000.0 if price > 0 else 0)
             
-            # Добавляем нули для остальных признаков (упрощение)
-            while len(features) < 8:
-                features.append(0)
+            # Проверяем, что признаков ровно 7
+            if len(features) != 7:
+                logger.warning(f"⚠️ Неправильное количество признаков: {len(features)}, ожидается 7")
+                # Дополняем или обрезаем до 7
+                while len(features) < 7:
+                    features.append(0)
+                features = features[:7]
             
             features_array = np.array([features])
-            features_scaled = self.scaler.transform(features_array)
+            
+            # Проверяем совместимость с scaler
+            if hasattr(self.scaler, 'n_features_in_'):
+                expected_features = self.scaler.n_features_in_
+                if len(features) != expected_features:
+                    logger.warning(f"⚠️ Несовместимость признаков: модель ожидает {expected_features}, получено {len(features)}")
+                    # Пытаемся адаптировать
+                    if expected_features == 7 and len(features) == 7:
+                        pass  # OK
+                    elif expected_features < len(features):
+                        features = features[:expected_features]
+                        features_array = np.array([features])
+                    else:
+                        # Дополняем нулями
+                        while len(features) < expected_features:
+                            features.append(0)
+                        features_array = np.array([features])
+            
+            try:
+                features_scaled = self.scaler.transform(features_array)
+            except ValueError as ve:
+                # Обработка ошибки несовместимости признаков
+                error_msg = str(ve)
+                if 'expecting' in error_msg and 'features' in error_msg:
+                    # Извлекаем ожидаемое количество признаков из сообщения об ошибке
+                    import re
+                    match = re.search(r'expecting (\d+) features', error_msg)
+                    if match:
+                        expected_features = int(match.group(1))
+                        logger.warning(f"⚠️ Несовместимость признаков: модель ожидает {expected_features}, получено {len(features)}")
+                        # Адаптируем признаки
+                        if expected_features < len(features):
+                            features = features[:expected_features]
+                            features_array = np.array([features])
+                        else:
+                            while len(features) < expected_features:
+                                features.append(0)
+                            features_array = np.array([features])
+                        features_scaled = self.scaler.transform(features_array)
+                    else:
+                        raise
+                else:
+                    raise
             
             # Предсказание сигнала
             signal_prob = self.signal_predictor.predict_proba(features_scaled)[0]

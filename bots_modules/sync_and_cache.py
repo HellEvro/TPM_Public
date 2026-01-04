@@ -3040,6 +3040,17 @@ def sync_bots_with_exchange():
                             # ✅ УПРОЩЕНО: Логируем удаление бота (делистинг проверяется в отдельной функции)
                             logger.info(f"[SYNC_EXCHANGE] 🗑️ {symbol}: Удаляем бота (позиция закрыта на бирже, статус: {old_status})")
                             
+                            # ✅ КРИТИЧНО: Сохраняем timestamp последнего закрытия ДО удаления бота
+                            try:
+                                current_timestamp = datetime.now().timestamp()
+                                with bots_data_lock:
+                                    if 'last_close_timestamps' not in bots_data:
+                                        bots_data['last_close_timestamps'] = {}
+                                    bots_data['last_close_timestamps'][symbol] = current_timestamp
+                                logger.info(f"[SYNC_EXCHANGE] ⏰ Сохранен timestamp последнего закрытия для {symbol}: {current_timestamp} (через 1 час разрешим новый вход)")
+                            except Exception as timestamp_error:
+                                logger.warning(f"[SYNC_EXCHANGE] ⚠️ Ошибка сохранения timestamp закрытия для {symbol}: {timestamp_error}")
+                            
                             # Удаляем бота из системы (с блокировкой!)
                             with bots_data_lock:
                                 if symbol in bots_data['bots']:
