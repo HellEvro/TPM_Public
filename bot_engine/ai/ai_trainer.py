@@ -180,6 +180,7 @@ class AITrainer:
         self.signal_predictor = None  # Предсказание сигналов (LONG/SHORT/WAIT)
         self.profit_predictor = None  # Предсказание прибыльности
         self.scaler = StandardScaler()
+        self.expected_features = None  # Количество признаков, которое ожидает модель (определяется из scaler)
         self.ai_decision_model = None  # Модель для анализа решений AI
         self.ai_decision_scaler = StandardScaler()
         self.ai_decisions_min_samples = 20
@@ -536,6 +537,21 @@ class AITrainer:
             if os.path.exists(self.scaler_path):
                 self.scaler = joblib.load(self.scaler_path)
                 logger.info(f"✅ Загружен scaler: {self.scaler_path}")
+                # Определяем количество признаков из scaler
+                if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
+                    self.expected_features = self.scaler.n_features_in_
+                    logger.info(f"   📊 Модель ожидает {self.expected_features} признаков")
+                else:
+                    # Для старых версий sklearn может не быть n_features_in_
+                    # Пытаемся определить из shape mean_ или scale_
+                    if hasattr(self.scaler, 'mean_') and self.scaler.mean_ is not None:
+                        self.expected_features = len(self.scaler.mean_)
+                        logger.info(f"   📊 Модель ожидает {self.expected_features} признаков (определено из mean_)")
+                    elif hasattr(self.scaler, 'scale_') and self.scaler.scale_ is not None:
+                        self.expected_features = len(self.scaler.scale_)
+                        logger.info(f"   📊 Модель ожидает {self.expected_features} признаков (определено из scale_)")
+                    else:
+                        logger.warning("   ⚠️ Не удалось определить количество признаков из scaler")
                 loaded_count += 1
             else:
                 logger.info("ℹ️ Scaler не найден (будет создан при обучении)")
@@ -619,6 +635,10 @@ class AITrainer:
             if self.scaler:
                 joblib.dump(self.scaler, self.scaler_path)
                 logger.info(f"✅ Сохранен scaler: {self.scaler_path}")
+                # Сохраняем количество признаков
+                if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
+                    self.expected_features = self.scaler.n_features_in_
+                    logger.info(f"   📊 Модель использует {self.expected_features} признаков")
                 saved_count += 1
 
             if self.ai_decision_model:
@@ -1598,14 +1618,20 @@ class AITrainer:
             y_signal = np.array(y_signal)
             y_profit = np.array(y_profit)
             
-            # Нормализация
-            if not hasattr(self.scaler, 'mean_') or self.scaler.mean_ is None:
-                from sklearn.preprocessing import StandardScaler
-                self.scaler = StandardScaler()
-                X_scaled = self.scaler.fit_transform(X)
-            else:
-                # Дополняем существующий scaler (используем transform для совместимости)
-                X_scaled = self.scaler.transform(X)
+                # Нормализация
+                if not hasattr(self.scaler, 'mean_') or self.scaler.mean_ is None:
+                    from sklearn.preprocessing import StandardScaler
+                    self.scaler = StandardScaler()
+                    X_scaled = self.scaler.fit_transform(X)
+                    # Сохраняем количество признаков
+                    if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
+                        self.expected_features = self.scaler.n_features_in_
+                else:
+                    # Дополняем существующий scaler (используем transform для совместимости)
+                    X_scaled = self.scaler.transform(X)
+                    # Обновляем количество признаков
+                    if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
+                        self.expected_features = self.scaler.n_features_in_
             
             # Обучаем модели (дополняем существующие или создаем новые)
             if not self.signal_predictor:
@@ -2623,9 +2649,15 @@ class AITrainer:
                     from sklearn.preprocessing import StandardScaler
                     self.scaler = StandardScaler()
                     X_scaled = self.scaler.fit_transform(X)
+                    # Сохраняем количество признаков
+                    if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
+                        self.expected_features = self.scaler.n_features_in_
                 else:
                     # Переобучение на новых данных (incremental learning)
                     X_scaled = self.scaler.transform(X)
+                    # Обновляем количество признаков
+                    if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
+                        self.expected_features = self.scaler.n_features_in_
                 
                 # Обучаем модель предсказания успешности сделок
                 if not self.signal_predictor:
@@ -4742,8 +4774,25 @@ class AITrainer:
             return {'error': 'Models not trained'}
         
         try:
+            # Определяем ожидаемое количество признаков
+            expected_features = self.expected_features
+            if expected_features is None:
+                # Пытаемся определить из scaler
+                if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
+                    expected_features = self.scaler.n_features_in_
+                    self.expected_features = expected_features
+                elif hasattr(self.scaler, 'mean_') and self.scaler.mean_ is not None:
+                    expected_features = len(self.scaler.mean_)
+                    self.expected_features = expected_features
+                elif hasattr(self.scaler, 'scale_') and self.scaler.scale_ is not None:
+                    expected_features = len(self.scaler.scale_)
+                    self.expected_features = expected_features
+                else:
+                    # По умолчанию используем 7 признаков (стандартная версия)
+                    expected_features = 7
+                    logger.warning(f"⚠️ Не удалось определить количество признаков, используем по умолчанию: {expected_features}")
+            
             # Подготавливаем признаки из market_data
-            # ВАЖНО: Должно быть 7 признаков, как при обучении (строки 1584-1592)
             features = []
             
             rsi = market_data.get('rsi', 50)
@@ -4753,7 +4802,7 @@ class AITrainer:
             volatility = market_data.get('volatility', 0)
             volume_ratio = market_data.get('volume_ratio', 1.0)
             
-            # Генерируем те же 7 признаков, что и при обучении:
+            # Генерируем признаки в том же порядке, что и при обучении:
             # 1. entry_rsi
             features.append(rsi)
             # 2. entry_volatility
@@ -4769,32 +4818,18 @@ class AITrainer:
             # 7. entry_price / 1000.0
             features.append(price / 1000.0 if price > 0 else 0)
             
-            # Проверяем, что признаков ровно 7
-            if len(features) != 7:
-                logger.warning(f"⚠️ Неправильное количество признаков: {len(features)}, ожидается 7")
-                # Дополняем или обрезаем до 7
-                while len(features) < 7:
+            # Адаптируем количество признаков под ожидаемое моделью
+            if len(features) < expected_features:
+                # Дополняем нулями
+                logger.debug(f"⚠️ Признаков меньше ожидаемого ({len(features)} < {expected_features}), дополняем нулями")
+                while len(features) < expected_features:
                     features.append(0)
-                features = features[:7]
+            elif len(features) > expected_features:
+                # Обрезаем до нужного количества
+                logger.debug(f"⚠️ Признаков больше ожидаемого ({len(features)} > {expected_features}), обрезаем")
+                features = features[:expected_features]
             
             features_array = np.array([features])
-            
-            # Проверяем совместимость с scaler
-            if hasattr(self.scaler, 'n_features_in_'):
-                expected_features = self.scaler.n_features_in_
-                if len(features) != expected_features:
-                    logger.warning(f"⚠️ Несовместимость признаков: модель ожидает {expected_features}, получено {len(features)}")
-                    # Пытаемся адаптировать
-                    if expected_features == 7 and len(features) == 7:
-                        pass  # OK
-                    elif expected_features < len(features):
-                        features = features[:expected_features]
-                        features_array = np.array([features])
-                    else:
-                        # Дополняем нулями
-                        while len(features) < expected_features:
-                            features.append(0)
-                        features_array = np.array([features])
             
             try:
                 features_scaled = self.scaler.transform(features_array)
@@ -4807,6 +4842,7 @@ class AITrainer:
                     match = re.search(r'expecting (\d+) features', error_msg)
                     if match:
                         expected_features = int(match.group(1))
+                        self.expected_features = expected_features  # Сохраняем для будущих предсказаний
                         logger.warning(f"⚠️ Несовместимость признаков: модель ожидает {expected_features}, получено {len(features)}")
                         # Адаптируем признаки
                         if expected_features < len(features):
