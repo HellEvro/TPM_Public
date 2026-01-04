@@ -145,3 +145,12 @@ DATABASE_BACKUP = {
     'BACKUP_DIR': None,          # Кастомная директория (None = data/backups)
     'MAX_RETRIES': 3             # Количество попыток при блокировках файлов
 }
+
+# Настройки синхронизации времени Windows (только для Windows)
+TIME_SYNC = {
+    'ENABLED': False,            # Включить автоматическую синхронизацию времени
+    'INTERVAL_MINUTES': 60,      # Интервал синхронизации в минутах
+    'SERVER': 'time.windows.com', # Сервер времени для синхронизации
+    'RUN_ON_START': True,        # Синхронизировать сразу при запуске
+    'REQUIRE_ADMIN': True         # Требовать права администратора (рекомендуется True)
+}

@@ -3,9 +3,10 @@ from io import BytesIO
 from flask import Flask, render_template, jsonify, request
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import sys
+import subprocess
 import webbrowser
 from threading import Timer
 from pathlib import Path
@@ -75,6 +76,22 @@ else:
     _merged_backup_config = _DATABASE_BACKUP_DEFAULTS.copy()
     _merged_backup_config.update(DATABASE_BACKUP)
     DATABASE_BACKUP = _merged_backup_config
+
+# Конфигурация синхронизации времени Windows (значения по умолчанию)
+_TIME_SYNC_DEFAULTS = {
+    'ENABLED': False,
+    'INTERVAL_MINUTES': 60,
+    'SERVER': 'time.windows.com',
+    'RUN_ON_START': True,
+    'REQUIRE_ADMIN': True,
+}
+
+if 'TIME_SYNC' not in globals() or not isinstance(globals().get('TIME_SYNC'), dict):
+    TIME_SYNC = _TIME_SYNC_DEFAULTS.copy()
+else:
+    _merged_time_sync_config = _TIME_SYNC_DEFAULTS.copy()
+    _merged_time_sync_config.update(TIME_SYNC)
+    TIME_SYNC = _merged_time_sync_config
 
 import sys
 from app.telegram_notifier import TelegramNotifier
@@ -350,6 +367,7 @@ stats_lock = Lock()
 matplotlib_lock = Lock()
 backup_scheduler_stop_event = threading.Event()
 closed_pnl_loader_stop_event = threading.Event()
+time_sync_stop_event = threading.Event()
 
 
 def _run_backup_job(backup_service, backup_config):
@@ -436,6 +454,216 @@ def backup_scheduler_loop():
 
     while not backup_scheduler_stop_event.wait(interval_seconds):
         _run_backup_job(backup_service, backup_config)
+
+
+def check_admin_rights():
+    """Проверяет, запущен ли скрипт с правами администратора (только для Windows)"""
+    if sys.platform != 'win32':
+        return False
+    try:
+        result = subprocess.run(
+            ['net', 'session'],
+            capture_output=True,
+            check=False
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def configure_time_service(server="time.windows.com", silent=False):
+    """
+    Настраивает службу времени для синхронизации с указанным сервером
+    
+    Args:
+        server: Адрес сервера времени (по умолчанию time.windows.com)
+        silent: Если True, не выводит сообщения в консоль
+        
+    Returns:
+        Tuple[bool, str]: (успех, сообщение)
+    """
+    if sys.platform != 'win32':
+        return False, "Синхронизация времени доступна только для Windows"
+    
+    if not check_admin_rights():
+        return False, "Требуются права администратора для настройки службы времени"
+    
+    try:
+        command = [
+            'w32tm', '/config',
+            f'/manualpeerlist:"{server}"',
+            '/syncfromflags:manual',
+            '/reliable:yes',
+            '/update'
+        ]
+        
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            encoding='utf-8',
+            errors='ignore'
+        )
+        
+        if result.returncode != 0:
+            return False, f"Ошибка настройки службы времени: {result.stderr}"
+        
+        # Перезапуск службы времени
+        if not silent:
+            app_logger = logging.getLogger('app')
+            app_logger.info("[TimeSync] Перезапуск службы времени...")
+        
+        subprocess.run(['net', 'stop', 'w32time'], capture_output=True, check=False)
+        subprocess.run(['net', 'start', 'w32time'], capture_output=True, check=False)
+        
+        return True, "Служба времени успешно настроена"
+    except Exception as e:
+        return False, f"Ошибка настройки службы времени: {str(e)}"
+
+
+def sync_time(silent=False):
+    """
+    Выполняет принудительную синхронизацию времени
+    
+    Args:
+        silent: Если True, не выводит сообщения в консоль
+        
+    Returns:
+        Tuple[bool, str]: (успех, сообщение)
+    """
+    if sys.platform != 'win32':
+        return False, "Синхронизация времени доступна только для Windows"
+    
+    if not check_admin_rights():
+        return False, "Требуются права администратора для синхронизации времени"
+    
+    try:
+        if not silent:
+            app_logger = logging.getLogger('app')
+            app_logger.info("[TimeSync] Выполняется синхронизация времени...")
+        
+        result = subprocess.run(
+            ['w32tm', '/resync'],
+            capture_output=True,
+            text=True,
+            check=False,
+            encoding='utf-8',
+            errors='ignore'
+        )
+        
+        if result.returncode == 0:
+            return True, "Время успешно синхронизировано"
+        else:
+            # Если синхронизация не удалась, попробуем настроить службу
+            if not silent:
+                app_logger = logging.getLogger('app')
+                app_logger.info("[TimeSync] Попытка настроить службу времени...")
+            
+            config_success, config_msg = configure_time_service(silent=True)
+            if config_success:
+                # Повторная попытка синхронизации
+                result = subprocess.run(
+                    ['w32tm', '/resync'],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    encoding='utf-8',
+                    errors='ignore'
+                )
+                if result.returncode == 0:
+                    return True, "Время успешно синхронизировано после настройки службы"
+            
+            return False, f"Ошибка синхронизации времени: {result.stderr}"
+    except Exception as e:
+        return False, f"Ошибка синхронизации времени: {str(e)}"
+
+
+def time_sync_loop():
+    """Фоновый планировщик синхронизации времени Windows"""
+    time_sync_logger = logging.getLogger('TimeSync')
+    
+    # Проверяем платформу
+    if sys.platform != 'win32':
+        time_sync_logger.info("[TimeSync] Синхронизация времени доступна только для Windows")
+        return
+    
+    # Получаем настройки из конфига
+    time_sync_config = TIME_SYNC if 'TIME_SYNC' in globals() else {}
+    
+    if not time_sync_config.get('ENABLED', False):
+        time_sync_logger.info("[TimeSync] Автоматическая синхронизация времени выключена настройками")
+        return
+    
+    # Проверяем права администратора
+    if time_sync_config.get('REQUIRE_ADMIN', True) and not check_admin_rights():
+        time_sync_logger.warning(
+            "[TimeSync] ⚠️ Требуются права администратора для синхронизации времени. "
+            "Запустите приложение от имени администратора или установите REQUIRE_ADMIN=False"
+        )
+        return
+    
+    interval_minutes = time_sync_config.get('INTERVAL_MINUTES', 60)
+    try:
+        interval_minutes = float(interval_minutes)
+    except (TypeError, ValueError):
+        time_sync_logger.warning("[TimeSync] Некорректное значение INTERVAL_MINUTES, используется 60 минут")
+        interval_minutes = 60
+    
+    interval_seconds = max(60, int(interval_minutes * 60))
+    server = time_sync_config.get('SERVER', 'time.windows.com')
+    
+    time_sync_logger.info(
+        "[TimeSync] Планировщик запущен: каждые %s минут (%.0f секунд). Сервер: %s",
+        interval_minutes,
+        interval_seconds,
+        server
+    )
+    
+    # Первоначальная настройка службы времени
+    time_sync_logger.info("[TimeSync] Первоначальная настройка службы времени...")
+    configure_time_service(server=server, silent=True)
+    
+    # Синхронизация при запуске (если включено)
+    if time_sync_config.get('RUN_ON_START', True):
+        success, message = sync_time(silent=True)
+        if success:
+            time_sync_logger.info(f"[TimeSync] ✓ {message}")
+        else:
+            time_sync_logger.warning(f"[TimeSync] ✗ {message}")
+    
+    sync_count = 0
+    error_count = 0
+    
+    try:
+        while not time_sync_stop_event.wait(interval_seconds):
+            sync_count += 1
+            time_sync_logger.info(f"[TimeSync] --- Синхронизация #{sync_count} ---")
+            
+            success, message = sync_time(silent=True)
+            
+            if success:
+                time_sync_logger.info(f"[TimeSync] ✓ {message}")
+                error_count = 0  # Сбрасываем счетчик ошибок при успехе
+            else:
+                error_count += 1
+                time_sync_logger.warning(f"[TimeSync] ✗ {message}")
+                
+                # Если много ошибок подряд, попробуем переконфигурировать службу
+                if error_count >= 3:
+                    time_sync_logger.info("[TimeSync] Много ошибок подряд. Попытка переконфигурации службы...")
+                    configure_time_service(server=server, silent=True)
+                    error_count = 0
+            
+            # Показываем время до следующей синхронизации
+            next_sync = datetime.now() + timedelta(minutes=interval_minutes)
+            time_sync_logger.debug(f"[TimeSync] Следующая синхронизация: {next_sync.strftime('%Y-%m-%d %H:%M:%S')}")
+            
+    except Exception as e:
+        time_sync_logger.error(f"[TimeSync] Критическая ошибка в планировщике синхронизации времени: {e}")
+        import traceback
+        time_sync_logger.debug(traceback.format_exc())
+
 
 def background_closed_pnl_loader():
     """Фоновый процесс для загрузки закрытых PnL из биржи в БД каждые 30 секунд"""
@@ -2087,6 +2315,13 @@ if __name__ == '__main__':
         backup_thread = threading.Thread(target=backup_scheduler_loop, name='DatabaseBackupScheduler')
         backup_thread.daemon = True
         backup_thread.start()
+    
+    # Запускаем поток синхронизации времени (только для Windows)
+    if TIME_SYNC.get('ENABLED', False) and sys.platform == 'win32':
+        time_sync_thread = threading.Thread(target=time_sync_loop, name='TimeSyncScheduler')
+        time_sync_thread.daemon = True
+        time_sync_thread.start()
+        app_logger.info("[APP] ✅ Фоновый процесс синхронизации времени запущен")
     
     # Отключаем логи werkzeug - они не нужны и засоряют консоль
     werkzeug_logger = logging.getLogger('werkzeug')
