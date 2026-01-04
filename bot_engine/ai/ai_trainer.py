@@ -1618,20 +1618,20 @@ class AITrainer:
             y_signal = np.array(y_signal)
             y_profit = np.array(y_profit)
             
-                # Нормализация
-                if not hasattr(self.scaler, 'mean_') or self.scaler.mean_ is None:
-                    from sklearn.preprocessing import StandardScaler
-                    self.scaler = StandardScaler()
-                    X_scaled = self.scaler.fit_transform(X)
-                    # Сохраняем количество признаков
-                    if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
-                        self.expected_features = self.scaler.n_features_in_
-                else:
-                    # Дополняем существующий scaler (используем transform для совместимости)
-                    X_scaled = self.scaler.transform(X)
-                    # Обновляем количество признаков
-                    if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
-                        self.expected_features = self.scaler.n_features_in_
+            # Нормализация
+            if not hasattr(self.scaler, 'mean_') or self.scaler.mean_ is None:
+                from sklearn.preprocessing import StandardScaler
+                self.scaler = StandardScaler()
+                X_scaled = self.scaler.fit_transform(X)
+                # Сохраняем количество признаков
+                if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
+                    self.expected_features = self.scaler.n_features_in_
+            else:
+                # Дополняем существующий scaler (используем transform для совместимости)
+                X_scaled = self.scaler.transform(X)
+                # Обновляем количество признаков
+                if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
+                    self.expected_features = self.scaler.n_features_in_
             
             # Обучаем модели (дополняем существующие или создаем новые)
             if not self.signal_predictor:
