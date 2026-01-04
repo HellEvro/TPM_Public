@@ -86,6 +86,9 @@ class AutoTrainer:
                     else:
                         logger.warning("[AutoTrainer] ⚠️ Переобучение отложено из-за ошибки обновления данных")
                 
+                # 3. УЛУЧШЕНИЕ: Проверяем нужно ли переобучить основные модели на реальных сделках
+                self._check_real_trades_retrain()
+                
                 # Спим до следующей проверки (каждые 10 минут)
                 time.sleep(600)
                 
@@ -468,6 +471,39 @@ class AutoTrainer:
         
         except Exception as e:
             logger.error(f"[AutoTrainer] Ошибка hot reload: {e}")
+    
+    def _check_real_trades_retrain(self):
+        """
+        Проверяет и запускает переобучение основных моделей на реальных сделках
+        
+        Это улучшение позволяет AI автоматически обучаться на реальных результатах торговли
+        """
+        try:
+            from bot_engine.ai import get_ai_system
+            
+            ai_system = get_ai_system()
+            if not ai_system or not ai_system.trainer:
+                return
+            
+            # Проверяем, нужно ли переобучение
+            should_retrain = ai_system.trainer._should_retrain_real_trades_models()
+            
+            if should_retrain['retrain']:
+                logger.info(f"[AutoTrainer] 🔄 Обнаружена необходимость переобучения на реальных сделках: {should_retrain['reason']}")
+                logger.info(f"[AutoTrainer] 📊 Текущее количество сделок: {should_retrain['trades_count']}")
+                
+                # Запускаем переобучение в отдельном потоке, чтобы не блокировать основной цикл
+                import threading
+                retrain_thread = threading.Thread(
+                    target=ai_system.trainer.auto_retrain_real_trades_models,
+                    args=(False,),
+                    daemon=True,
+                    name="AutoRetrainRealTrades"
+                )
+                retrain_thread.start()
+                logger.info("[AutoTrainer] 🚀 Запущено автоматическое переобучение на реальных сделках (в фоне)")
+        except Exception as e:
+            logger.debug(f"[AutoTrainer] ⚠️ Ошибка проверки переобучения на реальных сделках: {e}")
     
     def force_update(self) -> bool:
         """

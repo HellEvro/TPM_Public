@@ -186,6 +186,11 @@ class AITrainer:
         self.ai_decisions_min_samples = 20
         self.ai_decisions_last_trained_count = 0
         self._ai_decision_last_accuracy = None
+        # Отслеживание обучения на реальных сделках
+        self._last_real_trades_training_time = None
+        self._last_real_trades_training_count = 0
+        self._real_trades_min_samples = 10  # Минимум сделок для обучения
+        self._real_trades_retrain_threshold = 0.2  # 20% новых сделок для переобучения
         # Пути моделей (нормализуем все пути)
         self.signal_model_path = os.path.normpath(os.path.join(self.models_dir, 'signal_predictor.pkl'))
         self.profit_model_path = os.path.normpath(os.path.join(self.models_dir, 'profit_predictor.pkl'))
@@ -1960,6 +1965,15 @@ class AITrainer:
             logger.info(f"   📈 Предсказано прибыльных: {profitable_pred}/{len(y_signal_test)}")
             logger.info(f"   📈 Реально прибыльных: {profitable_actual}/{len(y_signal_test)}")
             
+            # УЛУЧШЕНИЕ: Дополнительные метрики качества
+            if len(y_signal_test) > 0:
+                precision = profitable_pred / len(y_signal_test) if len(y_signal_test) > 0 else 0
+                recall = profitable_actual / len(y_signal_test) if len(y_signal_test) > 0 else 0
+                f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+                logger.info(f"   📊 Precision: {precision:.2%}")
+                logger.info(f"   📊 Recall: {recall:.2%}")
+                logger.info(f"   📊 F1 Score: {f1_score:.2%}")
+            
             # Обучение модели предсказания прибыли
             logger.info("=" * 80)
             logger.info("🎓 ОБУЧЕНИЕ МОДЕЛИ ПРЕДСКАЗАНИЯ ПРИБЫЛИ")
@@ -1984,6 +1998,19 @@ class AITrainer:
             logger.info(f"   📊 MSE: {mse:.2f}")
             logger.info(f"   📈 Средняя прибыль (реальная): {avg_profit_actual:.2f} USDT")
             logger.info(f"   📈 Средняя прибыль (предсказанная): {avg_profit_pred:.2f} USDT")
+            
+            # УЛУЧШЕНИЕ: Дополнительные метрики качества
+            if len(y_profit_test) > 0:
+                from sklearn.metrics import r2_score, mean_absolute_error
+                r2 = r2_score(y_profit_test, y_profit_pred)
+                mae = mean_absolute_error(y_profit_test, y_profit_pred)
+                logger.info(f"   📊 R² Score: {r2:.3f}")
+                logger.info(f"   📊 MAE: {mae:.2f} USDT")
+                
+                # Процент точности предсказания (в пределах 10%)
+                within_10pct = sum(abs(y_profit_test[i] - y_profit_pred[i]) / max(abs(y_profit_test[i]), 1) < 0.1 
+                                   for i in range(len(y_profit_test))) / len(y_profit_test) if len(y_profit_test) > 0 else 0
+                logger.info(f"   📊 Точность в пределах 10%: {within_10pct:.2%}")
             
             # Сохранение моделей
             self._save_models()
@@ -2191,6 +2218,9 @@ class AITrainer:
                 logger.info(f"   ✅ ИСТОРИЯ БИРЖИ ИСПОЛЬЗУЕТСЯ ДЛЯ ОБУЧЕНИЯ ИИ!")
             else:
                 logger.info(f"   ⚠️ История биржи пуста - загружаем через API...")
+            
+            # Обновляем количество сделок для отслеживания
+            self._last_real_trades_training_count = len(trades)
             
             # 4. Загружаем свечи для анализа
             market_data = self._load_market_data()
@@ -2808,6 +2838,20 @@ class AITrainer:
                 self.train_on_simulated_trades()
             except Exception as sim_error:
                 logger.debug(f"⚠️ Ошибка обучения на симулированных сделках: {sim_error}")
+            
+            # Обновляем время и количество последнего обучения на реальных сделках
+            self._last_real_trades_training_time = datetime.now()
+            if self.ai_db:
+                try:
+                    # Получаем актуальное количество сделок из БД
+                    bot_trades = self.ai_db.get_bot_trades(status='CLOSED', limit=None)
+                    exchange_trades = self._load_saved_exchange_trades()
+                    self._last_real_trades_training_count = len(bot_trades) + len(exchange_trades)
+                except Exception as e:
+                    logger.debug(f"⚠️ Ошибка получения количества сделок: {e}")
+                    self._last_real_trades_training_count = processed_trades
+            else:
+                self._last_real_trades_training_count = processed_trades
             
         except Exception as e:
             logger.error(f"❌ Ошибка обучения на реальных сделках: {e}")
@@ -5188,6 +5232,25 @@ class AITrainer:
             updated = self.data_storage.update_ai_decision(decision_id, updates)
             if updated:
                 logger.debug(f"✅ Решение AI {decision_id} обновлено (pnl={updates.get('pnl')}, roi={updates.get('roi')})")
+                
+                # УЛУЧШЕНИЕ: Проверяем, нужно ли переобучить модели на реальных сделках
+                # Делаем это асинхронно, чтобы не блокировать обновление решения
+                try:
+                    should_retrain = self._should_retrain_real_trades_models()
+                    if should_retrain['retrain']:
+                        logger.info(f"🔄 Обнаружено достаточно новых сделок для переобучения: {should_retrain['reason']}")
+                        # Запускаем переобучение в отдельном потоке, чтобы не блокировать
+                        import threading
+                        retrain_thread = threading.Thread(
+                            target=self.auto_retrain_real_trades_models,
+                            args=(False,),
+                            daemon=True,
+                            name="AutoRetrainRealTrades"
+                        )
+                        retrain_thread.start()
+                        logger.info("🚀 Запущено автоматическое переобучение на реальных сделках (в фоне)")
+                except Exception as retrain_check_error:
+                    logger.debug(f"⚠️ Ошибка проверки необходимости переобучения: {retrain_check_error}")
             else:
                 logger.debug(f"⚠️ Решение AI {decision_id} не найдено в хранилище")
             return updated
@@ -5207,4 +5270,133 @@ class AITrainer:
         """
         trades = self._load_history_data()
         return len(trades)
+    
+    def _should_retrain_real_trades_models(self) -> Dict[str, Any]:
+        """
+        Определяет, нужно ли переобучать основные модели (signal_predictor, profit_predictor) на реальных сделках.
+        
+        Проверяет:
+        1. Накопилось ли достаточно новых сделок (минимум 10, или 20% от предыдущего обучения)
+        2. Прошло ли достаточно времени с последнего обучения (7 дней)
+        3. Модели не обучены вообще
+        
+        Returns:
+            Словарь с решением: {'retrain': bool, 'reason': str, 'trades_count': int}
+        """
+        try:
+            # Получаем текущее количество сделок
+            current_trades_count = self.get_trades_count()
+            
+            # Если моделей нет вообще - нужно обучить
+            if not self.signal_predictor or not self.profit_predictor:
+                if current_trades_count >= self._real_trades_min_samples:
+                    return {
+                        'retrain': True,
+                        'reason': f'Модели не обучены, есть {current_trades_count} сделок (нужно минимум {self._real_trades_min_samples})',
+                        'trades_count': current_trades_count
+                    }
+                else:
+                    return {
+                        'retrain': False,
+                        'reason': f'Модели не обучены, недостаточно сделок: {current_trades_count} < {self._real_trades_min_samples}',
+                        'trades_count': current_trades_count
+                    }
+            
+            # Если модели обучены - проверяем, нужно ли переобучение
+            # Проверяем количество новых сделок
+            if self._last_real_trades_training_count > 0:
+                new_trades = current_trades_count - self._last_real_trades_training_count
+                new_trades_threshold = max(
+                    self._real_trades_min_samples,
+                    int(self._last_real_trades_training_count * self._real_trades_retrain_threshold)
+                )
+                
+                if new_trades >= new_trades_threshold:
+                    return {
+                        'retrain': True,
+                        'reason': f'Накопилось {new_trades} новых сделок (было {self._last_real_trades_training_count}, стало {current_trades_count}, порог: {new_trades_threshold})',
+                        'trades_count': current_trades_count
+                    }
+            else:
+                # Первое обучение еще не было - проверяем минимальный порог
+                if current_trades_count >= self._real_trades_min_samples:
+                    return {
+                        'retrain': True,
+                        'reason': f'Первое обучение: есть {current_trades_count} сделок (нужно минимум {self._real_trades_min_samples})',
+                        'trades_count': current_trades_count
+                    }
+            
+            # Проверяем время с последнего обучения (если прошло больше 7 дней)
+            if self._last_real_trades_training_time:
+                time_since_training = datetime.now() - self._last_real_trades_training_time
+                if isinstance(time_since_training, timedelta):
+                    days_since_training = time_since_training.days
+                    if days_since_training >= 7:
+                        return {
+                            'retrain': True,
+                            'reason': f'Прошло {days_since_training} дней с последнего обучения (порог: 7 дней)',
+                            'trades_count': current_trades_count
+                        }
+            
+            return {
+                'retrain': False,
+                'reason': f'Достаточно данных ({current_trades_count} сделок), новых: {current_trades_count - self._last_real_trades_training_count if self._last_real_trades_training_count > 0 else 0}',
+                'trades_count': current_trades_count
+            }
+        except Exception as e:
+            logger.debug(f"⚠️ Ошибка проверки необходимости переобучения на реальных сделках: {e}")
+            # В случае ошибки - переобучаем для безопасности
+            return {
+                'retrain': True,
+                'reason': f'Ошибка проверки, переобучаем для безопасности: {e}',
+                'trades_count': 0
+            }
+    
+    def auto_retrain_real_trades_models(self, force: bool = False) -> bool:
+        """
+        Автоматически переобучает основные модели на реальных сделках, если накопилось достаточно данных.
+        
+        Args:
+            force: Принудительное переобучение даже если данных недостаточно
+        
+        Returns:
+            True если обучение было выполнено, False если пропущено
+        """
+        try:
+            # Проверяем, нужно ли переобучение
+            if not force:
+                should_retrain = self._should_retrain_real_trades_models()
+                if not should_retrain['retrain']:
+                    logger.debug(f"ℹ️ Переобучение на реальных сделках не требуется: {should_retrain['reason']}")
+                    return False
+            
+            # Запускаем обучение на реальных сделках
+            logger.info("=" * 80)
+            logger.info("🤖 АВТОМАТИЧЕСКОЕ ПЕРЕОБУЧЕНИЕ НА РЕАЛЬНЫХ СДЕЛКАХ")
+            logger.info("=" * 80)
+            
+            self.train_on_real_trades_with_candles()
+            
+            # Обновляем время и количество последнего обучения
+            self._last_real_trades_training_time = datetime.now()
+            if self.ai_db:
+                try:
+                    # Получаем актуальное количество сделок из БД
+                    bot_trades = self.ai_db.get_bot_trades(status='CLOSED', limit=None)
+                    exchange_trades = self._load_saved_exchange_trades()
+                    self._last_real_trades_training_count = len(bot_trades) + len(exchange_trades)
+                except Exception as e:
+                    logger.debug(f"⚠️ Ошибка получения количества сделок: {e}")
+                    self._last_real_trades_training_count = self.get_trades_count()
+            else:
+                self._last_real_trades_training_count = self.get_trades_count()
+            
+            logger.info("✅ Автоматическое переобучение на реальных сделках завершено")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка автоматического переобучения на реальных сделках: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return False
 
