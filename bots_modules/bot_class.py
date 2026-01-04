@@ -727,6 +727,32 @@ class NewTradingBot:
             if not loss_reentry_protection_enabled:
                 return {'allowed': True, 'reason': 'Protection disabled'}
             
+            # ✅ КРИТИЧНО: Проверяем, прошло ли минимум 1 час с последнего закрытия позиции
+            # Это нужно, чтобы история успела подгрузиться в БД после закрытия
+            last_close_timestamp = self.config.get('last_position_close_timestamp')
+            if last_close_timestamp:
+                try:
+                    from datetime import datetime
+                    current_timestamp = datetime.now().timestamp()
+                    time_since_close = current_timestamp - float(last_close_timestamp)
+                    min_wait_seconds = 3600  # 1 час минимум
+                    
+                    if time_since_close < min_wait_seconds:
+                        wait_remaining = min_wait_seconds - time_since_close
+                        wait_remaining_minutes = wait_remaining / 60
+                        logger.error(
+                            f"[NEW_BOT_{self.symbol}] 🚫🚫🚫 ЗАБЛОКИРОВАНО: После закрытия позиции прошло только {time_since_close:.0f} секунд "
+                            f"(требуется {min_wait_seconds} секунд = 1 час). Осталось ждать: {wait_remaining_minutes:.1f} минут"
+                        )
+                        return {
+                            'allowed': False,
+                            'reason': f'Minimum 1 hour wait after position close (only {time_since_close:.0f}s passed, need {min_wait_seconds}s)'
+                        }
+                    else:
+                        logger.info(f"[NEW_BOT_{self.symbol}] ✅ Прошло {time_since_close/3600:.2f} часов с последнего закрытия - продолжаем проверку фильтра")
+                except Exception as timestamp_check_error:
+                    logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка проверки timestamp закрытия: {timestamp_check_error}")
+            
             # Получаем последние N закрытых сделок для этого символа
             try:
                 from bot_engine.bots_database import get_bots_database
@@ -2269,6 +2295,21 @@ class NewTradingBot:
                     logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось сохранить историю сделки в bots_data.db")
             except Exception as bots_db_error:
                 logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка сохранения истории в bots_data.db: {bots_db_error}")
+            
+            # ✅ КРИТИЧНО: Сохраняем timestamp последнего закрытия для задержки перед следующим входом
+            try:
+                current_timestamp = datetime.now().timestamp()
+                self.config['last_position_close_timestamp'] = current_timestamp
+                
+                # Также обновляем в bots_data для персистентности
+                from bots_modules.imports_and_globals import bots_data, bots_data_lock
+                with bots_data_lock:
+                    if self.symbol in bots_data['bots']:
+                        bots_data['bots'][self.symbol]['last_position_close_timestamp'] = current_timestamp
+                
+                logger.info(f"[NEW_BOT_{self.symbol}] ⏰ Сохранен timestamp последнего закрытия: {current_timestamp} (через 1 час разрешим новый вход)")
+            except Exception as timestamp_error:
+                logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка сохранения timestamp закрытия: {timestamp_error}")
             
             # ВАЖНО: Обновляем результат решения AI для переобучения
             if hasattr(self, 'ai_decision_id') and self.ai_decision_id:
