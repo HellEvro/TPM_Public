@@ -729,7 +729,19 @@ class NewTradingBot:
             
             # ✅ КРИТИЧНО: Проверяем, прошло ли минимум 1 час с последнего закрытия позиции
             # Это нужно, чтобы история успела подгрузиться в БД после закрытия
+            # Проверяем как в config бота, так и в глобальном словаре (для случаев когда бот был удален)
             last_close_timestamp = self.config.get('last_position_close_timestamp')
+            
+            # Также проверяем глобальный словарь (для случаев когда бот был удален после закрытия)
+            if not last_close_timestamp:
+                try:
+                    from bots_modules.imports_and_globals import bots_data, bots_data_lock
+                    with bots_data_lock:
+                        last_close_timestamps = bots_data.get('last_close_timestamps', {})
+                        last_close_timestamp = last_close_timestamps.get(self.symbol)
+                except Exception:
+                    pass
+            
             if last_close_timestamp:
                 try:
                     from datetime import datetime
