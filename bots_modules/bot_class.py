@@ -775,6 +775,8 @@ class NewTradingBot:
                 from bot_engine.bots_database import get_bots_database
                 bots_db = get_bots_database()
                 
+                logger.error(f"[NEW_BOT_{self.symbol}] 🔍 Проверяем закрытые сделки в БД для символа {self.symbol}, нужны последние {loss_reentry_count} сделок")
+                
                 # ✅ КРИТИЧНО: Получаем последние N закрытых сделок по текущей монете
                 # Сначала пробуем из bot_trades_history (сделки ботов)
                 closed_trades = bots_db.get_bot_trades_history(
@@ -785,6 +787,13 @@ class NewTradingBot:
                     limit=loss_reentry_count,  # ⬅️ Последние N сделок
                     offset=0
                 )
+                
+                logger.error(f"[NEW_BOT_{self.symbol}] 🔍 Из bot_trades_history получено {len(closed_trades) if closed_trades else 0} закрытых сделок")
+                if closed_trades:
+                    for i, trade in enumerate(closed_trades):
+                        pnl = trade.get('pnl')
+                        exit_timestamp = trade.get('exit_timestamp')
+                        logger.error(f"[NEW_BOT_{self.symbol}] 🔍 Сделка #{i+1}: pnl={pnl}, exit_timestamp={exit_timestamp}")
                 
                 # ✅ КРИТИЧНО: Если нет сделок в bot_trades_history или недостаточно, дополняем из closed_pnl_history (UI сделки)
                 if not closed_trades or len(closed_trades) < loss_reentry_count:
@@ -802,6 +811,8 @@ class NewTradingBot:
                             if not closed_trades:
                                 closed_trades = []
                             
+                            logger.error(f"[NEW_BOT_{self.symbol}] 🔍 Из closed_pnl_history найдено {len(symbol_closed_pnl)} сделок для символа {self.symbol}")
+                            
                             # Дополняем до нужного количества
                             needed_count = loss_reentry_count - len(closed_trades)
                             for pnl_trade in symbol_closed_pnl[:needed_count]:
@@ -813,13 +824,17 @@ class NewTradingBot:
                                     'is_simulated': False
                                 }
                                 closed_trades.append(trade)
+                                logger.error(f"[NEW_BOT_{self.symbol}] 🔍 Добавлена сделка из closed_pnl_history: pnl={trade['pnl']}, exit_timestamp={trade['exit_timestamp']}")
                             
                             # Сортируем объединенный список по exit_timestamp DESC
                             closed_trades.sort(key=lambda x: x.get('exit_timestamp') or 0, reverse=True)
                             # Берем только последние N
                             closed_trades = closed_trades[:loss_reentry_count]
+                            logger.error(f"[NEW_BOT_{self.symbol}] 🔍 После объединения и сортировки: {len(closed_trades)} сделок")
                     except Exception as app_db_error:
-                        logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось загрузить из closed_pnl_history: {app_db_error}")
+                        logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка загрузки из closed_pnl_history: {app_db_error}")
+                        import traceback
+                        logger.error(traceback.format_exc())
                 
                 # ✅ КРИТИЧНО: Если нет закрытых сделок или недостаточно - РАЗРЕШАЕМ вход
                 # (фильтр не применяется, если недостаточно истории)
