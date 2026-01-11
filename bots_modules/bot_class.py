@@ -715,6 +715,8 @@ class NewTradingBot:
             dict: {'allowed': bool, 'reason': str}
         """
         try:
+            logger.error(f"[NEW_BOT_{self.symbol}] 🔍 check_loss_reentry_protection ВЫЗВАН!")
+            
             with bots_data_lock:
                 auto_config = bots_data.get('auto_bot_config', {})
             
@@ -722,6 +724,7 @@ class NewTradingBot:
             # Это нужно, чтобы история успела подгрузиться в БД после закрытия
             # Работает НЕЗАВИСИМО от настройки loss_reentry_protection (как просил пользователь)
             last_close_timestamp = self.config.get('last_position_close_timestamp')
+            logger.error(f"[NEW_BOT_{self.symbol}] 🔍 last_close_timestamp из config: {last_close_timestamp}")
             
             # Также проверяем глобальный словарь (для случаев когда бот был удален после закрытия)
             if not last_close_timestamp:
@@ -730,10 +733,12 @@ class NewTradingBot:
                     with bots_data_lock:
                         last_close_timestamps = bots_data.get('last_close_timestamps', {})
                         last_close_timestamp = last_close_timestamps.get(self.symbol)
-                except Exception:
-                    pass
+                        logger.error(f"[NEW_BOT_{self.symbol}] 🔍 last_close_timestamp из глобального словаря: {last_close_timestamp}, все timestamps: {list(last_close_timestamps.keys())}")
+                except Exception as e:
+                    logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка чтения глобального словаря: {e}")
             
             if last_close_timestamp:
+                logger.error(f"[NEW_BOT_{self.symbol}] ✅ НАЙДЕН timestamp последнего закрытия: {last_close_timestamp}")
                 try:
                     from datetime import datetime
                     current_timestamp = datetime.now().timestamp()
