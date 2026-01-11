@@ -718,18 +718,9 @@ class NewTradingBot:
             with bots_data_lock:
                 auto_config = bots_data.get('auto_bot_config', {})
             
-            # Получаем настройки (сначала из индивидуальных, потом из глобальных)
-            loss_reentry_protection_enabled = self.config.get('loss_reentry_protection') if 'loss_reentry_protection' in self.config else auto_config.get('loss_reentry_protection', True)
-            loss_reentry_count = self.config.get('loss_reentry_count') or auto_config.get('loss_reentry_count', 1)
-            loss_reentry_candles = self.config.get('loss_reentry_candles') or auto_config.get('loss_reentry_candles', 3)
-            
-            # Если защита выключена - разрешаем вход
-            if not loss_reentry_protection_enabled:
-                return {'allowed': True, 'reason': 'Protection disabled'}
-            
-            # ✅ КРИТИЧНО: Проверяем, прошло ли минимум 1 час с последнего закрытия позиции
+            # ✅ КРИТИЧНО: ВСЕГДА проверяем, прошло ли минимум 1 час с последнего закрытия позиции
             # Это нужно, чтобы история успела подгрузиться в БД после закрытия
-            # Проверяем как в config бота, так и в глобальном словаре (для случаев когда бот был удален)
+            # Работает НЕЗАВИСИМО от настройки loss_reentry_protection (как просил пользователь)
             last_close_timestamp = self.config.get('last_position_close_timestamp')
             
             # Также проверяем глобальный словарь (для случаев когда бот был удален после закрытия)
@@ -753,7 +744,7 @@ class NewTradingBot:
                         wait_remaining = min_wait_seconds - time_since_close
                         wait_remaining_minutes = wait_remaining / 60
                         logger.error(
-                            f"[NEW_BOT_{self.symbol}] 🚫🚫🚫 ЗАБЛОКИРОВАНО: После закрытия позиции прошло только {time_since_close:.0f} секунд "
+                            f"[NEW_BOT_{self.symbol}] 🚫🚫🚫 ЗАБЛОКИРОВАНО (1 час задержка): После закрытия позиции прошло только {time_since_close:.0f} секунд "
                             f"(требуется {min_wait_seconds} секунд = 1 час). Осталось ждать: {wait_remaining_minutes:.1f} минут"
                         )
                         return {
@@ -764,6 +755,15 @@ class NewTradingBot:
                         logger.info(f"[NEW_BOT_{self.symbol}] ✅ Прошло {time_since_close/3600:.2f} часов с последнего закрытия - продолжаем проверку фильтра")
                 except Exception as timestamp_check_error:
                     logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка проверки timestamp закрытия: {timestamp_check_error}")
+            
+            # Получаем настройки (сначала из индивидуальных, потом из глобальных)
+            loss_reentry_protection_enabled = self.config.get('loss_reentry_protection') if 'loss_reentry_protection' in self.config else auto_config.get('loss_reentry_protection', True)
+            loss_reentry_count = self.config.get('loss_reentry_count') or auto_config.get('loss_reentry_count', 1)
+            loss_reentry_candles = self.config.get('loss_reentry_candles') or auto_config.get('loss_reentry_candles', 3)
+            
+            # Если защита выключена - разрешаем вход (но только если прошло 1 час!)
+            if not loss_reentry_protection_enabled:
+                return {'allowed': True, 'reason': 'Protection disabled'}
             
             # Получаем последние N закрытых сделок для этого символа
             try:
