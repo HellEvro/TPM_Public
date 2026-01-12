@@ -27,6 +27,11 @@ class AutoTrainer:
         self.last_data_update = None
         self.last_training = None
         
+        # Защита от множественных запусков
+        self._training_in_progress = False
+        self._data_update_in_progress = False
+        self._retrain_check_in_progress = False
+        
         # Путь к скриптам
         self.scripts_dir = Path('scripts/ai')
         self.collect_script = self.scripts_dir / 'collect_historical_data.py'
@@ -75,19 +80,20 @@ class AutoTrainer:
                 
                 # 1. Проверяем нужно ли обновить данные
                 data_updated = False
-                if self._should_update_data(current_time):
+                if self._should_update_data(current_time) and not self._data_update_in_progress:
                     data_updated = self._update_data()
                 
                 # 2. Проверяем нужно ли переобучить модель
                 # ВАЖНО: Переобучаем только если данные НЕ обновлялись или обновились успешно
-                if self._should_retrain(current_time):
+                if self._should_retrain(current_time) and not self._training_in_progress:
                     if not data_updated or data_updated == True:  # Данные не обновлялись или обновились успешно
                         self._retrain()
                     else:
                         logger.warning("[AutoTrainer] ⚠️ Переобучение отложено из-за ошибки обновления данных")
                 
                 # 3. УЛУЧШЕНИЕ: Проверяем нужно ли переобучить основные модели на реальных сделках
-                self._check_real_trades_retrain()
+                if not self._retrain_check_in_progress:
+                    self._check_real_trades_retrain()
                 
                 # Спим до следующей проверки (каждые 10 минут)
                 time.sleep(600)
@@ -219,6 +225,12 @@ class AutoTrainer:
         Returns:
             True если успешно
         """
+        # Защита от множественных запусков
+        if self._data_update_in_progress:
+            logger.debug("[AutoTrainer] Обновление данных уже выполняется, пропускаем...")
+            return False
+        
+        self._data_update_in_progress = True
         try:
             logger.info("[AutoTrainer] 📥 Обновление исторических данных...")
             
@@ -286,6 +298,8 @@ class AutoTrainer:
         except Exception as e:
             logger.error(f"[AutoTrainer] ❌ Ошибка обновления данных: {e}")
             return False
+        finally:
+            self._data_update_in_progress = False
     
     def _retrain(self) -> bool:
         """
@@ -294,6 +308,12 @@ class AutoTrainer:
         Returns:
             True если успешно
         """
+        # Защита от множественных запусков
+        if self._training_in_progress:
+            logger.debug("[AutoTrainer] Обучение уже выполняется, пропускаем...")
+            return False
+        
+        self._training_in_progress = True
         try:
             logger.info("[AutoTrainer] 🧠 Переобучение моделей...")
             
@@ -354,6 +374,8 @@ class AutoTrainer:
         except Exception as e:
             logger.error(f"[AutoTrainer] ❌ Ошибка обучения: {e}")
             return False
+        finally:
+            self._training_in_progress = False
     
     def _train_model(self, script_path: Path, model_name: str, timeout: int = 600, args: list = None) -> bool:
         """
@@ -478,6 +500,11 @@ class AutoTrainer:
         
         Это улучшение позволяет AI автоматически обучаться на реальных результатах торговли
         """
+        # Защита от множественных запусков
+        if self._retrain_check_in_progress:
+            return
+        
+        self._retrain_check_in_progress = True
         try:
             from bot_engine.ai import get_ai_system
             
@@ -504,6 +531,8 @@ class AutoTrainer:
                 logger.info("[AutoTrainer] 🚀 Запущено автоматическое переобучение на реальных сделках (в фоне)")
         except Exception as e:
             logger.debug(f"[AutoTrainer] ⚠️ Ошибка проверки переобучения на реальных сделках: {e}")
+        finally:
+            self._retrain_check_in_progress = False
     
     def force_update(self) -> bool:
         """

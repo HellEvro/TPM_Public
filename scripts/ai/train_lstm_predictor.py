@@ -33,13 +33,98 @@ def calculate_ema(prices: np.ndarray, period: int) -> np.ndarray:
     return ema
 
 
+def prepare_training_data_from_candles(
+    candles: list,
+    symbol: str,
+    sequence_length: int = 60,
+    prediction_horizon: int = 1
+) -> list:
+    """
+    Подготавливает данные для обучения из списка свечей
+    
+    Args:
+        candles: Список свечей [{'time': int, 'open': float, ...}, ...]
+        symbol: Символ монеты
+        sequence_length: Длина последовательности (60 свечей)
+        prediction_horizon: Горизонт предсказания (1 свеча = 6 часов)
+    
+    Returns:
+        Список (X, y) пар для обучения
+    """
+    if not candles or len(candles) < sequence_length + prediction_horizon + 20:
+        return []
+    
+    try:
+        # Преобразуем в DataFrame
+        df = pd.DataFrame(candles)
+        df = df.sort_values('time')
+        
+        # Переименовываем колонки для совместимости
+        if 'time' in df.columns:
+            df = df.rename(columns={'time': 'timestamp'})
+        
+        # Проверяем наличие необходимых колонок
+        required_cols = ['close', 'volume', 'high', 'low']
+        if not all(col in df.columns for col in required_cols):
+            return []
+        
+        # Вычисляем дополнительные признаки
+        # RSI
+        df['rsi'] = calculate_rsi(df['close'].values, period=14)
+        
+        # EMA
+        df['ema_fast'] = calculate_ema(df['close'].values, period=12)
+        df['ema_slow'] = calculate_ema(df['close'].values, period=26)
+        
+        # Удаляем NaN значения
+        df = df.dropna()
+        
+        if len(df) < sequence_length + prediction_horizon + 20:
+            return []
+        
+        # Подготавливаем признаки
+        features = ['close', 'volume', 'high', 'low', 'rsi', 'ema_fast', 'ema_slow']
+        data = df[features].values
+        
+        training_samples = []
+        
+        # Создаем скользящее окно
+        for i in range(len(data) - sequence_length - prediction_horizon):
+            # Входная последовательность (60 свечей)
+            X = data[i:i + sequence_length]
+            
+            # Целевые значения (следующая свеча через prediction_horizon)
+            current_close = data[i + sequence_length - 1, 0]  # close
+            future_close = data[i + sequence_length + prediction_horizon - 1, 0]
+            
+            # Вычисляем целевые значения:
+            # 1. Направление: 1 (вверх) или -1 (вниз)
+            direction = 1.0 if future_close > current_close else -1.0
+            
+            # 2. Изменение в процентах
+            change_percent = ((future_close - current_close) / current_close) * 100
+            
+            # 3. Уверенность (на основе величины изменения)
+            confidence = min(abs(change_percent) / 10, 1.0)  # 0-1
+            
+            y = np.array([direction, change_percent, confidence])
+            
+            training_samples.append((X, y))
+        
+        return training_samples
+        
+    except Exception as e:
+        print(f"  [ERROR] Processing error for {symbol}: {e}")
+        return []
+
+
 def prepare_training_data(
     csv_file: str,
     sequence_length: int = 60,
     prediction_horizon: int = 1
 ) -> list:
     """
-    Подготавливает данные для обучения из CSV файла
+    Подготавливает данные для обучения из CSV файла (legacy метод)
     
     Args:
         csv_file: Путь к CSV файлу с историческими данными
@@ -130,14 +215,76 @@ def load_all_historical_data(
     """
     Загружает все исторические данные для обучения
     
+    ПРИОРИТЕТ: БД (ai_data.db) → CSV файлы (legacy)
+    
     Args:
-        data_dir: Директория с CSV файлами
+        data_dir: Директория с CSV файлами (используется только если БД пуста)
         max_coins: Максимальное количество монет (0 = все)
         sequence_length: Длина последовательности
     
     Returns:
         Список всех обучающих образцов
     """
+    all_training_data = []
+    successful = 0
+    failed = 0
+    
+    # ПРИОРИТЕТ 1: Загружаем из БД
+    try:
+        from bot_engine.ai.ai_database import get_ai_database
+        ai_db = get_ai_database()
+        
+        if ai_db:
+            print("\n[INFO] Загрузка данных из БД (ai_data.db)...")
+            print("=" * 60)
+            
+            # Получаем все свечи из БД
+            candles_dict = ai_db.get_all_candles_dict(timeframe='6h')
+            
+            if candles_dict:
+                symbols = sorted(candles_dict.keys())
+                
+                if max_coins > 0:
+                    symbols = symbols[:max_coins]
+                
+                print(f"Found {len(symbols)} symbols in database")
+                
+                for i, symbol in enumerate(symbols, 1):
+                    candles = candles_dict[symbol]
+                    print(f"\n[{i}/{len(symbols)}] {symbol} ({len(candles)} candles)")
+                    
+                    training_data = prepare_training_data_from_candles(
+                        candles,
+                        symbol,
+                        sequence_length=sequence_length
+                    )
+                    
+                    if training_data:
+                        all_training_data.extend(training_data)
+                        successful += 1
+                        print(f"  [OK] Prepared {len(training_data)} samples")
+                    else:
+                        failed += 1
+                        print(f"  [SKIP] Not enough data")
+                
+                print("\n" + "=" * 60)
+                print(f"[OK] Successfully processed: {successful} coins")
+                print(f"[FAILED] Errors: {failed} coins")
+                print(f"[TOTAL] Training samples: {len(all_training_data)}")
+                
+                if all_training_data:
+                    return all_training_data
+                else:
+                    print("[WARNING] БД пуста или недостаточно данных, пробуем CSV...")
+            else:
+                print("[WARNING] БД пуста, пробуем CSV файлы...")
+        else:
+            print("[WARNING] AI Database не доступна, пробуем CSV файлы...")
+    except Exception as e:
+        print(f"[WARNING] Ошибка загрузки из БД: {e}")
+        print("[INFO] Пробуем загрузить из CSV файлов...")
+    
+    # ПРИОРИТЕТ 2: Загружаем из CSV (legacy)
     data_path = Path(data_dir)
     
     if not data_path.exists():
@@ -151,12 +298,8 @@ def load_all_historical_data(
         csv_files = csv_files[:max_coins]
     
     print(f"\nFound CSV files: {len(csv_files)}")
-    print(f"Loading historical data...")
+    print(f"Loading historical data from CSV...")
     print("=" * 60)
-    
-    all_training_data = []
-    successful = 0
-    failed = 0
     
     for i, csv_file in enumerate(csv_files, 1):
         print(f"\n[{i}/{len(csv_files)}] {csv_file.name}")
