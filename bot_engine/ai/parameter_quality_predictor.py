@@ -457,12 +457,29 @@ class ParameterQualityPredictor:
             
             sample_id = self.ai_db.save_parameter_training_sample(sample)
             if sample_id:
-                logger.debug(f"📝 Добавлен образец для обучения (ID: {sample_id}, quality: {quality:.3f}, win_rate: {win_rate:.1f}%)")
+                try:
+                    logger.debug(f"📝 Добавлен образец для обучения (ID: {sample_id}, quality: {quality:.3f}, win_rate: {win_rate:.1f}%)")
+                except MemoryError:
+                    # Не логируем при MemoryError
+                    pass
             else:
-                logger.warning("⚠️ Не удалось сохранить образец в БД")
+                try:
+                    logger.warning("⚠️ Не удалось сохранить образец в БД")
+                except MemoryError:
+                    # Не логируем при MemoryError
+                    pass
                 
+        except MemoryError:
+            # КРИТИЧНО: Не логируем при MemoryError (это вызывает рекурсию)
+            # Просто пропускаем - graceful degradation
+            pass
         except Exception as e:
-            logger.error(f"❌ Ошибка добавления образца: {e}")
+            # Используем безопасное логирование
+            try:
+                logger.error(f"❌ Ошибка добавления образца: {e}")
+            except MemoryError:
+                # Не логируем при MemoryError
+                pass
     
     def train(self, min_samples: int = 50) -> Optional[Dict[str, Any]]:
         """
