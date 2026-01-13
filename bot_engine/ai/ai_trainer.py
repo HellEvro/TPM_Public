@@ -4411,7 +4411,11 @@ class AITrainer:
                         all_simulated_trades.extend(simulated_trades_symbol)
                     
                     # Очищаем память после обработки каждого символа
-                    del simulated_trades_symbol, candles_data_symbol
+                    try:
+                        if 'simulated_trades_symbol' in locals():
+                            del simulated_trades_symbol
+                    except (NameError, UnboundLocalError):
+                        pass
                     import gc
                     gc.collect()
                     
