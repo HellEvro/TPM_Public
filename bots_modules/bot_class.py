@@ -717,6 +717,13 @@ class NewTradingBot:
         try:
             logger.error(f"[NEW_BOT_{self.symbol}] 🔍 check_loss_reentry_protection ВЫЗВАН!")
             
+            # Убеждаемся, что bots_data_lock доступен
+            try:
+                from bots_modules.imports_and_globals import bots_data, bots_data_lock
+            except ImportError:
+                # Если импорт не удался, используем глобальные переменные из начала файла
+                pass
+            
             with bots_data_lock:
                 auto_config = bots_data.get('auto_bot_config', {})
             
@@ -729,7 +736,7 @@ class NewTradingBot:
             # Также проверяем глобальный словарь (для случаев когда бот был удален после закрытия)
             if not last_close_timestamp:
                 try:
-                    from bots_modules.imports_and_globals import bots_data, bots_data_lock
+                    # Повторный импорт не нужен, переменные уже должны быть доступны
                     with bots_data_lock:
                         last_close_timestamps = bots_data.get('last_close_timestamps', {})
                         last_close_timestamp = last_close_timestamps.get(self.symbol)

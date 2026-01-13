@@ -1705,10 +1705,15 @@ class AITrainer:
                 return market_data
             
             try:
-                candles_data = self.ai_db.get_all_candles_dict(timeframe='6h')
+                # Ограничиваем загрузку для экономии памяти: максимум 30 символов, 1000 свечей на символ
+                candles_data = self.ai_db.get_all_candles_dict(
+                    timeframe='6h',
+                    max_symbols=30,
+                    max_candles_per_symbol=1000
+                )
                 if candles_data:
                     total_candles = sum(len(c) for c in candles_data.values())
-                    logger.info(f"✅ Загружено {len(candles_data)} монет из БД ({total_candles:,} свечей)")
+                    logger.info(f"✅ Загружено {len(candles_data)} монет из БД ({total_candles:,} свечей, ограничено для экономии памяти)")
                     
                     if 'latest' not in market_data:
                         market_data['latest'] = {}
@@ -4404,6 +4409,11 @@ class AITrainer:
                     # Собираем симулированные сделки для сохранения
                     if simulated_trades_symbol:
                         all_simulated_trades.extend(simulated_trades_symbol)
+                    
+                    # Очищаем память после обработки каждого символа
+                    del simulated_trades_symbol, candles_data_symbol
+                    import gc
+                    gc.collect()
                     
                     # Логируем прогресс каждые 50 монет
                     if total_trained_coins % progress_interval == 0:

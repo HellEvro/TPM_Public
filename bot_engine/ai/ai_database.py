@@ -5234,62 +5234,79 @@ class AIDatabase:
             logger.error(f"❌ Ошибка загрузки свечей для {symbol}: {e}")
             return []
     
-    def get_all_candles_dict(self, timeframe: str = '6h') -> Dict[str, List[Dict]]:
+    def get_all_candles_dict(self, timeframe: str = '6h', max_symbols: int = 50, max_candles_per_symbol: int = 1000) -> Dict[str, List[Dict]]:
         """
-        Получает все свечи для всех символов из БД (таблица candles_history)
+        Получает свечи для символов из БД (таблица candles_history)
+        
+        ВАЖНО: Ограничения по умолчанию для предотвращения переполнения памяти!
         
         Args:
             timeframe: Таймфрейм
+            max_symbols: Максимальное количество символов (по умолчанию 50 для экономии памяти)
+            max_candles_per_symbol: Максимальное количество свечей на символ (по умолчанию 1000)
         
         Returns:
-            Словарь {symbol: [candles]}
+            Словарь {symbol: [candles]} (только последние свечи для каждого символа)
         """
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
+                
+                # Получаем список символов с ограничением
                 cursor.execute("""
-                    SELECT symbol, candle_time, open_price, high_price, low_price, close_price, volume
+                    SELECT DISTINCT symbol
                     FROM candles_history
                     WHERE timeframe = ?
-                    ORDER BY symbol, candle_time ASC
-                """, (timeframe,))
-                rows = cursor.fetchall()
+                    ORDER BY symbol
+                    LIMIT ?
+                """, (timeframe, max_symbols))
+                symbols = [row[0] for row in cursor.fetchall()]
                 
-                if not rows:
+                if not symbols:
                     logger.debug(f"⚠️ В таблице candles_history нет данных для timeframe={timeframe}")
                     return {}
                 
                 result = {}
-                for row in rows:
-                    # Преобразуем Row в dict для надежного доступа
-                    if hasattr(row, 'keys'):
-                        row_dict = dict(row)
-                    else:
-                        # Fallback для обычных кортежей
-                        row_dict = {
-                            'symbol': row[0],
-                            'candle_time': row[1],
-                            'open_price': row[2],
-                            'high_price': row[3],
-                            'low_price': row[4],
-                            'close_price': row[5],
-                            'volume': row[6]
-                        }
+                for symbol in symbols:
+                    # Получаем только последние N свечей для каждого символа
+                    cursor.execute("""
+                        SELECT candle_time, open_price, high_price, low_price, close_price, volume
+                        FROM candles_history
+                        WHERE timeframe = ? AND symbol = ?
+                        ORDER BY candle_time DESC
+                        LIMIT ?
+                    """, (timeframe, symbol, max_candles_per_symbol))
+                    rows = cursor.fetchall()
                     
-                    symbol = row_dict['symbol']
-                    if symbol not in result:
-                        result[symbol] = []
-                    
-                    result[symbol].append({
-                        'time': row_dict['candle_time'],
-                        'open': row_dict['open_price'],
-                        'high': row_dict['high_price'],
-                        'low': row_dict['low_price'],
-                        'close': row_dict['close_price'],
-                        'volume': row_dict['volume']
-                    })
+                    if rows:
+                        # Разворачиваем обратно (от старых к новым)
+                        candles = []
+                        for row in reversed(rows):
+                            if hasattr(row, 'keys'):
+                                row_dict = dict(row)
+                            else:
+                                row_dict = {
+                                    'candle_time': row[0],
+                                    'open_price': row[1],
+                                    'high_price': row[2],
+                                    'low_price': row[3],
+                                    'close_price': row[4],
+                                    'volume': row[5]
+                                }
+                            
+                            candles.append({
+                                'time': row_dict['candle_time'],
+                                'open': row_dict['open_price'],
+                                'high': row_dict['high_price'],
+                                'low': row_dict['low_price'],
+                                'close': row_dict['close_price'],
+                                'volume': row_dict['volume']
+                            })
+                        
+                        result[symbol] = candles
                 
-                logger.debug(f"✅ get_all_candles_dict: загружено {len(result)} символов, {sum(len(c) for c in result.values())} свечей")
+                total_candles = sum(len(c) for c in result.values())
+                logger.debug(f"✅ get_all_candles_dict: загружено {len(result)} символов (лимит {max_symbols}), {total_candles} свечей (лимит {max_candles_per_symbol} на символ)")
                 return result
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки всех свечей: {e}")

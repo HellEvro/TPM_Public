@@ -59,12 +59,25 @@ class AIDataStorage:
         
         try:
             # Преобразуем формат для БД
+            # Важно: ai_signal может быть передан как 'ai_signal' или 'signal'
+            signal = decision_data.get('signal') or decision_data.get('ai_signal')
+            confidence = decision_data.get('confidence') or decision_data.get('ai_confidence')
+            
+            # Проверяем, что signal не None (обязательное поле в БД)
+            if signal is None:
+                logger.warning(f"⚠️ Signal не указан в решении AI для {decision_id}, используем 'WAIT'")
+                signal = 'WAIT'
+            
+            # Проверяем, что confidence не None
+            if confidence is None:
+                confidence = 0.0
+            
             decision = {
                 'decision_id': decision_id,
                 'symbol': decision_data.get('symbol'),
                 'decision_type': decision_data.get('decision_type', 'SIGNAL'),
-                'signal': decision_data.get('signal'),
-                'confidence': decision_data.get('confidence'),
+                'signal': signal,  # Преобразуем ai_signal -> signal
+                'confidence': confidence,  # Преобразуем ai_confidence -> confidence
                 'rsi': decision_data.get('rsi'),
                 'trend': decision_data.get('trend'),
                 'price': decision_data.get('price'),

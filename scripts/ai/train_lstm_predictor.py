@@ -238,8 +238,14 @@ def load_all_historical_data(
             print("\n[INFO] Загрузка данных из БД (ai_data.db)...")
             print("=" * 60)
             
-            # Получаем все свечи из БД
-            candles_dict = ai_db.get_all_candles_dict(timeframe='6h')
+            # Получаем свечи из БД с ограничениями для экономии памяти
+            # По умолчанию: максимум 20 символов, 1000 свечей на символ
+            default_max_symbols = 20 if max_coins == 0 else max_coins
+            candles_dict = ai_db.get_all_candles_dict(
+                timeframe='6h',
+                max_symbols=default_max_symbols,
+                max_candles_per_symbol=1000
+            )
             
             if candles_dict:
                 symbols = sorted(candles_dict.keys())
@@ -247,7 +253,10 @@ def load_all_historical_data(
                 if max_coins > 0:
                     symbols = symbols[:max_coins]
                 
-                print(f"Found {len(symbols)} symbols in database")
+                print(f"Found {len(symbols)} symbols in database (limited to {default_max_symbols} for memory efficiency)")
+                
+                # Ограничиваем общий размер обучающих данных (максимум 50000 образцов)
+                MAX_TOTAL_SAMPLES = 50000
                 
                 for i, symbol in enumerate(symbols, 1):
                     candles = candles_dict[symbol]
@@ -260,12 +269,31 @@ def load_all_historical_data(
                     )
                     
                     if training_data:
-                        all_training_data.extend(training_data)
+                        # Проверяем лимит общего количества образцов
+                        if len(all_training_data) + len(training_data) > MAX_TOTAL_SAMPLES:
+                            remaining = MAX_TOTAL_SAMPLES - len(all_training_data)
+                            if remaining > 0:
+                                training_data = training_data[:remaining]
+                                all_training_data.extend(training_data)
+                                print(f"  [OK] Prepared {len(training_data)} samples (limited to {MAX_TOTAL_SAMPLES} total)")
+                                print(f"  [WARNING] Достигнут лимит образцов ({MAX_TOTAL_SAMPLES}), остальные символы пропущены")
+                                break
+                            else:
+                                print(f"  [SKIP] Достигнут лимит образцов ({MAX_TOTAL_SAMPLES})")
+                                break
+                        else:
+                            all_training_data.extend(training_data)
+                        
                         successful += 1
-                        print(f"  [OK] Prepared {len(training_data)} samples")
+                        print(f"  [OK] Prepared {len(training_data)} samples (total: {len(all_training_data)})")
                     else:
                         failed += 1
                         print(f"  [SKIP] Not enough data")
+                    
+                    # Очищаем память после обработки каждого символа
+                    del candles, training_data
+                    import gc
+                    gc.collect()
                 
                 print("\n" + "=" * 60)
                 print(f"[OK] Successfully processed: {successful} coins")
@@ -326,7 +354,7 @@ def load_all_historical_data(
 def main():
     """Основная функция обучения"""
     parser = argparse.ArgumentParser(description='Обучение LSTM предиктора')
-    parser.add_argument('--coins', type=int, default=0, help='Количество монет для обучения (0 = все)')
+    parser.add_argument('--coins', type=int, default=20, help='Количество монет для обучения (по умолчанию 20 для экономии памяти)')
     parser.add_argument('--epochs', type=int, default=50, help='Количество эпох обучения')
     parser.add_argument('--batch-size', type=int, default=32, help='Размер батча')
     parser.add_argument('--sequence-length', type=int, default=60, help='Длина последовательности')

@@ -598,8 +598,12 @@ class AICandlesLoader:
             return {}
         
         try:
-            # Загружаем все свечи из БД
-            all_candles = self.ai_db.get_all_candles_dict(timeframe='6h')
+            # Загружаем свечи из БД с ограничениями для экономии памяти
+            all_candles = self.ai_db.get_all_candles_dict(
+                timeframe='6h',
+                max_symbols=100,  # Больше символов для загрузчика, но все равно ограничено
+                max_candles_per_symbol=1000
+            )
             
             # КРИТИЧНО: Ограничиваем до 1000 последних свечей для каждого символа
             # Это предотвращает раздувание БД и оптимизирует использование памяти

@@ -155,10 +155,15 @@ class AIBacktester:
                     logger.warning("⚠️ AI Database не доступна")
                     return market_data
                 
-                candles_data = ai_db.get_all_candles_dict(timeframe='6h')
+                # Ограничиваем загрузку для экономии памяти
+                candles_data = ai_db.get_all_candles_dict(
+                    timeframe='6h',
+                    max_symbols=30,
+                    max_candles_per_symbol=1000
+                )
                 if candles_data:
                     total_candles = sum(len(c) for c in candles_data.values())
-                    logger.info(f"✅ Загружено {len(candles_data)} монет из БД ({total_candles:,} свечей)")
+                    logger.info(f"✅ Загружено {len(candles_data)} монет из БД ({total_candles:,} свечей, ограничено для экономии памяти)")
                 else:
                     logger.warning("⚠️ БД пуста, ожидаем загрузки свечей...")
                     return market_data

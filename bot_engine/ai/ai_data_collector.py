@@ -597,10 +597,15 @@ class AIDataCollector:
                     logger.warning("⚠️ AI Database не доступна")
                     return collected_data
                 
-                candles_data = ai_db.get_all_candles_dict(timeframe='6h')
+                # Ограничиваем загрузку для экономии памяти
+                candles_data = ai_db.get_all_candles_dict(
+                    timeframe='6h',
+                    max_symbols=50,
+                    max_candles_per_symbol=1000
+                )
                 if candles_data and len(candles_data) > 0:
                     total_candles = sum(len(c) for c in candles_data.values())
-                    logger.info(f"✅ Загружено {len(candles_data)} монет из БД ({total_candles:,} свечей)")
+                    logger.info(f"✅ Загружено {len(candles_data)} монет из БД ({total_candles:,} свечей, ограничено для экономии памяти)")
                 else:
                     logger.warning("⚠️ БД пуста или get_all_candles_dict вернул пустой результат, ожидаем загрузки свечей...")
                     logger.debug(f"   candles_data type: {type(candles_data)}, length: {len(candles_data) if candles_data else 0}")
