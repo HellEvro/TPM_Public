@@ -5028,7 +5028,7 @@ class AITrainer:
             # Проверяем количество новых образцов в БД
             if self.param_quality_predictor.ai_db:
                 training_data = self.param_quality_predictor.ai_db.get_trades_for_training(
-                    simulated=True, real=True, exchange=True, min_trades=0
+                    include_simulated=True, include_real=True, include_exchange=True, min_trades=0
                 )
                 current_samples_count = len(training_data)
                 
