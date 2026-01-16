@@ -105,6 +105,9 @@ class AIConfigManager {
         
         // Optimal Entry Detection
         this.setCheckbox('optimalEntryEnabled', config.optimal_entry_enabled);
+
+        // Самообучение AI
+        this.setCheckbox('selfLearningEnabled', config.self_learning_enabled);
         
         // Auto Training
         this.setCheckbox('autoTrainEnabled', config.auto_train_enabled);
@@ -155,6 +158,9 @@ class AIConfigManager {
                 
                 // Optimal Entry Detection
                 optimal_entry_enabled: this.getCheckbox('optimalEntryEnabled'),
+
+                // Самообучение AI
+                self_learning_enabled: this.getCheckbox('selfLearningEnabled'),
                 
                 // Auto Training
                 auto_train_enabled: this.getCheckbox('autoTrainEnabled'),
@@ -226,6 +232,9 @@ class AIConfigManager {
         if (section) {
             section.style.display = 'block';
             console.log('[AIConfigManager] ✅ AI блок показан');
+
+            // Автоматически загружаем результаты самообучения
+            this.loadSelfLearningOnShow();
         }
     }
     
@@ -278,7 +287,220 @@ class AIConfigManager {
                 await this.saveAIConfig();
             });
             console.log('[AIConfigManager] ✅ События привязаны');
+
+        // События для самообучения AI
+        this.bindSelfLearningEvents();
+    }
+
+    /**
+     * Привязка событий для самообучения AI
+     */
+    bindSelfLearningEvents() {
+        const refreshBtn = document.getElementById('refreshSelfLearningBtn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                this.loadSelfLearningResults();
+            });
+            console.log('[AIConfigManager] ✅ События самообучения привязаны');
         }
+    }
+
+    /**
+     * Загрузка результатов самообучения AI
+     */
+    async loadSelfLearningResults() {
+        try {
+            console.log('[AIConfigManager] 📊 Загрузка результатов самообучения...');
+
+            const resultsContent = document.getElementById('selfLearningResultsContent');
+            if (!resultsContent) return;
+
+            // Показываем загрузку
+            resultsContent.innerHTML = `
+                <div class="loading-results">
+                    <div class="spinner-border spinner-border-sm" role="status">
+                        <span class="sr-only">Загрузка...</span>
+                    </div>
+                    <span>Загрузка результатов...</span>
+                </div>
+            `;
+
+            // Загружаем статистику
+            const statsResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/ai/self-learning/stats`);
+            const statsData = await statsResponse.json();
+
+            // Загружаем метрики производительности
+            const perfResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/ai/self-learning/performance`);
+            const perfData = await perfResponse.json();
+
+            if (statsData.success && perfData.success) {
+                this.displaySelfLearningResults(statsData.stats, perfData.performance, perfData.trends);
+                console.log('[AIConfigManager] ✅ Результаты самообучения загружены');
+            } else {
+                const errorMsg = statsData.error || perfData.error || 'Неизвестная ошибка';
+                this.displaySelfLearningError(errorMsg);
+            }
+
+        } catch (error) {
+            console.error('[AIConfigManager] Ошибка загрузки результатов самообучения:', error);
+            this.displaySelfLearningError('Ошибка загрузки данных');
+        }
+    }
+
+    /**
+     * Отображение результатов самообучения
+     */
+    displaySelfLearningResults(stats, performance, trends) {
+        const resultsContent = document.getElementById('selfLearningResultsContent');
+        if (!resultsContent) return;
+
+        const statsData = stats.stats || {};
+
+        let html = '';
+
+        // Метрики производительности
+        if (performance && !performance.error) {
+            html += `
+                <div class="self-learning-metrics">
+                    <div class="metric-card">
+                        <h6>Win Rate AI</h6>
+                        <div class="metric-value ${performance.ai_win_rate > 0.6 ? 'positive' : performance.ai_win_rate > 0.5 ? '' : 'negative'}">
+                            ${(performance.ai_win_rate * 100).toFixed(1)}%
+                        </div>
+                        ${performance.non_ai_win_rate ? `
+                            <div class="metric-trend ${performance.win_rate_difference > 0 ? 'positive' : 'negative'}">
+                                vs ${(performance.non_ai_win_rate * 100).toFixed(1)}% (без AI)
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <div class="metric-card">
+                        <h6>Avg PnL AI</h6>
+                        <div class="metric-value ${performance.ai_avg_pnl > 0 ? 'positive' : 'negative'}">
+                            $${performance.ai_avg_pnl.toFixed(2)}
+                        </div>
+                        ${performance.non_ai_avg_pnl ? `
+                            <div class="metric-trend ${performance.avg_pnl_difference > 0 ? 'positive' : 'negative'}">
+                                vs $${performance.non_ai_avg_pnl.toFixed(2)} (без AI)
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <div class="metric-card">
+                        <h6>Рейтинг AI</h6>
+                        <div class="metric-value">
+                            ${performance.ai_performance_score || 0}/3
+                        </div>
+                        <div class="metric-trend">
+                            ${performance.ai_performance_rating || 'Не оценено'}
+                        </div>
+                    </div>
+
+                    <div class="metric-card">
+                        <h6>Обработано сделок</h6>
+                        <div class="metric-value">
+                            ${statsData.total_trades_processed || 0}
+                        </div>
+                        <div class="metric-trend">
+                            Онлайн обновлений: ${statsData.online_updates || 0}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Статистика самообучения
+        html += `
+            <div class="self-learning-stats">
+                <h6>📈 Статистика самообучения</h6>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">Онлайн обучение:</span>
+                        <span class="stat-value">${stats.online_learning_enabled ? '✅ Включено' : '❌ Выключено'}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Адаптация к рынку:</span>
+                        <span class="stat-value">${stats.adaptive_learning_enabled ? '✅ Включено' : '❌ Выключено'}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Успешных адаптаций:</span>
+                        <span class="stat-value">${statsData.successful_adaptations || 0}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Размер буфера:</span>
+                        <span class="stat-value">${stats.buffer_size || 0} сделок</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Тренды производительности
+        if (trends && !trends.error) {
+            html += `
+                <div class="performance-trends">
+                    <h6>📊 Тренды производительности</h6>
+                    <div class="trend-info">
+                        <div class="trend-item">
+                            <span class="trend-label">Тренд Win Rate:</span>
+                            <span class="trend-value ${trends.win_rate_trend > 0 ? 'positive' : trends.win_rate_trend < 0 ? 'negative' : ''}">
+                                ${trends.win_rate_trend > 0 ? '↗️ Растет' : trends.win_rate_trend < 0 ? '↘️ Падает' : '➡️ Стабильный'}
+                            </span>
+                        </div>
+                        <div class="trend-item">
+                            <span class="trend-label">Тренд Avg PnL:</span>
+                            <span class="trend-value ${trends.avg_pnl_trend > 0 ? 'positive' : trends.avg_pnl_trend < 0 ? 'negative' : ''}">
+                                ${trends.avg_pnl_trend > 0 ? '↗️ Растет' : trends.avg_pnl_trend < 0 ? '↘️ Падает' : '➡️ Стабильный'}
+                            </span>
+                        </div>
+                        <div class="trend-item">
+                            <span class="trend-label">Общий тренд:</span>
+                            <span class="trend-value ${trends.ai_improving ? 'positive' : 'negative'}">
+                                ${trends.ai_improving ? '🚀 AI улучшается' : '⚠️ AI стабильен или ухудшается'}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Сообщение если данных недостаточно
+        if (performance && performance.error) {
+            html += `
+                <div class="no-results">
+                    <div class="no-results-icon">📊</div>
+                    <p>${performance.error}</p>
+                    <small>Накопите больше сделок для анализа производительности AI</small>
+                </div>
+            `;
+        }
+
+        resultsContent.innerHTML = html;
+    }
+
+    /**
+     * Отображение ошибки загрузки результатов
+     */
+    displaySelfLearningError(errorMsg) {
+        const resultsContent = document.getElementById('selfLearningResultsContent');
+        if (!resultsContent) return;
+
+        resultsContent.innerHTML = `
+            <div class="no-results">
+                <div class="no-results-icon">⚠️</div>
+                <p>Ошибка загрузки данных</p>
+                <small>${errorMsg}</small>
+            </div>
+        `;
+    }
+
+    /**
+     * Автоматическая загрузка результатов при открытии AI секции
+     */
+    loadSelfLearningOnShow() {
+        // Автоматически загружаем результаты при открытии секции AI
+        setTimeout(() => {
+            this.loadSelfLearningResults();
+        }, 500); // Небольшая задержка для завершения анимации
     }
     
     // Утилиты для работы с формой

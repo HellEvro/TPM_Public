@@ -4332,6 +4332,121 @@ def create_demo_history():
         logger.error(f" Ошибка создания демо-данных: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@bots_app.route('/api/ai/self-learning/stats', methods=['GET'])
+def get_ai_self_learning_stats():
+    """Получить статистику самообучения AI"""
+    try:
+        # Проверяем премиум лицензию
+        is_premium = False
+        try:
+            from bot_engine.ai.license_checker import check_license
+            license_result = check_license()
+            is_premium = license_result.get('valid', False) and license_result.get('type', '').lower() == 'premium'
+        except Exception as e:
+            logger.warning(f" Не удалось проверить лицензию: {e}")
+            is_premium = False
+
+        if not is_premium:
+            return jsonify({
+                'success': False,
+                'error': 'Premium license required',
+                'license_required': True,
+                'message': 'Самообучение AI доступно только с премиум лицензией'
+            })
+
+        # Получаем статистику самообучения
+        try:
+            from bot_engine.ai.ai_self_learning import get_self_learning_system
+            self_learning = get_self_learning_system()
+            stats = self_learning.get_learning_stats()
+
+            return jsonify({
+                'success': True,
+                'stats': stats
+            })
+        except Exception as e:
+            logger.error(f"Ошибка получения статистики самообучения: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Ошибка получения статистики: {str(e)}'
+            })
+
+    except Exception as e:
+        logger.error(f"Ошибка в API самообучения: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+
+@bots_app.route('/api/ai/self-learning/performance', methods=['GET'])
+def get_ai_self_learning_performance():
+    """Получить метрики производительности AI"""
+    try:
+        # Проверяем премиум лицензию
+        is_premium = False
+        try:
+            from bot_engine.ai.license_checker import check_license
+            license_result = check_license()
+            is_premium = license_result.get('valid', False) and license_result.get('type', '').lower() == 'premium'
+        except Exception as e:
+            logger.warning(f" Не удалось проверить лицензию: {e}")
+            is_premium = False
+
+        if not is_premium:
+            return jsonify({
+                'success': False,
+                'error': 'Premium license required',
+                'license_required': True,
+                'message': 'Метрики производительности AI доступны только с премиум лицензией'
+            })
+
+        # Получаем метрики производительности
+        try:
+            from bot_engine.ai.ai_self_learning import get_self_learning_system
+            self_learning = get_self_learning_system()
+
+            # Получаем последние сделки для анализа
+            try:
+                from bot_engine.ai.ai_database import get_ai_database
+                ai_db = get_ai_database()
+                if ai_db:
+                    # Получаем последние 100 сделок для анализа производительности
+                    trades = ai_db.get_trades_for_training(limit=100)
+                    if len(trades) >= 10:
+                        performance = self_learning.evaluate_ai_performance(trades)
+                        trends = self_learning.get_performance_trends()
+                    else:
+                        performance = {'error': 'Недостаточно данных для анализа (нужно минимум 10 сделок)'}
+                        trends = {'error': 'Недостаточно данных для анализа трендов'}
+                else:
+                    performance = {'error': 'База данных недоступна'}
+                    trends = {'error': 'База данных недоступна'}
+            except Exception as db_error:
+                logger.warning(f"Ошибка получения сделок из БД: {db_error}")
+                performance = {'error': f'Ошибка базы данных: {str(db_error)}'}
+                trends = {'error': f'Ошибка базы данных: {str(db_error)}'}
+
+            return jsonify({
+                'success': True,
+                'performance': performance,
+                'trends': trends
+            })
+        except Exception as e:
+            logger.error(f"Ошибка получения метрик производительности: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Ошибка получения метрик: {str(e)}'
+            })
+
+    except Exception as e:
+        logger.error(f"Ошибка в API производительности AI: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+
 if __name__ == '__main__':
     # КРИТИЧЕСКИ ВАЖНО: Проверяем и останавливаем старые процессы bots.py САМЫМ ПЕРВЫМ!
     print()  # Пустая строка для читаемости

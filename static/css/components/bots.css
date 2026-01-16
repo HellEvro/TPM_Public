@@ -3524,3 +3524,245 @@ input:checked + .toggle-slider:before {
     50% { opacity: 1; }
     100% { opacity: 0.6; }
 }
+
+/* РАЗДЕЛ САМООБУЧЕНИЯ AI */
+.ai-self-learning-results {
+    margin-top: 20px;
+    padding: 15px;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.results-header h5 {
+    margin: 0;
+    color: var(--text-color);
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.results-content {
+    min-height: 200px;
+}
+
+.loading-results {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: var(--text-muted);
+    gap: 10px;
+}
+
+.self-learning-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.metric-card {
+    background: var(--bg-secondary);
+    padding: 15px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.metric-card h6 {
+    margin: 0 0 8px 0;
+    color: var(--text-color);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.metric-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--blue-color);
+}
+
+.metric-value.positive {
+    color: var(--success-color);
+}
+
+.metric-value.negative {
+    color: var(--danger-color);
+}
+
+.metric-trend {
+    font-size: 12px;
+    margin-top: 5px;
+}
+
+.metric-trend.positive {
+    color: var(--success-color);
+}
+
+.metric-trend.negative {
+    color: var(--danger-color);
+}
+
+.performance-chart-container {
+    margin-top: 20px;
+    height: 200px;
+}
+
+.performance-chart-container canvas {
+    max-height: 200px;
+}
+
+.self-learning-history {
+    margin-top: 20px;
+}
+
+.history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.history-item:last-child {
+    margin-bottom: 0;
+}
+
+.history-timestamp {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.history-action {
+    font-size: 14px;
+    color: var(--text-color);
+}
+
+.history-result {
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.history-result.positive {
+    color: var(--success-color);
+}
+
+.history-result.negative {
+    color: var(--danger-color);
+}
+
+.no-results {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
+}
+
+.no-results-icon {
+    font-size: 48px;
+    margin-bottom: 10px;
+    opacity: 0.5;
+}
+
+/* ДОПОЛНИТЕЛЬНЫЕ СТИЛИ ДЛЯ САМООБУЧЕНИЯ AI */
+.self-learning-stats {
+    margin-top: 20px;
+    padding: 15px;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.self-learning-stats h6 {
+    margin: 0 0 15px 0;
+    color: var(--text-color);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+}
+
+.stat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.stat-label {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.stat-value {
+    font-size: 13px;
+    color: var(--text-color);
+    font-weight: 600;
+}
+
+.performance-trends {
+    margin-top: 20px;
+    padding: 15px;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.performance-trends h6 {
+    margin: 0 0 15px 0;
+    color: var(--text-color);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.trend-info {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.trend-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.trend-label {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.trend-value {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.trend-value.positive {
+    color: var(--success-color);
+}
+
+.trend-value.negative {
+    color: var(--danger-color);
+}

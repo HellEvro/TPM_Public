@@ -2367,8 +2367,43 @@
                                 <small class="config-help" data-translate="log_patterns_help">Записывать найденные графические паттерны в логи</small>
                             </div>
                         </div>
+
+                        <!-- Самообучение AI (AISelfLearning) -->
+                        <div class="config-subsection">
+                            <h4>🧠 <span data-translate="self_learning_title">Самообучение AI</span></h4>
+
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-text" data-translate="self_learning_enabled_label">Самообучение в реальном времени:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="selfLearningEnabled" checked />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="self_learning_enabled_help">AI обучается на каждой закрытой сделке для улучшения будущих решений</small>
+                            </div>
+
+                            <!-- Результаты самообучения -->
+                            <div class="ai-self-learning-results" id="aiSelfLearningResults">
+                                <div class="results-header">
+                                    <h5>📊 <span data-translate="self_learning_results_title">Результаты самообучения</span></h5>
+                                    <button class="btn btn-sm btn-outline-primary" id="refreshSelfLearningBtn">
+                                        <span data-translate="refresh_results_btn">🔄 Обновить</span>
+                                    </button>
+                                </div>
+
+                                <div class="results-content" id="selfLearningResultsContent">
+                                    <div class="loading-results">
+                                        <div class="spinner-border spinner-border-sm" role="status">
+                                            <span class="sr-only">Загрузка...</span>
+                                        </div>
+                                        <span data-translate="loading_results">Загрузка результатов...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    
+
                     <div class="config-section-actions">
                         <button class="btn btn-success config-section-save-btn" data-section="ai">
                             <span data-translate="save_ai_section_btn">💾 Сохранить AI настройки</span>
