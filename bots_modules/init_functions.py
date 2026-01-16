@@ -545,19 +545,42 @@ def create_bot(symbol, config=None, exchange_obj=None):
         'max_rsi_high': auto_bot_config.get('max_rsi_high', 65)
     }
 
+    # ✅ ВАЖНО: Индивидуальные настройки (особенно AI-оптимизированные) применяются ВСЕГДА с приоритетом
+    # Это позволяет AI выставлять уникальные улучшенные параметры для каждой монеты
+    ai_params_applied = False
+    if individual_settings:
+        # Определяем, есть ли AI-оптимизированные параметры
+        ai_params_keys = ['rsi_long_threshold', 'rsi_short_threshold', 'rsi_exit_long_with_trend', 
+                         'rsi_exit_long_against_trend', 'rsi_exit_short_with_trend', 'rsi_exit_short_against_trend']
+        has_ai_params = any(key in individual_settings for key in ai_params_keys)
+        ai_trained = individual_settings.get('ai_trained', False)
+        
+        # Применяем индивидуальные настройки с приоритетом (они перезаписывают базовые)
+        # Это критично для AI-оптимизированных параметров, которые должны использоваться вместо базовых
+        base_config.update(individual_settings)
+        
+        if has_ai_params or ai_trained:
+            ai_params_applied = True
+            win_rate = individual_settings.get('ai_win_rate', 0)
+            logger.info(
+                f"[BOT_INIT] 🤖 Применены AI-оптимизированные параметры для {symbol} "
+                f"(Win Rate: {win_rate:.1f}%, Rating: {individual_settings.get('ai_rating', 0):.2f})"
+            )
+        else:
+            logger.debug(f"[BOT_INIT] 📝 Применены индивидуальные настройки для {symbol} (не AI-оптимизированные)")
+    
     # ✅ Обновляем только если НЕ использовали серверный конфиг как базу
     if not has_server_config:
-        if individual_settings:
-            base_config.update(individual_settings)
-        
         if incoming_config:
             # Для входящего конфига (без серверных настроек) обновляем только разрешённые поля
+            # НО: не перезаписываем AI-параметры из индивидуальных настроек
             allowed_overrides = {'volume_mode', 'volume_value', 'leverage', 'status', 'auto_managed', 'margin_usdt'}
             safe_overrides = {k: v for k, v in incoming_config.items() if k in allowed_overrides}
             if safe_overrides:
                 base_config.update(safe_overrides)
     else:
         # Если использовали серверный конфиг - обновляем только разрешённые manual overrides
+        # НО: не перезаписываем AI-параметры из индивидуальных настроек
         allowed_manual_overrides = {'volume_mode', 'volume_value', 'leverage', 'status', 'auto_managed', 'margin_usdt'}
         manual_overrides_only = {k: v for k, v in incoming_config.items() if k in allowed_manual_overrides}
         if manual_overrides_only:
