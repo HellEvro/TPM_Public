@@ -1689,6 +1689,102 @@ class AITrainer:
             import traceback
             logger.debug(f"Traceback: {traceback.format_exc()}")
     
+    def _load_market_data_for_symbols(self, symbols: List[str]) -> Dict:
+        """
+        Загрузить рыночные данные ТОЛЬКО для указанных символов
+        
+        Args:
+            symbols: Список символов, для которых нужно загрузить свечи
+        
+        Returns:
+            Словарь с рыночными данными
+        """
+        try:
+            market_data = {'latest': {'candles': {}}}
+            candles_data = {}
+            
+            # Загружаем ТОЛЬКО из БД
+            if not self.ai_db:
+                logger.warning("⚠️ AI Database не доступна")
+                return market_data
+            
+            if not symbols:
+                logger.warning("⚠️ Нет символов для загрузки свечей")
+                return market_data
+            
+            try:
+                # Загружаем свечи ТОЛЬКО для указанных символов
+                # КРИТИЧНО: get_all_candles_dict() берет первые N символов по алфавиту,
+                # а не те, которые нам нужны! Поэтому загружаем свечи напрямую из БД для каждого символа
+                symbols_upper = {s.upper() for s in symbols}
+                candles_data = {}
+                
+                for symbol in symbols:
+                    try:
+                        # Загружаем свечи для конкретного символа
+                        symbol_candles = self.ai_db.get_candles(
+                            symbol=symbol,
+                            timeframe='6h',
+                            limit=1000  # Максимум 1000 свечей на символ
+                        )
+                        
+                        if symbol_candles and len(symbol_candles) >= 50:  # Минимум 50 свечей для обучения
+                            # get_candles() уже возвращает правильный формат {time, open, high, low, close, volume}
+                            candles_data[symbol.upper()] = symbol_candles
+                    except Exception as symbol_error:
+                        logger.debug(f"⚠️ Ошибка загрузки свечей для {symbol}: {symbol_error}")
+                        continue
+                
+                if len(candles_data) < len(symbols):
+                    missing_count = len(symbols) - len(candles_data)
+                    logger.warning(f"   ⚠️ Нет свечей для {missing_count} из {len(symbols)} запрошенных монет")
+                    if len(candles_data) > 0:
+                        logger.warning(f"   💡 Загружены свечи только для {len(candles_data)} монет: {', '.join(sorted(list(candles_data.keys()))[:10])}{'...' if len(candles_data) > 10 else ''}")
+                else:
+                    logger.info(f"   ✅ Загружены свечи для всех {len(symbols)} запрошенных монет")
+                
+            except Exception as db_error:
+                logger.error(f"❌ Ошибка загрузки свечей из БД: {db_error}")
+                import traceback
+                logger.debug(traceback.format_exc())
+                return market_data
+            
+            if candles_data:
+                total_candles = sum(len(c) for c in candles_data.values())
+                logger.info(f"✅ Загружено {len(candles_data)} монет из БД ({total_candles:,} свечей)")
+                
+                if 'latest' not in market_data:
+                    market_data['latest'] = {}
+                if 'candles' not in market_data['latest']:
+                    market_data['latest']['candles'] = {}
+                
+                candles_count = 0
+                total_candles_count = 0
+                
+                for symbol, candles in candles_data.items():
+                    if candles:
+                        market_data['latest']['candles'][symbol] = {
+                            'candles': candles,
+                            'timeframe': '6h',
+                            'last_update': datetime.now().isoformat(),
+                            'count': len(candles),
+                            'source': 'ai_data.db'
+                        }
+                        candles_count += 1
+                        total_candles_count += len(candles)
+                
+                logger.info(f"✅ Обработано: {candles_count} монет, {total_candles_count:,} свечей")
+            else:
+                logger.warning("⚠️ БД пуста или нет свечей для запрошенных символов, ожидаем загрузки свечей...")
+            
+            return market_data
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка загрузки рыночных данных: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return {'latest': {'candles': {}}}
+    
     def _load_market_data(self) -> Dict:
         """
         Загрузить рыночные данные
@@ -2284,10 +2380,29 @@ class AITrainer:
             # Обновляем количество сделок для отслеживания
             self._last_real_trades_training_count = len(trades)
             
-            # 4. Загружаем свечи для анализа
-            market_data = self._load_market_data()
+            # 4. Определяем, по каким монетам есть сделки, и загружаем свечи ТОЛЬКО для них
+            # Это критично, чтобы не пропускать сделки из-за ограничения max_symbols=30
+            symbols_from_trades = set()
+            for trade in trades:
+                symbol = trade.get('symbol')
+                if symbol:
+                    symbols_from_trades.add(symbol.upper())
+            
+            logger.info(f"📊 Найдено {len(symbols_from_trades)} уникальных монет в сделках")
+            if len(symbols_from_trades) > 0:
+                logger.info(f"   💡 Монеты: {', '.join(sorted(list(symbols_from_trades))[:20])}{'...' if len(symbols_from_trades) > 20 else ''}")
+            
+            # Загружаем свечи для монет из сделок
+            market_data = self._load_market_data_for_symbols(list(symbols_from_trades))
             latest = market_data.get('latest', {})
             candles_data = latest.get('candles', {})
+            
+            # Диагностика: какие монеты из сделок не имеют свечей
+            symbols_without_candles = symbols_from_trades - set(candles_data.keys())
+            if symbols_without_candles:
+                logger.warning(f"   ⚠️ Нет свечей для {len(symbols_without_candles)} монет из сделок:")
+                logger.warning(f"      {', '.join(sorted(list(symbols_without_candles))[:10])}{'...' if len(symbols_without_candles) > 10 else ''}")
+                logger.warning(f"   💡 Эти сделки будут пропущены!")
             
             if not candles_data:
                 logger.warning("⚠️ Нет свечей для анализа")
