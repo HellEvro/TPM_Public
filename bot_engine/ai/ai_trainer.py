@@ -747,13 +747,14 @@ class AITrainer:
         
         ПРИМЕЧАНИЕ: history_data.json больше не используется, так как все данные в БД
         """
-        # Убрано: все DEBUG логи о загрузке сделок - слишком шумно
+        logger.debug("   📦 _load_history_data(): начало загрузки сделок...")
         
         trades = []
         source_counts = {}
         
         # 1. ПРИОРИТЕТ: Загружаем из БД (основной источник)
         if self.ai_db:
+            logger.debug("   📦 _load_history_data(): БД доступна, загрузка через get_trades_for_training()...")
             try:
                 # Получаем все реальные сделки ботов из БД
                 db_trades = self.ai_db.get_trades_for_training(
@@ -2138,31 +2139,68 @@ class AITrainer:
                     logger.debug(f"⚠️ Ошибка создания сессии обучения: {e}")
             
             # 0. Обновляем историю сделок с биржи (дополняем файл/БД)
+            logger.info("📥 Обновление истории сделок с биржи...")
             self._update_exchange_trades_history()
             
             # 1. Загружаем реальные сделки с PnL из bot_history.json (сделки ботов)
             # Или из БД если доступна
+            logger.info("=" * 80)
+            logger.info("🔍 ДИАГНОСТИКА ЗАГРУЗКИ СДЕЛОК ДЛЯ ОБУЧЕНИЯ")
+            logger.info("=" * 80)
+            
             if self.ai_db:
+                logger.info("   📦 Попытка загрузки сделок ботов из БД...")
+                logger.info("      - ai_data.db -> bot_trades")
+                logger.info("      - bots_data.db -> bot_trades_history")
                 try:
-                    bot_trades = self.ai_db.get_bot_trades(
-                        status='CLOSED',
-                        decision_source=None,  # Все источники
+                    # ВАЖНО: Используем get_trades_for_training() вместо get_bot_trades()
+                    # потому что get_trades_for_training() загружает сделки из bots_data.db -> bot_trades_history,
+                    # а get_bot_trades() только из ai_data.db -> bot_trades (который может быть пуст)
+                    bot_trades = self.ai_db.get_trades_for_training(
+                        include_simulated=False,
+                        include_real=True,  # Включаем реальные сделки из bots_data.db
+                        include_exchange=False,  # Сделки биржи загружаем отдельно
+                        min_trades=0,  # Не фильтруем по символам
                         limit=None
                     )
+                    logger.info(f"   ✅ Загружено {len(bot_trades)} сделок ботов из БД (ai_data.db + bots_data.db)")
+                    
                     # Преобразуем формат для совместимости
+                    valid_trades = 0
                     for trade in bot_trades:
                         if 'timestamp' not in trade:
-                            trade['timestamp'] = trade.get('entry_time')
+                            trade['timestamp'] = trade.get('entry_time') or trade.get('timestamp')
                         if 'close_timestamp' not in trade:
-                            trade['close_timestamp'] = trade.get('exit_time')
+                            trade['close_timestamp'] = trade.get('exit_time') or trade.get('close_timestamp')
+                        
+                        # Проверяем, что сделка пригодна для обучения
+                        if trade.get('entry_price') and trade.get('exit_price') and trade.get('symbol'):
+                            valid_trades += 1
+                    
+                    logger.info(f"   ✅ Пригодно для обучения: {valid_trades} из {len(bot_trades)} сделок")
+                    
+                    if len(bot_trades) == 0:
+                        logger.warning("   ⚠️ ВНИМАНИЕ: БД вернула 0 сделок ботов!")
+                        logger.warning("   💡 Проверьте:")
+                        logger.warning("      - Есть ли сделки в ai_data.db -> bot_trades (status='CLOSED')")
+                        logger.warning("      - Есть ли сделки в bots_data.db -> bot_trades_history (status='CLOSED')")
+                        
                 except Exception as e:
-                    logger.warning(f"⚠️ Ошибка загрузки сделок ботов из БД: {e}, используем JSON")
+                    logger.warning(f"   ⚠️ Ошибка загрузки сделок ботов из БД: {e}")
+                    logger.warning(f"   🔄 Fallback: загрузка из bot_history.json...")
+                    import traceback
+                    logger.debug(traceback.format_exc())
                     bot_trades = self._load_history_data()
+                    logger.info(f"   ✅ Загружено {len(bot_trades)} сделок из bot_history.json")
             else:
+                logger.warning("   ⚠️ БД недоступна! Загрузка из bot_history.json...")
                 bot_trades = self._load_history_data()
+                logger.info(f"   ✅ Загружено {len(bot_trades)} сделок из bot_history.json")
             
             # 2. Загружаем историю сделок трейдера из биржи (из БД)
+            logger.info("   📦 Загрузка сделок биржи из БД (exchange_trades)...")
             exchange_trades = self._load_saved_exchange_trades()
+            logger.info(f"   ✅ Загружено {len(exchange_trades)} сделок биржи из БД")
             
             # 3. Объединяем сделки из обоих источников (избегаем дубликатов)
             trades = []
@@ -2202,10 +2240,29 @@ class AITrainer:
                 if added_from_exchange > 0:
                     logger.info(f"📊 Добавлено {added_from_exchange} сделок из истории биржи")
             
+            logger.info("=" * 80)
+            logger.info(f"📊 ИТОГИ ЗАГРУЗКИ СДЕЛОК:")
+            logger.info(f"   🤖 Сделки ботов: {len(bot_trades)}")
+            logger.info(f"   📈 Сделки биржи: {len(exchange_trades)}")
+            logger.info(f"   📦 Всего объединено: {len(trades)}")
+            logger.info("=" * 80)
+            
             if len(trades) < 10:
-                logger.warning(f"⚠️ Недостаточно сделок для обучения (есть {len(trades)})")
-                logger.warning(f"   🤖 Сделки ботов (bot_history.json): {len(bot_trades)}")
-                logger.warning(f"   📈 Сделки биржи (из БД): {len(exchange_trades)}")
+                logger.warning(f"⚠️ Недостаточно сделок для обучения (есть {len(trades)}, нужно минимум 10)")
+                logger.warning(f"   🤖 Сделки ботов: {len(bot_trades)}")
+                logger.warning(f"   📈 Сделки биржи: {len(exchange_trades)}")
+                logger.warning("   💡 ДИАГНОСТИКА ПРОБЛЕМЫ:")
+                if len(bot_trades) == 0:
+                    logger.warning("      ❌ Нет сделок ботов!")
+                    logger.warning("      💡 Проверьте:")
+                    logger.warning("         - Есть ли закрытые сделки в bots_data.db -> bot_trades_history (status='CLOSED')")
+                    logger.warning("         - Есть ли закрытые сделки в ai_data.db -> bot_trades (status='CLOSED', is_simulated=0)")
+                    logger.warning("         - Есть ли файл data/bot_history.json с закрытыми сделками")
+                if len(exchange_trades) == 0:
+                    logger.warning("      ❌ Нет сделок биржи!")
+                    logger.warning("      💡 Проверьте:")
+                    logger.warning("         - Есть ли сделки в ai_data.db -> exchange_trades")
+                    logger.warning("         - Была ли обновлена история биржи через _update_exchange_trades_history()")
                 logger.info("💡 Накопите больше сделок - AI будет обучаться на вашем опыте!")
                 self._record_training_event(
                     'real_trades_training',
