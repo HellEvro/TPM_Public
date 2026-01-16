@@ -255,6 +255,8 @@ data/ai/models/signal_predictor.pkl
 data/ai/models/signal_predictor_metadata.json
 app/config.py
 app/keys.py
+# bot_engine/bot_config.py - НЕ добавляем в .gitignore, файл должен остаться в git для существующих пользователей
+# Локальные изменения игнорируются через git update-index --skip-worktree
 # Эти файлы пересоздаются автоматически при работе системы
 
 *.json.backup
@@ -283,6 +285,20 @@ tmp/
 *.bak
 backup/
 backups/
+
+# Database backup files
+*.db.backup
+*.db.bak
+*.sqlite.backup
+*.sqlite.bak
+*.sqlite3.backup
+*.sqlite3.bak
+data/*.db.backup
+data/*.db.bak
+data/*.sqlite.backup
+data/*.sqlite.bak
+data/*.sqlite3.backup
+data/*.sqlite3.bak
 
 # Configuration backups
 *_backup_*.json
@@ -437,8 +453,9 @@ data/rsi_cache.json
 data/bots_data.db
 data/app_data.db
 data/ai_data.db
-data/app_data.db-shm
-data/bots_data.db-shm
 data/ai_data.db-shm
 data/ai_data.db-wal
+data/bots_data.db-shm
+data/bots_data.db-wal
+data/app_data.db-shm
 data/database_gui_settings.json
