@@ -369,7 +369,7 @@ def update_ai_decision_result(decision_id: str, pnl: float, roi: float, is_succe
                 _ai_decisions_tracking[decision_id]['pnl'] = pnl
                 _ai_decisions_tracking[decision_id]['roi'] = roi
                 _ai_decisions_tracking[decision_id]['closed_at'] = datetime.now().isoformat()
-                
+
                 # Сохраняем в файл через тренер для последующего переобучения
                 try:
                     ai_system = get_ai_system()
@@ -379,6 +379,21 @@ def update_ai_decision_result(decision_id: str, pnl: float, roi: float, is_succe
                         )
                 except Exception as save_error:
                     logger.debug(f"⚠️ Ошибка сохранения решения AI: {save_error}")
+
+                # НОВОЕ: Отправляем сделку в систему самообучения
+                try:
+                    from bot_engine.ai.ai_self_learning import process_trade_for_self_learning
+                    trade_result = dict(_ai_decisions_tracking[decision_id])
+                    trade_result.update({
+                        'pnl': pnl,
+                        'roi': roi,
+                        'is_successful': is_successful
+                    })
+                    process_trade_for_self_learning(trade_result)
+                    logger.debug(f"🧠 Сделка {decision_id} отправлена в систему самообучения")
+                except Exception as self_learning_error:
+                    logger.debug(f"⚠️ Ошибка отправки в самообучение: {self_learning_error}")
+
         storage = _get_ai_data_storage()
         if storage:
             try:
