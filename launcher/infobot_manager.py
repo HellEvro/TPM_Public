@@ -1870,6 +1870,11 @@ class InfoBotManager(tk.Tk):
         keys_path = PROJECT_ROOT / "app" / "keys.py"
         if not keys_path.exists():
             self._create_keys_file_from_example(silent=True)
+        
+        # ✅ Восстанавливаем bot_config.py из example, если он отсутствует
+        bot_config_path = PROJECT_ROOT / "bot_engine" / "bot_config.py"
+        if not bot_config_path.exists():
+            self._create_bot_config_file_from_example(silent=True)
 
     def _create_config_file_from_example(self, silent: bool = False) -> bool:
         target = PROJECT_ROOT / "app" / "config.py"
@@ -1917,6 +1922,40 @@ class InfoBotManager(tk.Tk):
             return True
         except OSError as exc:
             message = f"Не удалось создать app/keys.py: {exc}"
+            if silent:
+                self.log(message, channel="system")
+            else:
+                messagebox.showerror("Ошибка копирования", str(exc))
+            return False
+
+    def _create_bot_config_file_from_example(self, silent: bool = False) -> bool:
+        """Создает bot_config.py из example файла, если он отсутствует."""
+        target = PROJECT_ROOT / "bot_engine" / "bot_config.py"
+        # Проверяем оба возможных названия example файла
+        example1 = PROJECT_ROOT / "bot_engine" / "bot_config.example.py"
+        example2 = PROJECT_ROOT / "bot_engine" / "example.bot_config.py"
+        
+        example = None
+        if example1.exists():
+            example = example1
+        elif example2.exists():
+            example = example2
+        
+        if not example or not example.exists():
+            message = "Файл bot_engine/bot_config.example.py или bot_engine/example.bot_config.py не найден."
+            if silent:
+                self.log(message, channel="system")
+            else:
+                messagebox.showwarning("Файл не найден", message)
+            return False
+
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(example, target)
+            self.log("Создан bot_engine/bot_config.py из example файла", channel="system")
+            return True
+        except OSError as exc:
+            message = f"Не удалось создать bot_engine/bot_config.py: {exc}"
             if silent:
                 self.log(message, channel="system")
             else:
