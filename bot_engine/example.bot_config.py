@@ -441,3 +441,8 @@ class AIConfig:
     # Время запуска обучения (по умолчанию - ночью)
     AI_RETRAIN_HOUR = 3
 
+    # Самообучение AI в реальном времени
+    AI_SELF_LEARNING_ENABLED = True      # Включить систему самообучения
+    AI_SELF_LEARNING_BUFFER_SIZE = 50    # Размер буфера для онлайн обучения (макс. сделок)
+    AI_ADAPTATION_THRESHOLD = 0.1        # Порог изменения для адаптации к рынку (0.0-1.0)
+    AI_PERFORMANCE_WINDOW = 50           # Окно сделок для оценки производительности
