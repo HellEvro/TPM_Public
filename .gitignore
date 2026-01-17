@@ -311,8 +311,19 @@ data/*.sqlite3.bak
 *-wal
 data/*-shm
 data/*-wal
-data/*.backup_*-shm
-data/*.backup_*-wal
+# Backup files with auxiliary files (pattern: *.db.backup_TIMESTAMP-shm, *.db.backup_TIMESTAMP-wal)
+*.db.backup_*-shm
+*.db.backup_*-wal
+*.sqlite.backup_*-shm
+*.sqlite.backup_*-wal
+*.sqlite3.backup_*-shm
+*.sqlite3.backup_*-wal
+data/*.db.backup_*-shm
+data/*.db.backup_*-wal
+data/*.sqlite.backup_*-shm
+data/*.sqlite.backup_*-wal
+data/*.sqlite3.backup_*-shm
+data/*.sqlite3.backup_*-wal
 
 # Configuration backups
 *_backup_*.json
