@@ -24,6 +24,24 @@ from concurrent.futures import ThreadPoolExecutor
 logger = logging.getLogger('AI.SelfLearning')
 
 
+def _get_ai_config_value(attr_name: str, default_value: Any) -> Any:
+    """
+    Получает значение настройки AI из конфига с fallback на дефолтное значение.
+    
+    Args:
+        attr_name: Имя атрибута в AIConfig
+        default_value: Дефолтное значение, если атрибут не найден
+    
+    Returns:
+        Значение из конфига или дефолтное значение
+    """
+    try:
+        from bot_engine.bot_config import AIConfig
+        return getattr(AIConfig, attr_name, default_value)
+    except (ImportError, AttributeError):
+        return default_value
+
+
 class AISelfLearning:
     """
     Система самообучения AI
@@ -48,18 +66,25 @@ class AISelfLearning:
         self.ai_trainer = None
         self._connect_to_trainer()
 
-        # Система самооценки
-        self.performance_tracker = PerformanceTracker()
+        # ✅ Загружаем настройки из конфига с fallback на дефолтные значения
+        # Самообучение AI в реальном времени
+        self.self_learning_enabled = _get_ai_config_value('AI_SELF_LEARNING_ENABLED', True)
+        self.self_learning_buffer_size = _get_ai_config_value('AI_SELF_LEARNING_BUFFER_SIZE', 50)
+        self.adaptation_threshold = _get_ai_config_value('AI_ADAPTATION_THRESHOLD', 0.1)
+        self.performance_window = _get_ai_config_value('AI_PERFORMANCE_WINDOW', 50)
 
-        # Онлайн обучение
-        self.online_learning_enabled = True
-        self.online_learning_buffer = deque(maxlen=100)  # Буфер последних сделок для онлайн обучения
+        # Система самооценки (передаем performance_window из конфига)
+        self.performance_tracker = PerformanceTracker(performance_window=self.performance_window)
+
+        # Онлайн обучение (используем настройки из конфига)
+        self.online_learning_enabled = self.self_learning_enabled
+        self.online_learning_buffer = deque(maxlen=self.self_learning_buffer_size)
         self.online_learning_interval = 5  # Обновление каждые 5 сделок
 
         # Адаптивное обучение
-        self.adaptive_learning_enabled = True
-        self.market_conditions_buffer = deque(maxlen=50)  # Буфер рыночных условий
-        self.adaptation_threshold = 0.1  # Порог изменения для адаптации
+        self.adaptive_learning_enabled = self.self_learning_enabled
+        self.market_conditions_buffer = deque(maxlen=self.self_learning_buffer_size)
+        # self.adaptation_threshold уже установлен выше из конфига
 
         # Многопоточность
         self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="AI_SelfLearning")
@@ -609,9 +634,13 @@ class AISelfLearning:
 class PerformanceTracker:
     """Трекер производительности AI"""
 
-    def __init__(self):
+    def __init__(self, performance_window: int = 50):
+        """
+        Args:
+            performance_window: Окно сделок для оценки производительности (по умолчанию из конфига)
+        """
         self.trade_results = deque(maxlen=1000)  # Последние 1000 сделок
-        self.performance_window = 50  # Окно для оценки производительности
+        self.performance_window = performance_window  # Окно для оценки производительности
 
     def add_trade_result(self, trade_result: Dict) -> None:
         """Добавление результата сделки"""

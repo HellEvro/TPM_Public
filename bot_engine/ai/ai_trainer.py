@@ -273,6 +273,20 @@ class AITrainer:
         self.win_rate_targets_dirty = False
         self.win_rate_targets_default = 80.0  # Значение по умолчанию
         
+        # ✅ Онлайн обучение: буфер для инкрементального обучения
+        # Загружаем настройки из конфига с fallback на дефолтные значения
+        try:
+            from bot_engine.bot_config import AIConfig
+            self._online_learning_buffer_size = getattr(AIConfig, 'AI_SELF_LEARNING_BUFFER_SIZE', 50)
+            self._online_learning_enabled = getattr(AIConfig, 'AI_SELF_LEARNING_ENABLED', True)
+        except (ImportError, AttributeError):
+            # Дефолтные значения, если конфиг не доступен
+            self._online_learning_buffer_size = 50
+            self._online_learning_enabled = True
+        
+        from collections import deque
+        self._online_learning_buffer = deque(maxlen=self._online_learning_buffer_size)
+        
         # Загружаем существующие модели
         self._load_models()
         
@@ -5672,8 +5686,8 @@ class AITrainer:
                 'timestamp': datetime.now().isoformat()
             })
 
-            # Ограничиваем буфер
-            if len(self._online_learning_buffer) > 50:
+            # Ограничиваем буфер (размер уже задан в deque maxlen, но для совместимости оставляем проверку)
+            if len(self._online_learning_buffer) > self._online_learning_buffer_size:
                 self._online_learning_buffer.pop(0)
 
             # Выполняем онлайн обучение каждые 10 сделок
