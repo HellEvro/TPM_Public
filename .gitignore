@@ -288,17 +288,31 @@ backups/
 
 # Database backup files
 *.db.backup
+*.db.backup_*
 *.db.bak
 *.sqlite.backup
+*.sqlite.backup_*
 *.sqlite.bak
 *.sqlite3.backup
+*.sqlite3.backup_*
 *.sqlite3.bak
 data/*.db.backup
+data/*.db.backup_*
 data/*.db.bak
 data/*.sqlite.backup
+data/*.sqlite.backup_*
 data/*.sqlite.bak
 data/*.sqlite3.backup
+data/*.sqlite3.backup_*
 data/*.sqlite3.bak
+
+# SQLite backup auxiliary files (-shm, -wal)
+*-shm
+*-wal
+data/*-shm
+data/*-wal
+data/*.backup_*-shm
+data/*.backup_*-wal
 
 # Configuration backups
 *_backup_*.json
