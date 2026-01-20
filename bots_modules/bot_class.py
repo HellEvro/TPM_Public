@@ -715,7 +715,7 @@ class NewTradingBot:
             dict: {'allowed': bool, 'reason': str}
         """
         try:
-            logger.error(f"[NEW_BOT_{self.symbol}] 🔍 check_loss_reentry_protection ВЫЗВАН!")
+            logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 check_loss_reentry_protection ВЫЗВАН!")
             
             # Убеждаемся, что bots_data_lock доступен
             try:
@@ -731,7 +731,7 @@ class NewTradingBot:
             # Это нужно, чтобы история успела подгрузиться в БД после закрытия
             # Работает НЕЗАВИСИМО от настройки loss_reentry_protection (как просил пользователь)
             last_close_timestamp = self.config.get('last_position_close_timestamp')
-            logger.error(f"[NEW_BOT_{self.symbol}] 🔍 last_close_timestamp из config: {last_close_timestamp}")
+            logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 last_close_timestamp из config: {last_close_timestamp}")
             
             # Также проверяем глобальный словарь (для случаев когда бот был удален после закрытия)
             if not last_close_timestamp:
@@ -740,12 +740,12 @@ class NewTradingBot:
                     with bots_data_lock:
                         last_close_timestamps = bots_data.get('last_close_timestamps', {})
                         last_close_timestamp = last_close_timestamps.get(self.symbol)
-                        logger.error(f"[NEW_BOT_{self.symbol}] 🔍 last_close_timestamp из глобального словаря: {last_close_timestamp}, все timestamps: {list(last_close_timestamps.keys())}")
+                        logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 last_close_timestamp из глобального словаря: {last_close_timestamp}, все timestamps: {list(last_close_timestamps.keys())}")
                 except Exception as e:
                     logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка чтения глобального словаря: {e}")
             
             if last_close_timestamp:
-                logger.error(f"[NEW_BOT_{self.symbol}] ✅ НАЙДЕН timestamp последнего закрытия: {last_close_timestamp}")
+                logger.debug(f"[NEW_BOT_{self.symbol}] ✅ НАЙДЕН timestamp последнего закрытия: {last_close_timestamp}")
                 try:
                     from datetime import datetime
                     current_timestamp = datetime.now().timestamp()
@@ -755,7 +755,7 @@ class NewTradingBot:
                     if time_since_close < min_wait_seconds:
                         wait_remaining = min_wait_seconds - time_since_close
                         wait_remaining_minutes = wait_remaining / 60
-                        logger.error(
+                        logger.warning(
                             f"[NEW_BOT_{self.symbol}] 🚫🚫🚫 ЗАБЛОКИРОВАНО (1 час задержка): После закрытия позиции прошло только {time_since_close:.0f} секунд "
                             f"(требуется {min_wait_seconds} секунд = 1 час). Осталось ждать: {wait_remaining_minutes:.1f} минут"
                         )
@@ -782,7 +782,7 @@ class NewTradingBot:
                 from bot_engine.bots_database import get_bots_database
                 bots_db = get_bots_database()
                 
-                logger.error(f"[NEW_BOT_{self.symbol}] 🔍 Проверяем закрытые сделки в БД для символа {self.symbol}, нужны последние {loss_reentry_count} сделок")
+                logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 Проверяем закрытые сделки в БД для символа {self.symbol}, нужны последние {loss_reentry_count} сделок")
                 
                 # ✅ КРИТИЧНО: Получаем последние N закрытых сделок по текущей монете
                 # Сначала пробуем из bot_trades_history (сделки ботов)
@@ -795,12 +795,12 @@ class NewTradingBot:
                     offset=0
                 )
                 
-                logger.error(f"[NEW_BOT_{self.symbol}] 🔍 Из bot_trades_history получено {len(closed_trades) if closed_trades else 0} закрытых сделок")
+                logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 Из bot_trades_history получено {len(closed_trades) if closed_trades else 0} закрытых сделок")
                 if closed_trades:
                     for i, trade in enumerate(closed_trades):
                         pnl = trade.get('pnl')
                         exit_timestamp = trade.get('exit_timestamp')
-                        logger.error(f"[NEW_BOT_{self.symbol}] 🔍 Сделка #{i+1}: pnl={pnl}, exit_timestamp={exit_timestamp}")
+                        logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 Сделка #{i+1}: pnl={pnl}, exit_timestamp={exit_timestamp}")
                 
                 # ✅ КРИТИЧНО: Если нет сделок в bot_trades_history или недостаточно, дополняем из closed_pnl_history (UI сделки)
                 if not closed_trades or len(closed_trades) < loss_reentry_count:
@@ -818,7 +818,7 @@ class NewTradingBot:
                             if not closed_trades:
                                 closed_trades = []
                             
-                            logger.error(f"[NEW_BOT_{self.symbol}] 🔍 Из closed_pnl_history найдено {len(symbol_closed_pnl)} сделок для символа {self.symbol}")
+                            logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 Из closed_pnl_history найдено {len(symbol_closed_pnl)} сделок для символа {self.symbol}")
                             
                             # Дополняем до нужного количества
                             needed_count = loss_reentry_count - len(closed_trades)
@@ -831,13 +831,13 @@ class NewTradingBot:
                                     'is_simulated': False
                                 }
                                 closed_trades.append(trade)
-                                logger.error(f"[NEW_BOT_{self.symbol}] 🔍 Добавлена сделка из closed_pnl_history: pnl={trade['pnl']}, exit_timestamp={trade['exit_timestamp']}")
+                                logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 Добавлена сделка из closed_pnl_history: pnl={trade['pnl']}, exit_timestamp={trade['exit_timestamp']}")
                             
                             # Сортируем объединенный список по exit_timestamp DESC
                             closed_trades.sort(key=lambda x: x.get('exit_timestamp') or 0, reverse=True)
                             # Берем только последние N
                             closed_trades = closed_trades[:loss_reentry_count]
-                            logger.error(f"[NEW_BOT_{self.symbol}] 🔍 После объединения и сортировки: {len(closed_trades)} сделок")
+                            logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 После объединения и сортировки: {len(closed_trades)} сделок")
                     except Exception as app_db_error:
                         logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка загрузки из closed_pnl_history: {app_db_error}")
                         import traceback
@@ -850,7 +850,7 @@ class NewTradingBot:
                     return {'allowed': True, 'reason': f'Not enough closed trades ({len(closed_trades) if closed_trades else 0} < {loss_reentry_count})'}
                 
                 # ✅ КРИТИЧНО: Логируем что получили из БД для диагностики
-                logger.error(f"[NEW_BOT_{self.symbol}] 🔍 ЗАЩИТА ОТ ПОВТОРНЫХ ВХОДОВ: Получено {len(closed_trades)} закрытых сделок из БД")
+                logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 ЗАЩИТА ОТ ПОВТОРНЫХ ВХОДОВ: Получено {len(closed_trades)} закрытых сделок из БД")
                 
                 # ✅ ИСПРАВЛЕНО: Проверяем, все ли последние N сделок были с отрицательным результатом (pnl < 0)
                 # Важно: проверяем именно ПОСЛЕДНИЕ N сделок по времени закрытия (уже отсортированы DESC)
@@ -867,12 +867,12 @@ class NewTradingBot:
                     try:
                         pnl_float = float(pnl) if pnl is not None else 0.0
                         pnl_details.append(f"#{idx+1}: PnL={pnl_float:.4f} USDT, exit_time={exit_time}, simulated={is_simulated}")
-                        logger.error(f"[NEW_BOT_{self.symbol}] 🔍 Сделка #{idx+1}: PnL={pnl_float:.4f}, exit_timestamp={exit_timestamp}, close_reason={close_reason}, is_simulated={is_simulated}")
+                        logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 Сделка #{idx+1}: PnL={pnl_float:.4f}, exit_timestamp={exit_timestamp}, close_reason={close_reason}, is_simulated={is_simulated}")
                         
                         # Если хотя бы одна сделка >= 0 (прибыльная или безубыточная) - не все в минус
                         if pnl_float >= 0:
                             all_losses = False
-                            logger.error(f"[NEW_BOT_{self.symbol}] 🚫 Сделка #{idx+1} имеет PnL={pnl_float:.4f} >= 0 - фильтр НЕ блокирует! РАЗРЕШАЕМ вход!")
+                            logger.debug(f"[NEW_BOT_{self.symbol}] 🚫 Сделка #{idx+1} имеет PnL={pnl_float:.4f} >= 0 - фильтр НЕ блокирует! РАЗРЕШАЕМ вход!")
                             break
                     except (ValueError, TypeError) as e:
                         # Если не удалось преобразовать PnL - считаем что не убыточная
