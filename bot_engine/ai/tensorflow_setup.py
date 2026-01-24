@@ -297,49 +297,13 @@ def ensure_tensorflow_setup():
                         pass
                     else:
                         logger.warning("   GPU обнаружен в системе, но TensorFlow не может его использовать")
-                        logger.info("   🔄 Пытаюсь автоматически переустановить TensorFlow с поддержкой GPU...")
-                        logger.info("   ⏳ Это может занять несколько минут...")
-                        # Сначала удаляем старую версию
-                        try:
-                            logger.info("   📦 Удаление старой версии TensorFlow...")
-                            subprocess.run(
-                                [sys.executable, '-m', 'pip', 'uninstall', '-y', 'tensorflow', 'tensorflow-cpu'],
-                                check=False,
-                                capture_output=True,
-                                text=True,
-                                timeout=60
-                            )
-                        except Exception as e:
-                            logger.debug(f"   Предупреждение при удалении: {e}")
-                        
-                        # Пытаемся автоматически установить GPU версию
-                        try:
-                            logger.info("   📦 Установка TensorFlow с поддержкой GPU...")
-                            result = subprocess.run(
-                                [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow[and-cuda]', '--no-warn-script-location'],
-                                check=True,
-                                capture_output=True,
-                                text=True,
-                                timeout=900  # 15 минут таймаут для GPU версии
-                            )
-                            logger.info("   ✅ TensorFlow с GPU успешно установлен! Перезапустите ai.py для применения изменений.")
-                            # Перепроверяем установку
-                            tf_info = check_tensorflow_installation()
-                            if tf_info['cuda_built']:
-                                logger.info("   ✅ TensorFlow теперь поддерживает CUDA")
-                                if tf_info['gpus_found'] > 0:
-                                    logger.info(f"   ✅ Найдено GPU устройств: {tf_info['gpus_found']}")
-                        except subprocess.TimeoutExpired:
-                            logger.warning("   ⚠️ Таймаут при установке tensorflow[and-cuda]")
-                            logger.warning("   Установите вручную: pip uninstall -y tensorflow tensorflow-cpu && pip install tensorflow[and-cuda]")
-                        except subprocess.CalledProcessError as e:
-                            err = e.stderr
-                            error_output = (err.decode('utf-8', errors='ignore') if isinstance(err, bytes) else (err or str(e)))
-                            logger.warning(f"   ⚠️ Не удалось установить tensorflow[and-cuda]: {error_output[:300]}")
-                            logger.warning("   Установите вручную: pip uninstall -y tensorflow tensorflow-cpu && pip install tensorflow[and-cuda]")
-                        except Exception as e:
-                            logger.warning(f"   ⚠️ Ошибка при установке: {e}")
-                            logger.warning("   Установите вручную: pip uninstall -y tensorflow tensorflow-cpu && pip install tensorflow[and-cuda]")
+                        logger.warning("   ⚠️ ВАЖНО: TensorFlow для Python 3.12 может быть собран только с CPU поддержкой")
+                        logger.warning("   ⚠️ Официальные сборки TensorFlow для Python 3.12 не включают GPU поддержку")
+                        logger.info("   💡 РЕШЕНИЯ:")
+                        logger.info("      1. Используйте Python 3.11 для TensorFlow GPU (рекомендуется)")
+                        logger.info("      2. Запустите: python scripts/setup_python_gpu.py для создания venv с Python 3.11")
+                        logger.info("      3. Или используйте TensorFlow CPU версию (уже установлена)")
+                        logger.info("   ℹ️ Система будет работать на CPU, но медленнее для обучения LSTM моделей")
     except Exception as e:
         logger.warning(f"Ошибка при проверке TensorFlow: {e}")
         logger.info("Продолжаем работу...")
