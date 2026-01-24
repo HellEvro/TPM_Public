@@ -52,14 +52,23 @@ except Exception as e:
 
 # Автоматическая проверка и установка TensorFlow с поддержкой GPU
 # Выполняется ПЕРЕД импортом защищенного модуля
+# ВАЖНО: Выполняется только в главном процессе, чтобы избежать дублирования
 try:
-    from bot_engine.ai.tensorflow_setup import ensure_tensorflow_setup
-    logger = logging.getLogger('AI')
-    logger.info("=" * 80)
-    logger.info("ПРОВЕРКА И НАСТРОЙКА TENSORFLOW")
-    logger.info("=" * 80)
-    ensure_tensorflow_setup()
-    logger.info("=" * 80)
+    import multiprocessing
+    is_main_process = multiprocessing.current_process().name == 'MainProcess'
+    
+    if is_main_process:
+        from bot_engine.ai.tensorflow_setup import ensure_tensorflow_setup
+        logger = logging.getLogger('AI')
+        logger.info("=" * 80)
+        logger.info("ПРОВЕРКА И НАСТРОЙКА TENSORFLOW")
+        logger.info("=" * 80)
+        ensure_tensorflow_setup()
+        logger.info("=" * 80)
+    else:
+        # В дочерних процессах только краткая проверка без установки
+        logger = logging.getLogger('AI')
+        logger.debug("Дочерний процесс - пропускаем полную проверку TensorFlow")
 except Exception as tf_setup_error:
     # Если проверка не удалась, продолжаем работу
     logger = logging.getLogger('AI')

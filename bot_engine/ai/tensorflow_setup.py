@@ -12,8 +12,9 @@ import platform
 
 logger = logging.getLogger('TensorFlowSetup')
 
-# Глобальный флаг для предотвращения дублирования сообщений
+# Глобальные флаги для предотвращения дублирования
 _gpu_warning_shown = False
+_tensorflow_checked = False
 
 def check_python_version():
     """Проверяет версию Python и возвращает рекомендации"""
@@ -145,14 +146,20 @@ def install_tensorflow_with_gpu():
         logger.warning(f"⚠️ {python_info['message']}")
         logger.info("Устанавливается TensorFlow (CPU версия)...")
         try:
-            subprocess.run(
+            result = subprocess.run(
                 [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow>=2.13.0'],
                 check=True,
-                capture_output=True
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 минут таймаут
             )
             return True, "CPU версия установлена"
+        except subprocess.TimeoutExpired:
+            return False, "Таймаут при установке TensorFlow (более 5 минут)"
         except subprocess.CalledProcessError as e:
-            return False, f"Ошибка установки: {e}"
+            error_output = e.stderr.decode('utf-8', errors='ignore') if e.stderr else str(e)
+            logger.error(f"Детали ошибки установки: {error_output[:500]}")
+            return False, f"Ошибка установки TensorFlow. Проверьте подключение к интернету и права доступа."
     
     # Пытаемся установить tensorflow[and-cuda]
     logger.info("Попытка установки TensorFlow с поддержкой GPU...")
@@ -161,21 +168,33 @@ def install_tensorflow_with_gpu():
             [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow[and-cuda]>=2.13.0'],
             check=True,
             capture_output=True,
-            text=True
+            text=True,
+            timeout=600  # 10 минут таймаут для GPU версии
         )
         return True, "TensorFlow с GPU установлен"
-    except subprocess.CalledProcessError:
-        # Если не получилось, устанавливаем базовый TensorFlow
-        logger.warning("Не удалось установить tensorflow[and-cuda], устанавливается базовая версия...")
-        try:
-            subprocess.run(
-                [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow>=2.13.0'],
-                check=True,
-                capture_output=True
-            )
-            return True, "TensorFlow установлен (базовая версия)"
-        except subprocess.CalledProcessError as e:
-            return False, f"Ошибка установки: {e}"
+    except subprocess.TimeoutExpired:
+        logger.warning("Таймаут при установке tensorflow[and-cuda], пробуем базовую версию...")
+    except subprocess.CalledProcessError as e:
+        error_output = e.stderr.decode('utf-8', errors='ignore') if e.stderr else str(e)
+        logger.warning(f"Не удалось установить tensorflow[and-cuda]: {error_output[:300]}")
+        logger.warning("Устанавливается базовая версия TensorFlow...")
+    
+    # Если не получилось, устанавливаем базовый TensorFlow
+    try:
+        result = subprocess.run(
+            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow>=2.13.0'],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 минут таймаут
+        )
+        return True, "TensorFlow установлен (базовая версия)"
+    except subprocess.TimeoutExpired:
+        return False, "Таймаут при установке TensorFlow (более 5 минут)"
+    except subprocess.CalledProcessError as e:
+        error_output = e.stderr.decode('utf-8', errors='ignore') if e.stderr else str(e)
+        logger.error(f"Детали ошибки установки: {error_output[:500]}")
+        return False, f"Ошибка установки TensorFlow. Проверьте подключение к интернету и права доступа."
 
 def suggest_python_downgrade():
     """Предлагает даунгрейд до Python 3.12 для работы с GPU"""
@@ -202,6 +221,26 @@ def ensure_tensorflow_setup():
     Главная функция: проверяет и при необходимости устанавливает TensorFlow
     Вызывается автоматически при импорте модуля
     """
+    global _tensorflow_checked
+    
+    # Проверяем только один раз во всей программе
+    if _tensorflow_checked:
+        logger.debug("TensorFlow уже проверен, пропускаем повторную проверку")
+        return True
+    
+    # Проверяем, что мы в главном процессе (для предотвращения дублирования в дочерних процессах)
+    try:
+        import multiprocessing
+        is_main_process = multiprocessing.current_process().name == 'MainProcess'
+        if not is_main_process:
+            logger.debug("Дочерний процесс - пропускаем проверку TensorFlow")
+            return True
+    except:
+        # Если multiprocessing недоступен, продолжаем
+        pass
+    
+    _tensorflow_checked = True
+    
     try:
         # Проверяем версию Python
         python_info = check_python_version()
