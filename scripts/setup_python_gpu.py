@@ -50,6 +50,31 @@ def check_python_312_available():
     
     return False, None
 
+def check_python_314_available():
+    """Проверяет, доступен ли Python 3.14 в системе (для будущей поддержки)"""
+    commands = [
+        ['py', '-3.14', '--version'],
+        ['python3.14', '--version'],
+        ['python314', '--version'],
+    ]
+    
+    for cmd in commands:
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                version_output = result.stdout.strip()
+                if '3.14' in version_output or (cmd[0] == 'py' and '3.14' in str(cmd)):
+                    return True, cmd[0] if cmd[0] != 'py' else 'py -3.14'
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+    
+    return False, None
+
 def install_python_312_windows():
     """Инструкции по установке Python 3.12 на Windows"""
     print("\n" + "=" * 80)
@@ -66,8 +91,8 @@ def install_python_312_windows():
     print("   py -3.12 scripts/setup_python_gpu.py")
     print("\n" + "=" * 80)
 
-def create_venv_with_python312(python312_cmd, project_root):
-    """Создает виртуальное окружение с Python 3.12"""
+def create_venv_with_python(python_cmd, project_root):
+    """Создает виртуальное окружение с указанной версией Python"""
     venv_path = project_root / '.venv_gpu'
     
     # Удаляем старое окружение если существует
@@ -75,14 +100,35 @@ def create_venv_with_python312(python312_cmd, project_root):
         print(f"Удаление старого виртуального окружения: {venv_path}")
         shutil.rmtree(venv_path)
     
-    print(f"Создание виртуального окружения с Python 3.12: {venv_path}")
+    # Определяем версию Python из команды
+    python_version_str = "указанной версии"
+    if python_cmd.startswith('py'):
+        if '-3.12' in python_cmd:
+            python_version_str = "3.12"
+        elif '-3.14' in python_cmd:
+            python_version_str = "3.14+"
+    else:
+        # Пробуем определить версию из команды
+        try:
+            result = subprocess.run([python_cmd, '--version'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                python_version_str = result.stdout.strip()
+        except:
+            pass
+    
+    print(f"Создание виртуального окружения с Python {python_version_str}: {venv_path}")
     
     # Формируем команду для создания venv
-    if python312_cmd.startswith('py'):
-        # Для Windows py launcher
-        cmd = ['py', '-3.12', '-m', 'venv', str(venv_path)]
+    if python_cmd.startswith('py'):
+        # Для Windows py launcher - используем команду как есть
+        if '-3.12' in python_cmd:
+            cmd = ['py', '-3.12', '-m', 'venv', str(venv_path)]
+        elif '-3.14' in python_cmd:
+            cmd = ['py', '-3.14', '-m', 'venv', str(venv_path)]
+        else:
+            cmd = python_cmd.split() + ['-m', 'venv', str(venv_path)]
     else:
-        cmd = [python312_cmd, '-m', 'venv', str(venv_path)]
+        cmd = [python_cmd, '-m', 'venv', str(venv_path)]
     
     try:
         subprocess.run(cmd, check=True)
@@ -179,21 +225,37 @@ def main():
     current_version = sys.version_info
     print(f"\nТекущая версия Python: {current_version.major}.{current_version.minor}.{current_version.micro}")
     
-    # Проверяем наличие Python 3.12
-    has_python312, python312_cmd = check_python_312_available()
+    # Проверяем текущую версию Python
+    current_major, current_minor = current_version.major, current_version.minor
     
-    if not has_python312:
-        print("\n[ERROR] Python 3.12 не найден в системе")
-        if platform.system() == 'Windows':
-            install_python_312_windows()
+    # Если Python 3.14+, пробуем использовать его (может поддерживать GPU)
+    if current_major == 3 and current_minor >= 14:
+        has_python314, python314_cmd = check_python_314_available()
+        if has_python314:
+            print(f"[OK] Python 3.14+ найден: {python314_cmd}")
+            print("[INFO] Пробуем использовать Python 3.14 для GPU (поддержка будет проверена)")
+            python_cmd_to_use = python314_cmd
         else:
-            print("\nУстановите Python 3.12:")
-            print("  Ubuntu/Debian: sudo apt install python3.12 python3.12-venv")
-            print("  macOS: brew install python@3.12")
-            print("  Или скачайте с https://www.python.org/downloads/")
-        return 1
-    
-    print(f"[OK] Python 3.12 найден: {python312_cmd}")
+            # Пробуем использовать текущий Python 3.14
+            python_cmd_to_use = sys.executable
+            print(f"[INFO] Используется текущий Python {current_major}.{current_minor} для GPU")
+    else:
+        # Для Python 3.13 и ниже - используем Python 3.12
+        has_python312, python312_cmd = check_python_312_available()
+        
+        if not has_python312:
+            print("\n[ERROR] Python 3.12 не найден в системе")
+            if platform.system() == 'Windows':
+                install_python_312_windows()
+            else:
+                print("\nУстановите Python 3.12:")
+                print("  Ubuntu/Debian: sudo apt install python3.12 python3.12-venv")
+                print("  macOS: brew install python@3.12")
+                print("  Или скачайте с https://www.python.org/downloads/")
+            return 1
+        
+        print(f"[OK] Python 3.12 найден: {python312_cmd}")
+        python_cmd_to_use = python312_cmd
     
     # Проверяем наличие GPU
     try:
@@ -208,7 +270,7 @@ def main():
         print("[WARNING] NVIDIA GPU не обнаружен, но продолжаем настройку...")
     
     # Создаем виртуальное окружение
-    venv_path = create_venv_with_python312(python312_cmd, project_root)
+    venv_path = create_venv_with_python(python_cmd_to_use, project_root)
     if not venv_path:
         return 1
     
