@@ -234,16 +234,23 @@ def ensure_tensorflow_setup():
         tf_info = check_tensorflow_installation()
         
         if not tf_info['installed']:
-            logger.info("TensorFlow не установлен. Начинаю автоматическую установку...")
-            
-            success, message = install_tensorflow_with_gpu(has_gpu=has_gpu)
-            if success:
-                logger.info(f"✅ {message}")
-                # Перепроверяем установку
-                tf_info = check_tensorflow_installation()
+            # Устанавливаем TensorFlow только если есть GPU
+            # На ПК без GPU TensorFlow не нужен для работы системы
+            if has_gpu:
+                logger.info("TensorFlow не установлен. Начинаю автоматическую установку (обнаружен GPU)...")
+                
+                success, message = install_tensorflow_with_gpu(has_gpu=has_gpu)
+                if success:
+                    logger.info(f"✅ {message}")
+                    # Перепроверяем установку
+                    tf_info = check_tensorflow_installation()
+                else:
+                    logger.error(f"❌ {message}")
+                    return False
             else:
-                logger.error(f"❌ {message}")
-                return False
+                logger.info("ℹ️ TensorFlow не установлен, но GPU не обнаружен. Пропускаем установку TensorFlow.")
+                logger.info("ℹ️ AI система будет работать без TensorFlow (LSTM и некоторые функции будут недоступны).")
+                logger.info("ℹ️ Для использования GPU установите TensorFlow вручную на ПК с видеокартой.")
         
         # Выводим информацию о TensorFlow
         if tf_info['installed']:
