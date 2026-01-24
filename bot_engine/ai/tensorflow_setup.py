@@ -141,23 +141,43 @@ def install_tensorflow_with_gpu(has_gpu=False):
     
     # Только если есть GPU И Python поддерживает GPU - пытаемся установить tensorflow[and-cuda]
     logger.info("Обнаружен NVIDIA GPU. Попытка установки TensorFlow с поддержкой GPU...")
-    try:
-        # Пробуем установить без указания версии, чтобы pip сам выбрал совместимую
-        result = subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow[and-cuda]', '--no-warn-script-location'],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=900  # 15 минут таймаут для GPU версии
-        )
-        return True, "TensorFlow с GPU установлен"
-    except subprocess.TimeoutExpired:
-        logger.warning("Таймаут при установке tensorflow[and-cuda], пробуем базовую версию...")
-    except subprocess.CalledProcessError as e:
-        err = e.stderr
-        error_output = (err.decode('utf-8', errors='ignore') if isinstance(err, bytes) else (err or str(e)))
-        logger.warning(f"Не удалось установить tensorflow[and-cuda]: {error_output[:300]}")
-        logger.warning("Устанавливается базовая версия TensorFlow (CPU)...")
+    
+    # Пробуем несколько подходов для установки GPU версии
+    installation_methods = [
+        # Метод 1: tensorflow[and-cuda] без версии
+        ([sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow[and-cuda]', '--no-warn-script-location'], "tensorflow[and-cuda]"),
+        # Метод 2: tensorflow 2.15 + nvidia-cudnn-cu12
+        ([sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow==2.15.0', 'nvidia-cudnn-cu12', '--no-warn-script-location'], "tensorflow 2.15 + CUDA libs"),
+        # Метод 3: просто tensorflow (может автоматически подхватить GPU если CUDA установлен)
+        ([sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow', '--no-warn-script-location'], "tensorflow (базовая версия)")
+    ]
+    
+    for cmd, method_name in installation_methods:
+        try:
+            logger.info(f"   Попытка установки через: {method_name}...")
+            result = subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=900  # 15 минут таймаут
+            )
+            logger.info(f"   ✅ Успешно установлено через: {method_name}")
+            return True, f"TensorFlow установлен ({method_name})"
+        except subprocess.TimeoutExpired:
+            logger.warning(f"   ⚠️ Таймаут при установке через {method_name}")
+            continue
+        except subprocess.CalledProcessError as e:
+            err = e.stderr
+            error_output = (err.decode('utf-8', errors='ignore') if isinstance(err, bytes) else (err or str(e)))
+            logger.debug(f"   ⚠️ Не удалось установить через {method_name}: {error_output[:200]}")
+            continue
+    
+    # Если все методы не сработали
+    logger.warning("⚠️ Не удалось установить TensorFlow с GPU поддержкой через автоматические методы")
+    logger.warning("   Установите вручную: pip install tensorflow[and-cuda]")
+    logger.warning("   Или установите базовую версию: pip install tensorflow")
+    return False, "Не удалось установить TensorFlow с GPU"
     
     # Если не получилось, устанавливаем базовый TensorFlow
     try:
