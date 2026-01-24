@@ -43,6 +43,20 @@ rich>=13.0.0
 cryptography>=41.0.0
 
 # AI/ML dependencies
+# TensorFlow - автоматически устанавливается с поддержкой GPU если доступно
+# При запуске ai.py выполняется автоматическая проверка и установка правильной версии
+# 
+# ВАЖНО ДЛЯ GPU:
+# - Python 3.11-3.12: автоматически устанавливается tensorflow[and-cuda] (GPU)
+# - Python 3.13 на Windows: НЕ поддерживает GPU, рекомендуется даунгрейд до 3.12
+# 
+# Для автоматической настройки Python 3.12 с GPU выполните:
+#   python scripts/setup_python_gpu.py
+# 
+# Это создаст виртуальное окружение .venv_gpu с Python 3.12 и установит все зависимости
+# ai.py автоматически использует .venv_gpu если он доступен
+#
+# Вручную можно установить: pip install tensorflow[and-cuda]
 tensorflow>=2.13.0
 scikit-learn>=1.3.0
 
@@ -100,9 +114,12 @@ cryptography>=41.0.0  # Шифрование лицензий и моделей
 # 1. TensorFlow требует много места (~500 MB)
 #    Устанавливайте только если планируете использовать LSTM
 #
-# 2. Для GPU ускорения используйте:
-#    tensorflow-gpu>=2.15.0
-#    (требуется CUDA toolkit)
+# 2. Для GPU ускорения:
+#    Начиная с TensorFlow 2.10+ пакет tensorflow-gpu устарел
+#    Используйте: pip install tensorflow[and-cuda]
+#    Или просто: pip install tensorflow (автоматически использует GPU если доступен)
+#    CUDA библиотеки устанавливаются автоматически через pip
+#    Требуется NVIDIA GPU с драйверами (проверьте: nvidia-smi)
 #
 # 3. Минимальные требования для Anomaly Detection:
 #    scikit-learn + numpy + pandas + joblib

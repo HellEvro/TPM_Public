@@ -64,6 +64,10 @@ try:
     def configure_gpu():
         """Настраивает TensorFlow для использования GPU NVIDIA (если доступен)"""
         try:
+            # Выводим информацию о версии TensorFlow
+            tf_version = tf.__version__
+            logger.debug(f"TensorFlow версия: {tf_version}")
+            
             # Проверяем доступность GPU
             gpus = tf.config.list_physical_devices('GPU')
             
@@ -92,7 +96,36 @@ try:
                     logger.info("Продолжаем с CPU...")
                     return False, None
             else:
+                # Детальная диагностика, почему GPU не найден
                 logger.info("ℹ️ GPU устройства не найдены, используется CPU")
+                
+                # Проверяем, есть ли CUDA в системе
+                try:
+                    import subprocess
+                    import sys
+                    # Проверяем наличие nvidia-smi
+                    result = subprocess.run(['nvidia-smi'], capture_output=True, text=True, timeout=2)
+                    if result.returncode == 0:
+                        logger.warning("⚠️ NVIDIA GPU обнаружен в системе (nvidia-smi работает), но TensorFlow его не видит")
+                        logger.warning("💡 Возможные причины:")
+                        logger.warning("   1. Установлен TensorFlow без поддержки GPU (только CPU версия)")
+                        logger.warning("   2. Не установлен CUDA toolkit или версия несовместима")
+                        logger.warning("   3. Не установлен cuDNN или версия несовместима")
+                        logger.warning("   Решение: установите tensorflow[and-cuda] или tensorflow-gpu с совместимыми CUDA/cuDNN")
+                    else:
+                        logger.debug("nvidia-smi не доступен - возможно, GPU не установлен в системе")
+                except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+                    # nvidia-smi не найден или произошла ошибка
+                    logger.debug("nvidia-smi не доступен - возможно, GPU не установлен в системе")
+                
+                # Проверяем логические устройства GPU
+                try:
+                    logical_gpus = tf.config.list_logical_devices('GPU')
+                    if logical_gpus:
+                        logger.warning(f"⚠️ Найдены логические GPU устройства: {logical_gpus}, но физические не обнаружены")
+                except:
+                    pass
+                
                 return False, None
         except Exception as e:
             logger.warning(f"⚠️ Ошибка проверки GPU: {e}")

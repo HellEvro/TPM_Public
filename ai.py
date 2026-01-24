@@ -8,6 +8,30 @@
 # ⚠️ КРИТИЧНО: Устанавливаем переменную окружения для идентификации процесса ai.py
 # Это гарантирует, что функции из filters.py будут сохранять свечи в ai_data.db, а не в bots_data.db
 import os
+import sys
+from pathlib import Path
+
+# Проверяем наличие виртуального окружения с Python 3.12 для GPU
+# Если найдено .venv_gpu, используем его вместо системного Python
+venv_gpu_path = Path(__file__).parent / '.venv_gpu'
+if venv_gpu_path.exists():
+    if sys.platform == 'win32':
+        venv_python = venv_gpu_path / 'Scripts' / 'python.exe'
+    else:
+        venv_python = venv_gpu_path / 'bin' / 'python'
+    
+    if venv_python.exists():
+        # Перезапускаем скрипт с Python из venv_gpu
+        import subprocess
+        try:
+            subprocess.run([str(venv_python)] + sys.argv, check=True)
+            sys.exit(0)
+        except subprocess.CalledProcessError as e:
+            sys.exit(e.returncode)
+        except Exception:
+            # Если не удалось перезапустить, продолжаем с текущим Python
+            pass
+
 os.environ['INFOBOT_AI_PROCESS'] = 'true'
 
 # Настройка логирования ПЕРЕД импортом защищенного модуля
@@ -25,6 +49,22 @@ except Exception as e:
     except Exception as setup_error:
         import sys
         sys.stderr.write(f"❌ Ошибка настройки логирования: {setup_error}\n")
+
+# Автоматическая проверка и установка TensorFlow с поддержкой GPU
+# Выполняется ПЕРЕД импортом защищенного модуля
+try:
+    from bot_engine.ai.tensorflow_setup import ensure_tensorflow_setup
+    logger = logging.getLogger('AI')
+    logger.info("=" * 80)
+    logger.info("ПРОВЕРКА И НАСТРОЙКА TENSORFLOW")
+    logger.info("=" * 80)
+    ensure_tensorflow_setup()
+    logger.info("=" * 80)
+except Exception as tf_setup_error:
+    # Если проверка не удалась, продолжаем работу
+    logger = logging.getLogger('AI')
+    logger.warning(f"Не удалось проверить TensorFlow: {tf_setup_error}")
+    logger.info("Продолжаем работу...")
 
 from typing import TYPE_CHECKING, Any
 from bot_engine.ai import _infobot_ai_protected as _protected_module
