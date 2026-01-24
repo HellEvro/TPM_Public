@@ -10,22 +10,23 @@ echo
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "[ERROR] python3 not found. Install Python 3.9+ and re-run."
+PYTHON_BIN=""
+for c in python3.12 python3; do
+  if command -v "$c" >/dev/null 2>&1; then
+    v=$("$c" -c 'import sys; print(sys.version_info.major, sys.version_info.minor)' 2>/dev/null) || continue
+    if [[ "$v" == "3 12" ]]; then
+      PYTHON_BIN=$(command -v "$c")
+      break
+    fi
+  fi
+done
+if [[ -z "$PYTHON_BIN" ]]; then
+  echo "[ERROR] Python 3.12 not found. Install: sudo apt install python3.12 python3.12-venv  (Ubuntu/Debian)"
   exit 1
 fi
 
 if ! command -v git >/dev/null 2>&1; then
   echo "[WARN] git not found. Install git to enable update checks."
-fi
-
-PYTHON_BIN=$(command -v python3)
-PY_VERSION=$("$PYTHON_BIN" -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')
-MAJOR_MINOR=$(echo "$PY_VERSION" | cut -d. -f1,2)
-
-if [[ "$(printf '%s\n' "3.9" "$MAJOR_MINOR" | sort -V | head -n1)" != "3.9" ]]; then
-  echo "[ERROR] Python $PY_VERSION detected. Python 3.9 or newer is required."
-  exit 1
 fi
 
 VENV_DIR="${PROJECT_ROOT}/.venv"

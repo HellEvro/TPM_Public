@@ -2,76 +2,51 @@
 setlocal enabledelayedexpansion
 cd /d %~dp0
 
-REM Функция проверки версии Python (должна быть >= 3.13)
+REM InfoBot требует Python 3.12
 set "PYTHON_FOUND=0"
 set "PYTHON_CMD="
 
-REM Проверяем python
-python --version >nul 2>&1
+REM Проверяем py -3.12 (приоритет на Windows)
+py -3.12 --version >nul 2>&1
 if !errorlevel!==0 (
-    python -c "import sys; exit(0 if (sys.version_info.major > 3 or (sys.version_info.major == 3 and sys.version_info.minor >= 13)) else 1)" >nul 2>&1
+    set "PYTHON_FOUND=1"
+    set "PYTHON_CMD=py -3.12"
+)
+
+REM Проверяем python (должна быть 3.12)
+if !PYTHON_FOUND!==0 (
+    python -c "import sys; exit(0 if sys.version_info[:2]==(3,12) else 1)" >nul 2>&1
     if !errorlevel!==0 (
         set "PYTHON_FOUND=1"
         set "PYTHON_CMD=python"
     )
 )
 
-REM Проверяем py -3
+REM Проверяем python3.12
 if !PYTHON_FOUND!==0 (
-    py -3 --version >nul 2>&1
+    python3.12 --version >nul 2>&1
     if !errorlevel!==0 (
-        py -3 -c "import sys; exit(0 if (sys.version_info.major > 3 or (sys.version_info.major == 3 and sys.version_info.minor >= 13)) else 1)" >nul 2>&1
-        if !errorlevel!==0 (
-            set "PYTHON_FOUND=1"
-            set "PYTHON_CMD=py -3"
-        )
+        set "PYTHON_FOUND=1"
+        set "PYTHON_CMD=python3.12"
     )
 )
 
-REM Проверяем python3
-if !PYTHON_FOUND!==0 (
-    python3 --version >nul 2>&1
-    if !errorlevel!==0 (
-        python3 -c "import sys; exit(0 if (sys.version_info.major > 3 or (sys.version_info.major == 3 and sys.version_info.minor >= 13)) else 1)" >nul 2>&1
-        if !errorlevel!==0 (
-            set "PYTHON_FOUND=1"
-            set "PYTHON_CMD=python3"
-        )
-    )
-)
-
-REM Если Python не найден или версия < 3.13 - пытаемся установить
+REM Если Python 3.12 не найден — устанавливаем через winget
 if !PYTHON_FOUND!==0 (
     winget --version >nul 2>&1
     if !errorlevel!==0 (
-        echo [INFO] Установка Python 3.13+ через winget...
-        winget install --id Python.Python.3.13 --silent --accept-package-agreements --accept-source-agreements
-        timeout /t 4 /nobreak >nul
-        REM Проверяем снова после установки
-        python --version >nul 2>&1
+        echo [INFO] Установка Python 3.12 через winget...
+        winget install --id Python.Python.3.12 --silent --accept-package-agreements --accept-source-agreements
+        timeout /t 6 /nobreak >nul
+        py -3.12 --version >nul 2>&1
         if !errorlevel!==0 (
-            python -c "import sys; exit(0 if (sys.version_info.major > 3 or (sys.version_info.major == 3 and sys.version_info.minor >= 13)) else 1)" >nul 2>&1
-            if !errorlevel!==0 (
-                set "PYTHON_FOUND=1"
-                set "PYTHON_CMD=python"
-            )
-        )
-        if !PYTHON_FOUND!==0 (
-            py -3 --version >nul 2>&1
-            if !errorlevel!==0 (
-                py -3 -c "import sys; exit(0 if (sys.version_info.major > 3 or (sys.version_info.major == 3 and sys.version_info.minor >= 13)) else 1)" >nul 2>&1
-                if !errorlevel!==0 (
-                    set "PYTHON_FOUND=1"
-                    set "PYTHON_CMD=py -3"
-                )
-            )
+            set "PYTHON_FOUND=1"
+            set "PYTHON_CMD=py -3.12"
         )
     )
-    
-    REM Если Python всё ещё не найден или версия < 3.13 - открываем страницу скачивания
     if !PYTHON_FOUND!==0 (
-        echo [ERROR] Python 3.13+ не найден. Открываю страницу для скачивания...
-        start https://www.python.org/downloads/windows/
+        echo [ERROR] Python 3.12 не найден. Установите: https://www.python.org/downloads/release/python-3120/
+        start https://www.python.org/downloads/release/python-3120/
         exit /b 1
     )
 )
@@ -186,21 +161,16 @@ if !GIT_FOUND!==1 (
     )
 )
 
-REM Определение Python для запуска
-if exist .venv\Scripts\activate.bat (
+REM Определение Python для запуска: .venv_gpu (3.12) > .venv > py -3.12
+if exist .venv_gpu\Scripts\activate.bat (
+    call .venv_gpu\Scripts\activate.bat
+    set "PYTHON_BIN=python"
+) else if exist .venv\Scripts\activate.bat (
     call .venv\Scripts\activate.bat
     set "PYTHON_BIN=python"
 ) else (
-    echo [WARN] Virtual environment not found. Falling back to system Python.
-    REM Используем найденную команду Python или fallback
-    if not "!PYTHON_CMD!"=="" (
-        set "PYTHON_BIN=!PYTHON_CMD!"
-    ) else if exist %SystemRoot%\py.exe (
-        set "PYTHON_BIN=py -3"
-    ) else (
-        set "PYTHON_BIN=python"
-    )
+    if not "!PYTHON_CMD!"=="" (set "PYTHON_BIN=!PYTHON_CMD!") else (set "PYTHON_BIN=py -3.12")
 )
-%PYTHON_BIN% launcher\infobot_manager.py %*
+!PYTHON_BIN! launcher\infobot_manager.py %*
 endlocal
 

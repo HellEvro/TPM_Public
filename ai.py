@@ -34,6 +34,48 @@ if venv_gpu_path.exists():
 
 os.environ['INFOBOT_AI_PROCESS'] = 'true'
 
+# InfoBot требует Python 3.12. Если текущий — не 3.12, пробуем перезапуск с py -3.12 / python3.12
+def _find_python312():
+    import subprocess
+    _check = 'import sys; sys.exit(0 if sys.version_info[:2]==(3,12) else 1)'
+    candidates = (
+        [(['py', '-3.12', '-c', _check], ['py', '-3.12'])] if sys.platform == 'win32' else []
+    ) + [
+        (['python3.12', '-c', _check], ['python3.12']),
+        (['python312', '-c', _check], ['python312']),
+    ]
+    for check, run_cmd in candidates:
+        try:
+            r = subprocess.run(check, capture_output=True, timeout=5)
+            if r.returncode == 0:
+                return run_cmd
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+    return None
+
+_major, _minor = sys.version_info.major, sys.version_info.minor
+if (_major, _minor) != (3, 12):
+    py312 = _find_python312()
+    if py312:
+        import subprocess
+        try:
+            subprocess.run(py312 + sys.argv, check=True)
+            sys.exit(0)
+        except subprocess.CalledProcessError as e:
+            sys.exit(e.returncode)
+        except Exception:
+            pass
+    # Python 3.12 не найден — выходим с сообщением
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    _log = logging.getLogger('AI')
+    _log.error("=" * 80)
+    _log.error("InfoBot требует Python 3.12. Текущий: %s.%s", _major, _minor)
+    _log.error("Установите Python 3.12 или выполните: python scripts/setup_python_gpu.py")
+    _log.error("  https://www.python.org/downloads/release/python-3120/")
+    _log.error("=" * 80)
+    sys.exit(1)
+
 # Настройка логирования ПЕРЕД импортом защищенного модуля
 import logging
 try:
@@ -76,7 +118,19 @@ except Exception as tf_setup_error:
     logger.info("Продолжаем работу...")
 
 from typing import TYPE_CHECKING, Any
-from bot_engine.ai import _infobot_ai_protected as _protected_module
+
+try:
+    from bot_engine.ai import _infobot_ai_protected as _protected_module
+except ImportError as e:
+    err_msg = str(e).lower()
+    if "bad magic number" in err_msg or "bad magic" in err_msg:
+        _log = logging.getLogger("AI")
+        _log.error("=" * 80)
+        _log.error("AI модуль собран под Python 3.12. Текущий: %s", sys.version.split()[0] if sys.version else "?")
+        _log.error("Выполните: python scripts/setup_python_gpu.py  либо используйте Python 3.12.")
+        _log.error("=" * 80)
+        sys.exit(1)
+    raise
 
 
 if TYPE_CHECKING:
