@@ -124,7 +124,7 @@ def install_tensorflow_with_gpu(has_gpu=False):
             logger.info("Устанавливается TensorFlow (CPU версия)...")
         try:
             result = subprocess.run(
-                [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow>=2.13.0', '--no-warn-script-location'],
+                [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow', '--no-warn-script-location'],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -142,12 +142,13 @@ def install_tensorflow_with_gpu(has_gpu=False):
     # Только если есть GPU И Python поддерживает GPU - пытаемся установить tensorflow[and-cuda]
     logger.info("Обнаружен NVIDIA GPU. Попытка установки TensorFlow с поддержкой GPU...")
     try:
+        # Пробуем установить без указания версии, чтобы pip сам выбрал совместимую
         result = subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow[and-cuda]>=2.13.0', '--no-warn-script-location'],
+            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow[and-cuda]', '--no-warn-script-location'],
             check=True,
             capture_output=True,
             text=True,
-            timeout=600  # 10 минут таймаут для GPU версии
+            timeout=900  # 15 минут таймаут для GPU версии
         )
         return True, "TensorFlow с GPU установлен"
     except subprocess.TimeoutExpired:
@@ -161,7 +162,7 @@ def install_tensorflow_with_gpu(has_gpu=False):
     # Если не получилось, устанавливаем базовый TensorFlow
     try:
         result = subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow>=2.13.0', '--no-warn-script-location'],
+            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow', '--no-warn-script-location'],
             check=True,
             capture_output=True,
             text=True,
@@ -295,7 +296,7 @@ def ensure_tensorflow_setup():
                         try:
                             logger.info("   📦 Установка TensorFlow с поддержкой GPU...")
                             result = subprocess.run(
-                                [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow[and-cuda]>=2.13.0', '--no-warn-script-location'],
+                                [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow[and-cuda]', '--no-warn-script-location'],
                                 check=True,
                                 capture_output=True,
                                 text=True,
