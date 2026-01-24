@@ -34,6 +34,28 @@ try:
     tf_setup_logger.setLevel(logging.INFO)
     # Вызываем проверку и установку TensorFlow
     ensure_tensorflow_setup()
+    
+    # КРИТИЧНО: Принудительная настройка GPU для TensorFlow
+    try:
+        import tensorflow as tf
+        # Настраиваем GPU при запуске
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
+            # Включаем рост памяти GPU
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+            # Устанавливаем видимость GPU для всех операций
+            tf.config.set_visible_devices(gpus[0], 'GPU')
+            logging.info(f"✅ GPU настроен: {gpus[0].name}")
+        else:
+            # Пробуем использовать системные CUDA библиотеки
+            cuda_available = tf.test.is_built_with_cuda()
+            if not cuda_available:
+                logging.warning("⚠️ TensorFlow собран без CUDA. GPU недоступен.")
+            else:
+                logging.info("ℹ️ GPU устройства не найдены, но CUDA поддержка есть")
+    except Exception as gpu_error:
+        logging.debug(f"Ошибка настройки GPU: {gpu_error}")
 except Exception as e:
     # Если не удалось проверить TensorFlow, продолжаем работу
     import sys
