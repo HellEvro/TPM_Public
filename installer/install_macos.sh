@@ -45,6 +45,13 @@ python -m pip install --upgrade pip setuptools wheel --no-warn-script-location
 echo "[INFO] Installing/updating project dependencies"
 python -m pip install -r requirements.txt --no-warn-script-location
 
+echo "[INFO] Compiling protected modules (.pyc files)"
+if python license_generator/compile_all.py; then
+    echo "[OK] All protected modules compiled successfully!"
+else
+    echo "[WARN] Some modules failed to compile. This may be normal if source files are not available."
+fi
+
 LAUNCHER_SCRIPT="${PROJECT_ROOT}/start_infobot_manager.sh"
 if [[ ! -f "$LAUNCHER_SCRIPT" ]]; then
 cat <<'BASH' > "$LAUNCHER_SCRIPT"

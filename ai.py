@@ -126,9 +126,14 @@ except ImportError as e:
     if "bad magic number" in err_msg or "bad magic" in err_msg:
         _log = logging.getLogger("AI")
         current_version = sys.version.split()[0] if sys.version else "?"
+        _major, _minor = sys.version_info.major, sys.version_info.minor
         _log.error("=" * 80)
-        _log.error(f"AI модуль собран под Python 3.12. Текущий: {current_version}")
-        _log.error("Выполните: python scripts/setup_python_gpu.py  либо используйте Python 3.12.")
+        if (_major, _minor) == (3, 12):
+            _log.error(f"[ERROR] AI модуль несовместим с текущей версией Python: {current_version}")
+            _log.error("[ERROR] Выполните: python license_generator/build_ai_launcher.py")
+        else:
+            _log.error(f"[ERROR] AI модуль собран под Python 3.12. Текущий: {current_version}")
+            _log.error("Выполните: python scripts/setup_python_gpu.py  либо используйте Python 3.12.")
         _log.error("=" * 80)
         sys.exit(1)
     raise

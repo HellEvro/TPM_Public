@@ -67,16 +67,10 @@ def get_cached_ai_manager():
             if "bad magic number" in err_msg or "bad magic" in err_msg:
                 # Если .pyc несовместим, пробуем использовать .py файл через bot_engine.ai
                 try:
-                    from bot_engine.ai import recompile_ai_manager
-                    if recompile_ai_manager():
-                        # Пробуем импортировать снова после перекомпиляции
-                        from bot_engine.ai.ai_manager import get_ai_manager
-                        _ai_manager_cache = get_ai_manager()
-                        _ai_available_cache = _ai_manager_cache.is_available() if _ai_manager_cache else False
-                        logger.info("[FILTERS] ✅ ai_manager перекомпилирован и загружен")
-                    else:
-                        _ai_manager_cache = None
-                        _ai_available_cache = False
+                    # Исходники недоступны у пользователей - просто пропускаем
+                    logger.debug(f" AI Manager недоступен: {e}")
+                    _ai_manager_cache = None
+                    _ai_available_cache = False
                 except Exception:
                     _ai_manager_cache = None
                     _ai_available_cache = False

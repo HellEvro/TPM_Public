@@ -69,6 +69,18 @@ if ($ForceReinstall) {
     & $venvPython -m pip install -r requirements.txt --no-warn-script-location
 }
 
+Write-Host "Compiling protected modules (.pyc files)..." -ForegroundColor Green
+try {
+    & $venvPython license_generator\compile_all.py
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "[OK] All protected modules compiled successfully!" -ForegroundColor Green
+    } else {
+        Write-Warning "Some modules failed to compile. This may be normal if source files are not available."
+    }
+} catch {
+    Write-Warning "Failed to compile protected modules: $_"
+}
+
 $managerCmd = Join-Path $projectRoot "start_infobot_manager.cmd"
 if (-not (Test-Path $managerCmd)) {
     "@echo off
