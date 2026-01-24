@@ -22,6 +22,28 @@ if platform.system() == 'Windows':
         pass
 
 
+def check_python_311_available():
+    """Проверяет, доступен ли Python 3.11 в системе (для GPU поддержки TensorFlow)."""
+    # Сначала проверяем текущий Python
+    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+        return True, 'python'  # Текущий Python уже 3.11
+    
+    # Если текущий не 3.11, ищем внешние команды
+    commands = [
+        ['py', '-3.11', '--version'],
+        ['python3.11', '--version'],
+        ['python311', '--version'],
+    ]
+    for cmd in commands:
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if r.returncode == 0 and '3.11' in (r.stdout or '') + (r.stderr or ''):
+                launcher = 'py -3.11' if cmd[0] == 'py' else cmd[0]
+                return True, launcher
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+    return False, None
+
 def check_python_312_available():
     """Проверяет, доступен ли Python 3.12 в системе."""
     # Сначала проверяем текущий Python
@@ -45,6 +67,17 @@ def check_python_312_available():
     return False, None
 
 
+def install_python_311_windows():
+    """Инструкции по установке Python 3.11 на Windows (для GPU поддержки)."""
+    print("\n" + "=" * 80)
+    print("УСТАНОВКА PYTHON 3.11 (ДЛЯ GPU ПОДДЕРЖКИ)")
+    print("=" * 80)
+    print("\n1. Скачайте: https://www.python.org/downloads/release/python-3110/")
+    print("2. При установке отметьте 'Add Python 3.11 to PATH'")
+    print("3. Проверьте: py -3.11 --version")
+    print("4. Запустите снова: py -3.11 scripts/setup_python_gpu.py")
+    print("=" * 80)
+
 def install_python_312_windows():
     """Инструкции по установке Python 3.12 на Windows."""
     print("\n" + "=" * 80)
@@ -57,7 +90,7 @@ def install_python_312_windows():
     print("=" * 80)
 
 
-def create_venv(python_cmd, project_root):
+def create_venv(python_cmd, project_root, python_version="3.11"):
     """Создаёт .venv_gpu с указанной командой Python."""
     venv_path = project_root / '.venv_gpu'
     if venv_path.exists():
@@ -65,7 +98,7 @@ def create_venv(python_cmd, project_root):
         shutil.rmtree(venv_path)
     cmd = python_cmd.split() if isinstance(python_cmd, str) else list(python_cmd)
     create = cmd + ['-m', 'venv', str(venv_path)]
-    print("Создание .venv_gpu с Python 3.12...")
+    print(f"Создание .venv_gpu с Python {python_version}...")
     try:
         subprocess.run(create, check=True)
         print("[OK] .venv_gpu создан")
@@ -104,23 +137,34 @@ def install_dependencies(venv_path, project_root):
 
 def main():
     print("=" * 80)
-    print("НАСТРОЙКА PYTHON 3.12 ДЛЯ INFOBOT")
+    print("НАСТРОЙКА PYTHON ДЛЯ INFOBOT С GPU ПОДДЕРЖКОЙ")
     print("=" * 80)
     root = Path(__file__).resolve().parents[1]
     print(f"Текущий Python: {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
 
-    ok, cmd = check_python_312_available()
+    # Сначала пробуем Python 3.11 (для GPU поддержки TensorFlow)
+    ok, cmd = check_python_311_available()
+    python_version = "3.11"
     if not ok:
-        print("[ERROR] Python 3.12 не найден.")
-        if platform.system() == 'Windows':
-            install_python_312_windows()
-        else:
-            print("Установите: sudo apt install python3.12 python3.12-venv  (Ubuntu/Debian)")
-            print("           brew install python@3.12  (macOS)")
-        return 1
-    print(f"[OK] Python 3.12: {cmd}")
+        print("[WARNING] Python 3.11 не найден. Пробую Python 3.12...")
+        ok, cmd = check_python_312_available()
+        python_version = "3.12"
+        if not ok:
+            print("[ERROR] Python 3.11 или 3.12 не найден.")
+            if platform.system() == 'Windows':
+                install_python_311_windows()
+            else:
+                print("Установите: sudo apt install python3.11 python3.11-venv  (Ubuntu/Debian)")
+                print("           brew install python@3.11  (macOS)")
+            return 1
+    
+    print(f"[OK] Python {python_version}: {cmd}")
+    if python_version == "3.11":
+        print("[INFO] Python 3.11 выбран для GPU поддержки TensorFlow")
+    else:
+        print("[WARNING] Python 3.12 выбран, но GPU поддержка может быть недоступна")
 
-    venv = create_venv(cmd, root)
+    venv = create_venv(cmd, root, python_version)
     if not venv:
         return 1
     if not install_dependencies(venv, root):
