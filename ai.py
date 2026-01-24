@@ -29,11 +29,17 @@ except Exception as e:
 # КРИТИЧНО: Проверка и установка TensorFlow ПЕРЕД импортом защищенного модуля
 try:
     from bot_engine.ai.tensorflow_setup import ensure_tensorflow_setup
+    # Настраиваем логгер для tensorflow_setup, чтобы видеть сообщения
+    tf_setup_logger = logging.getLogger('TensorFlowSetup')
+    tf_setup_logger.setLevel(logging.INFO)
+    # Вызываем проверку и установку TensorFlow
     ensure_tensorflow_setup()
 except Exception as e:
     # Если не удалось проверить TensorFlow, продолжаем работу
     import sys
     sys.stderr.write(f"⚠️ Предупреждение: не удалось проверить TensorFlow: {e}\n")
+    import traceback
+    traceback.print_exc()
 
 from typing import TYPE_CHECKING, Any
 from bot_engine.ai import _infobot_ai_protected as _protected_module

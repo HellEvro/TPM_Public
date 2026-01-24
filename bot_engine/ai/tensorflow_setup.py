@@ -217,8 +217,12 @@ def ensure_tensorflow_setup():
         python_info = check_python_version()
         
         # Проверяем наличие GPU
-        logger.debug("Проверка наличия GPU в системе...")
+        logger.info("Проверка наличия GPU в системе...")
         has_gpu = check_gpu_available()
+        if has_gpu:
+            logger.info("✅ NVIDIA GPU обнаружен в системе")
+        else:
+            logger.info("ℹ️ NVIDIA GPU не обнаружен, будет использоваться CPU")
         
         # Если есть GPU, но Python не поддерживает GPU - предлагаем даунгрейд
         if has_gpu and not python_info['gpu_supported']:
@@ -226,7 +230,7 @@ def ensure_tensorflow_setup():
             # Продолжаем с CPU версией, но предупреждаем пользователя
         
         # Проверяем установку TensorFlow
-        logger.debug("Проверка установки TensorFlow...")
+        logger.info("Проверка установки TensorFlow...")
         tf_info = check_tensorflow_installation()
         
         if not tf_info['installed']:
