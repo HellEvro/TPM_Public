@@ -23,8 +23,9 @@ except (ImportError, ValueError, OSError) as e:
     err_msg = str(e).lower()
     if "bad magic number" in err_msg or "bad magic" in err_msg or "invalid" in err_msg:
         # Если .pyc несовместим - сообщаем пользователю
+        python_version = sys.version.split()[0]
         raise RuntimeError(
-            f"_ai_launcher.pyc несовместим с текущей версией Python: {sys.version.split()[0]}. "
+            f"_ai_launcher.pyc несовместим с текущей версией Python: {python_version}. "
             f"Выполните: python license_generator/build_ai_launcher.py"
         )
     else:

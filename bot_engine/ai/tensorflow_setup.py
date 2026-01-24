@@ -265,7 +265,32 @@ def ensure_tensorflow_setup():
                         pass
                     else:
                         logger.warning("   GPU обнаружен в системе, но TensorFlow не может его использовать")
-                        logger.warning("   Возможно, требуется установка CUDA библиотек: pip install tensorflow[and-cuda]")
+                        logger.info("   Пытаюсь автоматически установить TensorFlow с поддержкой GPU...")
+                        # Пытаемся автоматически установить GPU версию
+                        try:
+                            result = subprocess.run(
+                                [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow[and-cuda]>=2.13.0', '--no-warn-script-location'],
+                                check=True,
+                                capture_output=True,
+                                text=True,
+                                timeout=600  # 10 минут таймаут
+                            )
+                            logger.info("   ✅ TensorFlow с GPU успешно установлен! Перезапустите ai.py для применения изменений.")
+                            # Перепроверяем установку
+                            tf_info = check_tensorflow_installation()
+                            if tf_info['cuda_built']:
+                                logger.info("   ✅ TensorFlow теперь поддерживает CUDA")
+                        except subprocess.TimeoutExpired:
+                            logger.warning("   ⚠️ Таймаут при установке tensorflow[and-cuda]")
+                            logger.warning("   Установите вручную: pip install tensorflow[and-cuda]")
+                        except subprocess.CalledProcessError as e:
+                            err = e.stderr
+                            error_output = (err.decode('utf-8', errors='ignore') if isinstance(err, bytes) else (err or str(e)))
+                            logger.warning(f"   ⚠️ Не удалось установить tensorflow[and-cuda]: {error_output[:200]}")
+                            logger.warning("   Установите вручную: pip install tensorflow[and-cuda]")
+                        except Exception as e:
+                            logger.warning(f"   ⚠️ Ошибка при установке: {e}")
+                            logger.warning("   Установите вручную: pip install tensorflow[and-cuda]")
     except Exception as e:
         logger.warning(f"Ошибка при проверке TensorFlow: {e}")
         logger.info("Продолжаем работу...")
