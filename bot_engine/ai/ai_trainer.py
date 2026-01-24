@@ -756,8 +756,12 @@ class AITrainer:
                 else:
                     entry['target'] = current_target
 
-            # Сохраняем в БД
-            self.ai_db.save_win_rate_target(symbol_key, entry)
+            # Сохраняем в БД (target_win_rate и current_win_rate — скаляры, не dict)
+            target_val = float(entry['target'])
+            current_wr = entry.get('last_target_increment_win_rate')
+            if current_wr is not None:
+                current_wr = float(current_wr)
+            self.ai_db.save_win_rate_target(symbol_key, target_val, current_win_rate=current_wr)
             self.win_rate_targets_dirty = True
         except Exception as e:
             logger.debug(f"⚠️ Не удалось обновить цель Win Rate для {symbol}: {e}")
