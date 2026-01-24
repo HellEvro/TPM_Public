@@ -13,24 +13,32 @@ from pathlib import Path
 
 # Проверяем наличие виртуального окружения с Python 3.12 для GPU
 # Если найдено .venv_gpu, используем его вместо системного Python
-venv_gpu_path = Path(__file__).parent / '.venv_gpu'
-if venv_gpu_path.exists():
-    if sys.platform == 'win32':
-        venv_python = venv_gpu_path / 'Scripts' / 'python.exe'
-    else:
-        venv_python = venv_gpu_path / 'bin' / 'python'
-    
-    if venv_python.exists():
-        # Перезапускаем скрипт с Python из venv_gpu
-        import subprocess
-        try:
-            subprocess.run([str(venv_python)] + sys.argv, check=True)
-            sys.exit(0)
-        except subprocess.CalledProcessError as e:
-            sys.exit(e.returncode)
-        except Exception:
-            # Если не удалось перезапустить, продолжаем с текущим Python
-            pass
+# ВАЖНО: Проверяем флаг окружения, чтобы избежать бесконечной рекурсии
+if not os.environ.get('INFOBOT_AI_VENV_RESTART'):
+    venv_gpu_path = Path(__file__).parent / '.venv_gpu'
+    if venv_gpu_path.exists():
+        if sys.platform == 'win32':
+            venv_python = venv_gpu_path / 'Scripts' / 'python.exe'
+        else:
+            venv_python = venv_gpu_path / 'bin' / 'python'
+        
+        if venv_python.exists():
+            # Проверяем, что текущий Python не из .venv_gpu (чтобы избежать рекурсии)
+            current_python = Path(sys.executable).resolve()
+            venv_python_resolved = venv_python.resolve()
+            if current_python != venv_python_resolved:
+                # Перезапускаем скрипт с Python из venv_gpu
+                import subprocess
+                os.environ['INFOBOT_AI_VENV_RESTART'] = '1'
+                try:
+                    subprocess.run([str(venv_python)] + sys.argv, check=True, env=os.environ.copy())
+                    sys.exit(0)
+                except subprocess.CalledProcessError as e:
+                    sys.exit(e.returncode)
+                except Exception:
+                    # Если не удалось перезапустить, продолжаем с текущим Python
+                    os.environ.pop('INFOBOT_AI_VENV_RESTART', None)
+                    pass
 
 os.environ['INFOBOT_AI_PROCESS'] = 'true'
 
