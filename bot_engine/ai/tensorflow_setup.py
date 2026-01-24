@@ -120,7 +120,7 @@ def install_tensorflow_with_gpu():
         logger.info("Устанавливается TensorFlow (CPU версия)...")
         try:
             result = subprocess.run(
-                [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow>=2.13.0'],
+                [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow>=2.13.0', '--no-warn-script-location'],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -139,7 +139,7 @@ def install_tensorflow_with_gpu():
     logger.info("Попытка установки TensorFlow с поддержкой GPU...")
     try:
         result = subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow[and-cuda]>=2.13.0'],
+            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow[and-cuda]>=2.13.0', '--no-warn-script-location'],
             check=True,
             capture_output=True,
             text=True,
@@ -157,7 +157,7 @@ def install_tensorflow_with_gpu():
     # Если не получилось, устанавливаем базовый TensorFlow
     try:
         result = subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow>=2.13.0'],
+            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow>=2.13.0', '--no-warn-script-location'],
             check=True,
             capture_output=True,
             text=True,

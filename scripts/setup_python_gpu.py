@@ -82,14 +82,14 @@ def install_dependencies(venv_path, project_root):
     req = project_root / 'requirements.txt'
     print("Установка зависимостей...")
     try:
-        subprocess.run([str(python), '-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel'], check=True)
-        subprocess.run([str(python), '-m', 'pip', 'install', '-r', str(req)], check=True)
+        subprocess.run([str(python), '-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel', '--no-warn-script-location'], check=True)
+        subprocess.run([str(python), '-m', 'pip', 'install', '-r', str(req), '--no-warn-script-location'], check=True)
         print("[OK] Зависимости установлены")
         try:
-            subprocess.run([str(python), '-m', 'pip', 'install', 'tensorflow[and-cuda]>=2.13.0'], check=True)
+            subprocess.run([str(python), '-m', 'pip', 'install', 'tensorflow[and-cuda]>=2.13.0', '--no-warn-script-location'], check=True)
             print("[OK] TensorFlow с GPU установлен")
         except subprocess.CalledProcessError:
-            subprocess.run([str(python), '-m', 'pip', 'install', 'tensorflow>=2.13.0'], check=True)
+            subprocess.run([str(python), '-m', 'pip', 'install', 'tensorflow>=2.13.0', '--no-warn-script-location'], check=True)
             print("[OK] TensorFlow (CPU) установлен")
         return True
     except subprocess.CalledProcessError as e:

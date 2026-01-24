@@ -20,12 +20,12 @@ python --version
 
 echo.
 echo [INFO] Обновление pip...
-python -m pip install --upgrade pip setuptools wheel
+python -m pip install --upgrade pip setuptools wheel --no-warn-script-location
 
 echo.
 echo [INFO] Установка зависимостей из requirements.txt...
 echo Это может занять несколько минут...
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt --no-warn-script-location
 
 if errorlevel 1 (
     echo.

@@ -40,10 +40,10 @@ fi
 source "${VENV_DIR}/bin/activate"
 
 echo "[INFO] Upgrading pip/setuptools/wheel"
-python -m pip install --upgrade pip setuptools wheel
+python -m pip install --upgrade pip setuptools wheel --no-warn-script-location
 
 echo "[INFO] Installing/updating project dependencies"
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt --no-warn-script-location
 
 LAUNCHER_SCRIPT="${PROJECT_ROOT}/start_infobot_manager.sh"
 if [[ ! -f "$LAUNCHER_SCRIPT" ]]; then

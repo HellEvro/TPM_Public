@@ -43,8 +43,10 @@
 ## Шаг 1: Установка зависимостей
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt --no-warn-script-location
 ```
+
+Флаг `--no-warn-script-location` подавляет предупреждения о том, что скрипты (dotenv, pygmentize и др.) установлены в каталог, которого нет в PATH.
 
 ## Шаг 2: Настройка конфигурации
 

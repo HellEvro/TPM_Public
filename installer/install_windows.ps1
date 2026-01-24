@@ -59,14 +59,14 @@ if (-not (Test-Path $venvPython)) {
 }
 
 Write-Host "Upgrading pip/setuptools/wheel..." -ForegroundColor Green
-& $venvPython -m pip install --upgrade pip setuptools wheel
+& $venvPython -m pip install --upgrade pip setuptools wheel --no-warn-script-location
 
 if ($ForceReinstall) {
     Write-Host "Forcing reinstallation of dependencies..." -ForegroundColor Yellow
-    & $venvPython -m pip install --force-reinstall -r requirements.txt
+    & $venvPython -m pip install --force-reinstall -r requirements.txt --no-warn-script-location
 } else {
     Write-Host "Installing/updating project dependencies..." -ForegroundColor Green
-    & $venvPython -m pip install -r requirements.txt
+    & $venvPython -m pip install -r requirements.txt --no-warn-script-location
 }
 
 $managerCmd = Join-Path $projectRoot "start_infobot_manager.cmd"
