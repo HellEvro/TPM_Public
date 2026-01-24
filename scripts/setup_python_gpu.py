@@ -24,6 +24,11 @@ if platform.system() == 'Windows':
 
 def check_python_312_available():
     """Проверяет, доступен ли Python 3.12 в системе."""
+    # Сначала проверяем текущий Python
+    if sys.version_info.major == 3 and sys.version_info.minor == 12:
+        return True, 'python'  # Текущий Python уже 3.12
+    
+    # Если текущий не 3.12, ищем внешние команды
     commands = [
         ['py', '-3.12', '--version'],
         ['python3.12', '--version'],

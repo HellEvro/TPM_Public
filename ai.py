@@ -129,9 +129,12 @@ except ImportError as e:
         _major, _minor = sys.version_info.major, sys.version_info.minor
         _log.error("=" * 80)
         if (_major, _minor) == (3, 12):
+            # Python 3.12, но .pyc несовместим - нужно перекомпилировать
             _log.error(f"[ERROR] AI модуль несовместим с текущей версией Python: {current_version}")
-            _log.error("[ERROR] Выполните: python license_generator/build_ai_launcher.py")
+            _log.error("[ERROR] Выполните: python license_generator/compile_all.py")
+            _log.error("[ERROR] Или: python license_generator/build_ai_launcher.py")
         else:
+            # Не Python 3.12
             _log.error(f"[ERROR] AI модуль собран под Python 3.12. Текущий: {current_version}")
             _log.error("Выполните: python scripts/setup_python_gpu.py  либо используйте Python 3.12.")
         _log.error("=" * 80)
