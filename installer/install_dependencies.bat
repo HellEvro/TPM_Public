@@ -2,51 +2,40 @@
 chcp 65001 >nul 2>&1
 cd /d "%~dp0\.."
 echo ========================================
-echo Установка зависимостей InfoBot
+echo InfoBot - Install dependencies
 echo ========================================
 echo.
 
-REM Проверка Python
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Python не найден!
-    echo Установите Python 3.8 или выше с https://www.python.org/downloads/
+    echo [ERROR] Python not found.
+    echo Install Python 3.12 from https://www.python.org/downloads/release/python-3120/
     pause
     exit /b 1
 )
 
-echo [INFO] Python найден
+echo [INFO] Python found
 python --version
 
 echo.
-echo [INFO] Обновление pip...
+echo [INFO] Upgrading pip...
 python -m pip install --upgrade pip setuptools wheel --no-warn-script-location
 
 echo.
-echo [INFO] Установка зависимостей из requirements.txt...
-echo Это может занять несколько минут...
+echo [INFO] Installing from requirements.txt...
 python -m pip install -r requirements.txt --no-warn-script-location
 
 if errorlevel 1 (
     echo.
-    echo [ERROR] Ошибка при установке зависимостей!
-    echo.
-    echo Попробуйте:
-    echo   1. Убедитесь, что у вас установлен Python 3.8 или выше
-    echo   2. Проверьте подключение к интернету
-    echo   3. Попробуйте запустить от имени администратора
+    echo [ERROR] Installation failed.
+    echo Try: 1) Python 3.12  2) Internet  3) Run as admin
     echo.
     pause
     exit /b 1
 )
 
 echo.
-echo [OK] Зависимости успешно установлены!
-echo.
-echo Теперь вы можете запустить:
-echo   python app.py
-echo   или
-echo   launcher\start_infobot_manager.bat
+echo [OK] Done.
+echo Run: python app.py  or  launcher\start_infobot_manager.bat
 echo.
 pause
-
