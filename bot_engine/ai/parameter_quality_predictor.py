@@ -88,8 +88,12 @@ class ParameterQualityPredictor:
         """Загрузить обученную модель"""
         try:
             if os.path.exists(self.model_file) and os.path.exists(self.scaler_file):
-                self.model = joblib.load(self.model_file)
-                self.scaler = joblib.load(self.scaler_file)
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
+                    warnings.filterwarnings('ignore', message='.*InconsistentVersionWarning.*')
+                    self.model = joblib.load(self.model_file)
+                    self.scaler = joblib.load(self.scaler_file)
                 
                 # УЛУЧШЕНИЕ: Проверяем совместимость количества признаков
                 # Генерируем тестовые признаки для проверки
