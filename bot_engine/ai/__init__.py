@@ -58,18 +58,124 @@ __version__ = '0.1.0'
 __author__ = 'InfoBot Team'
 
 import logging
+import sys
+import os
+import py_compile
+import shutil
 from pathlib import Path
 
+_logger = logging.getLogger('AI')
+
+def _detect_project_root() -> Path:
+    """
+    Определяет корень проекта (директория, где лежит ai.py и .lic файлы).
+    Работает корректно как для .py, так и для .pyc файлов внутри __pycache__.
+    """
+    current = Path(__file__).resolve()
+    search_paths = [current.parent] + list(current.parents)
+
+    def is_root(candidate: Path) -> bool:
+        return (candidate / 'ai.py').exists() and (candidate / 'bot_engine').exists()
+
+    for candidate in search_paths:
+        if candidate and is_root(candidate):
+            return candidate
+
+    cwd = Path.cwd()
+    if is_root(cwd):
+        return cwd
+
+    # Фолбек: поднимаемся на три уровня (ai -> bot_engine -> project)
+    try:
+        return current.parents[3]
+    except IndexError:
+        return current.parent
+
+def recompile_ai_manager():
+    """Автоматически перекомпилирует ai_manager.pyc из исходника для текущей версии Python"""
+    try:
+        project_root = _detect_project_root()
+        source_file = project_root / 'license_generator' / 'source' / 'ai_manager_source.py'
+        
+        if not source_file.exists():
+            _logger.debug(f"Source file not found: {source_file}")
+            return False
+        
+        target_dir = Path(__file__).parent
+        temp_file = target_dir / 'ai_manager.py'
+        
+        # Копируем исходник во временный файл
+        shutil.copy2(source_file, temp_file)
+        
+        try:
+            # Компилируем в .pyc для текущей версии Python
+            import py_compile
+            py_compile.compile(
+                str(temp_file),
+                doraise=True,
+                optimize=2
+            )
+            
+            # Ищем скомпилированный файл
+            compiled_file = target_dir / '__pycache__' / f'ai_manager.cpython-{sys.version_info.major}{sys.version_info.minor}.opt-2.pyc'
+            if not compiled_file.exists():
+                compiled_file = target_dir / '__pycache__' / f'ai_manager.cpython-{sys.version_info.major}{sys.version_info.minor}.pyc'
+            
+            if compiled_file.exists():
+                target_pyc = target_dir / 'ai_manager.pyc'
+                shutil.copy2(compiled_file, target_pyc)
+                _logger.info(f"[AI] ✅ ai_manager.pyc перекомпилирован для Python {sys.version_info.major}.{sys.version_info.minor}")
+                
+                # Удаляем временные файлы
+                if temp_file.exists():
+                    temp_file.unlink()
+                cache_dir = target_dir / '__pycache__'
+                if cache_dir.exists():
+                    shutil.rmtree(cache_dir)
+                
+                return True
+            else:
+                _logger.debug(f"Compiled file not found: {compiled_file}")
+                return False
+        except Exception as e:
+            _logger.debug(f"Compilation failed: {e}")
+            return False
+        finally:
+            if temp_file.exists():
+                try:
+                    temp_file.unlink()
+                except:
+                    pass
+    except Exception as e:
+        _logger.debug(f"Recompilation failed: {e}")
+        return False
+
 # Экспорты будут добавлены по мере создания модулей
+# ВАЖНО: Используем .pyc файлы для защиты логики лицензирования
+# При смене версии Python автоматически перекомпилируем из исходника
 try:
     from .ai_manager import AIManager, get_ai_manager
     __all__ = ['AIManager', 'get_ai_manager']
-except ImportError:
-    # Модули еще не созданы - это нормально на этапе разработки
-    __all__ = []
-
-# Импортируем sys для проверки циклических импортов
-import sys
+except ImportError as e:
+    err_msg = str(e).lower()
+    if "bad magic number" in err_msg or "bad magic" in err_msg:
+        # Если .pyc несовместим с текущей версией Python - автоматически перекомпилируем
+        _logger.warning(f"[AI] ⚠️ ai_manager.pyc собран под другую версию Python. Автоматически перекомпилирую...")
+        if recompile_ai_manager():
+            # Пробуем импортировать снова после перекомпиляции
+            try:
+                from .ai_manager import AIManager, get_ai_manager
+                __all__ = ['AIManager', 'get_ai_manager']
+                _logger.info("[AI] ✅ ai_manager успешно перекомпилирован и загружен")
+            except ImportError:
+                __all__ = []
+                _logger.error("[AI] ❌ Не удалось загрузить ai_manager после перекомпиляции")
+        else:
+            __all__ = []
+            _logger.error(f"[AI] ❌ Не удалось перекомпилировать ai_manager. Текущий Python: {sys.version.split()[0]}")
+    else:
+        # Модули еще не созданы - это нормально на этапе разработки
+        __all__ = []
 
 # Экспорт главного модуля AI системы (новый модуль)
 # ai.py находится в корне проекта

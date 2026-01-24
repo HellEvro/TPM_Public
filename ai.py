@@ -125,8 +125,9 @@ except ImportError as e:
     err_msg = str(e).lower()
     if "bad magic number" in err_msg or "bad magic" in err_msg:
         _log = logging.getLogger("AI")
+        current_version = sys.version.split()[0] if sys.version else "?"
         _log.error("=" * 80)
-        _log.error("AI модуль собран под Python 3.12. Текущий: %s", sys.version.split()[0] if sys.version else "?")
+        _log.error(f"AI модуль собран под Python 3.12. Текущий: {current_version}")
         _log.error("Выполните: python scripts/setup_python_gpu.py  либо используйте Python 3.12.")
         _log.error("=" * 80)
         sys.exit(1)
