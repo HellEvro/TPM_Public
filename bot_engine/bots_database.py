@@ -134,6 +134,14 @@ class BotsDatabase:
         self.db_path = db_path
         self.lock = threading.RLock()
         
+        def _is_unc_path(p: str) -> bool:
+            return isinstance(p, str) and (p.startswith('\\\\') or p.startswith('//'))
+        self._is_unc_path = lambda: _is_unc_path(self.db_path)
+        self._unc_hint = (
+            "💡 При запуске с сетевой папки (UNC): проверьте права на папку и откройте "
+            "общий доступ по сети к папке data — это часто устраняет «disk I/O» и «файл занят»."
+        )
+        
         # Создаем директорию если её нет (работает и с UNC путями)
         try:
             os.makedirs(os.path.dirname(db_path), exist_ok=True)
@@ -282,17 +290,19 @@ class BotsDatabase:
             except sqlite3.OperationalError as e:
                 error_str = str(e).lower()
                 if "locked" in error_str:
-                    # БД заблокирована - пропускаем проверку
                     logger.debug("   [3/4] ⚠️ БД заблокирована, пропускаем проверку целостности")
                     return True, None
-                # Другие ошибки - считаем БД валидной, чтобы не блокировать запуск
                 logger.warning(f"⚠️ Ошибка проверки целостности БД: {e}, продолжаем работу...")
+                if ("disk i/o" in error_str or "i/o error" in error_str) and self._is_unc_path():
+                    logger.info(self._unc_hint)
                 return True, None
                 
         except Exception as e:
-            # В случае ошибки считаем БД валидной, чтобы не блокировать запуск
             logger.debug(f"ℹ️ Ошибка проверки целостности БД: {e}, продолжаем работу...")
-            return True, None  # Возвращаем True, чтобы не блокировать запуск
+            err_str = str(e).lower()
+            if ("disk i/o" in err_str or "i/o error" in err_str) and self._is_unc_path():
+                logger.info(self._unc_hint)
+            return True, None
     
     def _backup_database(self, max_retries: int = 3) -> Optional[str]:
         """
@@ -333,21 +343,26 @@ class BotsDatabase:
                 logger.warning(f"💾 Создана резервная копия БД: {backup_path}")
                 return backup_path
             except PermissionError as e:
-                # Файл заблокирован другим процессом
+                # Файл заблокирован другим процессом (в т.ч. WinError 32/33 на UNC)
                 if attempt < max_retries - 1:
                     logger.debug(f"⚠️ Файл БД заблокирован, повторяем попытку через {1.0 * (attempt + 1)}s...")
                     continue
                 else:
                     logger.error(f"❌ Не удалось создать резервную копию БД после {max_retries} попыток: {e}")
+                    if self._is_unc_path():
+                        logger.info(self._unc_hint)
                     return None
             except Exception as e:
-                # Другие ошибки
+                # Другие ошибки (в т.ч. WinError 32/33 при копировании по сети)
+                err_str = str(e).lower()
                 if attempt < max_retries - 1:
                     logger.debug(f"⚠️ Ошибка создания резервной копии (попытка {attempt + 1}/{max_retries}): {e}")
                     time.sleep(1.0 * attempt)
                     continue
                 else:
                     logger.error(f"❌ Ошибка создания резервной копии БД после {max_retries} попыток: {e}")
+                    if self._is_unc_path() or "winerror 32" in err_str or "winerror 33" in err_str:
+                        logger.info(self._unc_hint)
                     return None
         
         return None
@@ -426,7 +441,7 @@ class BotsDatabase:
             
             # Функция для безопасного удаления файла с retry
             def safe_remove_file(file_path: str, max_retries: int = 5, retry_delay: float = 1.0) -> bool:
-                """Пытается удалить файл с повторными попытками при ошибке WinError 32"""
+                """Пытается удалить файл с повторными попытками при WinError 32/33 (файл занят / часть заблокирована)"""
                 if not os.path.exists(file_path):
                     return True
                 
@@ -437,20 +452,23 @@ class BotsDatabase:
                     except (OSError, PermissionError) as e:
                         error_code = getattr(e, 'winerror', None) if hasattr(e, 'winerror') else None
                         error_code_str = str(e)
-                        
-                        # Проверяем, это ли ошибка "файл занят другим процессом"
-                        if error_code == 32 or "WinError 32" in error_code_str or "Процесс не может получить доступ к файлу" in error_code_str:
+                        is_locked = (
+                            error_code in (32, 33)
+                            or "WinError 32" in error_code_str
+                            or "WinError 33" in error_code_str
+                            or "Процесс не может получить доступ к файлу" in error_code_str
+                        )
+                        if is_locked:
                             if attempt < max_retries - 1:
-                                wait_time = retry_delay * (attempt + 1)  # Увеличиваем задержку с каждой попыткой
-                                logger.warning(f"⚠️ Файл {file_path} занят другим процессом (попытка {attempt + 1}/{max_retries}), ждем {wait_time:.1f}s...")
+                                wait_time = retry_delay * (attempt + 1)
+                                logger.warning(f"⚠️ Файл {file_path} занят (попытка {attempt + 1}/{max_retries}), ждем {wait_time:.1f}s...")
                                 time.sleep(wait_time)
                                 continue
                             else:
-                                logger.warning(f"⚠️ Не удалось удалить {file_path} после {max_retries} попыток - файл все еще занят")
-                                logger.info(f"💡 Файл будет пересоздан при следующем подключении к БД")
+                                logger.warning(f"⚠️ Не удалось удалить {file_path} после {max_retries} попыток — файл занят")
+                                logger.info("💡 Файл будет пересоздан при следующем подключении к БД")
                                 return False
                         else:
-                            # Другая ошибка - пробрасываем дальше
                             raise
                 
                 return False
@@ -469,11 +487,18 @@ class BotsDatabase:
             except (OSError, PermissionError) as e:
                 error_code = getattr(e, 'winerror', None) if hasattr(e, 'winerror') else None
                 error_code_str = str(e)
-                
-                if error_code == 32 or "WinError 32" in error_code_str or "Процесс не может получить доступ к файлу" in error_code_str:
-                    logger.error(f"❌ КРИТИЧНО: Не удалось удалить основной файл БД - он занят другим процессом")
+                is_locked = (
+                    error_code in (32, 33)
+                    or "WinError 32" in error_code_str
+                    or "WinError 33" in error_code_str
+                    or "Процесс не может получить доступ к файлу" in error_code_str
+                )
+                if is_locked:
+                    logger.error("❌ КРИТИЧНО: Не удалось удалить основной файл БД — он занят другим процессом")
                     logger.error(f"❌ Рекомендуется закрыть все процессы, использующие БД: {self.db_path}")
-                    logger.error(f"❌ Или подождать несколько секунд и повторить попытку")
+                    logger.error("❌ Или подождать несколько секунд и повторить попытку")
+                    if self._is_unc_path():
+                        logger.info(self._unc_hint)
                     raise Exception(f"Не удалось удалить файл БД - он занят другим процессом: {self.db_path}")
                 else:
                     raise
@@ -707,6 +732,8 @@ class BotsDatabase:
                         conn.close()
                         logger.error(f"❌ КРИТИЧНО: Ошибка I/O при работе с БД: {e}")
                         logger.warning("🔧 Попытка автоматического исправления...")
+                        if self._is_unc_path():
+                            logger.info(self._unc_hint)
                         if attempt == 0:
                             # Пытаемся исправить только один раз
                             if self._repair_database():
@@ -795,6 +822,8 @@ class BotsDatabase:
                     logger.error(f"❌ КРИТИЧНО: Ошибка I/O при подключении к БД: {self.db_path}")
                     logger.error(f"❌ Ошибка: {e}")
                     logger.warning("🔧 Попытка автоматического исправления...")
+                    if self._is_unc_path():
+                        logger.info(self._unc_hint)
                     if attempt == 0:
                         # Пытаемся исправить только один раз
                         if self._repair_database():
@@ -859,22 +888,30 @@ class BotsDatabase:
                     raise
             
             except (OSError, PermissionError) as e:
-                # Обработка ошибок ОС при подключении (например, WinError 32 - файл занят)
+                # Обработка ошибок ОС при подключении (WinError 32/33 — файл занят / часть файла заблокирована)
                 error_code = getattr(e, 'winerror', None) if hasattr(e, 'winerror') else None
                 error_code_str = str(e)
-                
-                if error_code == 32 or "WinError 32" in error_code_str or "Процесс не может получить доступ к файлу" in error_code_str:
-                    # Файл занят другим процессом
+                is_file_locked = (
+                    error_code in (32, 33)
+                    or "WinError 32" in error_code_str
+                    or "WinError 33" in error_code_str
+                    or "Процесс не может получить доступ к файлу" in error_code_str
+                )
+                if is_file_locked:
                     last_error = e
                     if retry_on_locked and attempt < max_retries - 1:
-                        wait_time = (attempt + 1) * 1.0  # Увеличиваем задержку для ОС ошибок
+                        wait_time = (attempt + 1) * 1.0
                         logger.warning(f"⚠️ Файл БД занят другим процессом (попытка {attempt + 1}/{max_retries}), ждем {wait_time:.1f}s...")
                         logger.info(f"💡 Рекомендуется закрыть все процессы, использующие БД: {self.db_path}")
+                        if self._is_unc_path():
+                            logger.info(self._unc_hint)
                         time.sleep(wait_time)
                         continue
                     else:
-                        logger.error(f"❌ Не удалось подключиться к БД после {max_retries} попыток - файл занят другим процессом")
+                        logger.error(f"❌ Не удалось подключиться к БД после {max_retries} попыток — файл занят другим процессом")
                         logger.error(f"❌ Рекомендуется закрыть все процессы, использующие БД: {self.db_path}")
+                        if self._is_unc_path():
+                            logger.info(self._unc_hint)
                         raise
                 else:
                     # Другие ОС ошибки

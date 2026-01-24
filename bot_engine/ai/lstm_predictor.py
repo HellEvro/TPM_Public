@@ -59,8 +59,53 @@ try:
     from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
     from sklearn.preprocessing import MinMaxScaler
     TENSORFLOW_AVAILABLE = True
+    
+    # Настройка GPU для TensorFlow
+    def configure_gpu():
+        """Настраивает TensorFlow для использования GPU NVIDIA (если доступен)"""
+        try:
+            # Проверяем доступность GPU
+            gpus = tf.config.list_physical_devices('GPU')
+            
+            if gpus:
+                try:
+                    # В TensorFlow с CUDA обычно все найденные GPU - это NVIDIA
+                    # Используем первый доступный GPU
+                    primary_gpu = gpus[0]
+                    
+                    # Включаем рост памяти GPU по мере необходимости
+                    for gpu in gpus:
+                        tf.config.experimental.set_memory_growth(gpu, True)
+                    
+                    logger.info(f"✅ Найдено GPU устройств: {len(gpus)}")
+                    for i, gpu in enumerate(gpus):
+                        logger.info(f"   GPU {i}: {gpu.name}")
+                    
+                    # Проверяем, что GPU действительно доступен для вычислений
+                    # TensorFlow автоматически будет использовать GPU для всех операций
+                    logger.info(f"✅ GPU NVIDIA доступен и будет использоваться для обучения и предсказаний")
+                    logger.info(f"   Основное устройство: {primary_gpu.name}")
+                    
+                    return True, primary_gpu
+                except RuntimeError as e:
+                    logger.warning(f"⚠️ Ошибка настройки GPU: {e}")
+                    logger.info("Продолжаем с CPU...")
+                    return False, None
+            else:
+                logger.info("ℹ️ GPU устройства не найдены, используется CPU")
+                return False, None
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка проверки GPU: {e}")
+            logger.info("Продолжаем с CPU...")
+            return False, None
+    
+    # Настраиваем GPU при импорте модуля
+    GPU_AVAILABLE, GPU_DEVICE = configure_gpu()
+    
 except ImportError:
     TENSORFLOW_AVAILABLE = False
+    GPU_AVAILABLE = False
+    GPU_DEVICE = None
     logger.warning("TensorFlow не установлен. LSTM Predictor недоступен.")
 
 
@@ -101,6 +146,13 @@ class LSTMPredictor:
         if not TENSORFLOW_AVAILABLE:
             logger.error("TensorFlow недоступен. Установите: pip install tensorflow")
             return
+        
+        # Выводим информацию о GPU при инициализации
+        if TENSORFLOW_AVAILABLE:
+            if GPU_AVAILABLE and GPU_DEVICE:
+                logger.info(f"🚀 LSTM Predictor инициализирован с поддержкой GPU NVIDIA: {GPU_DEVICE.name}")
+            else:
+                logger.info("💻 LSTM Predictor инициализирован (CPU режим)")
         
         # Загружаем модель, если существует
         if os.path.exists(model_path) and os.path.exists(scaler_path):
@@ -236,8 +288,15 @@ class LSTMPredictor:
             # Добавляем batch dimension
             features_scaled = features_scaled.reshape(1, self.config['sequence_length'], -1).astype(np.float32)
             
-            # Предсказание
-            prediction = self.model.predict(features_scaled, verbose=0)[0]
+            # Предсказание с явным указанием устройства (GPU если доступен, иначе CPU)
+            if TENSORFLOW_AVAILABLE and GPU_AVAILABLE and GPU_DEVICE:
+                # Используем GPU для предсказания
+                with tf.device(GPU_DEVICE.name):
+                    prediction = self.model.predict(features_scaled, verbose=0)[0]
+            else:
+                # Используем CPU для предсказания
+                with tf.device('/CPU:0'):
+                    prediction = self.model.predict(features_scaled, verbose=0)[0]
             
             # Распаковываем результат
             direction_raw = prediction[0]  # -1 до 1
@@ -323,6 +382,14 @@ class LSTMPredictor:
             self.scaler.fit(flat_X)
             X_scaled = self.scaler.transform(flat_X).reshape(X.shape).astype(np.float32)
             
+            # Проверяем и логируем информацию о GPU перед обучением
+            device_info = "CPU"
+            if TENSORFLOW_AVAILABLE and GPU_AVAILABLE and GPU_DEVICE:
+                device_info = f"GPU NVIDIA ({GPU_DEVICE.name})"
+                logger.info(f"🚀 Обучение на {device_info}")
+            else:
+                logger.info(f"💻 Обучение на {device_info}")
+            
             logger.info(f"Начало обучения: {len(X)} образцов")
             logger.info(f"Форма X: {X.shape}, форма y: {y.shape}")
             
@@ -341,15 +408,29 @@ class LSTMPredictor:
                 )
             ]
             
-            # Обучаем модель
-            history = self.model.fit(
-                X_scaled, y,
-                validation_split=validation_split,
-                epochs=epochs,
-                batch_size=batch_size,
-                callbacks=callbacks,
-                verbose=1
-            )
+            # Обучаем модель с явным указанием устройства (GPU если доступен, иначе CPU)
+            if TENSORFLOW_AVAILABLE and GPU_AVAILABLE and GPU_DEVICE:
+                # Используем GPU для обучения
+                with tf.device(GPU_DEVICE.name):
+                    history = self.model.fit(
+                        X_scaled, y,
+                        validation_split=validation_split,
+                        epochs=epochs,
+                        batch_size=batch_size,
+                        callbacks=callbacks,
+                        verbose=1
+                    )
+            else:
+                # Используем CPU для обучения
+                with tf.device('/CPU:0'):
+                    history = self.model.fit(
+                        X_scaled, y,
+                        validation_split=validation_split,
+                        epochs=epochs,
+                        batch_size=batch_size,
+                        callbacks=callbacks,
+                        verbose=1
+                    )
             
             # Обновляем конфигурацию
             self.config['trained_at'] = datetime.now().isoformat()
