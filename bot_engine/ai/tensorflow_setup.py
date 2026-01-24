@@ -107,17 +107,21 @@ def check_tensorflow_installation():
                 'gpu_devices': []
             }
 
-def install_tensorflow_with_gpu():
-    """Устанавливает TensorFlow (с GPU при Python 3.12)"""
+def install_tensorflow_with_gpu(has_gpu=False):
+    """Устанавливает TensorFlow (с GPU при Python 3.12 и наличии GPU)"""
     python_info = check_python_version()
     
     if not python_info['supported']:
         logger.warning("Требуется Python 3.12. Установка TensorFlow пропущена.")
         return False, python_info['message']
     
-    if not python_info['gpu_supported']:
-        logger.warning(f"⚠️ {python_info['message']}")
-        logger.info("Устанавливается TensorFlow (CPU версия)...")
+    # Если нет GPU или Python не поддерживает GPU - сразу устанавливаем CPU версию
+    if not has_gpu or not python_info['gpu_supported']:
+        if not has_gpu:
+            logger.info("NVIDIA GPU не обнаружен. Устанавливается TensorFlow (CPU версия)...")
+        else:
+            logger.warning(f"⚠️ {python_info['message']}")
+            logger.info("Устанавливается TensorFlow (CPU версия)...")
         try:
             result = subprocess.run(
                 [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow>=2.13.0', '--no-warn-script-location'],
@@ -135,8 +139,8 @@ def install_tensorflow_with_gpu():
             logger.error(f"Детали ошибки установки: {error_output[:500]}")
             return False, f"Ошибка установки TensorFlow. Проверьте подключение к интернету и права доступа."
     
-    # Пытаемся установить tensorflow[and-cuda]
-    logger.info("Попытка установки TensorFlow с поддержкой GPU...")
+    # Только если есть GPU И Python поддерживает GPU - пытаемся установить tensorflow[and-cuda]
+    logger.info("Обнаружен NVIDIA GPU. Попытка установки TensorFlow с поддержкой GPU...")
     try:
         result = subprocess.run(
             [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow[and-cuda]>=2.13.0', '--no-warn-script-location'],
@@ -152,7 +156,7 @@ def install_tensorflow_with_gpu():
         err = e.stderr
         error_output = (err.decode('utf-8', errors='ignore') if isinstance(err, bytes) else (err or str(e)))
         logger.warning(f"Не удалось установить tensorflow[and-cuda]: {error_output[:300]}")
-        logger.warning("Устанавливается базовая версия TensorFlow...")
+        logger.warning("Устанавливается базовая версия TensorFlow (CPU)...")
     
     # Если не получилось, устанавливаем базовый TensorFlow
     try:
@@ -228,14 +232,7 @@ def ensure_tensorflow_setup():
         if not tf_info['installed']:
             logger.info("TensorFlow не установлен. Начинаю автоматическую установку...")
             
-            if has_gpu and python_info['gpu_supported']:
-                logger.info("Обнаружен GPU, устанавливается TensorFlow с поддержкой GPU...")
-            else:
-                if has_gpu:
-                    logger.warning(f"GPU обнаружен, но {python_info['message']}")
-                logger.info("Устанавливается TensorFlow (CPU версия)...")
-            
-            success, message = install_tensorflow_with_gpu()
+            success, message = install_tensorflow_with_gpu(has_gpu=has_gpu)
             if success:
                 logger.info(f"✅ {message}")
                 # Перепроверяем установку
