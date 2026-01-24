@@ -68,19 +68,55 @@ except ImportError:
     # Модули еще не созданы - это нормально на этапе разработки
     __all__ = []
 
+# Импортируем sys для проверки циклических импортов
+import sys
+
 # Экспорт главного модуля AI системы (новый модуль)
 # ai.py находится в корне проекта
-try:
+# ВАЖНО: Используем ленивый импорт, чтобы избежать циклического импорта
+# ai.py импортирует bot_engine.ai, поэтому нельзя импортировать ai.py здесь напрямую
+# Импорт выполняется только при вызове функции, а не при импорте модуля
+def get_ai_system(*args, **kwargs):
+    """
+    Ленивый импорт get_ai_system из ai.py
+    Вызывается только при необходимости, чтобы избежать циклического импорта
+    
+    ВАЖНО: Эта функция НЕ должна вызываться во время импорта модуля,
+    только после того, как ai.py полностью загружен
+    """
+    # Проверяем, не находимся ли мы в процессе импорта ai.py
     import sys
-    import os
-    # Добавляем корень проекта в путь для импорта
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if project_root not in sys.path:
-        sys.path.insert(0, project_root)
-    from ai import get_ai_system
-    __all__.append('get_ai_system')
-except ImportError:
-    pass
+    if 'ai' in sys.modules and hasattr(sys.modules['ai'], '__file__'):
+        # ai.py уже загружен, можно импортировать
+        try:
+            from ai import get_ai_system as _get_ai_system
+            return _get_ai_system(*args, **kwargs)
+        except (ImportError, AttributeError) as e:
+            # Если импорт не удался, пробуем через sys.path
+            import os
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            if project_root not in sys.path:
+                sys.path.insert(0, project_root)
+            try:
+                from ai import get_ai_system as _get_ai_system
+                return _get_ai_system(*args, **kwargs)
+            except ImportError:
+                raise ImportError(f"Не удалось импортировать get_ai_system из ai.py: {e}")
+    else:
+        # ai.py еще не загружен, пробуем импортировать
+        try:
+            import os
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            if project_root not in sys.path:
+                sys.path.insert(0, project_root)
+            from ai import get_ai_system as _get_ai_system
+            return _get_ai_system(*args, **kwargs)
+        except ImportError as e:
+            raise ImportError(f"Не удалось импортировать get_ai_system из ai.py (возможно, циклический импорт): {e}")
+
+# НЕ добавляем get_ai_system в __all__ при импорте модуля
+# Это предотвращает циклический импорт при загрузке bot_engine.ai
+# Функция доступна через bot_engine.ai.get_ai_system(), но не экспортируется автоматически
 
 _license_logger = logging.getLogger('AI.License')
 _LICENSE_STATUS = None

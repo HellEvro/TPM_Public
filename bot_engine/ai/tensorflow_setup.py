@@ -83,10 +83,23 @@ def check_gpu_available():
 def check_tensorflow_installation():
     """Проверяет установку TensorFlow и поддержку CUDA"""
     try:
+        logger.info("Импорт TensorFlow...")
         import tensorflow as tf
+        
+        logger.info("Получение информации о TensorFlow...")
         version = tf.__version__
+        
+        logger.info("Проверка поддержки CUDA...")
         cuda_built = tf.test.is_built_with_cuda()
-        gpus = tf.config.list_physical_devices('GPU')
+        
+        logger.info("Поиск GPU устройств (это может занять несколько секунд)...")
+        # Поиск GPU может занимать время, особенно при первом запуске
+        gpus = []
+        try:
+            gpus = tf.config.list_physical_devices('GPU')
+        except Exception as e:
+            logger.debug(f"Ошибка при поиске GPU: {e}")
+            gpus = []
         
         return {
             'installed': True,
@@ -103,6 +116,26 @@ def check_tensorflow_installation():
             'gpus_found': 0,
             'gpu_devices': []
         }
+    except Exception as e:
+        logger.warning(f"Ошибка при проверке TensorFlow: {e}")
+        # Возвращаем частичную информацию
+        try:
+            import tensorflow as tf
+            return {
+                'installed': True,
+                'version': tf.__version__,
+                'cuda_built': False,
+                'gpus_found': 0,
+                'gpu_devices': []
+            }
+        except:
+            return {
+                'installed': False,
+                'version': None,
+                'cuda_built': False,
+                'gpus_found': 0,
+                'gpu_devices': []
+            }
 
 def install_tensorflow_with_gpu():
     """Пытается установить TensorFlow с поддержкой GPU"""
@@ -169,19 +202,22 @@ def ensure_tensorflow_setup():
     Главная функция: проверяет и при необходимости устанавливает TensorFlow
     Вызывается автоматически при импорте модуля
     """
-    # Проверяем версию Python
-    python_info = check_python_version()
-    
-    # Проверяем наличие GPU
-    has_gpu = check_gpu_available()
-    
-    # Если есть GPU, но Python не поддерживает GPU - предлагаем даунгрейд
-    if has_gpu and not python_info['gpu_supported']:
-        suggest_python_downgrade()
-        # Продолжаем с CPU версией, но предупреждаем пользователя
-    
-    # Проверяем установку TensorFlow
-    tf_info = check_tensorflow_installation()
+    try:
+        # Проверяем версию Python
+        python_info = check_python_version()
+        
+        # Проверяем наличие GPU
+        logger.debug("Проверка наличия GPU в системе...")
+        has_gpu = check_gpu_available()
+        
+        # Если есть GPU, но Python не поддерживает GPU - предлагаем даунгрейд
+        if has_gpu and not python_info['gpu_supported']:
+            suggest_python_downgrade()
+            # Продолжаем с CPU версией, но предупреждаем пользователя
+        
+        # Проверяем установку TensorFlow
+        logger.debug("Проверка установки TensorFlow...")
+        tf_info = check_tensorflow_installation()
     
     if not tf_info['installed']:
         logger.info("TensorFlow не установлен. Начинаю автоматическую установку...")
@@ -227,6 +263,11 @@ def ensure_tensorflow_setup():
                 else:
                     logger.warning("   GPU обнаружен в системе, но TensorFlow не может его использовать")
                     logger.warning("   Возможно, требуется установка CUDA библиотек: pip install tensorflow[and-cuda]")
+    
+    except Exception as e:
+        logger.warning(f"Ошибка при проверке TensorFlow: {e}")
+        logger.info("Продолжаем работу...")
+        return True
     
     return True
 
