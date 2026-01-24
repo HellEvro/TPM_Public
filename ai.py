@@ -8,81 +8,7 @@
 # ⚠️ КРИТИЧНО: Устанавливаем переменную окружения для идентификации процесса ai.py
 # Это гарантирует, что функции из filters.py будут сохранять свечи в ai_data.db, а не в bots_data.db
 import os
-import sys
-from pathlib import Path
-
-# Проверяем наличие виртуального окружения с Python 3.12 для GPU
-# Если найдено .venv_gpu, используем его вместо системного Python
-# ВАЖНО: Проверяем флаг окружения, чтобы избежать бесконечной рекурсии
-if not os.environ.get('INFOBOT_AI_VENV_RESTART'):
-    venv_gpu_path = Path(__file__).parent / '.venv_gpu'
-    if venv_gpu_path.exists():
-        if sys.platform == 'win32':
-            venv_python = venv_gpu_path / 'Scripts' / 'python.exe'
-        else:
-            venv_python = venv_gpu_path / 'bin' / 'python'
-        
-        if venv_python.exists():
-            # Проверяем, что текущий Python не из .venv_gpu (чтобы избежать рекурсии)
-            current_python = Path(sys.executable).resolve()
-            venv_python_resolved = venv_python.resolve()
-            if current_python != venv_python_resolved:
-                # Перезапускаем скрипт с Python из venv_gpu
-                import subprocess
-                os.environ['INFOBOT_AI_VENV_RESTART'] = '1'
-                try:
-                    subprocess.run([str(venv_python)] + sys.argv, check=True, env=os.environ.copy())
-                    sys.exit(0)
-                except subprocess.CalledProcessError as e:
-                    sys.exit(e.returncode)
-                except Exception:
-                    # Если не удалось перезапустить, продолжаем с текущим Python
-                    os.environ.pop('INFOBOT_AI_VENV_RESTART', None)
-                    pass
-
 os.environ['INFOBOT_AI_PROCESS'] = 'true'
-
-# InfoBot требует Python 3.12. Если текущий — не 3.12, пробуем перезапуск с py -3.12 / python3.12
-def _find_python312():
-    import subprocess
-    _check = 'import sys; sys.exit(0 if sys.version_info[:2]==(3,12) else 1)'
-    candidates = (
-        [(['py', '-3.12', '-c', _check], ['py', '-3.12'])] if sys.platform == 'win32' else []
-    ) + [
-        (['python3.12', '-c', _check], ['python3.12']),
-        (['python312', '-c', _check], ['python312']),
-    ]
-    for check, run_cmd in candidates:
-        try:
-            r = subprocess.run(check, capture_output=True, timeout=5)
-            if r.returncode == 0:
-                return run_cmd
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            continue
-    return None
-
-_major, _minor = sys.version_info.major, sys.version_info.minor
-if (_major, _minor) != (3, 12):
-    py312 = _find_python312()
-    if py312:
-        import subprocess
-        try:
-            subprocess.run(py312 + sys.argv, check=True)
-            sys.exit(0)
-        except subprocess.CalledProcessError as e:
-            sys.exit(e.returncode)
-        except Exception:
-            pass
-    # Python 3.12 не найден — выходим с сообщением
-    import logging
-    logging.basicConfig(level=logging.INFO)
-    _log = logging.getLogger('AI')
-    _log.error("=" * 80)
-    _log.error("InfoBot требует Python 3.12. Текущий: %s.%s", _major, _minor)
-    _log.error("Установите Python 3.12 или выполните: python scripts/setup_python_gpu.py")
-    _log.error("  https://www.python.org/downloads/release/python-3120/")
-    _log.error("=" * 80)
-    sys.exit(1)
 
 # Настройка логирования ПЕРЕД импортом защищенного модуля
 import logging
@@ -100,54 +26,8 @@ except Exception as e:
         import sys
         sys.stderr.write(f"❌ Ошибка настройки логирования: {setup_error}\n")
 
-# Автоматическая проверка и установка TensorFlow с поддержкой GPU
-# Выполняется ПЕРЕД импортом защищенного модуля
-# ВАЖНО: Выполняется только в главном процессе, чтобы избежать дублирования
-try:
-    import multiprocessing
-    is_main_process = multiprocessing.current_process().name == 'MainProcess'
-    
-    if is_main_process:
-        from bot_engine.ai.tensorflow_setup import ensure_tensorflow_setup
-        logger = logging.getLogger('AI')
-        logger.info("=" * 80)
-        logger.info("ПРОВЕРКА И НАСТРОЙКА TENSORFLOW")
-        logger.info("=" * 80)
-        ensure_tensorflow_setup()
-        logger.info("=" * 80)
-    else:
-        # В дочерних процессах только краткая проверка без установки
-        logger = logging.getLogger('AI')
-        logger.debug("Дочерний процесс - пропускаем полную проверку TensorFlow")
-except Exception as tf_setup_error:
-    # Если проверка не удалась, продолжаем работу
-    logger = logging.getLogger('AI')
-    logger.warning(f"Не удалось проверить TensorFlow: {tf_setup_error}")
-    logger.info("Продолжаем работу...")
-
 from typing import TYPE_CHECKING, Any
-
-try:
-    from bot_engine.ai import _infobot_ai_protected as _protected_module
-except ImportError as e:
-    err_msg = str(e).lower()
-    if "bad magic number" in err_msg or "bad magic" in err_msg:
-        _log = logging.getLogger("AI")
-        current_version = sys.version.split()[0] if sys.version else "?"
-        _major, _minor = sys.version_info.major, sys.version_info.minor
-        _log.error("=" * 80)
-        if (_major, _minor) == (3, 12):
-            # Python 3.12, но .pyc несовместим - нужно перекомпилировать
-            _log.error(f"[ERROR] AI модуль несовместим с текущей версией Python: {current_version}")
-            _log.error("[ERROR] Выполните: python license_generator/compile_all.py")
-            _log.error("[ERROR] Или: python license_generator/build_ai_launcher.py")
-        else:
-            # Не Python 3.12
-            _log.error(f"[ERROR] AI модуль собран под Python 3.12. Текущий: {current_version}")
-            _log.error("Выполните: python scripts/setup_python_gpu.py  либо используйте Python 3.12.")
-        _log.error("=" * 80)
-        sys.exit(1)
-    raise
+from bot_engine.ai import _infobot_ai_protected as _protected_module
 
 
 if TYPE_CHECKING:
