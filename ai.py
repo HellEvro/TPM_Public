@@ -74,7 +74,10 @@ try:
             cuda_available = tf.test.is_built_with_cuda()
             if not cuda_available:
                 logging.warning("⚠️ TensorFlow собран без CUDA. GPU недоступен.")
-                logging.warning("⚠️ Для использования GPU рекомендуется Python 3.11 или установка CUDA Toolkit")
+                logging.warning("⚠️ Для использования GPU рекомендуется:")
+                logging.warning("   1. Установить Python 3.11: https://www.python.org/downloads/release/python-3110/")
+                logging.warning("   2. Запустить: python scripts/install_tensorflow_gpu_python311.py")
+                logging.warning("   3. Или использовать: .venv_gpu\\Scripts\\python ai.py (после установки Python 3.11)")
             else:
                 logging.info("ℹ️ GPU устройства не найдены, но CUDA поддержка есть")
     except Exception as gpu_error:
