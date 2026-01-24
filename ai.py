@@ -38,20 +38,43 @@ try:
     # КРИТИЧНО: Принудительная настройка GPU для TensorFlow
     try:
         import tensorflow as tf
+        import os
+        
+        # Настраиваем переменные окружения для CUDA
+        os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+        os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+        os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
+        
+        # Добавляем пути к CUDA в PATH (если CUDA установлен)
+        cuda_paths = [
+            r'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0\bin',
+            r'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin',
+        ]
+        for path in cuda_paths:
+            if os.path.exists(path) and path not in os.environ.get('PATH', ''):
+                os.environ['PATH'] = path + os.pathsep + os.environ.get('PATH', '')
+        
         # Настраиваем GPU при запуске
         gpus = tf.config.list_physical_devices('GPU')
         if gpus:
             # Включаем рост памяти GPU
             for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
+                try:
+                    tf.config.experimental.set_memory_growth(gpu, True)
+                except:
+                    pass
             # Устанавливаем видимость GPU для всех операций
-            tf.config.set_visible_devices(gpus[0], 'GPU')
-            logging.info(f"✅ GPU настроен: {gpus[0].name}")
+            try:
+                tf.config.set_visible_devices(gpus[0], 'GPU')
+                logging.info(f"✅ GPU настроен: {gpus[0].name}")
+            except:
+                logging.info(f"✅ GPU найден: {gpus[0].name}")
         else:
             # Пробуем использовать системные CUDA библиотеки
             cuda_available = tf.test.is_built_with_cuda()
             if not cuda_available:
                 logging.warning("⚠️ TensorFlow собран без CUDA. GPU недоступен.")
+                logging.warning("⚠️ Для использования GPU рекомендуется Python 3.11 или установка CUDA Toolkit")
             else:
                 logging.info("ℹ️ GPU устройства не найдены, но CUDA поддержка есть")
     except Exception as gpu_error:
