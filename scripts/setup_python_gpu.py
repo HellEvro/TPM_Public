@@ -12,6 +12,17 @@ import platform
 import shutil
 from pathlib import Path
 
+# Настройка кодировки для Windows консоли
+if platform.system() == 'Windows':
+    try:
+        # Пытаемся установить UTF-8 для вывода
+        if sys.stdout.encoding != 'utf-8':
+            import io
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except:
+        pass
+
 def check_python_312_available():
     """Проверяет, доступен ли Python 3.12 в системе"""
     # Пробуем разные варианты команд
@@ -75,10 +86,10 @@ def create_venv_with_python312(python312_cmd, project_root):
     
     try:
         subprocess.run(cmd, check=True)
-        print("✅ Виртуальное окружение создано")
+        print("[OK] Виртуальное окружение создано")
         return venv_path
     except subprocess.CalledProcessError as e:
-        print(f"❌ Ошибка создания виртуального окружения: {e}")
+        print(f"[ERROR] Ошибка создания виртуального окружения: {e}")
         return None
 
 def install_dependencies(venv_path, project_root):
@@ -91,34 +102,34 @@ def install_dependencies(venv_path, project_root):
         python_cmd = venv_path / 'bin' / 'python'
     
     if not pip_cmd.exists():
-        print(f"❌ pip не найден в {venv_path}")
+        print(f"[ERROR] pip не найден в {venv_path}")
         return False
     
     print("\nОбновление pip...")
     try:
         subprocess.run([str(python_cmd), '-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel'], check=True)
     except subprocess.CalledProcessError as e:
-        print(f"⚠️ Ошибка обновления pip: {e}")
+        print(f"[WARNING] Ошибка обновления pip: {e}")
     
     print("Установка зависимостей из requirements.txt...")
     requirements = project_root / 'requirements.txt'
     
     try:
         subprocess.run([str(pip_cmd), 'install', '-r', str(requirements)], check=True)
-        print("✅ Зависимости установлены")
+        print("[OK] Зависимости установлены")
         
         # Устанавливаем TensorFlow с GPU поддержкой
         print("\nУстановка TensorFlow с поддержкой GPU...")
         try:
             subprocess.run([str(pip_cmd), 'install', 'tensorflow[and-cuda]>=2.13.0'], check=True)
-            print("✅ TensorFlow с GPU установлен")
+            print("[OK] TensorFlow с GPU установлен")
         except subprocess.CalledProcessError:
-            print("⚠️ Не удалось установить tensorflow[and-cuda], устанавливается базовая версия...")
+            print("[WARNING] Не удалось установить tensorflow[and-cuda], устанавливается базовая версия...")
             subprocess.run([str(pip_cmd), 'install', 'tensorflow>=2.13.0'], check=True)
         
         return True
     except subprocess.CalledProcessError as e:
-        print(f"❌ Ошибка установки зависимостей: {e}")
+        print(f"[ERROR] Ошибка установки зависимостей: {e}")
         return False
 
 def verify_gpu_setup(venv_path):
@@ -147,13 +158,13 @@ def verify_gpu_setup(venv_path):
         )
         print(result.stdout)
         if result.returncode == 0:
-            print("✅ Проверка завершена")
+            print("[OK] Проверка завершена")
             return True
         else:
-            print(f"⚠️ Ошибка проверки: {result.stderr}")
+            print(f"[WARNING] Ошибка проверки: {result.stderr}")
             return False
     except Exception as e:
-        print(f"❌ Ошибка при проверке: {e}")
+        print(f"[ERROR] Ошибка при проверке: {e}")
         return False
 
 def main():
@@ -172,7 +183,7 @@ def main():
     has_python312, python312_cmd = check_python_312_available()
     
     if not has_python312:
-        print("\n❌ Python 3.12 не найден в системе")
+        print("\n[ERROR] Python 3.12 не найден в системе")
         if platform.system() == 'Windows':
             install_python_312_windows()
         else:
@@ -182,7 +193,7 @@ def main():
             print("  Или скачайте с https://www.python.org/downloads/")
         return 1
     
-    print(f"✅ Python 3.12 найден: {python312_cmd}")
+    print(f"[OK] Python 3.12 найден: {python312_cmd}")
     
     # Проверяем наличие GPU
     try:
@@ -192,9 +203,9 @@ def main():
         has_gpu = False
     
     if has_gpu:
-        print("✅ NVIDIA GPU обнаружен в системе")
+        print("[OK] NVIDIA GPU обнаружен в системе")
     else:
-        print("⚠️ NVIDIA GPU не обнаружен, но продолжаем настройку...")
+        print("[WARNING] NVIDIA GPU не обнаружен, но продолжаем настройку...")
     
     # Создаем виртуальное окружение
     venv_path = create_venv_with_python312(python312_cmd, project_root)
