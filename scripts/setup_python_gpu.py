@@ -208,17 +208,28 @@ def install_python_312_windows():
     print("=" * 80)
 
 
-def create_venv(python_cmd, project_root, python_version="3.11"):
+def create_venv(python_cmd, project_root, python_version="3.12"):
     """Создаёт .venv_gpu с указанной командой Python."""
     venv_path = project_root / '.venv_gpu'
     if venv_path.exists():
         print("Удаление старого .venv_gpu...")
         shutil.rmtree(venv_path)
-    cmd = python_cmd.split() if isinstance(python_cmd, str) else list(python_cmd)
+    
+    # Правильно обрабатываем команду Python
+    if isinstance(python_cmd, str):
+        # Если это 'py -3.12', нужно разделить правильно
+        if python_cmd.startswith('py '):
+            cmd = python_cmd.split()
+        else:
+            cmd = [python_cmd]
+    else:
+        cmd = list(python_cmd)
+    
     create = cmd + ['-m', 'venv', str(venv_path)]
     print(f"Создание .venv_gpu с Python {python_version}...")
+    print(f"[DEBUG] Команда создания venv: {' '.join(create)}")
     try:
-        subprocess.run(create, check=True)
+        result = subprocess.run(create, check=True, capture_output=True, text=True)
         print("[OK] .venv_gpu создан")
         
         # Небольшая задержка для завершения создания venv
@@ -226,7 +237,7 @@ def create_venv(python_cmd, project_root, python_version="3.11"):
         time.sleep(2)
         
         # Проверяем что Python доступен в venv
-        if platform.system() == 'win32':
+        if platform.system() == 'Windows' or platform.system() == 'win32':
             venv_python = venv_path / 'Scripts' / 'python.exe'
         else:
             venv_python = venv_path / 'bin' / 'python'
@@ -244,7 +255,31 @@ def create_venv(python_cmd, project_root, python_version="3.11"):
             else:
                 print(f"[WARNING] Python в venv не отвечает, но файл существует")
         else:
-            print(f"[WARNING] Python не найден в venv по пути: {venv_python}")
+            # Пробуем альтернативные пути
+            alt_paths = []
+            if platform.system() == 'Windows' or platform.system() == 'win32':
+                alt_paths = [
+                    venv_path / 'Scripts' / 'pythonw.exe',
+                    venv_path / 'Scripts' / 'python3.exe',
+                    venv_path / 'bin' / 'python',  # На случай если venv создан неправильно
+                ]
+            else:
+                alt_paths = [
+                    venv_path / 'bin' / 'python3',
+                ]
+            
+            found = False
+            for alt_path in alt_paths:
+                if alt_path.exists():
+                    print(f"[OK] Python найден по альтернативному пути: {alt_path}")
+                    found = True
+                    break
+            
+            if not found:
+                print(f"[WARNING] Python не найден в venv по пути: {venv_python}")
+                print(f"[INFO] Проверяем альтернативные пути...")
+                for alt_path in alt_paths:
+                    print(f"  - {alt_path}: {'существует' if alt_path.exists() else 'не найден'}")
         
         return venv_path
     except subprocess.CalledProcessError as e:
@@ -255,33 +290,43 @@ def create_venv(python_cmd, project_root, python_version="3.11"):
 def install_dependencies(venv_path, project_root):
     """Устанавливает зависимости в .venv_gpu."""
     # Определяем правильный путь к Python в venv
-    if platform.system() == 'win32':
+    if platform.system() == 'Windows' or platform.system() == 'win32':
         python = venv_path / 'Scripts' / 'python.exe'
     else:
         python = venv_path / 'bin' / 'python'
     
     if not python.exists():
-        print(f"[ERROR] Python не найден в .venv_gpu по пути: {python}")
+        print(f"[WARNING] Python не найден в .venv_gpu по пути: {python}")
         print(f"[INFO] Проверяем альтернативные пути...")
         # Пробуем альтернативные пути
         alt_paths = []
-        if platform.system() == 'win32':
+        if platform.system() == 'Windows' or platform.system() == 'win32':
             alt_paths = [
                 venv_path / 'Scripts' / 'pythonw.exe',
                 venv_path / 'Scripts' / 'python3.exe',
+                venv_path / 'bin' / 'python',  # На случай если venv создан неправильно
             ]
         else:
             alt_paths = [
                 venv_path / 'bin' / 'python3',
             ]
         
+        found = False
         for alt_path in alt_paths:
             if alt_path.exists():
-                print(f"[INFO] Найден альтернативный Python: {alt_path}")
+                print(f"[OK] Найден альтернативный Python: {alt_path}")
                 python = alt_path
+                found = True
                 break
-        else:
-            print("[ERROR] Python не найден в .venv_gpu ни по одному из путей")
+        
+        if not found:
+            print("[ERROR] Python не найден в .venv_gpu ни по одному из путей:")
+            print(f"  - {python}")
+            for alt_path in alt_paths:
+                print(f"  - {alt_path}")
+            print("[INFO] Попробуйте пересоздать .venv_gpu:")
+            print("  1. Удалите директорию .venv_gpu")
+            print("  2. Запустите снова: python scripts/setup_python_gpu.py")
             return False
     
     # Используем requirements.txt для установки всех зависимостей (включая TensorFlow)
