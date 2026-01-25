@@ -146,7 +146,11 @@ def _load_versioned_module(module_name, module_import_name):
             _logger.error(f"[AI] [ERROR] {module_name}.pyc несовместим с текущей версией Python: {python_version}")
             _logger.error("[AI] [ERROR] Модуль был скомпилирован под другую версию Python.")
             _logger.error("[AI] [ERROR] Обратитесь к разработчику для получения правильной версии модулей.")
-        raise
+            # Не выбрасываем исключение, возвращаем None чтобы система могла продолжить работу
+            return None
+        # Для других ошибок тоже возвращаем None вместо raise
+        _logger.debug(f"Ошибка загрузки модуля {module_name}: {e}")
+        return None
 
 # Пытаемся загрузить ai_manager из версионированной директории
 try:
