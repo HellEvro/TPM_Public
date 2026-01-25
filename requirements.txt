@@ -54,7 +54,7 @@ cryptography>=41.0.0
 # TensorFlow для Python 3.14+ (экспериментальная поддержка через tf-nightly)
 # Для Python 3.12 можно использовать tensorflow>=2.16.0
 # При запуске ai.py выполняется автоматическая установка через bot_engine/ai/tensorflow_setup.py
-tf-nightly>=2.21.0.dev  # Экспериментальная поддержка Python 3.14+
+tf-nightly  # Экспериментальная поддержка Python 3.14+ (без версии для последней сборки)
 
 # Machine Learning libraries
 scikit-learn>=1.3.0
