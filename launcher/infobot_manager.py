@@ -65,8 +65,76 @@ def _check_python_version(python_exec: str) -> tuple[int, int] | None:
         pass
     return None
 
+def _install_python314_plus() -> bool:
+    """Автоматически устанавливает Python 3.14.2+ через системные менеджеры пакетов"""
+    if os.name == "nt":
+        # Windows: используем winget
+        try:
+            result = subprocess.run(
+                ["winget", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                # Пробуем установить Python 3.14.2 или выше
+                print("[INFO] Установка Python 3.14.2 через winget...")
+                install_result = subprocess.run(
+                    ["winget", "install", "--id", "Python.Python.3.14", "--silent", "--accept-package-agreements", "--accept-source-agreements"],
+                    capture_output=True,
+                    text=True,
+                    timeout=300
+                )
+                if install_result.returncode == 0:
+                    print("[OK] Python 3.14 установлен")
+                    time.sleep(3)  # Даем время системе обновить PATH
+                    return True
+                else:
+                    print(f"[WARNING] Ошибка установки через winget: {install_result.stderr[:200]}")
+        except (FileNotFoundError, subprocess.TimeoutExpired, Exception) as e:
+            print(f"[WARNING] Не удалось установить Python через winget: {e}")
+    else:
+        # Linux/macOS: используем системные менеджеры пакетов
+        import platform
+        system = platform.system()
+        
+        if system == "Linux":
+            # Определяем менеджер пакетов
+            for pkg_mgr, install_cmd in [
+                ("apt-get", ["sudo", "apt-get", "update", "-qq", "&&", "sudo", "apt-get", "install", "-y", "python3.14", "python3.14-venv"]),
+                ("yum", ["sudo", "yum", "install", "-y", "python3.14"]),
+                ("dnf", ["sudo", "dnf", "install", "-y", "python3.14"]),
+                ("pacman", ["sudo", "pacman", "-S", "--noconfirm", "python"]),
+            ]:
+                if shutil.which(pkg_mgr):
+                    try:
+                        print(f"[INFO] Установка Python 3.14 через {pkg_mgr}...")
+                        # Для apt-get нужно разделить команды
+                        if pkg_mgr == "apt-get":
+                            subprocess.run(["sudo", "apt-get", "update", "-qq"], timeout=60, check=True)
+                            subprocess.run(["sudo", "apt-get", "install", "-y", "python3.14", "python3.14-venv"], timeout=300, check=True)
+                        else:
+                            cmd = install_cmd[1:] if install_cmd[0] == "sudo else install_cmd
+                            subprocess.run(cmd, timeout=300, check=True)
+                        print("[OK] Python 3.14 установлен")
+                        return True
+                    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, Exception) as e:
+                        print(f"[WARNING] Ошибка установки через {pkg_mgr}: {e}")
+                        continue
+        elif system == "Darwin":  # macOS
+            if shutil.which("brew"):
+                try:
+                    print("[INFO] Установка Python 3.14 через brew...")
+                    subprocess.run(["brew", "install", "python@3.14"], timeout=600, check=True)
+                    print("[OK] Python 3.14 установлен")
+                    return True
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired, Exception) as e:
+                    print(f"[WARNING] Ошибка установки через brew: {e}")
+    
+    return False
+
 def _find_python314_plus() -> str | None:
-    """Находит Python 3.14+ в системе"""
+    """Находит Python 3.14+ в системе, при необходимости устанавливает"""
     commands = [
         ["py", "-3.14"],
         ["python3.14"],
@@ -89,6 +157,26 @@ def _find_python314_plus() -> str | None:
                 return " ".join(cmd) if len(cmd) > 1 else cmd[0]
         except Exception:
             continue
+    
+    # Python 3.14+ не найден - пробуем установить
+    print("[INFO] Python 3.14+ не найден, пытаемся установить автоматически...")
+    if _install_python314_plus():
+        # После установки пробуем найти снова
+        time.sleep(2)
+        for cmd in commands:
+            try:
+                check_cmd = cmd[0] if len(cmd) == 1 else cmd
+                result = subprocess.run(
+                    [check_cmd] + (cmd[1:] if len(cmd) > 1 else []) + ["-c", "import sys; exit(0 if sys.version_info[:2] >= (3, 14) else 1)"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    return " ".join(cmd) if len(cmd) > 1 else cmd[0]
+            except Exception:
+                continue
+    
     return None
 
 def _detect_python_executable() -> str:
@@ -1331,11 +1419,15 @@ class InfoBotManager(tk.Tk):
                         self.log(f"Ошибка при удалении старого venv: {e}", channel="system")
                         return False
                 
-                # Ищем Python 3.14+
+                # Ищем Python 3.14+ (автоматически установит если не найден)
                 python314 = _find_python314_plus()
                 if not python314:
                     self.log(
-                        "Python 3.14+ не найден. Установите Python 3.14 или выше: https://www.python.org/downloads/",
+                        "Python 3.14+ не найден и автоматическая установка не удалась.",
+                        channel="system",
+                    )
+                    self.log(
+                        "Установите Python 3.14.2 или выше вручную: https://www.python.org/downloads/",
                         channel="system",
                     )
                     return False
