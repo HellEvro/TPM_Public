@@ -65,26 +65,28 @@ def _check_python_version(python_exec: str) -> tuple[int, int] | None:
         pass
     return None
 
-def _find_python314() -> str | None:
-    """Находит Python 3.14 в системе"""
+def _find_python314_plus() -> str | None:
+    """Находит Python 3.14+ в системе"""
     commands = [
         ["py", "-3.14"],
         ["python3.14"],
         ["python314"],
+        ["python"],
+        ["python3"],
     ]
     
     for cmd in commands:
         try:
+            # Проверяем версию через Python код
+            check_cmd = cmd[0] if len(cmd) == 1 else cmd
             result = subprocess.run(
-                cmd + ["--version"],
+                [check_cmd] + (cmd[1:] if len(cmd) > 1 else []) + ["-c", "import sys; exit(0 if sys.version_info[:2] >= (3, 14) else 1)"],
                 capture_output=True,
                 text=True,
                 timeout=5
             )
             if result.returncode == 0:
-                version_output = (result.stdout or "") + (result.stderr or "")
-                if "3.14" in version_output:
-                    return " ".join(cmd) if len(cmd) > 1 else cmd[0]
+                return " ".join(cmd) if len(cmd) > 1 else cmd[0]
         except Exception:
             continue
     return None
@@ -98,19 +100,54 @@ def _detect_python_executable() -> str:
     if venv_python.exists():
         # Проверяем версию Python в venv
         version = _check_python_version(str(venv_python))
-        if version and version[0] == 3 and version[1] == 14:
+        if version and version[0] == 3 and version[1] >= 14:
             return str(venv_python)
-        # Если версия не 3.14, нужно пересоздать venv
+        # Если версия не 3.14+, нужно пересоздать venv
         # Но возвращаем текущий для совместимости, пересоздание будет в _ensure_venv_with_dependencies
 
-    # Fallbacks
+    # Fallbacks - ищем Python 3.14+
     if os.name == "nt":
         launcher = shutil.which("py")
         if launcher:
-            return f"{launcher} -3.14"
-        return "python"
+            # Проверяем что py -3.14 действительно 3.14+
+            try:
+                result = subprocess.run(
+                    [launcher, "-3.14", "-c", "import sys; exit(0 if sys.version_info[:2] >= (3, 14) else 1)"],
+                    capture_output=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    return f"{launcher} -3.14"
+            except:
+                pass
+        # Проверяем системный python
+        try:
+            result = subprocess.run(
+                ["python", "-c", "import sys; exit(0 if sys.version_info[:2] >= (3, 14) else 1)"],
+                capture_output=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                return "python"
+        except:
+            pass
+        return "python"  # Fallback, но будет ошибка если не 3.14+
 
-    return shutil.which("python3.14") or shutil.which("python3") or sys.executable
+    # Linux/macOS
+    for cmd in ["python3.14", "python3", "python"]:
+        python_path = shutil.which(cmd)
+        if python_path:
+            try:
+                result = subprocess.run(
+                    [python_path, "-c", "import sys; exit(0 if sys.version_info[:2] >= (3, 14) else 1)"],
+                    capture_output=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    return python_path
+            except:
+                continue
+    return sys.executable  # Последний fallback
 
 
 PYTHON_EXECUTABLE = _detect_python_executable()
@@ -1276,9 +1313,9 @@ class InfoBotManager(tk.Tk):
                     version = _check_python_version(str(venv_python))
                     if version:
                         major, minor = version
-                        if major != 3 or minor != 14:
+                        if major != 3 or minor < 14:
                             self.log(
-                                f"Версия Python в .venv ({major}.{minor}) не соответствует требованиям (3.14). Пересоздаем venv...",
+                                f"Версия Python в .venv ({major}.{minor}) не соответствует требованиям (требуется 3.14+). Пересоздаем venv...",
                                 channel="system",
                             )
                             need_recreate = True
@@ -1294,18 +1331,22 @@ class InfoBotManager(tk.Tk):
                         self.log(f"Ошибка при удалении старого venv: {e}", channel="system")
                         return False
                 
-                # Ищем Python 3.14
-                python314 = _find_python314()
+                # Ищем Python 3.14+
+                python314 = _find_python314_plus()
                 if not python314:
                     self.log(
-                        "Python 3.14 не найден. Установите Python 3.14: https://www.python.org/downloads/",
+                        "Python 3.14+ не найден. Установите Python 3.14 или выше: https://www.python.org/downloads/",
                         channel="system",
                     )
-                    # Пробуем использовать текущий Python как fallback
-                    python_cmd = sys.executable
+                    return False
                 else:
                     python_cmd = python314
-                    self.log(f"Используем Python 3.14: {python_cmd}", channel="system")
+                    version = _check_python_version(python_cmd.split()[0] if " " in python_cmd else python_cmd)
+                    if version:
+                        major, minor = version
+                        self.log(f"Используем Python {major}.{minor}: {python_cmd}", channel="system")
+                    else:
+                        self.log(f"Используем Python 3.14+: {python_cmd}", channel="system")
                 
                 try:
                     cmd = python_cmd.split() if " " in python_cmd else [python_cmd]

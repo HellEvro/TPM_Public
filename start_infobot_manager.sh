@@ -90,7 +90,7 @@ if [ $PYTHON_FOUND -eq 0 ]; then
       ;;
   esac
   if [ $PYTHON_FOUND -eq 0 ]; then
-    echo "[ERROR] Python 3.14 не найден. Установите: https://www.python.org/downloads/"
+    echo "[ERROR] Python 3.14+ не найден. Установите: https://www.python.org/downloads/"
     exit 1
   fi
 fi
