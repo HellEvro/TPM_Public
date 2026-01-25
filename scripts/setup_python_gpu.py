@@ -117,8 +117,7 @@ def install_dependencies(venv_path, project_root):
     if not pip.exists():
         print("[ERROR] pip не найден в .venv_gpu")
         return False
-    # Используем requirements_ai.txt для установки TensorFlow и AI зависимостей
-    req_ai = project_root / 'requirements_ai.txt'
+    # Используем requirements.txt для установки всех зависимостей (включая TensorFlow)
     req_main = project_root / 'requirements.txt'
     
     print("Установка зависимостей...")
