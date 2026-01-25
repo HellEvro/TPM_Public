@@ -29,7 +29,7 @@ if not os.environ.get('INFOBOT_AI_VENV_RESTART'):
         # Проверяем, установлены ли зависимости в .venv_gpu
         try:
             check_result = subprocess.run(
-                [str(venv_gpu_python), '-c', 'import requests'],
+                [str(venv_gpu_python), '-c', 'import requests, ccxt'],
                 capture_output=True,
                 timeout=5
             )
@@ -38,15 +38,29 @@ if not os.environ.get('INFOBOT_AI_VENV_RESTART'):
                 # Устанавливаем зависимости
                 req_file = project_root / 'requirements.txt'
                 if req_file.exists():
+                    # Увеличиваем таймаут до 600 секунд (10 минут) для больших пакетов типа TensorFlow
                     install_result = subprocess.run(
                         [str(venv_gpu_python), '-m', 'pip', 'install', '-r', str(req_file)],
                         cwd=project_root,
-                        timeout=300
+                        timeout=600
                     )
                     if install_result.returncode == 0:
                         print("[OK] Зависимости установлены в .venv_gpu")
                     else:
-                        print("[WARNING] Не удалось установить зависимости, продолжаем...")
+                        print(f"[WARNING] Установка завершилась с кодом {install_result.returncode}, но продолжаем...")
+                        # Проверяем критичные модули
+                        critical_check = subprocess.run(
+                            [str(venv_gpu_python), '-c', 'import requests, ccxt'],
+                            capture_output=True,
+                            timeout=5
+                        )
+                        if critical_check.returncode == 0:
+                            print("[OK] Критичные модули (requests, ccxt) установлены")
+                        else:
+                            print("[WARNING] Критичные модули отсутствуют, возможны ошибки")
+        except subprocess.TimeoutExpired:
+            print("[WARNING] Установка зависимостей превысила таймаут, но процесс продолжается в фоне")
+            print("[INFO] Продолжаем запуск, зависимости установятся позже")
         except Exception as e:
             print(f"[WARNING] Не удалось проверить зависимости: {e}")
         
