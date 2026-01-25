@@ -28,32 +28,25 @@ Set-Location $projectRoot
 Write-Host "Project root: $projectRoot"
 
 $pyCmd = $null
-# Сначала пробуем Python 3.14
+# Требуем Python 3.14 или выше
 try {
-    $null = & py -3.14 -c "import sys; exit(0 if sys.version_info[:2]==(3,14) else 1)" 2>$null
+    $null = & py -3.14 -c "import sys; exit(0 if sys.version_info[:2] >= (3,14) else 1)" 2>$null
     if ($LASTEXITCODE -eq 0) { $pyCmd = @('py','-3.14') }
 } catch {}
 if (-not $pyCmd) {
     try {
-        $null = & python3.14 -c "import sys; exit(0 if sys.version_info[:2]==(3,14) else 1)" 2>$null
+        $null = & python3.14 -c "import sys; exit(0 if sys.version_info[:2] >= (3,14) else 1)" 2>$null
         if ($LASTEXITCODE -eq 0) { $pyCmd = @('python3.14') }
     } catch {}
 }
-# Fallback на Python 3.12 если 3.14 не найден
 if (-not $pyCmd) {
     try {
-        $null = & py -3.12 -c "import sys; exit(0 if sys.version_info[:2]==(3,12) else 1)" 2>$null
-        if ($LASTEXITCODE -eq 0) { $pyCmd = @('py','-3.12') }
-    } catch {}
-}
-if (-not $pyCmd) {
-    try {
-        $null = & python -c "import sys; exit(0 if sys.version_info[:2]==(3,12) or sys.version_info[:2]==(3,14) else 1)" 2>$null
+        $null = & python -c "import sys; exit(0 if sys.version_info[:2] >= (3,14) else 1)" 2>$null
         if ($LASTEXITCODE -eq 0) { $pyCmd = @('python') }
     } catch {}
 }
 if (-not $pyCmd) {
-    Write-Error "Python 3.14 required (3.12 as fallback). Install: https://www.python.org/downloads/ or: winget install Python.Python.3.14"
+    Write-Error "Python 3.14+ required. Install: https://www.python.org/downloads/ or: winget install Python.Python.3.14"
 }
 $venvPath = Join-Path $projectRoot ".venv"
 $venvPython = Join-Path $venvPath "Scripts\python.exe"

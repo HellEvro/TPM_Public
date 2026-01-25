@@ -177,23 +177,19 @@ def main():
     root = Path(__file__).resolve().parents[1]
     print(f"Текущий Python: {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
 
-    # TensorFlow НЕ поддерживает Python 3.14, используем Python 3.12 для .venv_gpu
+    # TensorFlow НЕ поддерживает Python 3.14+, используем Python 3.12 для .venv_gpu
     ok, cmd = check_python_312_available()
     python_version = "3.12"
     if not ok:
-        print("[WARNING] Python 3.12 не найден. Пробую Python 3.11 (fallback для GPU)...")
-        ok, cmd = check_python_311_available()
-        python_version = "3.11"
-        if not ok:
-            print("[ERROR] Python 3.12 или 3.11 не найден.")
-            print("ВНИМАНИЕ: TensorFlow НЕ поддерживает Python 3.14!")
-            print("Установите Python 3.12: https://www.python.org/downloads/release/python-3120/")
-            if platform.system() == 'Windows':
-                print("Или используйте: py -3.12")
-            else:
-                print("Или: sudo apt install python3.12 python3.12-venv  (Ubuntu/Debian)")
-                print("     brew install python@3.12  (macOS)")
-            return 1
+        print("[ERROR] Python 3.12 не найден.")
+        print("ВНИМАНИЕ: TensorFlow НЕ поддерживает Python 3.14+!")
+        print("Для .venv_gpu требуется Python 3.12: https://www.python.org/downloads/release/python-3120/")
+        if platform.system() == 'Windows':
+            print("Или используйте: py -3.12")
+        else:
+            print("Или: sudo apt install python3.12 python3.12-venv  (Ubuntu/Debian)")
+            print("     brew install python@3.12  (macOS)")
+        return 1
     
     print(f"[OK] Python {python_version}: {cmd}")
     print(f"[INFO] Python {python_version} выбран для .venv_gpu (TensorFlow требует Python <= 3.12)")

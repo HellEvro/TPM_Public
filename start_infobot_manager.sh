@@ -25,46 +25,27 @@ detect_package_manager() {
   fi
 }
 
-# InfoBot требует Python 3.14 (fallback на 3.12)
-check_python_314() {
+# InfoBot требует Python 3.14 или выше
+check_python_314_plus() {
   local python_cmd="$1"
   if ! command_exists "$python_cmd"; then
     return 1
   fi
-  local v=$("$python_cmd" --version 2>&1)
-  case "$v" in *"3.14"*) return 0 ;; *) return 1 ;; esac
+  local v=$("$python_cmd" -c "import sys; exit(0 if sys.version_info[:2] >= (3, 14) else 1)" 2>/dev/null)
+  return $v
 }
 
-check_python_312() {
-  local python_cmd="$1"
-  if ! command_exists "$python_cmd"; then
-    return 1
-  fi
-  local v=$("$python_cmd" --version 2>&1)
-  case "$v" in *"3.12"*) return 0 ;; *) return 1 ;; esac
-}
-
-# Проверка Python 3.14 (приоритет)
+# Проверка Python 3.14+
 PYTHON_FOUND=0
 PYTHON_CMD=""
 
-if check_python_314 python3.14; then
+if check_python_314_plus python3.14; then
   PYTHON_FOUND=1
   PYTHON_CMD="python3.14"
-elif check_python_314 python3; then
+elif check_python_314_plus python3; then
   PYTHON_FOUND=1
   PYTHON_CMD="python3"
-elif check_python_314 python; then
-  PYTHON_FOUND=1
-  PYTHON_CMD="python"
-# Fallback на Python 3.12
-elif check_python_312 python3.12; then
-  PYTHON_FOUND=1
-  PYTHON_CMD="python3.12"
-elif check_python_312 python3; then
-  PYTHON_FOUND=1
-  PYTHON_CMD="python3"
-elif check_python_312 python; then
+elif check_python_314_plus python; then
   PYTHON_FOUND=1
   PYTHON_CMD="python"
 fi
@@ -197,7 +178,11 @@ elif [[ -f ".venv/bin/activate" ]]; then
   source ".venv/bin/activate"
   PYTHON_BIN="python"
 else
-  PYTHON_BIN="${PYTHON_CMD:-python3.14}"
+  if [ -z "$PYTHON_CMD" ]; then
+    echo "[ERROR] Python 3.14+ не найден!"
+    exit 1
+  fi
+  PYTHON_BIN="$PYTHON_CMD"
 fi
 
 exec $PYTHON_BIN launcher/infobot_manager.py "$@"

@@ -12,10 +12,10 @@ import os
 from pathlib import Path
 
 REQUIRED_PYTHON_MAJOR = 3
-REQUIRED_PYTHON_MINOR = 14
+REQUIRED_PYTHON_MINOR = 14  # Минимум 3.14, но принимаем и выше
 
-def find_python314():
-    """Находит Python 3.14 в системе"""
+def find_python314_plus():
+    """Находит Python 3.14+ в системе"""
     commands = [
         ['py', '-3.14'],
         ['python3.14'],
@@ -25,16 +25,16 @@ def find_python314():
     
     for cmd in commands:
         try:
+            # Проверяем версию через Python код
+            check_cmd = cmd[0] if len(cmd) == 1 else cmd
             result = subprocess.run(
-                cmd + ['--version'],
+                [check_cmd] + ['-c', 'import sys; exit(0 if sys.version_info[:2] >= (3, 14) else 1)'],
                 capture_output=True,
                 text=True,
                 timeout=5
             )
             if result.returncode == 0:
-                version_output = result.stdout.strip() + result.stderr.strip()
-                if '3.14' in version_output:
-                    return cmd[0] if len(cmd) == 1 else cmd
+                return cmd[0] if len(cmd) == 1 else cmd
         except:
             continue
     
@@ -82,7 +82,7 @@ def recreate_venv(project_root, python_cmd):
             print(f"[ERROR] Не удалось удалить старый venv: {e}")
             return False
     
-    print(f"[INFO] Создание нового .venv с Python 3.14...")
+    print(f"[INFO] Создание нового .venv с Python 3.14+...")
     cmd = python_cmd.split() if isinstance(python_cmd, str) else list(python_cmd)
     create_cmd = cmd + ['-m', 'venv', str(venv_dir)]
     
@@ -123,7 +123,7 @@ def upgrade_dependencies(venv_dir, project_root):
         print(f"[WARNING] Ошибка обновления pip: {e}")
     
     print(f"[INFO] Установка/обновление зависимостей из requirements.txt...")
-    print(f"[INFO] Примечание: TensorFlow не поддерживает Python 3.14 и будет пропущен")
+    print(f"[INFO] Примечание: TensorFlow не поддерживает Python 3.14+ и будет пропущен")
     print(f"[INFO] Для TensorFlow используйте .venv_gpu с Python 3.12: python scripts/setup_python_gpu.py")
     
     try:
@@ -139,7 +139,7 @@ def upgrade_dependencies(venv_dir, project_root):
         if result.returncode != 0:
             error_output = result.stderr.lower() if result.stderr else ""
             if 'tensorflow' in error_output and ('requires-python' in error_output or 'could not find a version' in error_output):
-                print(f"[WARNING] TensorFlow не поддерживает Python 3.14 - это нормально")
+                print(f"[WARNING] TensorFlow не поддерживает Python 3.14+ - это нормально")
                 print(f"[INFO] Остальные зависимости установлены")
                 # Пробуем установить остальные зависимости без TensorFlow
                 # Читаем requirements.txt и фильтруем tensorflow
@@ -183,7 +183,7 @@ def main():
     venv_dir = project_root / '.venv'
     
     print("=" * 60)
-    print("ПРОВЕРКА И ОБНОВЛЕНИЕ .venv ДЛЯ PYTHON 3.14")
+    print("ПРОВЕРКА И ОБНОВЛЕНИЕ .venv ДЛЯ PYTHON 3.14+")
     print("=" * 60)
     print()
     
@@ -193,8 +193,8 @@ def main():
         if major is not None and minor is not None:
             print(f"[INFO] Текущая версия Python в .venv: {major}.{minor}")
             
-            if major == REQUIRED_PYTHON_MAJOR and minor == REQUIRED_PYTHON_MINOR:
-                print(f"[OK] Версия Python в .venv соответствует требованиям (3.14)")
+            if major == REQUIRED_PYTHON_MAJOR and minor >= REQUIRED_PYTHON_MINOR:
+                print(f"[OK] Версия Python в .venv соответствует требованиям ({major}.{minor} >= 3.14)")
                 print(f"[INFO] Обновление зависимостей...")
                 if upgrade_dependencies(venv_dir, project_root):
                     print(f"[OK] Все готово!")
@@ -203,7 +203,7 @@ def main():
                     print(f"[WARNING] Ошибка обновления зависимостей")
                     return 1
             else:
-                print(f"[WARNING] Версия Python в .venv ({major}.{minor}) не соответствует требованиям (3.14)")
+                print(f"[WARNING] Версия Python в .venv ({major}.{minor}) не соответствует требованиям (требуется 3.14+)")
                 print(f"[INFO] Необходимо пересоздать .venv")
         else:
             print(f"[WARNING] Не удалось определить версию Python в .venv")
@@ -211,25 +211,25 @@ def main():
     else:
         print(f"[INFO] .venv не существует, создаем новый")
     
-    # Ищем Python 3.14
-    python314 = find_python314()
+    # Ищем Python 3.14+
+    python314 = find_python314_plus()
     if not python314:
-        print(f"[ERROR] Python 3.14 не найден!")
+        print(f"[ERROR] Python 3.14+ не найден!")
         print()
-        print("Пожалуйста, установите Python 3.14:")
+        print("Пожалуйста, установите Python 3.14 или выше:")
         print("  https://www.python.org/downloads/")
         print()
         print("Или используйте py launcher на Windows:")
         print("  py -3.14 --version")
         return 1
     
-    # Проверяем что найденный Python действительно 3.14
+    # Проверяем что найденный Python действительно 3.14+
     major, minor = check_python_version(python314.split()[0] if isinstance(python314, str) and ' ' in python314 else python314)
-    if major != REQUIRED_PYTHON_MAJOR or minor != REQUIRED_PYTHON_MINOR:
-        print(f"[ERROR] Найденный Python не версии 3.14 (найдено: {major}.{minor})")
+    if major != REQUIRED_PYTHON_MAJOR or minor < REQUIRED_PYTHON_MINOR:
+        print(f"[ERROR] Найденный Python не версии 3.14+ (найдено: {major}.{minor}, требуется >= 3.14)")
         return 1
     
-    print(f"[OK] Найден Python 3.14: {python314}")
+    print(f"[OK] Найден Python {major}.{minor}: {python314}")
     
     # Пересоздаем venv
     if not recreate_venv(project_root, python314):
@@ -241,7 +241,7 @@ def main():
     
     # Компилируем защищенные модули под Python 3.14
     print()
-    print("[INFO] Компиляция защищенных модулей под Python 3.14...")
+    print("[INFO] Компиляция защищенных модулей под Python 3.14+...")
     try:
         compile_script = project_root / 'license_generator' / 'compile_all.py'
         if os.name == 'nt':
@@ -256,7 +256,7 @@ def main():
             text=True
         )
         if result.returncode == 0:
-            print("[OK] Защищенные модули скомпилированы под Python 3.14")
+            print("[OK] Защищенные модули скомпилированы под Python 3.14+")
         else:
             print(f"[WARNING] Ошибка компиляции модулей: {result.stderr[:200] if result.stderr else 'unknown error'}")
     except Exception as e:
@@ -264,7 +264,7 @@ def main():
     
     print()
     print("=" * 60)
-    print("[OK] .venv обновлен для Python 3.14")
+    print("[OK] .venv обновлен для Python 3.14+")
     print("=" * 60)
     
     return 0

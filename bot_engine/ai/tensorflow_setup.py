@@ -17,24 +17,24 @@ _gpu_warning_shown = False
 _tensorflow_checked = False
 
 def check_python_version():
-    """Проверяет версию Python. Проект требует Python 3.14."""
+    """Проверяет версию Python. Проект требует Python 3.14+."""
     version = sys.version_info
     major, minor = version.major, version.minor
     
-    if major == 3 and minor == 14:
+    if major == 3 and minor >= 14:
         return {
             'supported': True,
-            'gpu_supported': True,
-            'message': 'Python 3.14 поддерживает GPU в TensorFlow',
-            'recommended': None
+            'gpu_supported': False,  # TensorFlow не поддерживает 3.14+
+            'message': f'Python {major}.{minor} поддерживается, но TensorFlow требует Python 3.12 для GPU',
+            'recommended': 'Python 3.12 для .venv_gpu'
         }
     
-    # Все остальные версии — не поддерживаются, нужен 3.14
+    # Версии ниже 3.14 не поддерживаются
     return {
         'supported': False,
         'gpu_supported': False,
-        'message': f'Python {major}.{minor} не поддерживается. Требуется Python 3.14. Выполните: python scripts/setup_python_gpu.py или установите Python 3.14.',
-        'recommended': 'Python 3.14'
+        'message': f'Python {major}.{minor} не поддерживается. Требуется Python 3.14+. Выполните: python scripts/ensure_python314_venv.py или установите Python 3.14+.',
+        'recommended': 'Python 3.14+'
     }
 
 def check_gpu_available():
@@ -111,13 +111,13 @@ def install_tensorflow_with_gpu(has_gpu=False):
     """Устанавливает TensorFlow (с GPU при Python 3.12 и наличии GPU)"""
     python_info = check_python_version()
     
-    # TensorFlow не поддерживает Python 3.14
-    if python_info['supported'] and sys.version_info.minor == 14:
-        logger.warning("⚠️ TensorFlow НЕ поддерживает Python 3.14!")
+    # TensorFlow не поддерживает Python 3.14+
+    if python_info['supported'] and sys.version_info.minor >= 14:
+        logger.warning("⚠️ TensorFlow НЕ поддерживает Python 3.14+!")
         logger.warning("⚠️ Для использования TensorFlow создайте .venv_gpu с Python 3.12:")
         logger.warning("   python scripts/setup_python_gpu.py")
         logger.warning("   Затем запускайте ai.py через .venv_gpu")
-        return False, "TensorFlow не поддерживает Python 3.14. Используйте .venv_gpu с Python 3.12"
+        return False, "TensorFlow не поддерживает Python 3.14+. Используйте .venv_gpu с Python 3.12"
     
     if not python_info['supported']:
         logger.warning("Требуется Python 3.14 (или 3.12 для TensorFlow). Установка TensorFlow пропущена.")

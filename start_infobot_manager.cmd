@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 cd /d %~dp0
 
-REM InfoBot требует Python 3.14 (fallback на 3.12)
+REM InfoBot требует Python 3.14 или выше
 set "PYTHON_FOUND=0"
 set "PYTHON_CMD="
 
@@ -22,30 +22,12 @@ if !PYTHON_FOUND!==0 (
     )
 )
 
-REM Fallback: проверяем py -3.12
+REM Проверяем python (должна быть 3.14 или выше)
 if !PYTHON_FOUND!==0 (
-    py -3.12 --version >nul 2>&1
-    if !errorlevel!==0 (
-        set "PYTHON_FOUND=1"
-        set "PYTHON_CMD=py -3.12"
-    )
-)
-
-REM Проверяем python (должна быть 3.14 или 3.12)
-if !PYTHON_FOUND!==0 (
-    python -c "import sys; exit(0 if sys.version_info[:2]==(3,14) or sys.version_info[:2]==(3,12) else 1)" >nul 2>&1
+    python -c "import sys; exit(0 if sys.version_info[:2]>=(3,14) else 1)" >nul 2>&1
     if !errorlevel!==0 (
         set "PYTHON_FOUND=1"
         set "PYTHON_CMD=python"
-    )
-)
-
-REM Проверяем python3.12 (fallback)
-if !PYTHON_FOUND!==0 (
-    python3.12 --version >nul 2>&1
-    if !errorlevel!==0 (
-        set "PYTHON_FOUND=1"
-        set "PYTHON_CMD=python3.12"
     )
 )
 
@@ -197,7 +179,10 @@ if exist .venv_gpu\Scripts\activate.bat (
     call .venv\Scripts\activate.bat
     set "PYTHON_BIN=python"
 ) else (
-    if not "!PYTHON_CMD!"=="" (set "PYTHON_BIN=!PYTHON_CMD!") else (set "PYTHON_BIN=py -3.14")
+    if not "!PYTHON_CMD!"=="" (set "PYTHON_BIN=!PYTHON_CMD!") else (
+        echo [ERROR] Python 3.14+ не найден!
+        exit /b 1
+    )
 )
 
 !PYTHON_BIN! launcher\infobot_manager.py %*

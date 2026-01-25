@@ -11,22 +11,17 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 PYTHON_BIN=""
-for c in python3.14 python3.12 python3; do
+for c in python3.14 python3; do
   if command -v "$c" >/dev/null 2>&1; then
     v=$("$c" -c 'import sys; print(sys.version_info.major, sys.version_info.minor)' 2>/dev/null) || continue
-    if [[ "$v" == "3 14" ]]; then
+    if [[ "$v" == "3 14" ]] || [[ "$v" =~ ^3\ (1[4-9]|[2-9][0-9])$ ]]; then
       PYTHON_BIN=$(command -v "$c")
       break
-    elif [[ "$v" == "3 12" ]]; then
-      # Fallback на 3.12 если 3.14 не найден
-      if [[ -z "$PYTHON_BIN" ]]; then
-        PYTHON_BIN=$(command -v "$c")
-      fi
     fi
   fi
 done
 if [[ -z "$PYTHON_BIN" ]]; then
-  echo "[ERROR] Python 3.14 not found. Install: https://www.python.org/downloads/"
+  echo "[ERROR] Python 3.14+ required. Install: https://www.python.org/downloads/"
   echo "       Or: brew install python@3.14  (macOS)"
   exit 1
 fi
