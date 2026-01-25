@@ -70,12 +70,12 @@ if sys.version_info >= (3, 14) and os.environ.get('INFOBOT_AI_VENV_RESTART') != 
                     with open(requirements, 'r', encoding='utf-8') as f:
                         content = f.read()
                     
-                    # Заменяем TensorFlow на версию для Python 3.12
-                    content = re.sub(r'tensorflow[^;\n]*;.*python_version.*', 'tensorflow==2.15.0', content)
-                    content = re.sub(r'tf-nightly[^;\n]*;.*python_version.*', 'tensorflow==2.15.0', content)
-                    content = content.replace('tf-nightly>=2.21.0.dev', 'tensorflow==2.15.0')
-                    content = content.replace('tensorflow>=2.15.0; python_version < "3.13"', 'tensorflow==2.15.0')
-                    content = content.replace('tensorflow>=2.16.0', 'tensorflow==2.15.0')
+                    # Заменяем TensorFlow на версию для Python 3.12 (используем 2.16.1 - первая стабильная версия для Python 3.12)
+                    content = re.sub(r'tensorflow[^;\n]*;.*python_version.*', 'tensorflow==2.16.1', content)
+                    content = re.sub(r'tf-nightly[^;\n]*;.*python_version.*', 'tensorflow==2.16.1', content)
+                    content = content.replace('tf-nightly>=2.21.0.dev', 'tensorflow==2.16.1')
+                    content = content.replace('tensorflow>=2.15.0; python_version < "3.13"', 'tensorflow==2.16.1')
+                    content = content.replace('tensorflow>=2.16.0', 'tensorflow==2.16.1')
                     
                     with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tmp:
                         tmp.write(content)

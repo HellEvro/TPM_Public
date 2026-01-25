@@ -5252,14 +5252,23 @@ class AIDatabase:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Получаем список символов с ограничением
-                cursor.execute("""
-                    SELECT DISTINCT symbol
-                    FROM candles_history
-                    WHERE timeframe = ?
-                    ORDER BY symbol
-                    LIMIT ?
-                """, (timeframe, max_symbols))
+                # Получаем список символов с ограничением (если max_symbols > 0)
+                if max_symbols > 0:
+                    cursor.execute("""
+                        SELECT DISTINCT symbol
+                        FROM candles_history
+                        WHERE timeframe = ?
+                        ORDER BY symbol
+                        LIMIT ?
+                    """, (timeframe, max_symbols))
+                else:
+                    # Без ограничения - загружаем все символы
+                    cursor.execute("""
+                        SELECT DISTINCT symbol
+                        FROM candles_history
+                        WHERE timeframe = ?
+                        ORDER BY symbol
+                    """, (timeframe,))
                 symbols = [row[0] for row in cursor.fetchall()]
                 
                 if not symbols:

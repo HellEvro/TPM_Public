@@ -1846,15 +1846,16 @@ class AITrainer:
                 return market_data
             
             try:
-                # Ограничиваем загрузку для экономии памяти: максимум 30 символов, 1000 свечей на символ
+                # ✅ ИСПРАВЛЕНО: Загружаем свечи для ВСЕХ монет (не ограничиваем max_symbols=30)
+                # Это позволяет обучаться на всех доступных монетах, а не только на первых 30 по алфавиту
                 candles_data = self.ai_db.get_all_candles_dict(
                     timeframe='6h',
-                    max_symbols=30,
+                    max_symbols=0,  # 0 = без ограничения (загружаем все монеты)
                     max_candles_per_symbol=1000
                 )
                 if candles_data:
                     total_candles = sum(len(c) for c in candles_data.values())
-                    logger.info(f"✅ Загружено {len(candles_data)} монет из БД ({total_candles:,} свечей, ограничено для экономии памяти)")
+                    logger.info(f"✅ Загружено {len(candles_data)} монет из БД ({total_candles:,} свечей, БЕЗ ограничений - все доступные монеты)")
                     
                     if 'latest' not in market_data:
                         market_data['latest'] = {}
@@ -2424,29 +2425,54 @@ class AITrainer:
             # Обновляем количество сделок для отслеживания
             self._last_real_trades_training_count = len(trades)
             
-            # 4. Определяем, по каким монетам есть сделки, и загружаем свечи ТОЛЬКО для них
-            # Это критично, чтобы не пропускать сделки из-за ограничения max_symbols=30
+            # 4. Загружаем свечи для ВСЕХ монет (не только для тех, по которым есть сделки)
+            # Это позволяет обучаться на всех доступных монетах, а не только на тех, по которым уже были сделки
+            logger.info("📊 Загрузка свечей для ВСЕХ доступных монет (не только для монет из сделок)...")
+            market_data = self._load_market_data()
+            
+            # Дополнительно: убеждаемся, что свечи загружены для монет из сделок (если их нет в общем списке)
             symbols_from_trades = set()
             for trade in trades:
                 symbol = trade.get('symbol')
                 if symbol:
                     symbols_from_trades.add(symbol.upper())
             
-            logger.info(f"📊 Найдено {len(symbols_from_trades)} уникальных монет в сделках")
-            if len(symbols_from_trades) > 0:
-                logger.info(f"   💡 Монеты: {', '.join(sorted(list(symbols_from_trades))[:20])}{'...' if len(symbols_from_trades) > 20 else ''}")
+            if symbols_from_trades:
+                logger.info(f"📊 Найдено {len(symbols_from_trades)} уникальных монет в сделках")
+                logger.info(f"   💡 Монеты из сделок: {', '.join(sorted(list(symbols_from_trades))[:20])}{'...' if len(symbols_from_trades) > 20 else ''}")
+                
+                # Проверяем, есть ли свечи для монет из сделок
+                latest = market_data.get('latest', {})
+                candles_data = latest.get('candles', {})
+                symbols_without_candles = symbols_from_trades - set(candles_data.keys())
+                if symbols_without_candles:
+                    logger.warning(f"   ⚠️ Нет свечей для {len(symbols_without_candles)} монет из сделок:")
+                    logger.warning(f"      {', '.join(sorted(list(symbols_without_candles))[:10])}{'...' if len(symbols_without_candles) > 10 else ''}")
+                    logger.warning(f"   💡 Загружаем свечи для этих монет отдельно...")
+                    # Догружаем свечи для монет из сделок, которых нет в общем списке
+                    additional_candles = self._load_market_data_for_symbols(list(symbols_without_candles))
+                    additional_latest = additional_candles.get('latest', {})
+                    additional_candles_data = additional_latest.get('candles', {})
+                    if additional_candles_data:
+                        # Добавляем недостающие свечи в общий список
+                        if 'latest' not in market_data:
+                            market_data['latest'] = {}
+                        if 'candles' not in market_data['latest']:
+                            market_data['latest']['candles'] = {}
+                        market_data['latest']['candles'].update(additional_candles_data)
+                        logger.info(f"   ✅ Догружены свечи для {len(additional_candles_data)} монет из сделок")
             
-            # Загружаем свечи для монет из сделок
-            market_data = self._load_market_data_for_symbols(list(symbols_from_trades))
+            # Получаем финальный список свечей после всех загрузок
             latest = market_data.get('latest', {})
             candles_data = latest.get('candles', {})
             
-            # Диагностика: какие монеты из сделок не имеют свечей
-            symbols_without_candles = symbols_from_trades - set(candles_data.keys())
-            if symbols_without_candles:
-                logger.warning(f"   ⚠️ Нет свечей для {len(symbols_without_candles)} монет из сделок:")
-                logger.warning(f"      {', '.join(sorted(list(symbols_without_candles))[:10])}{'...' if len(symbols_without_candles) > 10 else ''}")
-                logger.warning(f"   💡 Эти сделки будут пропущены!")
+            # Диагностика: какие монеты из сделок не имеют свечей (после всех попыток загрузки)
+            if symbols_from_trades:
+                symbols_without_candles = symbols_from_trades - set(candles_data.keys())
+                if symbols_without_candles:
+                    logger.warning(f"   ⚠️ Нет свечей для {len(symbols_without_candles)} монет из сделок (после всех попыток загрузки):")
+                    logger.warning(f"      {', '.join(sorted(list(symbols_without_candles))[:10])}{'...' if len(symbols_without_candles) > 10 else ''}")
+                    logger.warning(f"   💡 Эти сделки будут пропущены!")
             
             if not candles_data:
                 logger.warning("⚠️ Нет свечей для анализа")
