@@ -78,7 +78,7 @@ def _install_python314_plus() -> bool:
             )
             if result.returncode == 0:
                 # Пробуем установить Python 3.14.2 или выше
-                print("[INFO] Установка Python 3.14.2 через winget...")
+                print("[INFO] Установка Python 3.14.2+ через winget...")
                 install_result = subprocess.run(
                     ["winget", "install", "--id", "Python.Python.3.14", "--silent", "--accept-package-agreements", "--accept-source-agreements"],
                     capture_output=True,
@@ -86,7 +86,7 @@ def _install_python314_plus() -> bool:
                     timeout=300
                 )
                 if install_result.returncode == 0:
-                    print("[OK] Python 3.14 установлен")
+                    print("[OK] Python 3.14.2+ установлен")
                     time.sleep(3)  # Даем время системе обновить PATH
                     return True
                 else:
@@ -108,15 +108,15 @@ def _install_python314_plus() -> bool:
             ]:
                 if shutil.which(pkg_mgr):
                     try:
-                        print(f"[INFO] Установка Python 3.14 через {pkg_mgr}...")
+                        print(f"[INFO] Установка Python 3.14.2+ через {pkg_mgr}...")
                         # Для apt-get нужно разделить команды
                         if pkg_mgr == "apt-get":
                             subprocess.run(["sudo", "apt-get", "update", "-qq"], timeout=60, check=True)
                             subprocess.run(["sudo", "apt-get", "install", "-y", "python3.14", "python3.14-venv"], timeout=300, check=True)
                         else:
-                            cmd = install_cmd[1:] if install_cmd[0] == "sudo else install_cmd
-                            subprocess.run(cmd, timeout=300, check=True)
-                        print("[OK] Python 3.14 установлен")
+                            # Для yum, dnf, pacman
+                            subprocess.run(install_cmd, timeout=300, check=True)
+                        print("[OK] Python 3.14.2+ установлен")
                         return True
                     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, Exception) as e:
                         print(f"[WARNING] Ошибка установки через {pkg_mgr}: {e}")
@@ -124,9 +124,9 @@ def _install_python314_plus() -> bool:
         elif system == "Darwin":  # macOS
             if shutil.which("brew"):
                 try:
-                    print("[INFO] Установка Python 3.14 через brew...")
+                    print("[INFO] Установка Python 3.14.2+ через brew...")
                     subprocess.run(["brew", "install", "python@3.14"], timeout=600, check=True)
-                    print("[OK] Python 3.14 установлен")
+                    print("[OK] Python 3.14.2+ установлен")
                     return True
                 except (subprocess.CalledProcessError, subprocess.TimeoutExpired, Exception) as e:
                     print(f"[WARNING] Ошибка установки через brew: {e}")
@@ -159,7 +159,7 @@ def _find_python314_plus() -> str | None:
             continue
     
     # Python 3.14+ не найден - пробуем установить
-    print("[INFO] Python 3.14+ не найден, пытаемся установить автоматически...")
+    print("[INFO] Python 3.14.2+ не найден, пытаемся установить автоматически...")
     if _install_python314_plus():
         # После установки пробуем найти снова
         time.sleep(2)
@@ -1423,7 +1423,7 @@ class InfoBotManager(tk.Tk):
                 python314 = _find_python314_plus()
                 if not python314:
                     self.log(
-                        "Python 3.14+ не найден и автоматическая установка не удалась.",
+                        "Python 3.14.2+ не найден и автоматическая установка не удалась.",
                         channel="system",
                     )
                     self.log(
@@ -1438,12 +1438,12 @@ class InfoBotManager(tk.Tk):
                         major, minor = version
                         self.log(f"Используем Python {major}.{minor}: {python_cmd}", channel="system")
                     else:
-                        self.log(f"Используем Python 3.14+: {python_cmd}", channel="system")
+                        self.log(f"Используем Python 3.14.2+: {python_cmd}", channel="system")
                 
                 try:
                     cmd = python_cmd.split() if " " in python_cmd else [python_cmd]
                     self._stream_command(
-                        "Создание окружения с Python 3.14",
+                        "Создание окружения с Python 3.14.2+",
                         cmd + ["-m", "venv", str(VENV_DIR)],
                         channel="system",
                     )
