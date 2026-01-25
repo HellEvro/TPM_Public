@@ -116,14 +116,13 @@ def install_tensorflow_with_gpu(has_gpu=False):
         logger.warning("⚠️ TensorFlow официально НЕ поддерживает Python 3.14+")
         logger.info("🔄 Пытаемся установить через tf-nightly (экспериментальная поддержка)...")
         
-        # Пробуем установить tf-nightly для Python 3.14+
+        # Пробуем установить TensorFlow для Python 3.14+ (tf-nightly НЕ поддерживает Python 3.14)
+        # Пробуем альтернативные методы
         installation_methods = [
-            # Метод 1: tf-nightly (может иметь экспериментальную поддержку Python 3.14)
-            ([sys.executable, '-m', 'pip', 'install', '--upgrade', 'tf-nightly', '--no-warn-script-location'], "tf-nightly (экспериментальная)"),
-            # Метод 2: tf-nightly[and-cuda] если есть GPU
-            ([sys.executable, '-m', 'pip', 'install', '--upgrade', 'tf-nightly[and-cuda]', '--no-warn-script-location'], "tf-nightly[and-cuda] (экспериментальная)") if has_gpu else None,
-            # Метод 3: tensorflow без версии (может сработать)
+            # Метод 1: tensorflow без версии (может сработать, если есть сборка для Python 3.14)
             ([sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow', '--no-warn-script-location'], "tensorflow (без версии)"),
+            # Метод 2: tensorflow[and-cuda] если есть GPU
+            ([sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow[and-cuda]', '--no-warn-script-location'], "tensorflow[and-cuda]") if has_gpu else None,
         ]
         
         # Убираем None значения
@@ -154,8 +153,11 @@ def install_tensorflow_with_gpu(has_gpu=False):
         
         # Если все методы не сработали
         logger.error("❌ Не удалось установить TensorFlow на Python 3.14+")
+        logger.warning("⚠️ TensorFlow официально НЕ поддерживает Python 3.14+")
+        logger.warning("⚠️ tf-nightly также НЕ поддерживает Python 3.14+ (только 3.10-3.12)")
         logger.warning("💡 Рекомендуется создать .venv_gpu с Python 3.12:")
         logger.warning("   python scripts/setup_python_gpu.py")
+        logger.warning("💡 Или используйте Python 3.12 глобально для TensorFlow")
         return False, "TensorFlow не удалось установить на Python 3.14+. Используйте .venv_gpu с Python 3.12"
     
     if not python_info['supported']:
