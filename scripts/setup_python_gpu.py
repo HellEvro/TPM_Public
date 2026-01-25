@@ -146,6 +146,24 @@ def install_dependencies(venv_path, project_root):
                 print("[OK] TensorFlow (CPU) установлен")
         
         print("[OK] Все зависимости установлены")
+        
+        # Компилируем защищенные модули под Python 3.12 для .venv_gpu
+        print("[INFO] Компиляция защищенных модулей под Python 3.12...")
+        try:
+            compile_script = project_root / 'license_generator' / 'compile_all.py'
+            result = subprocess.run(
+                [str(python), str(compile_script)],
+                cwd=project_root,
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                print("[OK] Защищенные модули скомпилированы под Python 3.12")
+            else:
+                print(f"[WARNING] Ошибка компиляции модулей: {result.stderr[:200]}")
+        except Exception as e:
+            print(f"[WARNING] Не удалось скомпилировать модули: {e}")
+        
         return True
     except subprocess.CalledProcessError as e:
         print(f"[ERROR] Ошибка установки: {e}")

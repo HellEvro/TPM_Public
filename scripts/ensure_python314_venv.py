@@ -239,6 +239,29 @@ def main():
     if not upgrade_dependencies(venv_dir, project_root):
         return 1
     
+    # Компилируем защищенные модули под Python 3.14
+    print()
+    print("[INFO] Компиляция защищенных модулей под Python 3.14...")
+    try:
+        compile_script = project_root / 'license_generator' / 'compile_all.py'
+        if os.name == 'nt':
+            venv_python = venv_dir / 'Scripts' / 'python.exe'
+        else:
+            venv_python = venv_dir / 'bin' / 'python'
+        
+        result = subprocess.run(
+            [str(venv_python), str(compile_script)],
+            cwd=project_root,
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0:
+            print("[OK] Защищенные модули скомпилированы под Python 3.14")
+        else:
+            print(f"[WARNING] Ошибка компиляции модулей: {result.stderr[:200] if result.stderr else 'unknown error'}")
+    except Exception as e:
+        print(f"[WARNING] Не удалось скомпилировать модули: {e}")
+    
     print()
     print("=" * 60)
     print("[OK] .venv обновлен для Python 3.14")

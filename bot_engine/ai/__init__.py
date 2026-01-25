@@ -100,8 +100,14 @@ except ImportError as e:
     err_msg = str(e).lower()
     if "bad magic number" in err_msg or "bad magic" in err_msg:
         # Если .pyc несовместим - сообщаем пользователю
-        _logger.error(f"[AI] [ERROR] ai_manager.pyc несовместим с текущей версией Python: {sys.version.split()[0]}")
-        _logger.error("[AI] [ERROR] Выполните: python license_generator/compile_all.py")
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        _logger.error(f"[AI] [ERROR] ai_manager.pyc несовместим с текущей версией Python: {python_version}")
+        if python_version == "3.12":
+            _logger.error("[AI] [ERROR] Выполните: python scripts/setup_python_gpu.py (для .venv_gpu)")
+            _logger.error("[AI] [ERROR] Или: .venv_gpu\\Scripts\\python license_generator\\compile_all.py")
+        else:
+            _logger.error("[AI] [ERROR] Выполните: python scripts/ensure_python314_venv.py (для .venv)")
+            _logger.error("[AI] [ERROR] Или: python license_generator/compile_all.py")
         __all__ = []
     else:
         # Модули еще не созданы - это нормально на этапе разработки
