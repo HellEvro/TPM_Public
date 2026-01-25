@@ -5,96 +5,9 @@
 Вся рабочая логика находится в bot_engine/ai/_ai_launcher.pyc
 """
 
-import os
-import sys
-import subprocess
-from pathlib import Path
-
-# Автоматический выбор Python окружения для TensorFlow
-# Приоритет: .venv_gpu (Python 3.12) > глобальный Python 3.12 > текущий Python
-if not os.environ.get('INFOBOT_AI_VENV_RESTART'):
-    project_root = Path(__file__).resolve().parent
-    current_python_version = sys.version_info[:2]
-    
-    # Определяем путь к .venv_gpu
-    if os.name == 'nt':
-        venv_gpu_python = project_root / '.venv_gpu' / 'Scripts' / 'python.exe'
-    else:
-        venv_gpu_python = project_root / '.venv_gpu' / 'bin' / 'python'
-    
-    # Если .venv_gpu существует и текущий Python 3.14+ → перезапуск через .venv_gpu (для TensorFlow)
-    if venv_gpu_python.exists() and current_python_version >= (3, 14):
-        print(f"[INFO] Python {current_python_version[0]}.{current_python_version[1]} обнаружен, переключаюсь на .venv_gpu (Python 3.12) для TensorFlow")
-        
-        # Проверяем, установлены ли зависимости в .venv_gpu
-        try:
-            check_result = subprocess.run(
-                [str(venv_gpu_python), '-c', 'import requests, ccxt'],
-                capture_output=True,
-                timeout=5
-            )
-            if check_result.returncode != 0:
-                print("[INFO] Зависимости не установлены в .venv_gpu, устанавливаю...")
-                # Устанавливаем зависимости
-                req_file = project_root / 'requirements.txt'
-                if req_file.exists():
-                    # Для Python 3.12 нужно использовать tensorflow==2.15.0 вместо tf-nightly
-                    import tempfile
-                    import re
-                    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tmp:
-                        with open(req_file, 'r', encoding='utf-8') as f:
-                            content = f.read()
-                            # Для Python 3.12 заменяем tf-nightly и маркеры на tensorflow==2.15.0
-                            content = re.sub(r'tensorflow[^;\n]*;.*python_version.*', 'tensorflow==2.15.0', content)
-                            content = re.sub(r'tf-nightly[^;\n]*;.*python_version.*', 'tensorflow==2.15.0', content)
-                            content = content.replace('tf-nightly>=2.21.0.dev', 'tensorflow==2.15.0')
-                            content = content.replace('tensorflow>=2.15.0; python_version < "3.13"', 'tensorflow==2.15.0')
-                        tmp.write(content)
-                        tmp_path = tmp.name
-                    
-                    try:
-                        # Увеличиваем таймаут до 600 секунд (10 минут) для больших пакетов типа TensorFlow
-                        install_result = subprocess.run(
-                            [str(venv_gpu_python), '-m', 'pip', 'install', '-r', tmp_path],
-                            cwd=project_root,
-                            timeout=600
-                        )
-                    finally:
-                        import os
-                        try:
-                            os.unlink(tmp_path)
-                        except:
-                            pass
-                    if install_result.returncode == 0:
-                        print("[OK] Зависимости установлены в .venv_gpu")
-                    else:
-                        print(f"[WARNING] Установка завершилась с кодом {install_result.returncode}, но продолжаем...")
-                        # Проверяем критичные модули
-                        critical_check = subprocess.run(
-                            [str(venv_gpu_python), '-c', 'import requests, ccxt'],
-                            capture_output=True,
-                            timeout=5
-                        )
-                        if critical_check.returncode == 0:
-                            print("[OK] Критичные модули (requests, ccxt) установлены")
-                        else:
-                            print("[WARNING] Критичные модули отсутствуют, возможны ошибки")
-        except subprocess.TimeoutExpired:
-            print("[WARNING] Установка зависимостей превысила таймаут, но процесс продолжается в фоне")
-            print("[INFO] Продолжаем запуск, зависимости установятся позже")
-        except Exception as e:
-            print(f"[WARNING] Не удалось проверить зависимости: {e}")
-        
-        os.environ['INFOBOT_AI_VENV_RESTART'] = 'true'
-        try:
-            subprocess.run([str(venv_gpu_python), __file__] + sys.argv[1:], check=False)
-            sys.exit(0)
-        except Exception as e:
-            print(f"[WARNING] Не удалось перезапустить через {venv_gpu_python}: {e}")
-            print("[INFO] Продолжаем с текущим Python (TensorFlow может быть недоступен)")
-
 # ⚠️ КРИТИЧНО: Устанавливаем переменную окружения для идентификации процесса ai.py
 # Это гарантирует, что функции из filters.py будут сохранять свечи в ai_data.db, а не в bots_data.db
+import os
 os.environ['INFOBOT_AI_PROCESS'] = 'true'
 
 # Настройка логирования ПЕРЕД импортом защищенного модуля
