@@ -108,104 +108,12 @@ def check_tensorflow_installation():
             }
 
 def install_tensorflow_with_gpu(has_gpu=False):
-    """Проверяет установку TensorFlow (установка выполняется через requirements.txt)"""
-    python_info = check_python_version()
-    
-    # TensorFlow должен устанавливаться через requirements.txt
-    # Эта функция только проверяет наличие и предупреждает о проблемах
-    if python_info['supported'] and sys.version_info.minor >= 14:
-        logger.warning("⚠️ TensorFlow официально НЕ поддерживает Python 3.14+")
-        logger.warning("⚠️ Установка через requirements.txt может не сработать")
-        logger.warning("💡 Рекомендуется создать .venv_gpu с Python 3.12:")
-        logger.warning("   python scripts/setup_python_gpu.py")
-        # Не пытаемся устанавливать - пусть pip из requirements.txt попробует
-        return False, "TensorFlow не поддерживает Python 3.14+. Используйте .venv_gpu с Python 3.12"
-    
-    if not python_info['supported']:
-        logger.warning("Требуется Python 3.14 (или 3.12 для TensorFlow). Установка TensorFlow пропущена.")
-        return False, python_info['message']
-    
-    # Если нет GPU или Python не поддерживает GPU - сразу устанавливаем CPU версию
-    if not has_gpu or not python_info['gpu_supported']:
-        if not has_gpu:
-            logger.info("NVIDIA GPU не обнаружен. Устанавливается TensorFlow (CPU версия)...")
-        else:
-            logger.warning(f"⚠️ {python_info['message']}")
-            logger.info("Устанавливается TensorFlow (CPU версия)...")
-        try:
-            result = subprocess.run(
-                [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow', '--no-warn-script-location'],
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 минут таймаут
-            )
-            return True, "CPU версия установлена"
-        except subprocess.TimeoutExpired:
-            return False, "Таймаут при установке TensorFlow (более 5 минут)"
-        except subprocess.CalledProcessError as e:
-            err = e.stderr
-            error_output = (err.decode('utf-8', errors='ignore') if isinstance(err, bytes) else (err or str(e)))
-            logger.error(f"Детали ошибки установки: {error_output[:500]}")
-            return False, f"Ошибка установки TensorFlow. Проверьте подключение к интернету и права доступа."
-    
-    # Только если есть GPU И Python поддерживает GPU - пытаемся установить tensorflow[and-cuda]
-    logger.info("Обнаружен NVIDIA GPU. Попытка установки TensorFlow с поддержкой GPU...")
-    
-    # Пробуем несколько подходов для установки GPU версии
-    installation_methods = [
-        # Метод 1: tensorflow[and-cuda] без версии
-        ([sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow[and-cuda]', '--no-warn-script-location'], "tensorflow[and-cuda]"),
-        # Метод 2: tensorflow 2.15 + nvidia-cudnn-cu12
-        ([sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow==2.15.0', 'nvidia-cudnn-cu12', '--no-warn-script-location'], "tensorflow 2.15 + CUDA libs"),
-        # Метод 3: просто tensorflow (может автоматически подхватить GPU если CUDA установлен)
-        ([sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow', '--no-warn-script-location'], "tensorflow (базовая версия)")
-    ]
-    
-    for cmd, method_name in installation_methods:
-        try:
-            logger.info(f"   Попытка установки через: {method_name}...")
-            result = subprocess.run(
-                cmd,
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=900  # 15 минут таймаут
-            )
-            logger.info(f"   ✅ Успешно установлено через: {method_name}")
-            return True, f"TensorFlow установлен ({method_name})"
-        except subprocess.TimeoutExpired:
-            logger.warning(f"   ⚠️ Таймаут при установке через {method_name}")
-            continue
-        except subprocess.CalledProcessError as e:
-            err = e.stderr
-            error_output = (err.decode('utf-8', errors='ignore') if isinstance(err, bytes) else (err or str(e)))
-            logger.debug(f"   ⚠️ Не удалось установить через {method_name}: {error_output[:200]}")
-            continue
-    
-    # Если все методы не сработали
-    logger.warning("⚠️ Не удалось установить TensorFlow с GPU поддержкой через автоматические методы")
-    logger.warning("   Установите вручную: pip install tensorflow[and-cuda]")
-    logger.warning("   Или установите базовую версию: pip install tensorflow")
-    return False, "Не удалось установить TensorFlow с GPU"
-    
-    # Если не получилось, устанавливаем базовый TensorFlow
-    try:
-        result = subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow', '--no-warn-script-location'],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=300  # 5 минут таймаут
-        )
-        return True, "TensorFlow установлен (базовая версия)"
-    except subprocess.TimeoutExpired:
-        return False, "Таймаут при установке TensorFlow (более 5 минут)"
-    except subprocess.CalledProcessError as e:
-        err = e.stderr
-        error_output = (err.decode('utf-8', errors='ignore') if isinstance(err, bytes) else (err or str(e)))
-        logger.error(f"Детали ошибки установки: {error_output[:500]}")
-        return False, f"Ошибка установки TensorFlow. Проверьте подключение к интернету и права доступа."
+    """УСТАРЕЛО: Установка TensorFlow теперь выполняется через requirements.txt"""
+    logger.warning("⚠️ Функция install_tensorflow_with_gpu() устарела")
+    logger.info("💡 TensorFlow устанавливается через: pip install -r requirements.txt")
+    if has_gpu:
+        logger.info("💡 Для GPU: pip install tensorflow[and-cuda]")
+    return False, "Установка TensorFlow выполняется через requirements.txt"
 
 def suggest_python_downgrade():
     """Напоминание: проект требует Python 3.12"""
@@ -220,7 +128,7 @@ def suggest_python_downgrade():
 
 def ensure_tensorflow_setup():
     """
-    Главная функция: проверяет и при необходимости устанавливает TensorFlow
+    Главная функция: проверяет наличие TensorFlow (установка выполняется через requirements.txt)
     Вызывается автоматически при импорте модуля
     """
     global _tensorflow_checked
@@ -265,23 +173,12 @@ def ensure_tensorflow_setup():
         tf_info = check_tensorflow_installation()
         
         if not tf_info['installed']:
-            # Устанавливаем TensorFlow только если есть GPU
-            # На ПК без GPU TensorFlow не нужен для работы системы
+            # TensorFlow должен устанавливаться через requirements.txt
+            logger.warning("⚠️ TensorFlow не установлен")
+            logger.info("💡 Установите TensorFlow через: pip install -r requirements.txt")
             if has_gpu:
-                logger.info("TensorFlow не установлен. Начинаю автоматическую установку (обнаружен GPU)...")
-                
-                success, message = install_tensorflow_with_gpu(has_gpu=has_gpu)
-                if success:
-                    logger.info(f"✅ {message}")
-                    # Перепроверяем установку
-                    tf_info = check_tensorflow_installation()
-                else:
-                    logger.error(f"❌ {message}")
-                    return False
-            else:
-                logger.info("ℹ️ TensorFlow не установлен, но GPU не обнаружен. Пропускаем установку TensorFlow.")
-                logger.info("ℹ️ AI система будет работать без TensorFlow (LSTM и некоторые функции будут недоступны).")
-                logger.info("ℹ️ Для использования GPU установите TensorFlow вручную на ПК с видеокартой.")
+                logger.info("💡 Или для GPU: pip install tensorflow[and-cuda]")
+            logger.info("ℹ️ AI система будет работать без TensorFlow (LSTM и некоторые функции будут недоступны).")
         
         # Выводим информацию о TensorFlow
         if tf_info['installed']:
