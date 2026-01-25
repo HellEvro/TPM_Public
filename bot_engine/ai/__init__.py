@@ -295,10 +295,22 @@ def check_premium_license(force_refresh: bool = False) -> bool:
 
     try:
         # Пытаемся загрузить license_checker из версионированной директории
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        _license_logger.info(f"[AI] [INFO] Попытка загрузки license_checker для Python {python_version}")
+        
         license_checker_module = _load_versioned_module('license_checker', 'bot_engine.ai.license_checker')
         if license_checker_module is not None:
             _license_logger.info(f"[AI] [INFO] Модуль license_checker успешно загружен из версионированной директории")
-            get_license_checker = license_checker_module.get_license_checker
+            # Проверяем, что модуль имеет нужный атрибут
+            if hasattr(license_checker_module, 'get_license_checker'):
+                get_license_checker = license_checker_module.get_license_checker
+                _license_logger.info(f"[AI] [INFO] Функция get_license_checker найдена в модуле")
+            else:
+                _license_logger.error(f"[AI] [ERROR] Модуль license_checker загружен, но не содержит get_license_checker")
+                _license_logger.error(f"[AI] [ERROR] Доступные атрибуты: {dir(license_checker_module)}")
+                _LICENSE_STATUS = False
+                _LICENSE_INFO = None
+                return False
         else:
             _license_logger.warning(f"[AI] [WARNING] Не удалось загрузить license_checker из версионированной директории, пробуем fallback")
             # Fallback к обычному импорту
