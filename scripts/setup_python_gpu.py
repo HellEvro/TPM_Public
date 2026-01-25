@@ -47,7 +47,7 @@ def check_python_311_available():
 def install_python312():
     """Автоматически устанавливает Python 3.12 через системные менеджеры пакетов"""
     if platform.system() == 'Windows':
-        # Windows: используем winget
+        # Windows: используем winget с параметрами для автономной установки
         try:
             result = subprocess.run(
                 ['winget', '--version'],
@@ -58,11 +58,19 @@ def install_python312():
             if result.returncode == 0:
                 print("[INFO] Установка Python 3.12 через winget...")
                 print("[INFO] Это может занять несколько минут, пожалуйста подождите...")
-                # Запускаем установку БЕЗ --silent чтобы видеть прогресс
-                # Используем Popen для вывода в реальном времени
+                print("[INFO] Используем автономный установщик для избежания проблем с Package Cache...")
+                # Используем --scope machine для установки в Program Files (не требует Package Cache)
+                # и --override для передачи параметров установщику
                 try:
                     process = subprocess.Popen(
-                        ['winget', 'install', '--id', 'Python.Python.3.12', '--accept-package-agreements', '--accept-source-agreements'],
+                        [
+                            'winget', 'install', 
+                            '--id', 'Python.Python.3.12',
+                            '--scope', 'machine',  # Установка для всех пользователей
+                            '--accept-package-agreements', 
+                            '--accept-source-agreements',
+                            '--override', '/quiet InstallAllUsers=1 PrependPath=1'  # Автономная установка
+                        ],
                         stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT,
                         text=True,
@@ -83,8 +91,8 @@ def install_python312():
                     if process.returncode == 0:
                         print("[OK] Python 3.12 установлен")
                         import time
-                        print("[INFO] Ожидание обновления PATH (5 секунд)...")
-                        time.sleep(5)
+                        print("[INFO] Ожидание обновления PATH (10 секунд)...")
+                        time.sleep(10)  # Увеличиваем задержку для обновления PATH
                         return True
                     else:
                         error_output = '\n'.join(output_lines[-10:])  # Последние 10 строк
@@ -92,24 +100,25 @@ def install_python312():
                         if error_output:
                             print(f"[WARNING] Последние строки вывода:\n{error_output}")
                         print("[INFO] Попробуйте установить Python 3.12 вручную:")
-                        print("   winget install Python.Python.3.12")
-                        print("   или скачайте с: https://www.python.org/downloads/release/python-3120/")
+                        print("   Скачайте автономный установщик: https://www.python.org/ftp/python/3.12.0/python-3.12.0-amd64.exe")
+                        print("   Запустите с параметрами: python-3.12.0-amd64.exe /quiet InstallAllUsers=1 PrependPath=1")
                 except Exception as e:
                     print(f"[ERROR] Ошибка при запуске winget: {e}")
                     print("[INFO] Попробуйте установить Python 3.12 вручную:")
-                    print("   winget install Python.Python.3.12")
+                    print("   Скачайте автономный установщик: https://www.python.org/ftp/python/3.12.0/python-3.12.0-amd64.exe")
             else:
                 print("[WARNING] winget не найден или недоступен")
+                print("[INFO] Установите Python 3.12 вручную:")
+                print("   Скачайте автономный установщик: https://www.python.org/ftp/python/3.12.0/python-3.12.0-amd64.exe")
         except subprocess.TimeoutExpired:
             print("[ERROR] Таймаут при установке Python 3.12 (более 10 минут)")
-            print("[INFO] Установка может продолжаться в фоне. Проверьте через несколько минут:")
-            print("   py -3.12 --version")
+            print("[INFO] Установка может продолжаться в фоне. Проверьте через несколько минут")
             return False
         except (FileNotFoundError, Exception) as e:
             print(f"[WARNING] Не удалось установить Python через winget: {e}")
             print("[INFO] Установите Python 3.12 вручную:")
-            print("   winget install Python.Python.3.12")
-            print("   или скачайте с: https://www.python.org/downloads/release/python-3120/")
+            print("   Скачайте автономный установщик: https://www.python.org/ftp/python/3.12.0/python-3.12.0-amd64.exe")
+            print("   Запустите с параметрами: python-3.12.0-amd64.exe /quiet InstallAllUsers=1 PrependPath=1")
     else:
         # Linux/macOS: используем системные менеджеры пакетов
         system = platform.system()
@@ -192,13 +201,16 @@ def find_python312_executable():
     except ImportError:
         pass  # winreg недоступен (не Windows)
     
-    # 2. Проверяем стандартные пути установки
+    # 2. Проверяем стандартные пути установки (исключая Package Cache)
     common_paths = [
         r"C:\Python312\python.exe",
         r"C:\Program Files\Python312\python.exe",
         r"C:\Program Files (x86)\Python312\python.exe",
+        r"C:\Program Files (x86)\Python312-32\python.exe",
         os.path.expanduser(r"~\AppData\Local\Programs\Python\Python312\python.exe"),
         os.path.expanduser(r"~\AppData\Local\Programs\Python\Python312-32\python.exe"),
+        # Также проверяем через py launcher, но только если он указывает на реальную установку
+        r"C:\Users\Evro\AppData\Local\Python\bin\python.exe",  # Пользовательский Python
     ]
     
     for path in common_paths:
