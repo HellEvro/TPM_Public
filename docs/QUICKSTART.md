@@ -23,7 +23,7 @@
    git pull
    ```
 2. **Запустите менеджер**:
-   - Windows: двойной клик по `start_infobot_manager.vbs` (или `start_infobot_manager.cmd`).
+   - Windows: двойной клик по `start_infobot_manager.vbs` (или `start_infobot_manager.bat`).
    - macOS/Linux: `chmod +x start_infobot_manager.sh && ./start_infobot_manager.sh`.
 3. **Следуйте шагам GUI**:
    - установка/обновление `.venv` и зависимостей (TensorFlow, scikit-learn, Flask, ccxt, ...);

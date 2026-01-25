@@ -88,7 +88,7 @@ try {
     Write-Warning "Failed to compile protected modules: $_"
 }
 
-$managerCmd = Join-Path $projectRoot "start_infobot_manager.cmd"
+$managerCmd = Join-Path $projectRoot "start_infobot_manager.bat"
 if (-not (Test-Path $managerCmd)) {
     "@echo off
 setlocal enabledelayedexpansion
@@ -107,7 +107,7 @@ Write-Host ""
 Write-Host "Installation complete!" -ForegroundColor Green
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
-Write-Host "  1. Run the manager: start_infobot_manager.cmd"
+Write-Host "  1. Run the manager: start_infobot_manager.bat"
 Write-Host "  2. Use the GUI to launch app.py, bots.py and ai.py"
 Write-Host "  3. Check updates via the GUI (Git required)"
 Write-Host ""
