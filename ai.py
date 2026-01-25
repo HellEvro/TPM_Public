@@ -5,9 +5,36 @@
 Вся рабочая логика находится в bot_engine/ai/_ai_launcher.pyc
 """
 
+import os
+import sys
+import subprocess
+from pathlib import Path
+
+# Автоматический перезапуск через .venv_gpu если он существует и текущий Python 3.14+
+# Это нужно для TensorFlow, который требует Python 3.12
+if not os.environ.get('INFOBOT_AI_VENV_RESTART'):
+    project_root = Path(__file__).resolve().parent
+    venv_gpu_python = None
+    
+    if os.name == 'nt':
+        venv_gpu_python = project_root / '.venv_gpu' / 'Scripts' / 'python.exe'
+    else:
+        venv_gpu_python = project_root / '.venv_gpu' / 'bin' / 'python'
+    
+    # Если .venv_gpu существует и текущий Python 3.14+, перезапускаем через .venv_gpu
+    if venv_gpu_python.exists() and sys.version_info[:2] >= (3, 14):
+        os.environ['INFOBOT_AI_VENV_RESTART'] = 'true'
+        try:
+            # Перезапускаем через .venv_gpu
+            subprocess.run([str(venv_gpu_python), __file__] + sys.argv[1:], check=False)
+            sys.exit(0)
+        except Exception as e:
+            # Если перезапуск не удался, продолжаем с текущим Python
+            print(f"[WARNING] Не удалось перезапустить через .venv_gpu: {e}")
+            print("[INFO] Продолжаем с текущим Python (TensorFlow может быть недоступен)")
+
 # ⚠️ КРИТИЧНО: Устанавливаем переменную окружения для идентификации процесса ai.py
 # Это гарантирует, что функции из filters.py будут сохранять свечи в ai_data.db, а не в bots_data.db
-import os
 os.environ['INFOBOT_AI_PROCESS'] = 'true'
 
 # Настройка логирования ПЕРЕД импортом защищенного модуля
