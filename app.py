@@ -2122,24 +2122,30 @@ def open_firewall_ports():
                 service_name = "InfoBot Web UI" if port == 5000 else "InfoBot Bot Service"
                 
                 # Проверяем существует ли правило
-                result = subprocess.run(
-                    ['netsh', 'advfirewall', 'firewall', 'show', 'rule', f'name={service_name}'],
-                    capture_output=True,
-                    text=True
-                )
-                
-                if service_name not in result.stdout:
-                    app_logger.info(f"[APP] 🔥 Открываем порт {port}...")
-                    subprocess.run([
-                        'netsh', 'advfirewall', 'firewall', 'add', 'rule',
-                        f'name={service_name}',
-                        'dir=in',
-                        'action=allow',
-                        'protocol=TCP',
-                        f'localport={port}'
-                    ], check=True)
-                    app_logger.info(f"[APP] ✅ Порт {port} открыт")
-                else:
+                try:
+                    result = subprocess.run(
+                        ['netsh', 'advfirewall', 'firewall', 'show', 'rule', f'name={service_name}'],
+                        capture_output=True,
+                        text=True,
+                        encoding='utf-8',
+                        errors='replace'
+                    )
+                    
+                    if result.stdout and service_name not in result.stdout:
+                        app_logger.info(f"[APP] 🔥 Открываем порт {port}...")
+                        subprocess.run([
+                            'netsh', 'advfirewall', 'firewall', 'add', 'rule',
+                            f'name={service_name}',
+                            'dir=in',
+                            'action=allow',
+                            'protocol=TCP',
+                            f'localport={port}'
+                        ], check=True, encoding='utf-8', errors='replace')
+                        app_logger.info(f"[APP] ✅ Порт {port} открыт")
+                    else:
+                        app_logger.info(f"[APP] ✅ Порт {port} уже открыт")
+                except Exception as e:
+                    app_logger.warning(f"[APP] ⚠️ Не удалось проверить/открыть порт {port}: {e}")
                     app_logger.info(f"[APP] ✅ Порт {port} уже открыт")
         
         elif system == 'Darwin':  # macOS

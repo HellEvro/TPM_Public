@@ -428,25 +428,30 @@ def open_firewall_port_5001():
         
         if system == 'Windows':
             # Проверяем правило для порта 5001
-            result = subprocess.run(
-                ['netsh', 'advfirewall', 'firewall', 'show', 'rule', 'name=InfoBot Bot Service'],
-                capture_output=True,
-                text=True
-            )
-            
-            if 'InfoBot Bot Service' not in result.stdout:
-                logger.info("🔥 Открываем порт 5001...")
-                subprocess.run([
-                    'netsh', 'advfirewall', 'firewall', 'add', 'rule',
-                    'name=InfoBot Bot Service',
-                    'dir=in',
-                    'action=allow',
-                    'protocol=TCP',
-                    f'localport={port}'
-                ], check=True)
-                logger.info("✅ Порт 5001 открыт")
-            else:
-                logger.info("✅ Порт 5001 уже открыт")
+            try:
+                result = subprocess.run(
+                    ['netsh', 'advfirewall', 'firewall', 'show', 'rule', 'name=InfoBot Bot Service'],
+                    capture_output=True,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace'
+                )
+                
+                if result.stdout and 'InfoBot Bot Service' not in result.stdout:
+                    logger.info("🔥 Открываем порт 5001...")
+                    subprocess.run([
+                        'netsh', 'advfirewall', 'firewall', 'add', 'rule',
+                        'name=InfoBot Bot Service',
+                        'dir=in',
+                        'action=allow',
+                        'protocol=TCP',
+                        f'localport={port}'
+                    ], check=True, encoding='utf-8', errors='replace')
+                    logger.info("✅ Порт 5001 открыт")
+                else:
+                    logger.info("✅ Порт 5001 уже открыт")
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось проверить/открыть порт 5001: {e}")
         
         elif system == 'Darwin':  # macOS
             logger.info("💡 На macOS откройте порт 5001 вручную")
