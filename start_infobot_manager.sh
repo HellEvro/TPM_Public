@@ -54,43 +54,43 @@ if [ $PYTHON_FOUND -eq 0 ]; then
   PKG_MGR=$(detect_package_manager)
   case "$PKG_MGR" in
     apt)
-      echo "[INFO] Установка Python 3.14 через apt..."
+      echo "[INFO] Установка Python 3.14.2+ через apt..."
       if sudo apt-get update -qq >/dev/null 2>&1 && \
          sudo apt-get install -y python3.14 python3.14-venv >/dev/null 2>&1; then
-        if check_python_314 python3.14; then
+        if check_python_314_plus python3.14; then
           PYTHON_FOUND=1
           PYTHON_CMD="python3.14"
         fi
       fi
       ;;
     yum)
-      echo "[INFO] Установка Python 3.14 через yum..."
+      echo "[INFO] Установка Python 3.14.2+ через yum..."
       if sudo yum install -y python3.14 >/dev/null 2>&1; then
-        check_python_314 python3.14 && PYTHON_FOUND=1 && PYTHON_CMD="python3.14"
+        check_python_314_plus python3.14 && PYTHON_FOUND=1 && PYTHON_CMD="python3.14"
       fi
       ;;
     dnf)
-      echo "[INFO] Установка Python 3.14 через dnf..."
+      echo "[INFO] Установка Python 3.14.2+ через dnf..."
       if sudo dnf install -y python3.14 >/dev/null 2>&1; then
-        check_python_314 python3.14 && PYTHON_FOUND=1 && PYTHON_CMD="python3.14"
+        check_python_314_plus python3.14 && PYTHON_FOUND=1 && PYTHON_CMD="python3.14"
       fi
       ;;
     pacman)
-      echo "[INFO] Установка Python через pacman..."
+      echo "[INFO] Установка Python 3.14.2+ через pacman..."
       if sudo pacman -S --noconfirm python >/dev/null 2>&1; then
-        check_python_312 python && PYTHON_FOUND=1 && PYTHON_CMD="python"
-        check_python_312 python3 && PYTHON_FOUND=1 && PYTHON_CMD="python3"
+        check_python_314_plus python && PYTHON_FOUND=1 && PYTHON_CMD="python"
+        check_python_314_plus python3 && PYTHON_FOUND=1 && PYTHON_CMD="python3"
       fi
       ;;
     brew)
-      echo "[INFO] Установка Python 3.14 через brew..."
+      echo "[INFO] Установка Python 3.14.2+ через brew..."
       if brew install python@3.14 >/dev/null 2>&1; then
-        check_python_314 python3.14 && PYTHON_FOUND=1 && PYTHON_CMD="python3.14"
+        check_python_314_plus python3.14 && PYTHON_FOUND=1 && PYTHON_CMD="python3.14"
       fi
       ;;
   esac
   if [ $PYTHON_FOUND -eq 0 ]; then
-    echo "[ERROR] Python 3.14+ не найден. Установите: https://www.python.org/downloads/"
+    echo "[ERROR] Python 3.14.2+ не найден. Установите: https://www.python.org/downloads/"
     exit 1
   fi
 fi
