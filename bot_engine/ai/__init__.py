@@ -112,31 +112,31 @@ def _get_versioned_module_path(module_name):
     # Путь к версионированному .pyc файлу
     versioned_path = version_dir / f"{module_name}.pyc"
     
-    # Подробное логирование для диагностики
-    _logger.debug(f"[AI] [DEBUG] Поиск модуля {module_name} для Python {python_version[0]}.{python_version[1]}")
-    _logger.debug(f"[AI] [DEBUG] Базовая директория: {base_dir}")
-    _logger.debug(f"[AI] [DEBUG] Версионированная директория: {version_dir}")
-    _logger.debug(f"[AI] [DEBUG] Ожидаемый путь: {versioned_path}")
-    _logger.debug(f"[AI] [DEBUG] Файл существует: {versioned_path.exists()}")
+    # Подробное логирование для диагностики (используем info, чтобы было видно всегда)
+    _logger.info(f"[AI] [INFO] Поиск модуля {module_name} для Python {python_version[0]}.{python_version[1]}")
+    _logger.info(f"[AI] [INFO] Базовая директория: {base_dir}")
+    _logger.info(f"[AI] [INFO] Версионированная директория: {version_dir}")
+    _logger.info(f"[AI] [INFO] Ожидаемый путь: {versioned_path}")
+    _logger.info(f"[AI] [INFO] Файл существует: {versioned_path.exists()}")
     
     # Если версионированный файл не найден, пробуем основную директорию (для обратной совместимости)
     if not versioned_path.exists():
         fallback_path = base_dir / f"{module_name}.pyc"
-        _logger.debug(f"[AI] [DEBUG] Версионированный файл не найден, пробуем fallback: {fallback_path}")
-        _logger.debug(f"[AI] [DEBUG] Fallback файл существует: {fallback_path.exists()}")
+        _logger.warning(f"[AI] [WARNING] Версионированный файл не найден, пробуем fallback: {fallback_path}")
+        _logger.warning(f"[AI] [WARNING] Fallback файл существует: {fallback_path.exists()}")
         if fallback_path.exists():
             return fallback_path
         # Проверяем, существует ли вообще директория с версионированными файлами
         if version_dir.exists():
-            _logger.warning(f"[AI] [WARNING] Директория {version_dir} существует, но файл {module_name}.pyc не найден")
+            _logger.error(f"[AI] [ERROR] Директория {version_dir} существует, но файл {module_name}.pyc не найден")
             # Показываем список файлов в директории
             try:
                 files_in_dir = list(version_dir.glob("*.pyc"))
-                _logger.warning(f"[AI] [WARNING] Файлы в {version_dir}: {[f.name for f in files_in_dir]}")
+                _logger.error(f"[AI] [ERROR] Файлы в {version_dir}: {[f.name for f in files_in_dir]}")
             except Exception as e:
-                _logger.warning(f"[AI] [WARNING] Ошибка при чтении директории: {e}")
+                _logger.error(f"[AI] [ERROR] Ошибка при чтении директории: {e}")
         else:
-            _logger.warning(f"[AI] [WARNING] Директория {version_dir} не существует")
+            _logger.error(f"[AI] [ERROR] Директория {version_dir} не существует")
         return None
     
     return versioned_path
