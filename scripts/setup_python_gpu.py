@@ -209,8 +209,8 @@ def find_python312_executable():
         r"C:\Program Files (x86)\Python312-32\python.exe",
         os.path.expanduser(r"~\AppData\Local\Programs\Python\Python312\python.exe"),
         os.path.expanduser(r"~\AppData\Local\Programs\Python\Python312-32\python.exe"),
-        # Также проверяем через py launcher, но только если он указывает на реальную установку
-        r"C:\Users\Evro\AppData\Local\Python\bin\python.exe",  # Пользовательский Python
+        # Также проверяем пользовательские установки Python
+        os.path.expanduser(r"~\AppData\Local\Python\bin\python.exe"),  # Пользовательский Python (универсальный путь)
     ]
     
     for path in common_paths:
