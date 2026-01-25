@@ -7,6 +7,75 @@ REM Устанавливаем кодировку для Python
 set PYTHONIOENCODING=utf-8
 set PYTHONUTF8=1
 
+REM InfoBot требует Python 3.14.2+ или выше
+set "PYTHON_FOUND=0"
+set "PYTHON_CMD="
+
+REM Проверяем py -3.14 (приоритет на Windows)
+py -3.14 --version >nul 2>&1
+if !errorlevel!==0 (
+    set "PYTHON_FOUND=1"
+    set "PYTHON_CMD=py -3.14"
+)
+
+REM Проверяем python3.14
+if !PYTHON_FOUND!==0 (
+    python3.14 --version >nul 2>&1
+    if !errorlevel!==0 (
+        set "PYTHON_FOUND=1"
+        set "PYTHON_CMD=python3.14"
+    )
+)
+
+REM Проверяем python (должна быть 3.14 или выше)
+if !PYTHON_FOUND!==0 (
+    python -c "import sys; exit(0 if sys.version_info[:2]>=(3,14) else 1)" >nul 2>&1
+    if !errorlevel!==0 (
+        set "PYTHON_FOUND=1"
+        set "PYTHON_CMD=python"
+    )
+)
+
+REM Если Python не найден — устанавливаем через winget
+if !PYTHON_FOUND!==0 (
+    winget --version >nul 2>&1
+    if !errorlevel!==0 (
+        echo [INFO] Установка Python 3.14.2+ через winget...
+        winget install --id Python.Python.3.14 --silent --accept-package-agreements --accept-source-agreements
+        timeout /t 8 /nobreak >nul
+        REM Проверяем установку
+        py -3.14 --version >nul 2>&1
+        if !errorlevel!==0 (
+            set "PYTHON_FOUND=1"
+            set "PYTHON_CMD=py -3.14"
+        ) else (
+            REM Пробуем еще раз после небольшой задержки
+            timeout /t 3 /nobreak >nul
+            py -3.14 --version >nul 2>&1
+            if !errorlevel!==0 (
+                set "PYTHON_FOUND=1"
+                set "PYTHON_CMD=py -3.14"
+            )
+        )
+    )
+    if !PYTHON_FOUND!==0 (
+        echo [ERROR] Python 3.14.2+ не найден. Установите: https://www.python.org/downloads/
+        start https://www.python.org/downloads/
+        pause
+        exit /b 1
+    )
+)
+
+REM Проверка и обновление .venv для Python 3.14
+if exist scripts\ensure_python314_venv.py (
+    echo [INFO] Проверка и обновление .venv для Python 3.14...
+    if not "!PYTHON_CMD!"=="" (
+        !PYTHON_CMD! scripts\ensure_python314_venv.py >nul 2>&1
+    ) else (
+        python scripts\ensure_python314_venv.py >nul 2>&1
+    )
+)
+
 REM Проверка наличия необходимых файлов
 if not exist app\config.py (
     if exist app\config.example.py (
@@ -26,38 +95,22 @@ if not exist app\config.py (
     )
 )
 
-if exist .venv\Scripts\activate.bat (
+REM Определение Python для запуска: .venv_gpu > .venv > найденный Python 3.14+
+if exist .venv_gpu\Scripts\activate.bat (
+    call .venv_gpu\Scripts\activate.bat
+    set "PYTHON_BIN=python"
+) else if exist .venv\Scripts\activate.bat (
     call .venv\Scripts\activate.bat
     set "PYTHON_BIN=python"
 ) else (
-    echo [WARN] Virtual environment not found. Falling back to system Python.
-    REM Пробуем разные варианты Python
-    if exist %SystemRoot%\py.exe (
-        %SystemRoot%\py.exe -3 --version >nul 2>&1
-        if errorlevel 1 (
-            set "PYTHON_BIN=python"
-        ) else (
-            set "PYTHON_BIN=py -3"
-        )
+    if not "!PYTHON_CMD!"=="" (
+        set "PYTHON_BIN=!PYTHON_CMD!"
     ) else (
-        set "PYTHON_BIN=python"
+        echo [ERROR] Python 3.14+ не найден!
+        pause
+        exit /b 1
     )
-    
-    REM Проверяем, что Python действительно доступен
-    "%PYTHON_BIN%" --version >nul 2>&1
-    if errorlevel 1 (
-        REM Пробуем python3
-        python3 --version >nul 2>&1
-        if not errorlevel 1 (
-            set "PYTHON_BIN=python3"
-        ) else (
-            REM Пробуем python3.exe
-            python3.exe --version >nul 2>&1
-            if not errorlevel 1 (
-                set "PYTHON_BIN=python3.exe"
-            )
-        )
-    )
+)
     
     REM Проверяем наличие зависимостей - если нет, запускаем автонастройку
     "%PYTHON_BIN%" -c "import flask" >nul 2>&1
@@ -88,17 +141,9 @@ REM Проверка наличия Python
 "%PYTHON_BIN%" --version >nul 2>&1
 if errorlevel 1 (
     echo.
-    echo [ERROR] Python not found!
+    echo [ERROR] Python 3.14.2+ не найден!
     echo.
-    echo Please install Python 3.8 or higher:
-    echo   1. Download from: https://www.python.org/downloads/
-    echo   2. During installation, check "Add Python to PATH"
-    echo   3. Restart this script after installation
-    echo.
-    echo Or try running manually:
-    echo   python --version
-    echo   py --version
-    echo   python3 --version
+    echo Установите Python 3.14.2 или выше: https://www.python.org/downloads/
     echo.
     pause
     exit /b 1
