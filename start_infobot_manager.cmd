@@ -179,7 +179,17 @@ if !GIT_FOUND!==1 (
     )
 )
 
-REM Определение Python для запуска: .venv_gpu (3.12) > .venv > py -3.12
+REM Проверка и обновление .venv для Python 3.14
+if exist scripts\ensure_python314_venv.py (
+    echo [INFO] Проверка и обновление .venv для Python 3.14...
+    if not "!PYTHON_CMD!"=="" (
+        !PYTHON_CMD! scripts\ensure_python314_venv.py >nul 2>&1
+    ) else (
+        python scripts\ensure_python314_venv.py >nul 2>&1
+    )
+)
+
+REM Определение Python для запуска: .venv_gpu > .venv > py -3.14
 if exist .venv_gpu\Scripts\activate.bat (
     call .venv_gpu\Scripts\activate.bat
     set "PYTHON_BIN=python"
@@ -187,8 +197,9 @@ if exist .venv_gpu\Scripts\activate.bat (
     call .venv\Scripts\activate.bat
     set "PYTHON_BIN=python"
 ) else (
-    if not "!PYTHON_CMD!"=="" (set "PYTHON_BIN=!PYTHON_CMD!") else (set "PYTHON_BIN=py -3.12")
+    if not "!PYTHON_CMD!"=="" (set "PYTHON_BIN=!PYTHON_CMD!") else (set "PYTHON_BIN=py -3.14")
 )
+
 !PYTHON_BIN! launcher\infobot_manager.py %*
 endlocal
 

@@ -183,7 +183,13 @@ if command_exists git; then
   fi
 fi
 
-# Определение Python для запуска: .venv_gpu (3.12) > .venv > python3.12
+# Проверка и обновление .venv для Python 3.14
+if [[ -f "scripts/ensure_python314_venv.py" ]]; then
+  echo "[INFO] Проверка и обновление .venv для Python 3.14..."
+  ${PYTHON_CMD:-python3} scripts/ensure_python314_venv.py >/dev/null 2>&1
+fi
+
+# Определение Python для запуска: .venv_gpu > .venv > python3.14
 if [[ -f ".venv_gpu/bin/activate" ]]; then
   source ".venv_gpu/bin/activate"
   PYTHON_BIN="python"
@@ -191,7 +197,8 @@ elif [[ -f ".venv/bin/activate" ]]; then
   source ".venv/bin/activate"
   PYTHON_BIN="python"
 else
-  PYTHON_BIN="${PYTHON_CMD:-python3.12}"
+  PYTHON_BIN="${PYTHON_CMD:-python3.14}"
 fi
+
 exec $PYTHON_BIN launcher/infobot_manager.py "$@"
 
