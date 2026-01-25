@@ -360,7 +360,6 @@ def create_venv(python_cmd, project_root, python_version="3.12"):
             return None
         else:
             # Пробуем найти через which/shutil
-            import shutil
             exe_path = shutil.which(python_cmd)
             if exe_path and os.path.exists(exe_path):
                 cmd = [exe_path]
