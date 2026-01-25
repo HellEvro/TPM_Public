@@ -228,18 +228,22 @@ def create_venv(python_cmd, project_root, python_version="3.11"):
 
 def install_dependencies(venv_path, project_root):
     """Устанавливает зависимости в .venv_gpu."""
-    pip = venv_path / ('Scripts' if platform.system() == 'win32' else 'bin') / 'pip'
     python = venv_path / ('Scripts' if platform.system() == 'win32' else 'bin') / 'python'
-    if not pip.exists():
-        pip = python.parent / ('pip.exe' if platform.system() == 'win32' else 'pip')
-    if not pip.exists():
-        print("[ERROR] pip не найден в .venv_gpu")
+    if platform.system() == 'win32':
+        python = venv_path / 'Scripts' / 'python.exe'
+    else:
+        python = venv_path / 'bin' / 'python'
+    
+    if not python.exists():
+        print("[ERROR] Python не найден в .venv_gpu")
         return False
+    
     # Используем requirements.txt для установки всех зависимостей (включая TensorFlow)
     req_main = project_root / 'requirements.txt'
     
     print("Установка зависимостей...")
     try:
+        # Всегда используем python -m pip вместо прямого вызова pip
         subprocess.run([str(python), '-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel', '--no-warn-script-location'], check=True)
         
         # Устанавливаем все зависимости из requirements.txt (включая TensorFlow для Python 3.12)
