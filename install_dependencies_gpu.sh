@@ -8,10 +8,12 @@ echo ""
 
 if [ ! -f ".venv_gpu/Scripts/python.exe" ]; then
     echo "[ERROR] .venv_gpu не найден!"
-    echo "[INFO] Запустите сначала: python scripts/setup_python_gpu.py"
+    echo "[INFO] Запустите сначала: py scripts/setup_python_gpu.py"
+    echo "[INFO] Или: python3 scripts/setup_python_gpu.py"
     exit 1
 fi
 
+echo "[INFO] Используется Python из .venv_gpu"
 echo "[INFO] Установка зависимостей из requirements.txt..."
 .venv_gpu/Scripts/python.exe -m pip install --upgrade pip
 .venv_gpu/Scripts/python.exe -m pip install -r requirements.txt
