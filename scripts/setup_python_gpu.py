@@ -44,8 +44,72 @@ def check_python_311_available():
             continue
     return False, None
 
+def install_python312():
+    """Автоматически устанавливает Python 3.12 через системные менеджеры пакетов"""
+    if platform.system() == 'Windows':
+        # Windows: используем winget
+        try:
+            result = subprocess.run(
+                ['winget', '--version'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                print("[INFO] Установка Python 3.12 через winget...")
+                install_result = subprocess.run(
+                    ['winget', 'install', '--id', 'Python.Python.3.12', '--silent', '--accept-package-agreements', '--accept-source-agreements'],
+                    capture_output=True,
+                    text=True,
+                    timeout=300
+                )
+                if install_result.returncode == 0:
+                    print("[OK] Python 3.12 установлен")
+                    import time
+                    time.sleep(3)  # Даем время системе обновить PATH
+                    return True
+                else:
+                    print(f"[WARNING] Ошибка установки через winget: {install_result.stderr[:200] if install_result.stderr else 'неизвестная ошибка'}")
+        except (FileNotFoundError, subprocess.TimeoutExpired, Exception) as e:
+            print(f"[WARNING] Не удалось установить Python через winget: {e}")
+    else:
+        # Linux/macOS: используем системные менеджеры пакетов
+        system = platform.system()
+        
+        if system == 'Linux':
+            # Определяем менеджер пакетов
+            for pkg_mgr, install_cmd in [
+                ('apt-get', ['sudo', 'apt-get', 'update', '-qq', '&&', 'sudo', 'apt-get', 'install', '-y', 'python3.12', 'python3.12-venv']),
+                ('yum', ['sudo', 'yum', 'install', '-y', 'python3.12']),
+                ('dnf', ['sudo', 'dnf', 'install', '-y', 'python3.12']),
+            ]:
+                if shutil.which(pkg_mgr):
+                    try:
+                        print(f"[INFO] Установка Python 3.12 через {pkg_mgr}...")
+                        if pkg_mgr == 'apt-get':
+                            subprocess.run(['sudo', 'apt-get', 'update', '-qq'], timeout=60, check=True)
+                            subprocess.run(['sudo', 'apt-get', 'install', '-y', 'python3.12', 'python3.12-venv'], timeout=300, check=True)
+                        else:
+                            subprocess.run(install_cmd, timeout=300, check=True)
+                        print("[OK] Python 3.12 установлен")
+                        return True
+                    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, Exception) as e:
+                        print(f"[WARNING] Ошибка установки через {pkg_mgr}: {e}")
+                        continue
+        elif system == 'Darwin':  # macOS
+            if shutil.which('brew'):
+                try:
+                    print("[INFO] Установка Python 3.12 через brew...")
+                    subprocess.run(['brew', 'install', 'python@3.12'], timeout=600, check=True)
+                    print("[OK] Python 3.12 установлен")
+                    return True
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired, Exception) as e:
+                    print(f"[WARNING] Ошибка установки через brew: {e}")
+    
+    return False
+
 def check_python_312_available():
-    """Проверяет, доступен ли Python 3.12 в системе."""
+    """Проверяет, доступен ли Python 3.12 в системе, при необходимости устанавливает"""
     # Сначала проверяем текущий Python
     if sys.version_info.major == 3 and sys.version_info.minor == 12:
         return True, 'python'  # Текущий Python уже 3.12
@@ -64,6 +128,22 @@ def check_python_312_available():
                 return True, launcher
         except (FileNotFoundError, subprocess.TimeoutExpired):
             continue
+    
+    # Python 3.12 не найден - пробуем установить
+    print("[INFO] Python 3.12 не найден, пытаемся установить автоматически...")
+    if install_python312():
+        # После установки пробуем найти снова
+        import time
+        time.sleep(2)
+        for cmd in commands:
+            try:
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                if r.returncode == 0 and '3.12' in (r.stdout or '') + (r.stderr or ''):
+                    launcher = 'py -3.12' if cmd[0] == 'py' else cmd[0]
+                    return True, launcher
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                continue
+    
     return False, None
 
 
