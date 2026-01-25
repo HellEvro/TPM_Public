@@ -57,21 +57,41 @@ def install_python312():
             )
             if result.returncode == 0:
                 print("[INFO] Установка Python 3.12 через winget...")
+                print("[INFO] Это может занять несколько минут, пожалуйста подождите...")
+                # Запускаем установку с выводом в реальном времени
                 install_result = subprocess.run(
                     ['winget', 'install', '--id', 'Python.Python.3.12', '--silent', '--accept-package-agreements', '--accept-source-agreements'],
-                    capture_output=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
                     text=True,
-                    timeout=300
+                    timeout=600,  # Увеличиваем таймаут до 10 минут
+                    bufsize=1
                 )
                 if install_result.returncode == 0:
                     print("[OK] Python 3.12 установлен")
                     import time
-                    time.sleep(3)  # Даем время системе обновить PATH
+                    print("[INFO] Ожидание обновления PATH...")
+                    time.sleep(5)  # Увеличиваем время ожидания
                     return True
                 else:
-                    print(f"[WARNING] Ошибка установки через winget: {install_result.stderr[:200] if install_result.stderr else 'неизвестная ошибка'}")
-        except (FileNotFoundError, subprocess.TimeoutExpired, Exception) as e:
+                    error_output = install_result.stdout or install_result.stderr or 'неизвестная ошибка'
+                    print(f"[WARNING] Ошибка установки через winget (код {install_result.returncode})")
+                    print(f"[WARNING] Вывод: {error_output[:500]}")
+                    print("[INFO] Попробуйте установить Python 3.12 вручную:")
+                    print("   winget install Python.Python.3.12")
+                    print("   или скачайте с: https://www.python.org/downloads/release/python-3120/")
+            else:
+                print("[WARNING] winget не найден или недоступен")
+        except subprocess.TimeoutExpired:
+            print("[ERROR] Таймаут при установке Python 3.12 (более 10 минут)")
+            print("[INFO] Установка может продолжаться в фоне. Проверьте через несколько минут:")
+            print("   py -3.12 --version")
+            return False
+        except (FileNotFoundError, Exception) as e:
             print(f"[WARNING] Не удалось установить Python через winget: {e}")
+            print("[INFO] Установите Python 3.12 вручную:")
+            print("   winget install Python.Python.3.12")
+            print("   или скачайте с: https://www.python.org/downloads/release/python-3120/")
     else:
         # Linux/macOS: используем системные менеджеры пакетов
         system = platform.system()
