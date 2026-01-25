@@ -220,6 +220,32 @@ def create_venv(python_cmd, project_root, python_version="3.11"):
     try:
         subprocess.run(create, check=True)
         print("[OK] .venv_gpu создан")
+        
+        # Небольшая задержка для завершения создания venv
+        import time
+        time.sleep(2)
+        
+        # Проверяем что Python доступен в venv
+        if platform.system() == 'win32':
+            venv_python = venv_path / 'Scripts' / 'python.exe'
+        else:
+            venv_python = venv_path / 'bin' / 'python'
+        
+        if venv_python.exists():
+            # Проверяем что Python работает
+            test_result = subprocess.run(
+                [str(venv_python), '--version'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if test_result.returncode == 0:
+                print(f"[OK] Python в venv работает: {test_result.stdout.strip()}")
+            else:
+                print(f"[WARNING] Python в venv не отвечает, но файл существует")
+        else:
+            print(f"[WARNING] Python не найден в venv по пути: {venv_python}")
+        
         return venv_path
     except subprocess.CalledProcessError as e:
         print(f"[ERROR] Ошибка: {e}")
