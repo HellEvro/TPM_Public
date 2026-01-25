@@ -269,6 +269,11 @@ def get_ai_system(*args, **kwargs):
 # Функция доступна через bot_engine.ai.get_ai_system(), но не экспортируется автоматически
 
 _license_logger = logging.getLogger('AI.License')
+# Убеждаемся, что логгер наследует уровень от корневого логгера
+_license_logger.setLevel(logging.DEBUG)
+# Если у логгера нет обработчиков, добавляем обработчик от корневого
+if not _license_logger.handlers:
+    _license_logger.propagate = True
 _LICENSE_STATUS = None
 _LICENSE_INFO = None
 _PROJECT_ROOT = None
