@@ -222,9 +222,33 @@ def find_python312_executable():
     for cmd in ['python3.12', 'python312']:
         exe_path = shutil.which(cmd)
         if exe_path and os.path.exists(exe_path):
-            # Проверяем что это не ссылка на py launcher
-            if 'WindowsApps' not in exe_path:
+            # Проверяем что это не ссылка на py launcher и не Package Cache
+            if 'WindowsApps' not in exe_path and 'Package Cache' not in exe_path:
                 possible_paths.append(exe_path)
+    
+    # 4. Проверяем все установленные версии Python через py launcher (но только для поиска реальных путей)
+    try:
+        # Используем py -0 для списка установленных версий, но не для запуска
+        result = subprocess.run(
+            ['py', '-0'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            # Парсим вывод и ищем Python 3.12
+            import re
+            for line in result.stdout.split('\n'):
+                if '3.12' in line:
+                    # Пытаемся извлечь путь из строки
+                    # Формат обычно: " -3.12-64    C:\Python312\python.exe"
+                    match = re.search(r'([A-Z]:[^\s]+python\.exe)', line)
+                    if match:
+                        path = match.group(1)
+                        if os.path.exists(path) and 'Package Cache' not in path:
+                            possible_paths.append(path)
+    except:
+        pass  # py launcher может быть недоступен
     
     # Проверяем каждый найденный путь
     for python_exe in possible_paths:
