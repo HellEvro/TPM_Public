@@ -7,6 +7,8 @@ LSTM Predictor для предсказания движения цены кри�
 - Вероятности движения
 
 Используется для улучшения точности входов в сделки.
+
+Теперь использует PyTorch вместо TensorFlow для лучшей поддержки Python 3.14+ и GPU.
 """
 
 import os
@@ -28,100 +30,124 @@ except ImportError:  # pragma: no cover - fallback если scikit-learn не у
 
 logger = logging.getLogger('LSTM')
 
-# Отключаем предупреждения TensorFlow
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-warnings.filterwarnings('ignore', category=UserWarning, module='keras')
+# Отключаем предупреждения PyTorch
+warnings.filterwarnings('ignore', category=UserWarning, module='torch')
 
-# Отключаем DEBUG логи TensorFlow через Python logging
-tensorflow_logger = logging.getLogger('tensorflow')
-tensorflow_logger.setLevel(logging.WARNING)
-tensorflow_python_logger = logging.getLogger('tensorflow.python')
-tensorflow_python_logger.setLevel(logging.WARNING)
-tensorflow_core_logger = logging.getLogger('tensorflow.core')
-tensorflow_core_logger.setLevel(logging.WARNING)
-# Удаляем все обработчики из TensorFlow логгеров
-for handler in tensorflow_logger.handlers[:]:
-    tensorflow_logger.removeHandler(handler)
-for handler in tensorflow_python_logger.handlers[:]:
-    tensorflow_python_logger.removeHandler(handler)
-for handler in tensorflow_core_logger.handlers[:]:
-    tensorflow_core_logger.removeHandler(handler)
-
-# Проверяем доступность TensorFlow
+# Проверяем доступность PyTorch
 try:
-    import tensorflow as tf
-    # Дополнительно отключаем логирование после импорта
-    tf.get_logger().setLevel(logging.WARNING)
-    from tensorflow import keras
-    from tensorflow.keras import layers
-    from tensorflow.keras.models import Sequential, load_model
-    from tensorflow.keras.layers import Input, LSTM, Dense, Dropout, BatchNormalization
-    from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+    import torch
+    import torch.nn as nn
+    import torch.optim as optim
+    from torch.utils.data import Dataset, DataLoader, TensorDataset
     from sklearn.preprocessing import MinMaxScaler
-    TENSORFLOW_AVAILABLE = True
+    PYTORCH_AVAILABLE = True
     
-    # Настройка GPU для TensorFlow
+    # Настройка GPU для PyTorch
     def configure_gpu():
-        """Настраивает TensorFlow для использования GPU NVIDIA (если доступен)"""
+        """Настраивает PyTorch для использования GPU NVIDIA (если доступен)"""
         try:
-            # Выводим информацию о версии TensorFlow
-            tf_version = tf.__version__
-            logger.debug(f"TensorFlow версия: {tf_version}")
+            # Выводим информацию о версии PyTorch
+            torch_version = torch.__version__
+            logger.debug(f"PyTorch версия: {torch_version}")
             
-            # Проверяем доступность GPU
-            gpus = tf.config.list_physical_devices('GPU')
-            
-            if gpus:
-                try:
-                    # В TensorFlow с CUDA обычно все найденные GPU - это NVIDIA
-                    # Используем первый доступный GPU
-                    primary_gpu = gpus[0]
-                    
-                    # Включаем рост памяти GPU по мере необходимости
-                    for gpu in gpus:
-                        tf.config.experimental.set_memory_growth(gpu, True)
-                    
-                    logger.info(f"✅ Найдено GPU устройств: {len(gpus)}")
-                    for i, gpu in enumerate(gpus):
-                        logger.info(f"   GPU {i}: {gpu.name}")
-                    
-                    # Проверяем, что GPU действительно доступен для вычислений
-                    # TensorFlow автоматически будет использовать GPU для всех операций
-                    logger.info(f"✅ GPU NVIDIA доступен и будет использоваться для обучения и предсказаний")
-                    logger.info(f"   Основное устройство: {primary_gpu.name}")
-                    
-                    return True, primary_gpu
-                except RuntimeError as e:
-                    logger.warning(f"⚠️ Ошибка настройки GPU: {e}")
-                    logger.info("Продолжаем с CPU...")
-                    return False, None
+            # Проверяем доступность CUDA
+            if torch.cuda.is_available():
+                gpu_count = torch.cuda.device_count()
+                primary_gpu = torch.device('cuda:0')
+                gpu_name = torch.cuda.get_device_name(0)
+                
+                logger.info(f"✅ Найдено GPU устройств: {gpu_count}")
+                for i in range(gpu_count):
+                    logger.info(f"   GPU {i}: {torch.cuda.get_device_name(i)}")
+                
+                logger.info(f"✅ GPU NVIDIA доступен и будет использоваться для обучения и предсказаний")
+                logger.info(f"   Основное устройство: {gpu_name}")
+                
+                return True, primary_gpu
             else:
-                # GPU не найден - краткое сообщение (детальная диагностика в tensorflow_setup.py)
                 logger.info("ℹ️ GPU устройства не найдены, используется CPU")
-                return False, None
+                return False, torch.device('cpu')
         except Exception as e:
             logger.warning(f"⚠️ Ошибка проверки GPU: {e}")
             logger.info("Продолжаем с CPU...")
-            return False, None
+            return False, torch.device('cpu')
     
     # Настраиваем GPU при импорте модуля
-    GPU_AVAILABLE, GPU_DEVICE = configure_gpu()
+    GPU_AVAILABLE, DEVICE = configure_gpu()
     
 except ImportError:
-    TENSORFLOW_AVAILABLE = False
+    PYTORCH_AVAILABLE = False
     GPU_AVAILABLE = False
-    GPU_DEVICE = None
-    logger.warning("TensorFlow не установлен. LSTM Predictor недоступен.")
+    DEVICE = None
+    logger.warning("PyTorch не установлен. LSTM Predictor недоступен.")
+
+
+class LSTMModel(nn.Module):
+    """
+    PyTorch LSTM модель для предсказания движения цены
+    """
+    
+    def __init__(self, input_size: int, hidden_sizes: List[int] = [128, 64, 32], dropout: float = 0.2):
+        super(LSTMModel, self).__init__()
+        
+        self.hidden_sizes = hidden_sizes
+        self.num_layers = len(hidden_sizes)
+        
+        # LSTM слои
+        self.lstm1 = nn.LSTM(input_size, hidden_sizes[0], batch_first=True, num_layers=1)
+        self.bn1 = nn.BatchNorm1d(hidden_sizes[0])
+        self.dropout1 = nn.Dropout(dropout)
+        
+        self.lstm2 = nn.LSTM(hidden_sizes[0], hidden_sizes[1], batch_first=True, num_layers=1)
+        self.bn2 = nn.BatchNorm1d(hidden_sizes[1])
+        self.dropout2 = nn.Dropout(dropout)
+        
+        self.lstm3 = nn.LSTM(hidden_sizes[1], hidden_sizes[2], batch_first=True, num_layers=1)
+        self.bn3 = nn.BatchNorm1d(hidden_sizes[2])
+        self.dropout3 = nn.Dropout(dropout)
+        
+        # Полносвязные слои
+        self.fc1 = nn.Linear(hidden_sizes[2], 32)
+        self.dropout4 = nn.Dropout(dropout)
+        self.fc2 = nn.Linear(32, 16)
+        self.fc3 = nn.Linear(16, 3)  # Выход: [направление, изменение_%, вероятность]
+        
+    def forward(self, x):
+        # Первый LSTM слой
+        lstm_out1, _ = self.lstm1(x)
+        # Применяем BatchNorm к последнему временному шагу
+        lstm_out1 = self.bn1(lstm_out1[:, -1, :])
+        lstm_out1 = self.dropout1(lstm_out1)
+        
+        # Второй LSTM слой (нужно добавить временную размерность)
+        lstm_out1 = lstm_out1.unsqueeze(1)
+        lstm_out2, _ = self.lstm2(lstm_out1)
+        lstm_out2 = self.bn2(lstm_out2[:, -1, :])
+        lstm_out2 = self.dropout2(lstm_out2)
+        
+        # Третий LSTM слой
+        lstm_out2 = lstm_out2.unsqueeze(1)
+        lstm_out3, _ = self.lstm3(lstm_out2)
+        lstm_out3 = self.bn3(lstm_out3[:, -1, :])
+        lstm_out3 = self.dropout3(lstm_out3)
+        
+        # Полносвязные слои
+        out = torch.relu(self.fc1(lstm_out3))
+        out = self.dropout4(out)
+        out = torch.relu(self.fc2(out))
+        out = self.fc3(out)  # Линейный выход
+        
+        return out
 
 
 class LSTMPredictor:
     """
-    LSTM модель для предсказания движения цены криптовалют
+    LSTM модель для предсказания движения цены криптовалют (PyTorch версия)
     """
     
     def __init__(
         self,
-        model_path: str = "data/ai/models/lstm_predictor.keras",  # ✅ Keras 3 формат
+        model_path: str = "data/ai/models/lstm_predictor.pth",  # PyTorch формат
         scaler_path: str = "data/ai/models/lstm_scaler.pkl",
         config_path: str = "data/ai/models/lstm_config.json"
     ):
@@ -143,19 +169,19 @@ class LSTMPredictor:
             'sequence_length': 60,  # 60 свечей для предсказания
             'features': ['close', 'volume', 'high', 'low', 'rsi', 'ema_fast', 'ema_slow'],
             'prediction_horizon': 6,  # Предсказание на 6 часов вперед (1 свеча)
-            'model_version': '1.0',
+            'model_version': '2.0',  # Версия 2.0 для PyTorch
             'trained_at': None,
             'training_samples': 0
         }
         
-        if not TENSORFLOW_AVAILABLE:
-            logger.error("TensorFlow недоступен. Установите: pip install tensorflow")
+        if not PYTORCH_AVAILABLE:
+            logger.error("PyTorch недоступен. Установите: pip install torch")
             return
         
         # Выводим информацию о GPU при инициализации
-        if TENSORFLOW_AVAILABLE:
-            if GPU_AVAILABLE and GPU_DEVICE:
-                logger.info(f"🚀 LSTM Predictor инициализирован с поддержкой GPU NVIDIA: {GPU_DEVICE.name}")
+        if PYTORCH_AVAILABLE:
+            if GPU_AVAILABLE and DEVICE:
+                logger.info(f"🚀 LSTM Predictor инициализирован с поддержкой GPU NVIDIA: {DEVICE}")
             else:
                 logger.info("💻 LSTM Predictor инициализирован (CPU режим)")
         
@@ -168,47 +194,16 @@ class LSTMPredictor:
     
     def _create_new_model(self):
         """Создает новую LSTM модель"""
-        if not TENSORFLOW_AVAILABLE:
+        if not PYTORCH_AVAILABLE:
             return
         
         sequence_length = self.config['sequence_length']
         n_features = len(self.config['features'])
         
-        # Архитектура LSTM модели (современный подход)
-        self.model = Sequential([
-            # Входной слой
-            Input(shape=(sequence_length, n_features)),
-            
-            # Первый LSTM слой с возвратом последовательностей
-            LSTM(128, return_sequences=True),
-            Dropout(0.2),
-            BatchNormalization(),
-            
-            # Второй LSTM слой
-            LSTM(64, return_sequences=True),
-            Dropout(0.2),
-            BatchNormalization(),
-            
-            # Третий LSTM слой
-            LSTM(32, return_sequences=False),
-            Dropout(0.2),
-            BatchNormalization(),
-            
-            # Полносвязные слои
-            Dense(32, activation='relu'),
-            Dropout(0.2),
-            Dense(16, activation='relu'),
-            
-            # Выходной слой: 3 значения [направление, изменение_%, вероятность]
-            Dense(3, activation='linear')
-        ])
-        
-        # Компиляция модели
-        self.model.compile(
-            optimizer=keras.optimizers.Adam(learning_rate=0.001),
-            loss='mse',
-            metrics=['mae']
-        )
+        # Создаем PyTorch модель
+        self.model = LSTMModel(input_size=n_features)
+        self.model.to(DEVICE)
+        self.model.eval()  # Режим оценки по умолчанию
         
         # Создаем scaler
         self.scaler = MinMaxScaler(feature_range=(0, 1))
@@ -271,7 +266,7 @@ class LSTMPredictor:
                 'horizon_hours': горизонт предсказания в часах
             }
         """
-        if not TENSORFLOW_AVAILABLE or self.model is None:
+        if not PYTORCH_AVAILABLE or self.model is None:
             return None
         
         try:
@@ -290,18 +285,14 @@ class LSTMPredictor:
                 logger.error(f"Ошибка нормализации: {transform_error}")
                 return None
             
-            # Добавляем batch dimension
-            features_scaled = features_scaled.reshape(1, self.config['sequence_length'], -1).astype(np.float32)
+            # Добавляем batch dimension и конвертируем в tensor
+            features_tensor = torch.FloatTensor(features_scaled).unsqueeze(0).to(DEVICE)
             
-            # Предсказание с явным указанием устройства (GPU если доступен, иначе CPU)
-            if TENSORFLOW_AVAILABLE and GPU_AVAILABLE and GPU_DEVICE:
-                # Используем GPU для предсказания
-                with tf.device(GPU_DEVICE.name):
-                    prediction = self.model.predict(features_scaled, verbose=0)[0]
-            else:
-                # Используем CPU для предсказания
-                with tf.device('/CPU:0'):
-                    prediction = self.model.predict(features_scaled, verbose=0)[0]
+            # Предсказание
+            self.model.eval()
+            with torch.no_grad():
+                prediction = self.model(features_tensor)
+                prediction = prediction.cpu().numpy()[0]
             
             # Распаковываем результат
             direction_raw = prediction[0]  # -1 до 1
@@ -337,7 +328,8 @@ class LSTMPredictor:
         training_data: List[Tuple[np.ndarray, np.ndarray]],
         validation_split: float = 0.2,
         epochs: int = 50,
-        batch_size: int = 32
+        batch_size: int = 32,
+        learning_rate: float = 0.001
     ) -> Dict:
         """
         Обучает LSTM модель
@@ -347,12 +339,13 @@ class LSTMPredictor:
             validation_split: Доля данных для валидации
             epochs: Количество эпох обучения
             batch_size: Размер батча
+            learning_rate: Скорость обучения
         
         Returns:
             История обучения
         """
-        if not TENSORFLOW_AVAILABLE or self.model is None:
-            return {'error': 'TensorFlow unavailable'}
+        if not PYTORCH_AVAILABLE or self.model is None:
+            return {'error': 'PyTorch unavailable'}
 
         if not training_data:
             logger.error("Пустой набор данных для обучения")
@@ -378,6 +371,8 @@ class LSTMPredictor:
                     X.shape[-1], len(self.config['features'])
                 )
                 self.config['features'] = [f'feature_{i}' for i in range(X.shape[-1])]
+                # Пересоздаем модель с новым количеством признаков
+                self._create_new_model()
 
             # Обучаем scaler на всем массиве
             if self.scaler is None:
@@ -387,55 +382,91 @@ class LSTMPredictor:
             self.scaler.fit(flat_X)
             X_scaled = self.scaler.transform(flat_X).reshape(X.shape).astype(np.float32)
             
+            # Разделяем на train и validation
+            split_idx = int(len(X_scaled) * (1 - validation_split))
+            X_train, X_val = X_scaled[:split_idx], X_scaled[split_idx:]
+            y_train, y_val = y[:split_idx], y[split_idx:]
+            
+            # Конвертируем в PyTorch tensors
+            X_train_tensor = torch.FloatTensor(X_train).to(DEVICE)
+            y_train_tensor = torch.FloatTensor(y_train).to(DEVICE)
+            X_val_tensor = torch.FloatTensor(X_val).to(DEVICE)
+            y_val_tensor = torch.FloatTensor(y_val).to(DEVICE)
+            
+            # Создаем DataLoader
+            train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+            
+            # Настраиваем оптимизатор и функцию потерь
+            optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
+            criterion = nn.MSELoss()
+            
             # Проверяем и логируем информацию о GPU перед обучением
             device_info = "CPU"
-            if TENSORFLOW_AVAILABLE and GPU_AVAILABLE and GPU_DEVICE:
-                device_info = f"GPU NVIDIA ({GPU_DEVICE.name})"
+            if PYTORCH_AVAILABLE and GPU_AVAILABLE and DEVICE:
+                device_info = f"GPU NVIDIA ({DEVICE})"
                 logger.info(f"🚀 Обучение на {device_info}")
             else:
                 logger.info(f"💻 Обучение на {device_info}")
             
-            logger.info(f"Начало обучения: {len(X)} образцов")
+            logger.info(f"Начало обучения: {len(X_train)} образцов (train), {len(X_val)} образцов (val)")
             logger.info(f"Форма X: {X.shape}, форма y: {y.shape}")
             
-            # Настраиваем callbacks
-            callbacks = [
-                EarlyStopping(
-                    monitor='val_loss',
-                    patience=10,
-                    restore_best_weights=True
-                ),
-                ReduceLROnPlateau(
-                    monitor='val_loss',
-                    factor=0.5,
-                    patience=5,
-                    min_lr=0.00001
-                )
-            ]
+            # Обучение
+            self.model.train()
+            best_val_loss = float('inf')
+            patience = 10
+            patience_counter = 0
+            history = {'loss': [], 'val_loss': []}
             
-            # Обучаем модель с явным указанием устройства (GPU если доступен, иначе CPU)
-            if TENSORFLOW_AVAILABLE and GPU_AVAILABLE and GPU_DEVICE:
-                # Используем GPU для обучения
-                with tf.device(GPU_DEVICE.name):
-                    history = self.model.fit(
-                        X_scaled, y,
-                        validation_split=validation_split,
-                        epochs=epochs,
-                        batch_size=batch_size,
-                        callbacks=callbacks,
-                        verbose=1
-                    )
-            else:
-                # Используем CPU для обучения
-                with tf.device('/CPU:0'):
-                    history = self.model.fit(
-                        X_scaled, y,
-                        validation_split=validation_split,
-                        epochs=epochs,
-                        batch_size=batch_size,
-                        callbacks=callbacks,
-                        verbose=1
-                    )
+            for epoch in range(epochs):
+                # Обучение
+                epoch_loss = 0.0
+                for batch_X, batch_y in train_loader:
+                    optimizer.zero_grad()
+                    outputs = self.model(batch_X)
+                    loss = criterion(outputs, batch_y)
+                    loss.backward()
+                    optimizer.step()
+                    epoch_loss += loss.item()
+                
+                avg_train_loss = epoch_loss / len(train_loader)
+                
+                # Валидация
+                self.model.eval()
+                with torch.no_grad():
+                    val_outputs = self.model(X_val_tensor)
+                    val_loss = criterion(val_outputs, y_val_tensor).item()
+                
+                self.model.train()
+                
+                history['loss'].append(avg_train_loss)
+                history['val_loss'].append(val_loss)
+                
+                # Early stopping
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    patience_counter = 0
+                    # Сохраняем лучшую модель
+                    torch.save(self.model.state_dict(), self.model_path + '.best')
+                else:
+                    patience_counter += 1
+                
+                # Learning rate scheduling
+                if patience_counter >= 5:
+                    for param_group in optimizer.param_groups:
+                        param_group['lr'] *= 0.5
+                        if param_group['lr'] < 0.00001:
+                            param_group['lr'] = 0.00001
+                
+                if (epoch + 1) % 10 == 0 or epoch == 0:
+                    logger.info(f"Epoch {epoch+1}/{epochs} - Loss: {avg_train_loss:.6f}, Val Loss: {val_loss:.6f}")
+                
+                if patience_counter >= patience:
+                    logger.info(f"Early stopping на эпохе {epoch+1}")
+                    # Загружаем лучшую модель
+                    self.model.load_state_dict(torch.load(self.model_path + '.best'))
+                    break
             
             # Обновляем конфигурацию
             self.config['trained_at'] = datetime.now().isoformat()
@@ -448,19 +479,19 @@ class LSTMPredictor:
             
             return {
                 'success': True,
-                'final_loss': float(history.history['loss'][-1]),
-                'final_val_loss': float(history.history['val_loss'][-1]),
-                'epochs_trained': len(history.history['loss']),
+                'final_loss': float(history['loss'][-1]),
+                'final_val_loss': float(history['val_loss'][-1]),
+                'epochs_trained': len(history['loss']),
                 'training_samples': len(X)
             }
             
         except Exception as e:
-            logger.error(f"❌ Ошибка обучения: {e}")
+            logger.error(f"❌ Ошибка обучения: {e}", exc_info=True)
             return {'error': str(e)}
     
     def save_model(self):
         """Сохраняет модель, scaler и конфигурацию"""
-        if not TENSORFLOW_AVAILABLE or self.model is None:
+        if not PYTORCH_AVAILABLE or self.model is None:
             return
         
         try:
@@ -468,7 +499,7 @@ class LSTMPredictor:
             os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
             
             # Сохраняем модель
-            self.model.save(self.model_path)
+            torch.save(self.model.state_dict(), self.model_path)
             
             # Сохраняем scaler
             with open(self.scaler_path, 'wb') as f:
@@ -485,21 +516,28 @@ class LSTMPredictor:
     
     def load_model(self):
         """Загружает модель, scaler и конфигурацию"""
-        if not TENSORFLOW_AVAILABLE:
+        if not PYTORCH_AVAILABLE:
             return
         
         try:
-            # Загружаем модель
-            self.model = load_model(self.model_path)
+            # Загружаем конфигурацию
+            if os.path.exists(self.config_path):
+                with open(self.config_path, 'r') as f:
+                    loaded_config = json.load(f)
+                    self.config.update(loaded_config)
+            
+            # Создаем модель с правильными параметрами
+            n_features = len(self.config['features'])
+            self.model = LSTMModel(input_size=n_features)
+            self.model.to(DEVICE)
+            
+            # Загружаем веса модели
+            self.model.load_state_dict(torch.load(self.model_path, map_location=DEVICE))
+            self.model.eval()
             
             # Загружаем scaler
             with open(self.scaler_path, 'rb') as f:
                 self.scaler = pickle.load(f)
-            
-            # Загружаем конфигурацию
-            if os.path.exists(self.config_path):
-                with open(self.config_path, 'r') as f:
-                    self.config.update(json.load(f))
             
             logger.info(f"✅ Модель загружена: {self.model_path}")
             logger.info(f"Обучена: {self.config.get('trained_at', 'неизвестно')}")
@@ -511,10 +549,10 @@ class LSTMPredictor:
     
     def get_status(self) -> Dict:
         """Возвращает статус модели"""
-        if not TENSORFLOW_AVAILABLE:
+        if not PYTORCH_AVAILABLE:
             return {
                 'available': False,
-                'error': 'TensorFlow not installed'
+                'error': 'PyTorch not installed'
             }
         
         is_trained = (
@@ -531,6 +569,6 @@ class LSTMPredictor:
             'prediction_horizon': self.config['prediction_horizon'],
             'trained_at': self.config.get('trained_at'),
             'training_samples': self.config.get('training_samples', 0),
-            'features': self.config['features']
+            'features': self.config['features'],
+            'framework': 'PyTorch'
         }
-

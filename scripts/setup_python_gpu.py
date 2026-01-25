@@ -478,7 +478,7 @@ def install_dependencies(venv_path, project_root):
             print("  2. Запустите снова: python scripts/setup_python_gpu.py")
             return False
     
-    # Используем requirements.txt для установки всех зависимостей (включая TensorFlow)
+    # Используем requirements.txt для установки всех зависимостей (включая PyTorch)
     req_main = project_root / 'requirements.txt'
     
     print("Установка зависимостей...")
@@ -486,43 +486,49 @@ def install_dependencies(venv_path, project_root):
         # Всегда используем python -m pip вместо прямого вызова pip
         subprocess.run([str(python), '-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel', '--no-warn-script-location'], check=True)
         
-        # Устанавливаем все зависимости из requirements.txt (включая TensorFlow для Python 3.12)
+        # Устанавливаем все зависимости из requirements.txt (включая PyTorch)
         if req_main.exists():
             print("[INFO] Установка всех зависимостей из requirements.txt...")
-            # Для Python 3.12 заменяем tf-nightly на tensorflow
-            import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tmp:
-                with open(req_main, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    # Убираем environment marker для Python 3.12 (в .venv_gpu всегда Python 3.12)
-                    # Заменяем все варианты маркеров на tensorflow==2.16.1 (первая стабильная версия для Python 3.12)
-                    import re
-                    content = re.sub(r'tensorflow[^;\n]*;.*python_version.*', 'tensorflow==2.16.1', content)
-                    content = re.sub(r'tf-nightly[^;\n]*;.*python_version.*', 'tensorflow==2.16.1', content)
-                    content = content.replace('tf-nightly>=2.21.0.dev', 'tensorflow==2.16.1')
-                    content = content.replace('tensorflow>=2.15.0; python_version < "3.13"', 'tensorflow==2.16.1')
-                    content = content.replace('tensorflow>=2.16.0', 'tensorflow==2.16.1')
-                    tmp.write(content)
-                    tmp_path = tmp.name
-                
-                try:
-                    subprocess.run([str(python), '-m', 'pip', 'install', '-r', tmp_path, '--no-warn-script-location'], check=True)
-                    print("[OK] Все зависимости установлены (включая TensorFlow для Python 3.12)")
-                finally:
-                    import os
-                    try:
-                        os.unlink(tmp_path)
-                    except:
-                        pass
-        else:
-            # Fallback: устанавливаем TensorFlow вручную
-            print("[WARNING] requirements.txt не найден, устанавливаю TensorFlow вручную...")
+            # Проверяем наличие GPU для установки PyTorch с CUDA
             try:
-                subprocess.run([str(python), '-m', 'pip', 'install', 'tensorflow[and-cuda]>=2.16.0', '--no-warn-script-location'], check=True)
-                print("[OK] TensorFlow с GPU установлен")
+                import subprocess as sp
+                result = sp.run(['nvidia-smi'], capture_output=True, text=True, timeout=5)
+                has_gpu = result.returncode == 0
+            except:
+                has_gpu = False
+            
+            if has_gpu:
+                print("[INFO] Обнаружен NVIDIA GPU, устанавливаю PyTorch с CUDA поддержкой...")
+                # Устанавливаем PyTorch с CUDA 12.1 (последняя стабильная версия)
+                try:
+                    subprocess.run([str(python), '-m', 'pip', 'install', 'torch', 'torchvision', 'torchaudio', '--index-url', 'https://download.pytorch.org/whl/cu121', '--no-warn-script-location'], check=True)
+                    print("[OK] PyTorch с CUDA 12.1 установлен")
+                except:
+                    # Fallback на CUDA 11.8
+                    try:
+                        subprocess.run([str(python), '-m', 'pip', 'install', 'torch', 'torchvision', 'torchaudio', '--index-url', 'https://download.pytorch.org/whl/cu118', '--no-warn-script-location'], check=True)
+                        print("[OK] PyTorch с CUDA 11.8 установлен")
+                    except:
+                        # Fallback на CPU версию
+                        subprocess.run([str(python), '-m', 'pip', 'install', 'torch', 'torchvision', 'torchaudio', '--no-warn-script-location'], check=True)
+                        print("[OK] PyTorch (CPU) установлен")
+            else:
+                print("[INFO] GPU не обнаружен, устанавливаю PyTorch (CPU версия)...")
+                subprocess.run([str(python), '-m', 'pip', 'install', 'torch', 'torchvision', 'torchaudio', '--no-warn-script-location'], check=True)
+                print("[OK] PyTorch (CPU) установлен")
+            
+            # Устанавливаем остальные зависимости из requirements.txt
+            subprocess.run([str(python), '-m', 'pip', 'install', '-r', str(req_main), '--no-warn-script-location'], check=True)
+            print("[OK] Все зависимости установлены (включая PyTorch)")
+        else:
+            # Fallback: устанавливаем PyTorch вручную
+            print("[WARNING] requirements.txt не найден, устанавливаю PyTorch вручную...")
+            try:
+                subprocess.run([str(python), '-m', 'pip', 'install', 'torch', 'torchvision', 'torchaudio', '--index-url', 'https://download.pytorch.org/whl/cu121', '--no-warn-script-location'], check=True)
+                print("[OK] PyTorch с GPU установлен")
             except subprocess.CalledProcessError:
-                subprocess.run([str(python), '-m', 'pip', 'install', 'tensorflow>=2.16.0', '--no-warn-script-location'], check=True)
-                print("[OK] TensorFlow (CPU) установлен")
+                subprocess.run([str(python), '-m', 'pip', 'install', 'torch', 'torchvision', 'torchaudio', '--no-warn-script-location'], check=True)
+                print("[OK] PyTorch (CPU) установлен")
         
         print("[OK] Все зависимости установлены")
         
@@ -541,12 +547,12 @@ def main():
     print(f"[DEBUG] Корень проекта: {root}")
     print(f"[DEBUG] Текущая рабочая директория: {os.getcwd()}")
 
-    # TensorFlow НЕ поддерживает Python 3.14+, используем Python 3.12 для .venv_gpu
+    # PyTorch поддерживает Python 3.14+, но для совместимости используем Python 3.12 для .venv_gpu
     ok, cmd = check_python_312_available()
     python_version = "3.12"
     if not ok:
         print("[ERROR] Python 3.12 не найден.")
-        print("ВНИМАНИЕ: TensorFlow НЕ поддерживает Python 3.14+!")
+        print("ВНИМАНИЕ: Для совместимости используем Python 3.12 для .venv_gpu (PyTorch работает и на 3.14+)")
         print("Для .venv_gpu требуется Python 3.12: https://www.python.org/downloads/release/python-3120/")
         if platform.system() == 'Windows':
             print("Или используйте: py -3.12")
@@ -556,7 +562,7 @@ def main():
         return 1
     
     print(f"[OK] Python {python_version}: {cmd}")
-    print(f"[INFO] Python {python_version} выбран для .venv_gpu (TensorFlow требует Python <= 3.12)")
+    print(f"[INFO] Python {python_version} выбран для .venv_gpu (PyTorch поддерживает все версии Python)")
 
     venv = create_venv(cmd, root, python_version)
     if not venv:
