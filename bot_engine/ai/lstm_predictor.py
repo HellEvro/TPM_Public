@@ -113,22 +113,26 @@ class LSTMModel(nn.Module):
         self.fc3 = nn.Linear(16, 3)  # Выход: [направление, изменение_%, вероятность]
         
     def forward(self, x):
-        # Первый LSTM слой
-        lstm_out1, _ = self.lstm1(x)
-        # Применяем BatchNorm к последнему временному шагу
-        lstm_out1 = self.bn1(lstm_out1[:, -1, :])
+        # Первый LSTM слой (возвращает последовательность)
+        lstm_out1, _ = self.lstm1(x)  # (batch, seq_len, hidden1)
+        # Применяем BatchNorm к каждому временному шагу
+        batch_size, seq_len, hidden = lstm_out1.shape
+        lstm_out1 = lstm_out1.reshape(-1, hidden)
+        lstm_out1 = self.bn1(lstm_out1)
+        lstm_out1 = lstm_out1.reshape(batch_size, seq_len, hidden)
         lstm_out1 = self.dropout1(lstm_out1)
         
-        # Второй LSTM слой (нужно добавить временную размерность)
-        lstm_out1 = lstm_out1.unsqueeze(1)
-        lstm_out2, _ = self.lstm2(lstm_out1)
-        lstm_out2 = self.bn2(lstm_out2[:, -1, :])
+        # Второй LSTM слой (возвращает последовательность)
+        lstm_out2, _ = self.lstm2(lstm_out1)  # (batch, seq_len, hidden2)
+        batch_size, seq_len, hidden = lstm_out2.shape
+        lstm_out2 = lstm_out2.reshape(-1, hidden)
+        lstm_out2 = self.bn2(lstm_out2)
+        lstm_out2 = lstm_out2.reshape(batch_size, seq_len, hidden)
         lstm_out2 = self.dropout2(lstm_out2)
         
-        # Третий LSTM слой
-        lstm_out2 = lstm_out2.unsqueeze(1)
-        lstm_out3, _ = self.lstm3(lstm_out2)
-        lstm_out3 = self.bn3(lstm_out3[:, -1, :])
+        # Третий LSTM слой (не возвращает последовательность)
+        lstm_out3, _ = self.lstm3(lstm_out2)  # (batch, hidden3)
+        lstm_out3 = self.bn3(lstm_out3)
         lstm_out3 = self.dropout3(lstm_out3)
         
         # Полносвязные слои
