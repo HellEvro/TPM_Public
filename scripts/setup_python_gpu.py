@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Настройка Python 3.14 для InfoBot (по умолчанию).
-Создаёт .venv_gpu с Python 3.14 и устанавливает зависимости, включая TensorFlow с GPU.
+Создаёт .venv_gpu с Python 3.12 и устанавливает зависимости, включая PyTorch с GPU.
 """
 
 import sys
@@ -23,7 +23,7 @@ if platform.system() == 'Windows':
 
 
 def check_python_311_available():
-    """Проверяет, доступен ли Python 3.11 в системе (для GPU поддержки TensorFlow)."""
+    """Проверяет, доступен ли Python 3.12 в системе (для GPU поддержки PyTorch)."""
     # Сначала проверяем текущий Python
     if sys.version_info.major == 3 and sys.version_info.minor == 11:
         return True, 'python'  # Текущий Python уже 3.11
