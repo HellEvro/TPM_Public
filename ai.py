@@ -50,9 +50,9 @@ if not os.environ.get('INFOBOT_AI_VENV_RESTART'):
             # Глобальный Python 3.12 → используем его (TensorFlow должен быть установлен глобально)
             print("[INFO] Используется глобальный Python 3.12 (TensorFlow должен быть установлен глобально)")
         elif current_python_version >= (3, 14):
-            # Глобальный Python 3.14+ → TensorFlow недоступен, но продолжаем работу
-            print("[INFO] Python 3.14+ обнаружен. TensorFlow недоступен (требуется Python 3.12)")
-            print("[INFO] Для TensorFlow: создайте .venv_gpu: python scripts/setup_python_gpu.py")
+            # Глобальный Python 3.14+ → пробуем установить TensorFlow через tf-nightly
+            print("[INFO] Python 3.14+ обнаружен")
+            print("[INFO] TensorFlow будет установлен через tf-nightly (экспериментальная поддержка)")
     
     # Перезапуск если нужно
     if should_restart and target_python:
