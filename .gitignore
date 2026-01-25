@@ -9,6 +9,9 @@ __pycache__/
 !bot_engine/ai/license_checker.pyc
 !bot_engine/ai/hardware_id_source.pyc
 !bot_engine/ai/_ai_launcher.pyc
+# Версионированные .pyc файлы для Python 3.12 и 3.14
+!bot_engine/ai/pyc_312/*.pyc
+!bot_engine/ai/pyc_314/*.pyc
 *$py.class
 *.so
 .Python
