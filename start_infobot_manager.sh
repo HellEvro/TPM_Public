@@ -170,19 +170,34 @@ if [[ -f "scripts/ensure_python314_venv.py" ]]; then
   ${PYTHON_CMD:-python3} scripts/ensure_python314_venv.py >/dev/null 2>&1
 fi
 
-# Определение Python для запуска: .venv_gpu > .venv > python3.14
+# Определение Python для запуска: .venv_gpu > .venv > глобальный Python
+# Если venv нет, используем глобальный Python
 if [[ -f ".venv_gpu/bin/activate" ]]; then
   source ".venv_gpu/bin/activate"
   PYTHON_BIN="python"
+  echo "[INFO] Используется .venv_gpu"
 elif [[ -f ".venv/bin/activate" ]]; then
   source ".venv/bin/activate"
   PYTHON_BIN="python"
+  echo "[INFO] Используется .venv"
 else
-  if [ -z "$PYTHON_CMD" ]; then
-    echo "[ERROR] Python 3.14+ не найден!"
-    exit 1
+  # Используем глобальный Python (venv не требуется)
+  if [ -n "$PYTHON_CMD" ]; then
+    PYTHON_BIN="$PYTHON_CMD"
+    echo "[INFO] Используется глобальный Python (venv не найден)"
+  else
+    # Пробуем найти любой доступный Python
+    if command_exists python3; then
+      PYTHON_BIN="python3"
+      echo "[INFO] Используется глобальный Python3"
+    elif command_exists python; then
+      PYTHON_BIN="python"
+      echo "[INFO] Используется глобальный Python"
+    else
+      echo "[ERROR] Python не найден!"
+      exit 1
+    fi
   fi
-  PYTHON_BIN="$PYTHON_CMD"
 fi
 
 exec $PYTHON_BIN launcher/infobot_manager.py "$@"

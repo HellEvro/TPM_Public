@@ -10,27 +10,58 @@ import sys
 import subprocess
 from pathlib import Path
 
-# Автоматический перезапуск через .venv_gpu если он существует и текущий Python 3.14+
-# Это нужно для TensorFlow, который требует Python 3.12
+# Автоматический выбор Python окружения для TensorFlow
+# Приоритет: .venv_gpu (Python 3.12) > глобальный Python 3.12 > текущий Python
 if not os.environ.get('INFOBOT_AI_VENV_RESTART'):
     project_root = Path(__file__).resolve().parent
-    venv_gpu_python = None
+    current_python_version = sys.version_info[:2]
     
+    # Определяем путь к .venv_gpu
     if os.name == 'nt':
         venv_gpu_python = project_root / '.venv_gpu' / 'Scripts' / 'python.exe'
     else:
         venv_gpu_python = project_root / '.venv_gpu' / 'bin' / 'python'
     
-    # Если .venv_gpu существует и текущий Python 3.14+, перезапускаем через .venv_gpu
-    if venv_gpu_python.exists() and sys.version_info[:2] >= (3, 14):
+    # Логика выбора Python:
+    # 1. Если .venv_gpu существует и текущий Python 3.14+ → перезапуск через .venv_gpu
+    # 2. Если .venv_gpu существует и текущий Python 3.12 → уже правильное окружение
+    # 3. Если .venv_gpu НЕ существует, но текущий Python 3.12 → используем текущий (глобальный)
+    # 4. Если .venv_gpu НЕ существует и текущий Python 3.14+ → продолжаем (TensorFlow недоступен)
+    
+    should_restart = False
+    target_python = None
+    
+    if venv_gpu_python.exists():
+        # .venv_gpu существует
+        if current_python_version >= (3, 14):
+            # Текущий Python 3.14+ → перезапускаем через .venv_gpu
+            should_restart = True
+            target_python = str(venv_gpu_python)
+        elif current_python_version == (3, 12):
+            # Уже в правильном окружении (Python 3.12) → продолжаем
+            pass
+        else:
+            # Другая версия → пробуем перезапустить через .venv_gpu
+            should_restart = True
+            target_python = str(venv_gpu_python)
+    else:
+        # .venv_gpu не существует
+        if current_python_version == (3, 12):
+            # Глобальный Python 3.12 → используем его (TensorFlow должен быть установлен глобально)
+            print("[INFO] Используется глобальный Python 3.12 (TensorFlow должен быть установлен глобально)")
+        elif current_python_version >= (3, 14):
+            # Глобальный Python 3.14+ → TensorFlow недоступен, но продолжаем работу
+            print("[INFO] Python 3.14+ обнаружен. TensorFlow недоступен (требуется Python 3.12)")
+            print("[INFO] Для TensorFlow: создайте .venv_gpu: python scripts/setup_python_gpu.py")
+    
+    # Перезапуск если нужно
+    if should_restart and target_python:
         os.environ['INFOBOT_AI_VENV_RESTART'] = 'true'
         try:
-            # Перезапускаем через .venv_gpu
-            subprocess.run([str(venv_gpu_python), __file__] + sys.argv[1:], check=False)
+            subprocess.run([target_python, __file__] + sys.argv[1:], check=False)
             sys.exit(0)
         except Exception as e:
-            # Если перезапуск не удался, продолжаем с текущим Python
-            print(f"[WARNING] Не удалось перезапустить через .venv_gpu: {e}")
+            print(f"[WARNING] Не удалось перезапустить через {target_python}: {e}")
             print("[INFO] Продолжаем с текущим Python (TensorFlow может быть недоступен)")
 
 # ⚠️ КРИТИЧНО: Устанавливаем переменную окружения для идентификации процесса ai.py

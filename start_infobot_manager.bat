@@ -95,20 +95,32 @@ if not exist app\config.py (
     )
 )
 
-REM Определение Python для запуска: .venv_gpu > .venv > найденный Python 3.14+
+REM Определение Python для запуска: .venv_gpu > .venv > глобальный Python 3.14+
+REM Если venv нет, используем глобальный Python
 if exist .venv_gpu\Scripts\activate.bat (
     call .venv_gpu\Scripts\activate.bat
     set "PYTHON_BIN=python"
+    echo [INFO] Используется .venv_gpu
 ) else if exist .venv\Scripts\activate.bat (
     call .venv\Scripts\activate.bat
     set "PYTHON_BIN=python"
+    echo [INFO] Используется .venv
 ) else (
+    REM Используем глобальный Python (venv не требуется)
     if not "!PYTHON_CMD!"=="" (
         set "PYTHON_BIN=!PYTHON_CMD!"
+        echo [INFO] Используется глобальный Python (venv не найден)
     ) else (
-        echo [ERROR] Python 3.14+ не найден!
-        pause
-        exit /b 1
+        REM Пробуем найти любой доступный Python
+        python --version >nul 2>&1
+        if !errorlevel!==0 (
+            set "PYTHON_BIN=python"
+            echo [INFO] Используется глобальный Python
+        ) else (
+            echo [ERROR] Python не найден!
+            pause
+            exit /b 1
+        )
     )
 )
 
