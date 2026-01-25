@@ -58,28 +58,46 @@ def install_python312():
             if result.returncode == 0:
                 print("[INFO] Установка Python 3.12 через winget...")
                 print("[INFO] Это может занять несколько минут, пожалуйста подождите...")
-                # Запускаем установку с выводом в реальном времени
-                install_result = subprocess.run(
-                    ['winget', 'install', '--id', 'Python.Python.3.12', '--silent', '--accept-package-agreements', '--accept-source-agreements'],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    timeout=600,  # Увеличиваем таймаут до 10 минут
-                    bufsize=1
-                )
-                if install_result.returncode == 0:
-                    print("[OK] Python 3.12 установлен")
-                    import time
-                    print("[INFO] Ожидание обновления PATH...")
-                    time.sleep(5)  # Увеличиваем время ожидания
-                    return True
-                else:
-                    error_output = install_result.stdout or install_result.stderr or 'неизвестная ошибка'
-                    print(f"[WARNING] Ошибка установки через winget (код {install_result.returncode})")
-                    print(f"[WARNING] Вывод: {error_output[:500]}")
+                # Запускаем установку БЕЗ --silent чтобы видеть прогресс
+                # Используем Popen для вывода в реальном времени
+                try:
+                    process = subprocess.Popen(
+                        ['winget', 'install', '--id', 'Python.Python.3.12', '--accept-package-agreements', '--accept-source-agreements'],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        bufsize=1,
+                        universal_newlines=True
+                    )
+                    
+                    # Выводим вывод в реальном времени
+                    output_lines = []
+                    for line in process.stdout:
+                        line = line.rstrip()
+                        if line:
+                            print(f"  {line}")
+                            output_lines.append(line)
+                    
+                    process.wait()
+                    
+                    if process.returncode == 0:
+                        print("[OK] Python 3.12 установлен")
+                        import time
+                        print("[INFO] Ожидание обновления PATH (5 секунд)...")
+                        time.sleep(5)
+                        return True
+                    else:
+                        error_output = '\n'.join(output_lines[-10:])  # Последние 10 строк
+                        print(f"[WARNING] Ошибка установки через winget (код {process.returncode})")
+                        if error_output:
+                            print(f"[WARNING] Последние строки вывода:\n{error_output}")
+                        print("[INFO] Попробуйте установить Python 3.12 вручную:")
+                        print("   winget install Python.Python.3.12")
+                        print("   или скачайте с: https://www.python.org/downloads/release/python-3120/")
+                except Exception as e:
+                    print(f"[ERROR] Ошибка при запуске winget: {e}")
                     print("[INFO] Попробуйте установить Python 3.12 вручную:")
                     print("   winget install Python.Python.3.12")
-                    print("   или скачайте с: https://www.python.org/downloads/release/python-3120/")
             else:
                 print("[WARNING] winget не найден или недоступен")
         except subprocess.TimeoutExpired:
