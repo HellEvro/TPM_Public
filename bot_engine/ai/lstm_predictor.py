@@ -85,65 +85,65 @@ except ImportError:
 # Определяем класс LSTMModel только если PyTorch доступен
 if PYTORCH_AVAILABLE:
     class LSTMModel(nn.Module):
-    """
-    PyTorch LSTM модель для предсказания движения цены
-    """
-    
-    def __init__(self, input_size: int, hidden_sizes: List[int] = [128, 64, 32], dropout: float = 0.2):
-        super(LSTMModel, self).__init__()
+        """
+        PyTorch LSTM модель для предсказания движения цены
+        """
         
-        self.hidden_sizes = hidden_sizes
-        self.num_layers = len(hidden_sizes)
-        
-        # LSTM слои
-        self.lstm1 = nn.LSTM(input_size, hidden_sizes[0], batch_first=True, num_layers=1)
-        self.bn1 = nn.BatchNorm1d(hidden_sizes[0])
-        self.dropout1 = nn.Dropout(dropout)
-        
-        self.lstm2 = nn.LSTM(hidden_sizes[0], hidden_sizes[1], batch_first=True, num_layers=1)
-        self.bn2 = nn.BatchNorm1d(hidden_sizes[1])
-        self.dropout2 = nn.Dropout(dropout)
-        
-        self.lstm3 = nn.LSTM(hidden_sizes[1], hidden_sizes[2], batch_first=True, num_layers=1)
-        self.bn3 = nn.BatchNorm1d(hidden_sizes[2])
-        self.dropout3 = nn.Dropout(dropout)
-        
-        # Полносвязные слои
-        self.fc1 = nn.Linear(hidden_sizes[2], 32)
-        self.dropout4 = nn.Dropout(dropout)
-        self.fc2 = nn.Linear(32, 16)
-        self.fc3 = nn.Linear(16, 3)  # Выход: [направление, изменение_%, вероятность]
-        
-    def forward(self, x):
-        # Первый LSTM слой (возвращает последовательность)
-        lstm_out1, _ = self.lstm1(x)  # (batch, seq_len, hidden1)
-        # Применяем BatchNorm к каждому временному шагу
-        batch_size, seq_len, hidden = lstm_out1.shape
-        lstm_out1 = lstm_out1.reshape(-1, hidden)
-        lstm_out1 = self.bn1(lstm_out1)
-        lstm_out1 = lstm_out1.reshape(batch_size, seq_len, hidden)
-        lstm_out1 = self.dropout1(lstm_out1)
-        
-        # Второй LSTM слой (возвращает последовательность)
-        lstm_out2, _ = self.lstm2(lstm_out1)  # (batch, seq_len, hidden2)
-        batch_size, seq_len, hidden = lstm_out2.shape
-        lstm_out2 = lstm_out2.reshape(-1, hidden)
-        lstm_out2 = self.bn2(lstm_out2)
-        lstm_out2 = lstm_out2.reshape(batch_size, seq_len, hidden)
-        lstm_out2 = self.dropout2(lstm_out2)
-        
-        # Третий LSTM слой (не возвращает последовательность)
-        lstm_out3, _ = self.lstm3(lstm_out2)  # (batch, hidden3)
-        lstm_out3 = self.bn3(lstm_out3)
-        lstm_out3 = self.dropout3(lstm_out3)
-        
-        # Полносвязные слои
-        out = torch.relu(self.fc1(lstm_out3))
-        out = self.dropout4(out)
-        out = torch.relu(self.fc2(out))
-        out = self.fc3(out)  # Линейный выход
-        
-        return out
+        def __init__(self, input_size: int, hidden_sizes: List[int] = [128, 64, 32], dropout: float = 0.2):
+            super(LSTMModel, self).__init__()
+            
+            self.hidden_sizes = hidden_sizes
+            self.num_layers = len(hidden_sizes)
+            
+            # LSTM слои
+            self.lstm1 = nn.LSTM(input_size, hidden_sizes[0], batch_first=True, num_layers=1)
+            self.bn1 = nn.BatchNorm1d(hidden_sizes[0])
+            self.dropout1 = nn.Dropout(dropout)
+            
+            self.lstm2 = nn.LSTM(hidden_sizes[0], hidden_sizes[1], batch_first=True, num_layers=1)
+            self.bn2 = nn.BatchNorm1d(hidden_sizes[1])
+            self.dropout2 = nn.Dropout(dropout)
+            
+            self.lstm3 = nn.LSTM(hidden_sizes[1], hidden_sizes[2], batch_first=True, num_layers=1)
+            self.bn3 = nn.BatchNorm1d(hidden_sizes[2])
+            self.dropout3 = nn.Dropout(dropout)
+            
+            # Полносвязные слои
+            self.fc1 = nn.Linear(hidden_sizes[2], 32)
+            self.dropout4 = nn.Dropout(dropout)
+            self.fc2 = nn.Linear(32, 16)
+            self.fc3 = nn.Linear(16, 3)  # Выход: [направление, изменение_%, вероятность]
+            
+        def forward(self, x):
+            # Первый LSTM слой (возвращает последовательность)
+            lstm_out1, _ = self.lstm1(x)  # (batch, seq_len, hidden1)
+            # Применяем BatchNorm к каждому временному шагу
+            batch_size, seq_len, hidden = lstm_out1.shape
+            lstm_out1 = lstm_out1.reshape(-1, hidden)
+            lstm_out1 = self.bn1(lstm_out1)
+            lstm_out1 = lstm_out1.reshape(batch_size, seq_len, hidden)
+            lstm_out1 = self.dropout1(lstm_out1)
+            
+            # Второй LSTM слой (возвращает последовательность)
+            lstm_out2, _ = self.lstm2(lstm_out1)  # (batch, seq_len, hidden2)
+            batch_size, seq_len, hidden = lstm_out2.shape
+            lstm_out2 = lstm_out2.reshape(-1, hidden)
+            lstm_out2 = self.bn2(lstm_out2)
+            lstm_out2 = lstm_out2.reshape(batch_size, seq_len, hidden)
+            lstm_out2 = self.dropout2(lstm_out2)
+            
+            # Третий LSTM слой (не возвращает последовательность)
+            lstm_out3, _ = self.lstm3(lstm_out2)  # (batch, hidden3)
+            lstm_out3 = self.bn3(lstm_out3)
+            lstm_out3 = self.dropout3(lstm_out3)
+            
+            # Полносвязные слои
+            out = torch.relu(self.fc1(lstm_out3))
+            out = self.dropout4(out)
+            out = torch.relu(self.fc2(out))
+            out = self.fc3(out)  # Линейный выход
+            
+            return out
 else:
     # Заглушка для случая, когда PyTorch недоступен
     class LSTMModel:
