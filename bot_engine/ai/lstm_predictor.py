@@ -82,7 +82,9 @@ except ImportError:
     logger.warning("PyTorch не установлен. LSTM Predictor недоступен.")
 
 
-class LSTMModel(nn.Module):
+# Определяем класс LSTMModel только если PyTorch доступен
+if PYTORCH_AVAILABLE:
+    class LSTMModel(nn.Module):
     """
     PyTorch LSTM модель для предсказания движения цены
     """
@@ -142,6 +144,12 @@ class LSTMModel(nn.Module):
         out = self.fc3(out)  # Линейный выход
         
         return out
+else:
+    # Заглушка для случая, когда PyTorch недоступен
+    class LSTMModel:
+        """Заглушка для LSTMModel когда PyTorch недоступен"""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch не установлен. Установите: pip install torch")
 
 
 class LSTMPredictor:
@@ -201,13 +209,17 @@ class LSTMPredictor:
         if not PYTORCH_AVAILABLE:
             return
         
-        sequence_length = self.config['sequence_length']
-        n_features = len(self.config['features'])
-        
-        # Создаем PyTorch модель
-        self.model = LSTMModel(input_size=n_features)
-        self.model.to(DEVICE)
-        self.model.eval()  # Режим оценки по умолчанию
+        try:
+            sequence_length = self.config['sequence_length']
+            n_features = len(self.config['features'])
+            
+            # Создаем PyTorch модель
+            self.model = LSTMModel(input_size=n_features)
+            self.model.to(DEVICE)
+            self.model.eval()  # Режим оценки по умолчанию
+        except NameError as e:
+            logger.error(f"Ошибка создания модели: {e}. PyTorch недоступен.")
+            return
         
         # Создаем scaler
         self.scaler = MinMaxScaler(feature_range=(0, 1))
@@ -538,6 +550,9 @@ class LSTMPredictor:
             # Загружаем веса модели
             self.model.load_state_dict(torch.load(self.model_path, map_location=DEVICE))
             self.model.eval()
+        except NameError as e:
+            logger.error(f"Ошибка загрузки модели: {e}. PyTorch недоступен.")
+            self._create_new_model()
             
             # Загружаем scaler
             with open(self.scaler_path, 'rb') as f:
