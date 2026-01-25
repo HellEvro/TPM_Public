@@ -108,57 +108,18 @@ def check_tensorflow_installation():
             }
 
 def install_tensorflow_with_gpu(has_gpu=False):
-    """Устанавливает TensorFlow (пытается установить даже на Python 3.14+ через tf-nightly)"""
+    """Проверяет установку TensorFlow (установка выполняется через requirements.txt)"""
     python_info = check_python_version()
     
-    # Для Python 3.14+ пробуем установить через tf-nightly (экспериментальная поддержка)
+    # TensorFlow должен устанавливаться через requirements.txt
+    # Эта функция только проверяет наличие и предупреждает о проблемах
     if python_info['supported'] and sys.version_info.minor >= 14:
         logger.warning("⚠️ TensorFlow официально НЕ поддерживает Python 3.14+")
-        logger.info("🔄 Пытаемся установить через tf-nightly (экспериментальная поддержка)...")
-        
-        # Пробуем установить TensorFlow для Python 3.14+ (tf-nightly НЕ поддерживает Python 3.14)
-        # Пробуем альтернативные методы
-        installation_methods = [
-            # Метод 1: tensorflow без версии (может сработать, если есть сборка для Python 3.14)
-            ([sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow', '--no-warn-script-location'], "tensorflow (без версии)"),
-            # Метод 2: tensorflow[and-cuda] если есть GPU
-            ([sys.executable, '-m', 'pip', 'install', '--upgrade', 'tensorflow[and-cuda]', '--no-warn-script-location'], "tensorflow[and-cuda]") if has_gpu else None,
-        ]
-        
-        # Убираем None значения
-        installation_methods = [m for m in installation_methods if m is not None]
-        
-        for cmd, method_name in installation_methods:
-            try:
-                logger.info(f"   Попытка установки через: {method_name}...")
-                result = subprocess.run(
-                    cmd,
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=900
-                )
-                logger.info(f"   ✅ Успешно установлено через: {method_name}")
-                logger.warning("⚠️ ВНИМАНИЕ: Это экспериментальная установка на Python 3.14+")
-                logger.warning("⚠️ TensorFlow может работать нестабильно или не работать вообще")
-                return True, f"TensorFlow установлен через {method_name} (экспериментально на Python 3.14+)"
-            except subprocess.TimeoutExpired:
-                logger.warning(f"   ⚠️ Таймаут при установке через {method_name}")
-                continue
-            except subprocess.CalledProcessError as e:
-                err = e.stderr
-                error_output = (err.decode('utf-8', errors='ignore') if isinstance(err, bytes) else (err or str(e)))
-                logger.debug(f"   ⚠️ Не удалось установить через {method_name}: {error_output[:200]}")
-                continue
-        
-        # Если все методы не сработали
-        logger.error("❌ Не удалось установить TensorFlow на Python 3.14+")
-        logger.warning("⚠️ TensorFlow официально НЕ поддерживает Python 3.14+")
-        logger.warning("⚠️ tf-nightly также НЕ поддерживает Python 3.14+ (только 3.10-3.12)")
+        logger.warning("⚠️ Установка через requirements.txt может не сработать")
         logger.warning("💡 Рекомендуется создать .venv_gpu с Python 3.12:")
         logger.warning("   python scripts/setup_python_gpu.py")
-        logger.warning("💡 Или используйте Python 3.12 глобально для TensorFlow")
-        return False, "TensorFlow не удалось установить на Python 3.14+. Используйте .venv_gpu с Python 3.12"
+        # Не пытаемся устанавливать - пусть pip из requirements.txt попробует
+        return False, "TensorFlow не поддерживает Python 3.14+. Используйте .venv_gpu с Python 3.12"
     
     if not python_info['supported']:
         logger.warning("Требуется Python 3.14 (или 3.12 для TensorFlow). Установка TensorFlow пропущена.")
