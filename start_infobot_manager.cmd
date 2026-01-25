@@ -2,27 +2,45 @@
 setlocal enabledelayedexpansion
 cd /d %~dp0
 
-REM InfoBot требует Python 3.12
+REM InfoBot требует Python 3.14 (fallback на 3.12)
 set "PYTHON_FOUND=0"
 set "PYTHON_CMD="
 
-REM Проверяем py -3.12 (приоритет на Windows)
-py -3.12 --version >nul 2>&1
+REM Проверяем py -3.14 (приоритет на Windows)
+py -3.14 --version >nul 2>&1
 if !errorlevel!==0 (
     set "PYTHON_FOUND=1"
-    set "PYTHON_CMD=py -3.12"
+    set "PYTHON_CMD=py -3.14"
 )
 
-REM Проверяем python (должна быть 3.12)
+REM Проверяем python3.14
 if !PYTHON_FOUND!==0 (
-    python -c "import sys; exit(0 if sys.version_info[:2]==(3,12) else 1)" >nul 2>&1
+    python3.14 --version >nul 2>&1
+    if !errorlevel!==0 (
+        set "PYTHON_FOUND=1"
+        set "PYTHON_CMD=python3.14"
+    )
+)
+
+REM Fallback: проверяем py -3.12
+if !PYTHON_FOUND!==0 (
+    py -3.12 --version >nul 2>&1
+    if !errorlevel!==0 (
+        set "PYTHON_FOUND=1"
+        set "PYTHON_CMD=py -3.12"
+    )
+)
+
+REM Проверяем python (должна быть 3.14 или 3.12)
+if !PYTHON_FOUND!==0 (
+    python -c "import sys; exit(0 if sys.version_info[:2]==(3,14) or sys.version_info[:2]==(3,12) else 1)" >nul 2>&1
     if !errorlevel!==0 (
         set "PYTHON_FOUND=1"
         set "PYTHON_CMD=python"
     )
 )
 
-REM Проверяем python3.12
+REM Проверяем python3.12 (fallback)
 if !PYTHON_FOUND!==0 (
     python3.12 --version >nul 2>&1
     if !errorlevel!==0 (
@@ -31,22 +49,22 @@ if !PYTHON_FOUND!==0 (
     )
 )
 
-REM Если Python 3.12 не найден — устанавливаем через winget
+REM Если Python не найден — устанавливаем через winget
 if !PYTHON_FOUND!==0 (
     winget --version >nul 2>&1
     if !errorlevel!==0 (
-        echo [INFO] Установка Python 3.12 через winget...
-        winget install --id Python.Python.3.12 --silent --accept-package-agreements --accept-source-agreements
+        echo [INFO] Установка Python 3.14 через winget...
+        winget install --id Python.Python.3.14 --silent --accept-package-agreements --accept-source-agreements
         timeout /t 6 /nobreak >nul
-        py -3.12 --version >nul 2>&1
+        py -3.14 --version >nul 2>&1
         if !errorlevel!==0 (
             set "PYTHON_FOUND=1"
-            set "PYTHON_CMD=py -3.12"
+            set "PYTHON_CMD=py -3.14"
         )
     )
     if !PYTHON_FOUND!==0 (
-        echo [ERROR] Python 3.12 не найден. Установите: https://www.python.org/downloads/release/python-3120/
-        start https://www.python.org/downloads/release/python-3120/
+        echo [ERROR] Python 3.14 не найден. Установите: https://www.python.org/downloads/
+        start https://www.python.org/downloads/
         exit /b 1
     )
 )

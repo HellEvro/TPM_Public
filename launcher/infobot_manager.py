@@ -46,6 +46,49 @@ STATE_FILE = PROJECT_ROOT / "launcher" / ".infobot_manager_state.json"
 DEFAULT_GEOMETRY = "850x874"
 
 
+def _check_python_version(python_exec: str) -> tuple[int, int] | None:
+    """Проверяет версию Python и возвращает (major, minor) или None"""
+    try:
+        cmd = python_exec.split() if " " in python_exec else [python_exec]
+        result = subprocess.run(
+            cmd + ["-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            version_str = result.stdout.strip()
+            parts = version_str.split('.')
+            if len(parts) >= 2:
+                return int(parts[0]), int(parts[1])
+    except Exception:
+        pass
+    return None
+
+def _find_python314() -> str | None:
+    """Находит Python 3.14 в системе"""
+    commands = [
+        ["py", "-3.14"],
+        ["python3.14"],
+        ["python314"],
+    ]
+    
+    for cmd in commands:
+        try:
+            result = subprocess.run(
+                cmd + ["--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                version_output = (result.stdout or "") + (result.stderr or "")
+                if "3.14" in version_output:
+                    return " ".join(cmd) if len(cmd) > 1 else cmd[0]
+        except Exception:
+            continue
+    return None
+
 def _detect_python_executable() -> str:
     if os.name == "nt":
         venv_python = VENV_DIR / "Scripts" / "python.exe"
@@ -53,16 +96,21 @@ def _detect_python_executable() -> str:
         venv_python = VENV_DIR / "bin" / "python"
 
     if venv_python.exists():
-        return str(venv_python)
+        # Проверяем версию Python в venv
+        version = _check_python_version(str(venv_python))
+        if version and version[0] == 3 and version[1] == 14:
+            return str(venv_python)
+        # Если версия не 3.14, нужно пересоздать venv
+        # Но возвращаем текущий для совместимости, пересоздание будет в _ensure_venv_with_dependencies
 
     # Fallbacks
     if os.name == "nt":
         launcher = shutil.which("py")
         if launcher:
-            return f"{launcher} -3"
+            return f"{launcher} -3.14"
         return "python"
 
-    return shutil.which("python3") or sys.executable
+    return shutil.which("python3.14") or shutil.which("python3") or sys.executable
 
 
 PYTHON_EXECUTABLE = _detect_python_executable()
@@ -1215,11 +1263,55 @@ class InfoBotManager(tk.Tk):
         global PYTHON_EXECUTABLE
         try:
             need_install = update_existing
-            if not VENV_DIR.exists():
+            need_recreate = False
+            
+            # Проверяем версию Python в существующем venv
+            if VENV_DIR.exists():
+                if os.name == "nt":
+                    venv_python = VENV_DIR / "Scripts" / "python.exe"
+                else:
+                    venv_python = VENV_DIR / "bin" / "python"
+                
+                if venv_python.exists():
+                    version = _check_python_version(str(venv_python))
+                    if version:
+                        major, minor = version
+                        if major != 3 or minor != 14:
+                            self.log(
+                                f"Версия Python в .venv ({major}.{minor}) не соответствует требованиям (3.14). Пересоздаем venv...",
+                                channel="system",
+                            )
+                            need_recreate = True
+                            need_install = True
+            
+            # Пересоздаем venv если нужно
+            if need_recreate or not VENV_DIR.exists():
+                if VENV_DIR.exists():
+                    try:
+                        self.log("Удаление старого .venv...", channel="system")
+                        shutil.rmtree(VENV_DIR)
+                    except Exception as e:
+                        self.log(f"Ошибка при удалении старого venv: {e}", channel="system")
+                        return False
+                
+                # Ищем Python 3.14
+                python314 = _find_python314()
+                if not python314:
+                    self.log(
+                        "Python 3.14 не найден. Установите Python 3.14: https://www.python.org/downloads/",
+                        channel="system",
+                    )
+                    # Пробуем использовать текущий Python как fallback
+                    python_cmd = sys.executable
+                else:
+                    python_cmd = python314
+                    self.log(f"Используем Python 3.14: {python_cmd}", channel="system")
+                
                 try:
+                    cmd = python_cmd.split() if " " in python_cmd else [python_cmd]
                     self._stream_command(
-                        "Создание окружения",
-                        [sys.executable, "-m", "venv", str(VENV_DIR)],
+                        "Создание окружения с Python 3.14",
+                        cmd + ["-m", "venv", str(VENV_DIR)],
                         channel="system",
                     )
                     need_install = True
@@ -1229,10 +1321,12 @@ class InfoBotManager(tk.Tk):
                         channel="system",
                     )
                     return False
-            if not need_install:
+            
+            if not need_install and not need_recreate:
                 PYTHON_EXECUTABLE = _detect_python_executable()
-                self.log(".venv уже существует. Установка зависимостей пропущена.", channel="system")
-                return True
+                self.log(".venv уже существует с правильной версией Python. Проверяем зависимости...", channel="system")
+                # Все равно обновляем зависимости для совместимости
+                need_install = True
 
             python_exec = _detect_python_executable()
             if not python_exec:
@@ -1243,8 +1337,8 @@ class InfoBotManager(tk.Tk):
             self._preinstall_ccxt_without_coincurve(pip_cmd)
             requirements_file = self._prepare_requirements_file()
             commands = [
-                ("Обновление pip", pip_cmd + ["install", "--upgrade", "pip", "setuptools", "wheel"]),
-                ("Установка зависимостей", pip_cmd + ["install", "-r", requirements_file]),
+                ("Обновление pip", pip_cmd + ["install", "--upgrade", "pip", "setuptools", "wheel", "--no-warn-script-location"]),
+                ("Установка/обновление зависимостей", pip_cmd + ["install", "-r", requirements_file, "--upgrade", "--no-warn-script-location"]),
             ]
             for title, command in commands:
                 try:

@@ -11,17 +11,23 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 PYTHON_BIN=""
-for c in python3.12 python3; do
+for c in python3.14 python3.12 python3; do
   if command -v "$c" >/dev/null 2>&1; then
     v=$("$c" -c 'import sys; print(sys.version_info.major, sys.version_info.minor)' 2>/dev/null) || continue
-    if [[ "$v" == "3 12" ]]; then
+    if [[ "$v" == "3 14" ]]; then
       PYTHON_BIN=$(command -v "$c")
       break
+    elif [[ "$v" == "3 12" ]]; then
+      # Fallback на 3.12 если 3.14 не найден
+      if [[ -z "$PYTHON_BIN" ]]; then
+        PYTHON_BIN=$(command -v "$c")
+      fi
     fi
   fi
 done
 if [[ -z "$PYTHON_BIN" ]]; then
-  echo "[ERROR] Python 3.12 not found. Install: sudo apt install python3.12 python3.12-venv  (Ubuntu/Debian)"
+  echo "[ERROR] Python 3.14 not found. Install: https://www.python.org/downloads/"
+  echo "       Or: sudo apt install python3.14 python3.14-venv  (Ubuntu/Debian)"
   exit 1
 fi
 

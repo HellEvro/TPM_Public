@@ -15,7 +15,7 @@ function Test-Command($Name) {
 }
 
 if (-not (Test-Command "python") -and -not (Test-Command "py")) {
-    Write-Error "Python 3.12 not found. Install from https://www.python.org/downloads/release/python-3120/ or run: winget install Python.Python.3.12"
+    Write-Error "Python 3.14 not found. Install from https://www.python.org/downloads/ or run: winget install Python.Python.3.14"
 }
 
 if (-not (Test-Command "git")) {
@@ -28,18 +28,32 @@ Set-Location $projectRoot
 Write-Host "Project root: $projectRoot"
 
 $pyCmd = $null
+# Сначала пробуем Python 3.14
 try {
-    $null = & py -3.12 -c "import sys; exit(0 if sys.version_info[:2]==(3,12) else 1)" 2>$null
-    if ($LASTEXITCODE -eq 0) { $pyCmd = @('py','-3.12') }
+    $null = & py -3.14 -c "import sys; exit(0 if sys.version_info[:2]==(3,14) else 1)" 2>$null
+    if ($LASTEXITCODE -eq 0) { $pyCmd = @('py','-3.14') }
 } catch {}
 if (-not $pyCmd) {
     try {
-        $null = & python -c "import sys; exit(0 if sys.version_info[:2]==(3,12) else 1)" 2>$null
+        $null = & python3.14 -c "import sys; exit(0 if sys.version_info[:2]==(3,14) else 1)" 2>$null
+        if ($LASTEXITCODE -eq 0) { $pyCmd = @('python3.14') }
+    } catch {}
+}
+# Fallback на Python 3.12 если 3.14 не найден
+if (-not $pyCmd) {
+    try {
+        $null = & py -3.12 -c "import sys; exit(0 if sys.version_info[:2]==(3,12) else 1)" 2>$null
+        if ($LASTEXITCODE -eq 0) { $pyCmd = @('py','-3.12') }
+    } catch {}
+}
+if (-not $pyCmd) {
+    try {
+        $null = & python -c "import sys; exit(0 if sys.version_info[:2]==(3,12) or sys.version_info[:2]==(3,14) else 1)" 2>$null
         if ($LASTEXITCODE -eq 0) { $pyCmd = @('python') }
     } catch {}
 }
 if (-not $pyCmd) {
-    Write-Error "Python 3.12 required. Install: https://www.python.org/downloads/release/python-3120/ or: winget install Python.Python.3.12"
+    Write-Error "Python 3.14 required (3.12 as fallback). Install: https://www.python.org/downloads/ or: winget install Python.Python.3.14"
 }
 $venvPath = Join-Path $projectRoot ".venv"
 $venvPython = Join-Path $venvPath "Scripts\python.exe"
@@ -49,7 +63,7 @@ if ((-not (Test-Path $venvPython)) -or $ForceVenv) {
         Write-Host "Removing existing virtual environment (.venv)..." -ForegroundColor Yellow
         Remove-Item -Recurse -Force $venvPath
     }
-    Write-Host "Creating virtual environment (.venv) with Python 3.12..." -ForegroundColor Green
+    Write-Host "Creating virtual environment (.venv) with Python 3.14..." -ForegroundColor Green
     $venvArgs = @($pyCmd[1..($pyCmd.Length-1)]) + @('-m','venv','.venv')
     & $pyCmd[0] $venvArgs
 }

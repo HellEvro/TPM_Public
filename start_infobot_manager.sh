@@ -25,7 +25,16 @@ detect_package_manager() {
   fi
 }
 
-# InfoBot требует Python 3.12
+# InfoBot требует Python 3.14 (fallback на 3.12)
+check_python_314() {
+  local python_cmd="$1"
+  if ! command_exists "$python_cmd"; then
+    return 1
+  fi
+  local v=$("$python_cmd" --version 2>&1)
+  case "$v" in *"3.14"*) return 0 ;; *) return 1 ;; esac
+}
+
 check_python_312() {
   local python_cmd="$1"
   if ! command_exists "$python_cmd"; then
@@ -35,11 +44,21 @@ check_python_312() {
   case "$v" in *"3.12"*) return 0 ;; *) return 1 ;; esac
 }
 
-# Проверка Python 3.12
+# Проверка Python 3.14 (приоритет)
 PYTHON_FOUND=0
 PYTHON_CMD=""
 
-if check_python_312 python3.12; then
+if check_python_314 python3.14; then
+  PYTHON_FOUND=1
+  PYTHON_CMD="python3.14"
+elif check_python_314 python3; then
+  PYTHON_FOUND=1
+  PYTHON_CMD="python3"
+elif check_python_314 python; then
+  PYTHON_FOUND=1
+  PYTHON_CMD="python"
+# Fallback на Python 3.12
+elif check_python_312 python3.12; then
   PYTHON_FOUND=1
   PYTHON_CMD="python3.12"
 elif check_python_312 python3; then
@@ -54,25 +73,25 @@ if [ $PYTHON_FOUND -eq 0 ]; then
   PKG_MGR=$(detect_package_manager)
   case "$PKG_MGR" in
     apt)
-      echo "[INFO] Установка Python 3.12 через apt..."
+      echo "[INFO] Установка Python 3.14 через apt..."
       if sudo apt-get update -qq >/dev/null 2>&1 && \
-         sudo apt-get install -y python3.12 python3.12-venv >/dev/null 2>&1; then
-        if check_python_312 python3.12; then
+         sudo apt-get install -y python3.14 python3.14-venv >/dev/null 2>&1; then
+        if check_python_314 python3.14; then
           PYTHON_FOUND=1
-          PYTHON_CMD="python3.12"
+          PYTHON_CMD="python3.14"
         fi
       fi
       ;;
     yum)
-      echo "[INFO] Установка Python 3.12 через yum..."
-      if sudo yum install -y python3.12 >/dev/null 2>&1; then
-        check_python_312 python3.12 && PYTHON_FOUND=1 && PYTHON_CMD="python3.12"
+      echo "[INFO] Установка Python 3.14 через yum..."
+      if sudo yum install -y python3.14 >/dev/null 2>&1; then
+        check_python_314 python3.14 && PYTHON_FOUND=1 && PYTHON_CMD="python3.14"
       fi
       ;;
     dnf)
-      echo "[INFO] Установка Python 3.12 через dnf..."
-      if sudo dnf install -y python3.12 >/dev/null 2>&1; then
-        check_python_312 python3.12 && PYTHON_FOUND=1 && PYTHON_CMD="python3.12"
+      echo "[INFO] Установка Python 3.14 через dnf..."
+      if sudo dnf install -y python3.14 >/dev/null 2>&1; then
+        check_python_314 python3.14 && PYTHON_FOUND=1 && PYTHON_CMD="python3.14"
       fi
       ;;
     pacman)
@@ -83,14 +102,14 @@ if [ $PYTHON_FOUND -eq 0 ]; then
       fi
       ;;
     brew)
-      echo "[INFO] Установка Python 3.12 через brew..."
-      if brew install python@3.12 >/dev/null 2>&1; then
-        check_python_312 python3.12 && PYTHON_FOUND=1 && PYTHON_CMD="python3.12"
+      echo "[INFO] Установка Python 3.14 через brew..."
+      if brew install python@3.14 >/dev/null 2>&1; then
+        check_python_314 python3.14 && PYTHON_FOUND=1 && PYTHON_CMD="python3.14"
       fi
       ;;
   esac
   if [ $PYTHON_FOUND -eq 0 ]; then
-    echo "[ERROR] Python 3.12 не найден. Установите: https://www.python.org/downloads/release/python-3120/"
+    echo "[ERROR] Python 3.14 не найден. Установите: https://www.python.org/downloads/"
     exit 1
   fi
 fi
