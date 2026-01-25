@@ -50,11 +50,12 @@ rich>=13.0.0
 # Security
 cryptography>=41.0.0
 
-# AI/ML dependencies (Python 3.14)
-# TensorFlow с GPU: pip install tensorflow[and-cuda]
+# AI/ML dependencies
+# ВНИМАНИЕ: TensorFlow НЕ поддерживает Python 3.14!
+# TensorFlow устанавливается только в .venv_gpu с Python 3.12
 # При запуске ai.py выполняется проверка и при необходимости установка
-# Для Python 3.14 используйте последнюю версию TensorFlow
-tensorflow>=2.16.0
+# TensorFlow устанавливается автоматически через bot_engine/ai/tensorflow_setup.py
+# Для установки TensorFlow используйте: python scripts/setup_python_gpu.py
 
 # Machine Learning libraries
 scikit-learn>=1.3.0

@@ -111,8 +111,16 @@ def install_tensorflow_with_gpu(has_gpu=False):
     """Устанавливает TensorFlow (с GPU при Python 3.12 и наличии GPU)"""
     python_info = check_python_version()
     
+    # TensorFlow не поддерживает Python 3.14
+    if python_info['supported'] and sys.version_info.minor == 14:
+        logger.warning("⚠️ TensorFlow НЕ поддерживает Python 3.14!")
+        logger.warning("⚠️ Для использования TensorFlow создайте .venv_gpu с Python 3.12:")
+        logger.warning("   python scripts/setup_python_gpu.py")
+        logger.warning("   Затем запускайте ai.py через .venv_gpu")
+        return False, "TensorFlow не поддерживает Python 3.14. Используйте .venv_gpu с Python 3.12"
+    
     if not python_info['supported']:
-        logger.warning("Требуется Python 3.12. Установка TensorFlow пропущена.")
+        logger.warning("Требуется Python 3.14 (или 3.12 для TensorFlow). Установка TensorFlow пропущена.")
         return False, python_info['message']
     
     # Если нет GPU или Python не поддерживает GPU - сразу устанавливаем CPU версию
