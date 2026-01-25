@@ -125,19 +125,31 @@ def install_dependencies(venv_path, project_root):
     try:
         subprocess.run([str(python), '-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel', '--no-warn-script-location'], check=True)
         
-        # Сначала устанавливаем основные зависимости (без TensorFlow)
+        # Устанавливаем все зависимости из requirements.txt (включая TensorFlow для Python 3.12)
         if req_main.exists():
-            print("[INFO] Установка основных зависимостей (без TensorFlow)...")
-            subprocess.run([str(python), '-m', 'pip', 'install', '-r', str(req_main), '--no-warn-script-location'], check=True)
-        
-        # Затем устанавливаем AI зависимости включая TensorFlow
-        if req_ai.exists():
-            print("[INFO] Установка AI зависимостей (TensorFlow и ML библиотеки)...")
-            subprocess.run([str(python), '-m', 'pip', 'install', '-r', str(req_ai), '--no-warn-script-location'], check=True)
-            print("[OK] TensorFlow и AI зависимости установлены")
+            print("[INFO] Установка всех зависимостей из requirements.txt...")
+            # Для Python 3.12 заменяем tf-nightly на tensorflow
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tmp:
+                with open(req_main, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    # Заменяем tf-nightly на tensorflow для Python 3.12
+                    content = content.replace('tf-nightly>=2.21.0.dev', 'tensorflow>=2.16.0')
+                    tmp.write(content)
+                    tmp_path = tmp.name
+                
+                try:
+                    subprocess.run([str(python), '-m', 'pip', 'install', '-r', tmp_path, '--no-warn-script-location'], check=True)
+                    print("[OK] Все зависимости установлены (включая TensorFlow для Python 3.12)")
+                finally:
+                    import os
+                    try:
+                        os.unlink(tmp_path)
+                    except:
+                        pass
         else:
             # Fallback: устанавливаем TensorFlow вручную
-            print("[WARNING] requirements_ai.txt не найден, устанавливаю TensorFlow вручную...")
+            print("[WARNING] requirements.txt не найден, устанавливаю TensorFlow вручную...")
             try:
                 subprocess.run([str(python), '-m', 'pip', 'install', 'tensorflow[and-cuda]>=2.16.0', '--no-warn-script-location'], check=True)
                 print("[OK] TensorFlow с GPU установлен")
