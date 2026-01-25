@@ -35,17 +35,26 @@ REM Если Python не найден — устанавливаем через 
 if !PYTHON_FOUND!==0 (
     winget --version >nul 2>&1
     if !errorlevel!==0 (
-        echo [INFO] Установка Python 3.14 через winget...
+        echo [INFO] Установка Python 3.14.2+ через winget...
         winget install --id Python.Python.3.14 --silent --accept-package-agreements --accept-source-agreements
-        timeout /t 6 /nobreak >nul
+        timeout /t 8 /nobreak >nul
+        REM Проверяем установку
         py -3.14 --version >nul 2>&1
         if !errorlevel!==0 (
             set "PYTHON_FOUND=1"
             set "PYTHON_CMD=py -3.14"
+        ) else (
+            REM Пробуем еще раз после небольшой задержки
+            timeout /t 3 /nobreak >nul
+            py -3.14 --version >nul 2>&1
+            if !errorlevel!==0 (
+                set "PYTHON_FOUND=1"
+                set "PYTHON_CMD=py -3.14"
+            )
         )
     )
     if !PYTHON_FOUND!==0 (
-        echo [ERROR] Python 3.14 не найден. Установите: https://www.python.org/downloads/
+        echo [ERROR] Python 3.14.2+ не найден. Установите: https://www.python.org/downloads/
         start https://www.python.org/downloads/
         exit /b 1
     )
