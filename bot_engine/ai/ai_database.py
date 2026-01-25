@@ -1660,19 +1660,27 @@ class AIDatabase:
             
             # Мигрируем данные из JSON в столбцы (если есть старые данные)
             try:
-                cursor.execute("SELECT id, rsi_params_json, risk_params_json FROM simulated_trades WHERE rsi_params_json IS NOT NULL OR risk_params_json IS NOT NULL LIMIT 1")
-                if cursor.fetchone():
-                    logger.info("📦 Обнаружены JSON данные в simulated_trades, выполняю миграцию в нормализованные столбцы...")
-                    
-                    cursor.execute("SELECT id, rsi_params_json, risk_params_json FROM simulated_trades")
-                    rows = cursor.fetchall()
-                    
-                    migrated_count = 0
-                    for row in rows:
-                        try:
-                            trade_id = row[0]
-                            rsi_params_json = row[1]
-                            risk_params_json = row[2]
+                # Проверяем, существует ли колонка rsi_params_json
+                cursor.execute("PRAGMA table_info(simulated_trades)")
+                columns = [row[1] for row in cursor.fetchall()]
+                has_rsi_json = 'rsi_params_json' in columns
+                has_risk_json = 'risk_params_json' in columns
+                
+                if has_rsi_json or has_risk_json:
+                    cursor.execute(f"SELECT id, {', rsi_params_json' if has_rsi_json else ''}{', risk_params_json' if has_risk_json else ''} FROM simulated_trades WHERE {'rsi_params_json IS NOT NULL OR ' if has_rsi_json else ''}{'risk_params_json IS NOT NULL' if has_risk_json else '1=0'} LIMIT 1")
+                    if cursor.fetchone():
+                        logger.info("📦 Обнаружены JSON данные в simulated_trades, выполняю миграцию в нормализованные столбцы...")
+                        
+                        query = f"SELECT id{', rsi_params_json' if has_rsi_json else ''}{', risk_params_json' if has_risk_json else ''} FROM simulated_trades"
+                        cursor.execute(query)
+                        rows = cursor.fetchall()
+                        
+                        migrated_count = 0
+                        for row in rows:
+                            try:
+                                trade_id = row[0]
+                                rsi_params_json = row[1] if has_rsi_json else None
+                                risk_params_json = row[2] if has_risk_json else (row[1] if has_rsi_json and has_risk_json else None)
                             
                             # Парсим JSON
                             rsi_params = json.loads(rsi_params_json) if rsi_params_json else {}
@@ -1780,8 +1788,14 @@ class AIDatabase:
             
             # Мигрируем данные из JSON в столбцы (если есть старые данные)
             try:
-                cursor.execute("SELECT id, config_params_json FROM bot_trades WHERE config_params_json IS NOT NULL LIMIT 1")
-                if cursor.fetchone():
+                # Проверяем, существует ли колонка config_params_json
+                cursor.execute("PRAGMA table_info(bot_trades)")
+                columns = [row[1] for row in cursor.fetchall()]
+                has_config_json = 'config_params_json' in columns
+                
+                if has_config_json:
+                    cursor.execute("SELECT id, config_params_json FROM bot_trades WHERE config_params_json IS NOT NULL LIMIT 1")
+                    if cursor.fetchone():
                     logger.info("📦 Обнаружены JSON данные в bot_trades, выполняю миграцию в нормализованные столбцы...")
                     
                     cursor.execute("SELECT id, config_params_json FROM bot_trades WHERE config_params_json IS NOT NULL")
@@ -1926,19 +1940,27 @@ class AIDatabase:
             
             # Мигрируем данные из JSON в столбцы для parameter_training_samples
             try:
-                cursor.execute("SELECT id, rsi_params_json, risk_params_json FROM parameter_training_samples WHERE rsi_params_json IS NOT NULL LIMIT 1")
-                if cursor.fetchone():
-                    logger.info("📦 Обнаружены JSON данные в parameter_training_samples, выполняю миграцию...")
-                    
-                    cursor.execute("SELECT id, rsi_params_json, risk_params_json FROM parameter_training_samples WHERE rsi_params_json IS NOT NULL")
-                    rows = cursor.fetchall()
-                    
-                    migrated_count = 0
-                    for row in rows:
-                        try:
-                            sample_id = row[0]
-                            rsi_params_json = row[1]
-                            risk_params_json = row[2] if len(row) > 2 else None
+                # Проверяем, существует ли колонка rsi_params_json
+                cursor.execute("PRAGMA table_info(parameter_training_samples)")
+                columns = [row[1] for row in cursor.fetchall()]
+                has_rsi_json = 'rsi_params_json' in columns
+                has_risk_json = 'risk_params_json' in columns
+                
+                if has_rsi_json or has_risk_json:
+                    cursor.execute(f"SELECT id{', rsi_params_json' if has_rsi_json else ''}{', risk_params_json' if has_risk_json else ''} FROM parameter_training_samples WHERE {'rsi_params_json IS NOT NULL' if has_rsi_json else '1=0'} LIMIT 1")
+                    if cursor.fetchone():
+                        logger.info("📦 Обнаружены JSON данные в parameter_training_samples, выполняю миграцию...")
+                        
+                        query = f"SELECT id{', rsi_params_json' if has_rsi_json else ''}{', risk_params_json' if has_risk_json else ''} FROM parameter_training_samples WHERE {'rsi_params_json IS NOT NULL' if has_rsi_json else '1=0'}"
+                        cursor.execute(query)
+                        rows = cursor.fetchall()
+                        
+                        migrated_count = 0
+                        for row in rows:
+                            try:
+                                sample_id = row[0]
+                                rsi_params_json = row[1] if has_rsi_json else None
+                                risk_params_json = row[2] if has_risk_json else (row[1] if has_rsi_json and has_risk_json else None)
                             
                             # Парсим RSI параметры
                             rsi_params = json.loads(rsi_params_json) if rsi_params_json else {}
@@ -2036,8 +2058,14 @@ class AIDatabase:
                 
                 # Мигрируем данные из JSON в столбцы
                 try:
-                    cursor.execute(f"SELECT id, rsi_params_json FROM {table_name} WHERE rsi_params_json IS NOT NULL LIMIT 1")
-                    if cursor.fetchone():
+                    # Проверяем, существует ли колонка rsi_params_json
+                    cursor.execute(f"PRAGMA table_info({table_name})")
+                    columns = [row[1] for row in cursor.fetchall()]
+                    has_rsi_json = 'rsi_params_json' in columns
+                    
+                    if has_rsi_json:
+                        cursor.execute(f"SELECT id, rsi_params_json FROM {table_name} WHERE rsi_params_json IS NOT NULL LIMIT 1")
+                        if cursor.fetchone():
                         logger.info(f"📦 Обнаружены JSON данные в {table_name}, выполняю миграцию...")
                         
                         cursor.execute(f"SELECT id, rsi_params_json FROM {table_name} WHERE rsi_params_json IS NOT NULL")
@@ -5901,7 +5929,7 @@ class AIDatabase:
                             max_position_hours, optimization_type,
                             win_rate, total_pnl, params_json, extra_params_json,
                             created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         symbol,
                         rsi_long, rsi_short, rsi_exit_long_with, rsi_exit_long_against,

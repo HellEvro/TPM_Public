@@ -124,8 +124,7 @@ class AutoTrainer:
                 from bot_engine.ai.ai_database import AIDatabase
                 ai_db = AIDatabase()
                 model_version = ai_db.get_latest_model_version(
-                    model_type='anomaly_detector',
-                    symbol=None
+                    model_type='anomaly_detector'
                 )
                 if model_version:
                     models_found.append("anomaly_detector")
