@@ -1681,59 +1681,59 @@ class AIDatabase:
                                 trade_id = row[0]
                                 rsi_params_json = row[1] if has_rsi_json else None
                                 risk_params_json = row[2] if has_risk_json else (row[1] if has_rsi_json and has_risk_json else None)
-                            
-                            # Парсим JSON
-                            rsi_params = json.loads(rsi_params_json) if rsi_params_json else {}
-                            risk_params = json.loads(risk_params_json) if risk_params_json else {}
-                            
-                            # Извлекаем значения (поддерживаем оба формата ключей)
-                            rsi_long = rsi_params.get('oversold') or rsi_params.get('rsi_long_threshold')
-                            rsi_short = rsi_params.get('overbought') or rsi_params.get('rsi_short_threshold')
-                            rsi_exit_long_with = rsi_params.get('exit_long_with_trend') or rsi_params.get('rsi_exit_long_with_trend')
-                            rsi_exit_long_against = rsi_params.get('exit_long_against_trend') or rsi_params.get('rsi_exit_long_against_trend')
-                            rsi_exit_short_with = rsi_params.get('exit_short_with_trend') or rsi_params.get('rsi_exit_short_with_trend')
-                            rsi_exit_short_against = rsi_params.get('exit_short_against_trend') or rsi_params.get('rsi_exit_short_against_trend')
-                            
-                            max_loss = risk_params.get('max_loss_percent')
-                            take_profit = risk_params.get('take_profit_percent')
-                            trailing_activation = risk_params.get('trailing_stop_activation')
-                            trailing_distance = risk_params.get('trailing_stop_distance')
-                            trailing_take = risk_params.get('trailing_take_distance')
-                            trailing_interval = risk_params.get('trailing_update_interval')
-                            break_even_trigger = risk_params.get('break_even_trigger')
-                            break_even_protection = risk_params.get('break_even_protection')
-                            max_hours = risk_params.get('max_position_hours')
-                            
-                            # Обновляем запись
-                            cursor.execute("""
-                                UPDATE simulated_trades SET
-                                    rsi_long_threshold = ?,
-                                    rsi_short_threshold = ?,
-                                    rsi_exit_long_with_trend = ?,
-                                    rsi_exit_long_against_trend = ?,
-                                    rsi_exit_short_with_trend = ?,
-                                    rsi_exit_short_against_trend = ?,
-                                    max_loss_percent = ?,
-                                    take_profit_percent = ?,
-                                    trailing_stop_activation = ?,
-                                    trailing_stop_distance = ?,
-                                    trailing_take_distance = ?,
-                                    trailing_update_interval = ?,
-                                    break_even_trigger = ?,
-                                    break_even_protection = ?,
-                                    max_position_hours = ?
-                                WHERE id = ?
-                            """, (
-                                rsi_long, rsi_short, rsi_exit_long_with, rsi_exit_long_against,
-                                rsi_exit_short_with, rsi_exit_short_against,
-                                max_loss, take_profit, trailing_activation, trailing_distance,
-                                trailing_take, trailing_interval, break_even_trigger,
-                                break_even_protection, max_hours, trade_id
-                            ))
-                            migrated_count += 1
-                        except Exception as e:
-                            logger.debug(f"⚠️ Ошибка миграции записи simulated_trades {row[0]}: {e}")
-                            continue
+                                
+                                # Парсим JSON
+                                rsi_params = json.loads(rsi_params_json) if rsi_params_json else {}
+                                risk_params = json.loads(risk_params_json) if risk_params_json else {}
+                                
+                                # Извлекаем значения (поддерживаем оба формата ключей)
+                                rsi_long = rsi_params.get('oversold') or rsi_params.get('rsi_long_threshold')
+                                rsi_short = rsi_params.get('overbought') or rsi_params.get('rsi_short_threshold')
+                                rsi_exit_long_with = rsi_params.get('exit_long_with_trend') or rsi_params.get('rsi_exit_long_with_trend')
+                                rsi_exit_long_against = rsi_params.get('exit_long_against_trend') or rsi_params.get('rsi_exit_long_against_trend')
+                                rsi_exit_short_with = rsi_params.get('exit_short_with_trend') or rsi_params.get('rsi_exit_short_with_trend')
+                                rsi_exit_short_against = rsi_params.get('exit_short_against_trend') or rsi_params.get('rsi_exit_short_against_trend')
+                                
+                                max_loss = risk_params.get('max_loss_percent')
+                                take_profit = risk_params.get('take_profit_percent')
+                                trailing_activation = risk_params.get('trailing_stop_activation')
+                                trailing_distance = risk_params.get('trailing_stop_distance')
+                                trailing_take = risk_params.get('trailing_take_distance')
+                                trailing_interval = risk_params.get('trailing_update_interval')
+                                break_even_trigger = risk_params.get('break_even_trigger')
+                                break_even_protection = risk_params.get('break_even_protection')
+                                max_hours = risk_params.get('max_position_hours')
+                                
+                                # Обновляем запись
+                                cursor.execute("""
+                                    UPDATE simulated_trades SET
+                                        rsi_long_threshold = ?,
+                                        rsi_short_threshold = ?,
+                                        rsi_exit_long_with_trend = ?,
+                                        rsi_exit_long_against_trend = ?,
+                                        rsi_exit_short_with_trend = ?,
+                                        rsi_exit_short_against_trend = ?,
+                                        max_loss_percent = ?,
+                                        take_profit_percent = ?,
+                                        trailing_stop_activation = ?,
+                                        trailing_stop_distance = ?,
+                                        trailing_take_distance = ?,
+                                        trailing_update_interval = ?,
+                                        break_even_trigger = ?,
+                                        break_even_protection = ?,
+                                        max_position_hours = ?
+                                    WHERE id = ?
+                                """, (
+                                    rsi_long, rsi_short, rsi_exit_long_with, rsi_exit_long_against,
+                                    rsi_exit_short_with, rsi_exit_short_against,
+                                    max_loss, take_profit, trailing_activation, trailing_distance,
+                                    trailing_take, trailing_interval, break_even_trigger,
+                                    break_even_protection, max_hours, trade_id
+                                ))
+                                migrated_count += 1
+                            except Exception as e:
+                                logger.debug(f"⚠️ Ошибка миграции записи simulated_trades {row[0]}: {e}")
+                                continue
                     
                     if migrated_count > 0:
                         logger.info(f"✅ Миграция simulated_trades завершена: {migrated_count} записей мигрировано из JSON в нормализованные столбцы")
@@ -1796,101 +1796,101 @@ class AIDatabase:
                 if has_config_json:
                     cursor.execute("SELECT id, config_params_json FROM bot_trades WHERE config_params_json IS NOT NULL LIMIT 1")
                     if cursor.fetchone():
-                    logger.info("📦 Обнаружены JSON данные в bot_trades, выполняю миграцию в нормализованные столбцы...")
-                    
-                    cursor.execute("SELECT id, config_params_json FROM bot_trades WHERE config_params_json IS NOT NULL")
-                    rows = cursor.fetchall()
-                    
-                    migrated_count = 0
-                    for row in rows:
-                        try:
-                            trade_id = row[0]
-                            config_params_json = row[1]
-                            
-                            # Парсим JSON
-                            config_params = json.loads(config_params_json) if config_params_json else {}
-                            
-                            # Извлекаем RSI параметры (поддерживаем оба формата)
-                            rsi_params = config_params.get('rsi_params', {}) if isinstance(config_params.get('rsi_params'), dict) else {}
-                            if not rsi_params:
-                                # Пытаемся извлечь напрямую из config_params
-                                rsi_params = {k: v for k, v in config_params.items() if 'rsi' in k.lower() or k in ['oversold', 'overbought', 'exit_long_with_trend', 'exit_long_against_trend', 'exit_short_with_trend', 'exit_short_against_trend']}
-                            
-                            rsi_long = rsi_params.get('oversold') or rsi_params.get('rsi_long_threshold') or config_params.get('rsi_long_threshold')
-                            rsi_short = rsi_params.get('overbought') or rsi_params.get('rsi_short_threshold') or config_params.get('rsi_short_threshold')
-                            rsi_exit_long_with = rsi_params.get('exit_long_with_trend') or rsi_params.get('rsi_exit_long_with_trend') or config_params.get('rsi_exit_long_with_trend')
-                            rsi_exit_long_against = rsi_params.get('exit_long_against_trend') or rsi_params.get('rsi_exit_long_against_trend') or config_params.get('rsi_exit_long_against_trend')
-                            rsi_exit_short_with = rsi_params.get('exit_short_with_trend') or rsi_params.get('rsi_exit_short_with_trend') or config_params.get('rsi_exit_short_with_trend')
-                            rsi_exit_short_against = rsi_params.get('exit_short_against_trend') or rsi_params.get('rsi_exit_short_against_trend') or config_params.get('rsi_exit_short_against_trend')
-                            
-                            # Извлекаем Risk параметры
-                            risk_params = config_params.get('risk_params', {}) if isinstance(config_params.get('risk_params'), dict) else {}
-                            if not risk_params:
-                                # Пытаемся извлечь напрямую из config_params
-                                risk_params = {k: v for k, v in config_params.items() if k in ['max_loss_percent', 'take_profit_percent', 'trailing_stop_activation', 'trailing_stop_distance', 'trailing_take_distance', 'trailing_update_interval', 'break_even_trigger', 'break_even_protection', 'max_position_hours']}
-                            
-                            max_loss = risk_params.get('max_loss_percent') or config_params.get('max_loss_percent')
-                            take_profit = risk_params.get('take_profit_percent') or config_params.get('take_profit_percent')
-                            trailing_activation = risk_params.get('trailing_stop_activation') or config_params.get('trailing_stop_activation')
-                            trailing_distance = risk_params.get('trailing_stop_distance') or config_params.get('trailing_stop_distance')
-                            trailing_take = risk_params.get('trailing_take_distance') or config_params.get('trailing_take_distance')
-                            trailing_interval = risk_params.get('trailing_update_interval') or config_params.get('trailing_update_interval')
-                            break_even_trigger = risk_params.get('break_even_trigger') or config_params.get('break_even_trigger')
-                            break_even_protection = risk_params.get('break_even_protection') or config_params.get('break_even_protection')
-                            max_hours = risk_params.get('max_position_hours') or config_params.get('max_position_hours')
-                            
-                            # Собираем остальные параметры в extra_config_json
-                            extra_config = {}
-                            known_fields = {
-                                'rsi_params', 'risk_params', 'rsi_long_threshold', 'rsi_short_threshold',
-                                'rsi_exit_long_with_trend', 'rsi_exit_long_against_trend',
-                                'rsi_exit_short_with_trend', 'rsi_exit_short_against_trend',
-                                'max_loss_percent', 'take_profit_percent', 'trailing_stop_activation',
-                                'trailing_stop_distance', 'trailing_take_distance', 'trailing_update_interval',
-                                'break_even_trigger', 'break_even_protection', 'max_position_hours',
-                                'oversold', 'overbought', 'exit_long_with_trend', 'exit_long_against_trend',
-                                'exit_short_with_trend', 'exit_short_against_trend'
-                            }
-                            for key, value in config_params.items():
-                                if key not in known_fields:
-                                    extra_config[key] = value
-                            
-                            extra_config_json = json.dumps(extra_config, ensure_ascii=False) if extra_config else None
-                            
-                            # Обновляем запись
-                            cursor.execute("""
-                                UPDATE bot_trades SET
-                                    rsi_long_threshold = ?,
-                                    rsi_short_threshold = ?,
-                                    rsi_exit_long_with_trend = ?,
-                                    rsi_exit_long_against_trend = ?,
-                                    rsi_exit_short_with_trend = ?,
-                                    rsi_exit_short_against_trend = ?,
-                                    max_loss_percent = ?,
-                                    take_profit_percent = ?,
-                                    trailing_stop_activation = ?,
-                                    trailing_stop_distance = ?,
-                                    trailing_take_distance = ?,
-                                    trailing_update_interval = ?,
-                                    break_even_trigger = ?,
-                                    break_even_protection = ?,
-                                    max_position_hours = ?,
-                                    extra_config_json = ?
-                                WHERE id = ?
-                            """, (
-                                rsi_long, rsi_short, rsi_exit_long_with, rsi_exit_long_against,
-                                rsi_exit_short_with, rsi_exit_short_against,
-                                max_loss, take_profit, trailing_activation, trailing_distance,
-                                trailing_take, trailing_interval, break_even_trigger,
-                                break_even_protection, max_hours, extra_config_json, trade_id
-                            ))
-                            migrated_count += 1
-                        except Exception as e:
-                            logger.debug(f"⚠️ Ошибка миграции записи bot_trades {row[0]}: {e}")
-                            continue
-                    
-                    if migrated_count > 0:
-                        logger.info(f"✅ Миграция bot_trades завершена: {migrated_count} записей мигрировано из JSON в нормализованные столбцы")
+                        logger.info("📦 Обнаружены JSON данные в bot_trades, выполняю миграцию в нормализованные столбцы...")
+                        
+                        cursor.execute("SELECT id, config_params_json FROM bot_trades WHERE config_params_json IS NOT NULL")
+                        rows = cursor.fetchall()
+                        
+                        migrated_count = 0
+                        for row in rows:
+                            try:
+                                trade_id = row[0]
+                                config_params_json = row[1]
+                                
+                                # Парсим JSON
+                                config_params = json.loads(config_params_json) if config_params_json else {}
+                                
+                                # Извлекаем RSI параметры (поддерживаем оба формата)
+                                rsi_params = config_params.get('rsi_params', {}) if isinstance(config_params.get('rsi_params'), dict) else {}
+                                if not rsi_params:
+                                    # Пытаемся извлечь напрямую из config_params
+                                    rsi_params = {k: v for k, v in config_params.items() if 'rsi' in k.lower() or k in ['oversold', 'overbought', 'exit_long_with_trend', 'exit_long_against_trend', 'exit_short_with_trend', 'exit_short_against_trend']}
+                                
+                                rsi_long = rsi_params.get('oversold') or rsi_params.get('rsi_long_threshold') or config_params.get('rsi_long_threshold')
+                                rsi_short = rsi_params.get('overbought') or rsi_params.get('rsi_short_threshold') or config_params.get('rsi_short_threshold')
+                                rsi_exit_long_with = rsi_params.get('exit_long_with_trend') or rsi_params.get('rsi_exit_long_with_trend') or config_params.get('rsi_exit_long_with_trend')
+                                rsi_exit_long_against = rsi_params.get('exit_long_against_trend') or rsi_params.get('rsi_exit_long_against_trend') or config_params.get('rsi_exit_long_against_trend')
+                                rsi_exit_short_with = rsi_params.get('exit_short_with_trend') or rsi_params.get('rsi_exit_short_with_trend') or config_params.get('rsi_exit_short_with_trend')
+                                rsi_exit_short_against = rsi_params.get('exit_short_against_trend') or rsi_params.get('rsi_exit_short_against_trend') or config_params.get('rsi_exit_short_against_trend')
+                                
+                                # Извлекаем Risk параметры
+                                risk_params = config_params.get('risk_params', {}) if isinstance(config_params.get('risk_params'), dict) else {}
+                                if not risk_params:
+                                    # Пытаемся извлечь напрямую из config_params
+                                    risk_params = {k: v for k, v in config_params.items() if k in ['max_loss_percent', 'take_profit_percent', 'trailing_stop_activation', 'trailing_stop_distance', 'trailing_take_distance', 'trailing_update_interval', 'break_even_trigger', 'break_even_protection', 'max_position_hours']}
+                                
+                                max_loss = risk_params.get('max_loss_percent') or config_params.get('max_loss_percent')
+                                take_profit = risk_params.get('take_profit_percent') or config_params.get('take_profit_percent')
+                                trailing_activation = risk_params.get('trailing_stop_activation') or config_params.get('trailing_stop_activation')
+                                trailing_distance = risk_params.get('trailing_stop_distance') or config_params.get('trailing_stop_distance')
+                                trailing_take = risk_params.get('trailing_take_distance') or config_params.get('trailing_take_distance')
+                                trailing_interval = risk_params.get('trailing_update_interval') or config_params.get('trailing_update_interval')
+                                break_even_trigger = risk_params.get('break_even_trigger') or config_params.get('break_even_trigger')
+                                break_even_protection = risk_params.get('break_even_protection') or config_params.get('break_even_protection')
+                                max_hours = risk_params.get('max_position_hours') or config_params.get('max_position_hours')
+                                
+                                # Собираем остальные параметры в extra_config_json
+                                extra_config = {}
+                                known_fields = {
+                                    'rsi_params', 'risk_params', 'rsi_long_threshold', 'rsi_short_threshold',
+                                    'rsi_exit_long_with_trend', 'rsi_exit_long_against_trend',
+                                    'rsi_exit_short_with_trend', 'rsi_exit_short_against_trend',
+                                    'max_loss_percent', 'take_profit_percent', 'trailing_stop_activation',
+                                    'trailing_stop_distance', 'trailing_take_distance', 'trailing_update_interval',
+                                    'break_even_trigger', 'break_even_protection', 'max_position_hours',
+                                    'oversold', 'overbought', 'exit_long_with_trend', 'exit_long_against_trend',
+                                    'exit_short_with_trend', 'exit_short_against_trend'
+                                }
+                                for key, value in config_params.items():
+                                    if key not in known_fields:
+                                        extra_config[key] = value
+                                
+                                extra_config_json = json.dumps(extra_config, ensure_ascii=False) if extra_config else None
+                                
+                                # Обновляем запись
+                                cursor.execute("""
+                                    UPDATE bot_trades SET
+                                        rsi_long_threshold = ?,
+                                        rsi_short_threshold = ?,
+                                        rsi_exit_long_with_trend = ?,
+                                        rsi_exit_long_against_trend = ?,
+                                        rsi_exit_short_with_trend = ?,
+                                        rsi_exit_short_against_trend = ?,
+                                        max_loss_percent = ?,
+                                        take_profit_percent = ?,
+                                        trailing_stop_activation = ?,
+                                        trailing_stop_distance = ?,
+                                        trailing_take_distance = ?,
+                                        trailing_update_interval = ?,
+                                        break_even_trigger = ?,
+                                        break_even_protection = ?,
+                                        max_position_hours = ?,
+                                        extra_config_json = ?
+                                    WHERE id = ?
+                                """, (
+                                    rsi_long, rsi_short, rsi_exit_long_with, rsi_exit_long_against,
+                                    rsi_exit_short_with, rsi_exit_short_against,
+                                    max_loss, take_profit, trailing_activation, trailing_distance,
+                                    trailing_take, trailing_interval, break_even_trigger,
+                                    break_even_protection, max_hours, extra_config_json, trade_id
+                                ))
+                                migrated_count += 1
+                            except Exception as e:
+                                logger.debug(f"⚠️ Ошибка миграции записи bot_trades {row[0]}: {e}")
+                                continue
+                        
+                        if migrated_count > 0:
+                            logger.info(f"✅ Миграция bot_trades завершена: {migrated_count} записей мигрировано из JSON в нормализованные столбцы")
             except Exception as e:
                 logger.debug(f"⚠️ Ошибка миграции bot_trades: {e}")
             
@@ -1961,46 +1961,46 @@ class AIDatabase:
                                 sample_id = row[0]
                                 rsi_params_json = row[1] if has_rsi_json else None
                                 risk_params_json = row[2] if has_risk_json else (row[1] if has_rsi_json and has_risk_json else None)
-                            
-                            # Парсим RSI параметры
-                            rsi_params = json.loads(rsi_params_json) if rsi_params_json else {}
-                            rsi_long = rsi_params.get('oversold') or rsi_params.get('rsi_long_threshold')
-                            rsi_short = rsi_params.get('overbought') or rsi_params.get('rsi_short_threshold')
-                            rsi_exit_long_with = rsi_params.get('exit_long_with_trend') or rsi_params.get('rsi_exit_long_with_trend')
-                            rsi_exit_long_against = rsi_params.get('exit_long_against_trend') or rsi_params.get('rsi_exit_long_against_trend')
-                            rsi_exit_short_with = rsi_params.get('exit_short_with_trend') or rsi_params.get('rsi_exit_short_with_trend')
-                            rsi_exit_short_against = rsi_params.get('exit_short_against_trend') or rsi_params.get('rsi_exit_short_against_trend')
-                            
-                            # Собираем остальные RSI параметры
-                            extra_rsi = {}
-                            known_rsi = {'oversold', 'overbought', 'exit_long_with_trend', 'exit_long_against_trend', 'exit_short_with_trend', 'exit_short_against_trend', 'rsi_long_threshold', 'rsi_short_threshold', 'rsi_exit_long_with_trend', 'rsi_exit_long_against_trend', 'rsi_exit_short_with_trend', 'rsi_exit_short_against_trend'}
-                            for key, value in rsi_params.items():
-                                if key not in known_rsi:
-                                    extra_rsi[key] = value
-                            extra_rsi_json = json.dumps(extra_rsi, ensure_ascii=False) if extra_rsi else None
-                            
-                            # Парсим Risk параметры
-                            risk_params = json.loads(risk_params_json) if risk_params_json else {}
-                            max_loss = risk_params.get('max_loss_percent')
-                            take_profit = risk_params.get('take_profit_percent')
-                            trailing_activation = risk_params.get('trailing_stop_activation')
-                            trailing_distance = risk_params.get('trailing_stop_distance')
-                            trailing_take = risk_params.get('trailing_take_distance')
-                            trailing_interval = risk_params.get('trailing_update_interval')
-                            break_even_trigger = risk_params.get('break_even_trigger')
-                            break_even_protection = risk_params.get('break_even_protection')
-                            max_hours = risk_params.get('max_position_hours')
-                            
-                            # Собираем остальные Risk параметры
-                            extra_risk = {}
-                            known_risk = {'max_loss_percent', 'take_profit_percent', 'trailing_stop_activation', 'trailing_stop_distance', 'trailing_take_distance', 'trailing_update_interval', 'break_even_trigger', 'break_even_protection', 'max_position_hours'}
-                            for key, value in risk_params.items():
-                                if key not in known_risk:
-                                    extra_risk[key] = value
-                            extra_risk_json = json.dumps(extra_risk, ensure_ascii=False) if extra_risk else None
-                            
-                            # Обновляем запись
-                            cursor.execute("""
+                                
+                                # Парсим RSI параметры
+                                rsi_params = json.loads(rsi_params_json) if rsi_params_json else {}
+                                rsi_long = rsi_params.get('oversold') or rsi_params.get('rsi_long_threshold')
+                                rsi_short = rsi_params.get('overbought') or rsi_params.get('rsi_short_threshold')
+                                rsi_exit_long_with = rsi_params.get('exit_long_with_trend') or rsi_params.get('rsi_exit_long_with_trend')
+                                rsi_exit_long_against = rsi_params.get('exit_long_against_trend') or rsi_params.get('rsi_exit_long_against_trend')
+                                rsi_exit_short_with = rsi_params.get('exit_short_with_trend') or rsi_params.get('rsi_exit_short_with_trend')
+                                rsi_exit_short_against = rsi_params.get('exit_short_against_trend') or rsi_params.get('rsi_exit_short_against_trend')
+                                
+                                # Собираем остальные RSI параметры
+                                extra_rsi = {}
+                                known_rsi = {'oversold', 'overbought', 'exit_long_with_trend', 'exit_long_against_trend', 'exit_short_with_trend', 'exit_short_against_trend', 'rsi_long_threshold', 'rsi_short_threshold', 'rsi_exit_long_with_trend', 'rsi_exit_long_against_trend', 'rsi_exit_short_with_trend', 'rsi_exit_short_against_trend'}
+                                for key, value in rsi_params.items():
+                                    if key not in known_rsi:
+                                        extra_rsi[key] = value
+                                extra_rsi_json = json.dumps(extra_rsi, ensure_ascii=False) if extra_rsi else None
+                                
+                                # Парсим Risk параметры
+                                risk_params = json.loads(risk_params_json) if risk_params_json else {}
+                                max_loss = risk_params.get('max_loss_percent')
+                                take_profit = risk_params.get('take_profit_percent')
+                                trailing_activation = risk_params.get('trailing_stop_activation')
+                                trailing_distance = risk_params.get('trailing_stop_distance')
+                                trailing_take = risk_params.get('trailing_take_distance')
+                                trailing_interval = risk_params.get('trailing_update_interval')
+                                break_even_trigger = risk_params.get('break_even_trigger')
+                                break_even_protection = risk_params.get('break_even_protection')
+                                max_hours = risk_params.get('max_position_hours')
+                                
+                                # Собираем остальные Risk параметры
+                                extra_risk = {}
+                                known_risk = {'max_loss_percent', 'take_profit_percent', 'trailing_stop_activation', 'trailing_stop_distance', 'trailing_take_distance', 'trailing_update_interval', 'break_even_trigger', 'break_even_protection', 'max_position_hours'}
+                                for key, value in risk_params.items():
+                                    if key not in known_risk:
+                                        extra_risk[key] = value
+                                extra_risk_json = json.dumps(extra_risk, ensure_ascii=False) if extra_risk else None
+                                
+                                # Обновляем запись
+                                cursor.execute("""
                                 UPDATE parameter_training_samples SET
                                     rsi_long_threshold = ?,
                                     rsi_short_threshold = ?,
@@ -2027,10 +2027,10 @@ class AIDatabase:
                                 trailing_take, trailing_interval, break_even_trigger,
                                 break_even_protection, max_hours, extra_rsi_json, extra_risk_json, sample_id
                             ))
-                            migrated_count += 1
-                        except Exception as e:
-                            logger.debug(f"⚠️ Ошибка миграции записи parameter_training_samples {row[0]}: {e}")
-                            continue
+                                migrated_count += 1
+                            except Exception as e:
+                                logger.debug(f"⚠️ Ошибка миграции записи parameter_training_samples {row[0]}: {e}")
+                                continue
                     
                     if migrated_count > 0:
                         logger.info(f"✅ Миграция parameter_training_samples завершена: {migrated_count} записей мигрировано")
@@ -2066,56 +2066,56 @@ class AIDatabase:
                     if has_rsi_json:
                         cursor.execute(f"SELECT id, rsi_params_json FROM {table_name} WHERE rsi_params_json IS NOT NULL LIMIT 1")
                         if cursor.fetchone():
-                        logger.info(f"📦 Обнаружены JSON данные в {table_name}, выполняю миграцию...")
-                        
-                        cursor.execute(f"SELECT id, rsi_params_json FROM {table_name} WHERE rsi_params_json IS NOT NULL")
-                        rows = cursor.fetchall()
-                        
-                        migrated_count = 0
-                        for row in rows:
-                            try:
-                                record_id = row[0]
-                                rsi_params_json = row[1]
-                                
-                                # Парсим RSI параметры
-                                rsi_params = json.loads(rsi_params_json) if rsi_params_json else {}
-                                rsi_long = rsi_params.get('oversold') or rsi_params.get('rsi_long_threshold')
-                                rsi_short = rsi_params.get('overbought') or rsi_params.get('rsi_short_threshold')
-                                rsi_exit_long_with = rsi_params.get('exit_long_with_trend') or rsi_params.get('rsi_exit_long_with_trend')
-                                rsi_exit_long_against = rsi_params.get('exit_long_against_trend') or rsi_params.get('rsi_exit_long_against_trend')
-                                rsi_exit_short_with = rsi_params.get('exit_short_with_trend') or rsi_params.get('rsi_exit_short_with_trend')
-                                rsi_exit_short_against = rsi_params.get('exit_short_against_trend') or rsi_params.get('rsi_exit_short_against_trend')
-                                
-                                # Собираем остальные RSI параметры
-                                extra_rsi = {}
-                                known_rsi = {'oversold', 'overbought', 'exit_long_with_trend', 'exit_long_against_trend', 'exit_short_with_trend', 'exit_short_against_trend', 'rsi_long_threshold', 'rsi_short_threshold', 'rsi_exit_long_with_trend', 'rsi_exit_long_against_trend', 'rsi_exit_short_with_trend', 'rsi_exit_short_against_trend'}
-                                for key, value in rsi_params.items():
-                                    if key not in known_rsi:
-                                        extra_rsi[key] = value
-                                extra_rsi_json = json.dumps(extra_rsi, ensure_ascii=False) if extra_rsi else None
-                                
-                                # Обновляем запись
-                                cursor.execute(f"""
-                                    UPDATE {table_name} SET
-                                        rsi_long_threshold = ?,
-                                        rsi_short_threshold = ?,
-                                        rsi_exit_long_with_trend = ?,
-                                        rsi_exit_long_against_trend = ?,
-                                        rsi_exit_short_with_trend = ?,
-                                        rsi_exit_short_against_trend = ?,
-                                        extra_rsi_params_json = ?
-                                    WHERE id = ?
-                                """, (
-                                    rsi_long, rsi_short, rsi_exit_long_with, rsi_exit_long_against,
-                                    rsi_exit_short_with, rsi_exit_short_against, extra_rsi_json, record_id
-                                ))
-                                migrated_count += 1
-                            except Exception as e:
-                                logger.debug(f"⚠️ Ошибка миграции записи {table_name} {row[0]}: {e}")
-                                continue
-                        
-                        if migrated_count > 0:
-                            logger.info(f"✅ Миграция {table_name} завершена: {migrated_count} записей мигрировано")
+                            logger.info(f"📦 Обнаружены JSON данные в {table_name}, выполняю миграцию...")
+                            
+                            cursor.execute(f"SELECT id, rsi_params_json FROM {table_name} WHERE rsi_params_json IS NOT NULL")
+                            rows = cursor.fetchall()
+                            
+                            migrated_count = 0
+                            for row in rows:
+                                try:
+                                    record_id = row[0]
+                                    rsi_params_json = row[1]
+                                    
+                                    # Парсим RSI параметры
+                                    rsi_params = json.loads(rsi_params_json) if rsi_params_json else {}
+                                    rsi_long = rsi_params.get('oversold') or rsi_params.get('rsi_long_threshold')
+                                    rsi_short = rsi_params.get('overbought') or rsi_params.get('rsi_short_threshold')
+                                    rsi_exit_long_with = rsi_params.get('exit_long_with_trend') or rsi_params.get('rsi_exit_long_with_trend')
+                                    rsi_exit_long_against = rsi_params.get('exit_long_against_trend') or rsi_params.get('rsi_exit_long_against_trend')
+                                    rsi_exit_short_with = rsi_params.get('exit_short_with_trend') or rsi_params.get('rsi_exit_short_with_trend')
+                                    rsi_exit_short_against = rsi_params.get('exit_short_against_trend') or rsi_params.get('rsi_exit_short_against_trend')
+                                    
+                                    # Собираем остальные RSI параметры
+                                    extra_rsi = {}
+                                    known_rsi = {'oversold', 'overbought', 'exit_long_with_trend', 'exit_long_against_trend', 'exit_short_with_trend', 'exit_short_against_trend', 'rsi_long_threshold', 'rsi_short_threshold', 'rsi_exit_long_with_trend', 'rsi_exit_long_against_trend', 'rsi_exit_short_with_trend', 'rsi_exit_short_against_trend'}
+                                    for key, value in rsi_params.items():
+                                        if key not in known_rsi:
+                                            extra_rsi[key] = value
+                                    extra_rsi_json = json.dumps(extra_rsi, ensure_ascii=False) if extra_rsi else None
+                                    
+                                    # Обновляем запись
+                                    cursor.execute(f"""
+                                        UPDATE {table_name} SET
+                                            rsi_long_threshold = ?,
+                                            rsi_short_threshold = ?,
+                                            rsi_exit_long_with_trend = ?,
+                                            rsi_exit_long_against_trend = ?,
+                                            rsi_exit_short_with_trend = ?,
+                                            rsi_exit_short_against_trend = ?,
+                                            extra_rsi_params_json = ?
+                                        WHERE id = ?
+                                    """, (
+                                        rsi_long, rsi_short, rsi_exit_long_with, rsi_exit_long_against,
+                                        rsi_exit_short_with, rsi_exit_short_against, extra_rsi_json, record_id
+                                    ))
+                                    migrated_count += 1
+                                except Exception as e:
+                                    logger.debug(f"⚠️ Ошибка миграции записи {table_name} {row[0]}: {e}")
+                                    continue
+                            
+                            if migrated_count > 0:
+                                logger.info(f"✅ Миграция {table_name} завершена: {migrated_count} записей мигрировано")
                 except Exception as e:
                     logger.debug(f"⚠️ Ошибка миграции {table_name}: {e}")
             
