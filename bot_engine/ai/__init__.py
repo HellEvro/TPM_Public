@@ -93,9 +93,72 @@ def _detect_project_root() -> Path:
 # Экспорты будут добавлены по мере создания модулей
 # ВАЖНО: Используем .pyc файлы для защиты логики лицензирования
 # .pyc файлы должны быть скомпилированы при сборке проекта через license_generator/compile_all.py
+# Поддерживаются версионированные .pyc файлы для Python 3.14 и 3.12
+
+def _get_versioned_module_path(module_name):
+    """Определяет путь к версионированному .pyc модулю на основе текущей версии Python."""
+    base_dir = Path(__file__).resolve().parent
+    python_version = sys.version_info[:2]
+    
+    # Определяем версию Python и соответствующую директорию
+    if python_version >= (3, 14):
+        version_dir = base_dir / 'pyc_314'
+    elif python_version == (3, 12):
+        version_dir = base_dir / 'pyc_312'
+    else:
+        # Для других версий используем основную директорию
+        version_dir = base_dir
+    
+    # Путь к версионированному .pyc файлу
+    versioned_path = version_dir / f"{module_name}.pyc"
+    
+    # Если версионированный файл не найден, пробуем основную директорию (для обратной совместимости)
+    if not versioned_path.exists():
+        fallback_path = base_dir / f"{module_name}.pyc"
+        if fallback_path.exists():
+            return fallback_path
+        return None
+    
+    return versioned_path
+
+def _load_versioned_module(module_name, module_import_name):
+    """Загружает версионированный .pyc модуль используя importlib."""
+    import importlib.util
+    import importlib.machinery
+    
+    pyc_path = _get_versioned_module_path(module_name)
+    if pyc_path is None:
+        # Пробуем обычный импорт (для обратной совместимости)
+        return None
+    
+    try:
+        loader = importlib.machinery.SourcelessFileLoader(module_import_name, str(pyc_path))
+        spec = importlib.util.spec_from_loader(module_import_name, loader)
+        if spec is None:
+            return None
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        return module
+    except Exception as e:
+        err_msg = str(e).lower()
+        if "bad magic number" in err_msg or "bad magic" in err_msg:
+            python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+            _logger.error(f"[AI] [ERROR] {module_name}.pyc несовместим с текущей версией Python: {python_version}")
+            _logger.error("[AI] [ERROR] Модуль был скомпилирован под другую версию Python.")
+            _logger.error("[AI] [ERROR] Обратитесь к разработчику для получения правильной версии модулей.")
+        raise
+
+# Пытаемся загрузить ai_manager из версионированной директории
 try:
-    from .ai_manager import AIManager, get_ai_manager
-    __all__ = ['AIManager', 'get_ai_manager']
+    ai_manager_module = _load_versioned_module('ai_manager', 'bot_engine.ai.ai_manager')
+    if ai_manager_module is not None:
+        AIManager = ai_manager_module.AIManager
+        get_ai_manager = ai_manager_module.get_ai_manager
+        __all__ = ['AIManager', 'get_ai_manager']
+    else:
+        # Fallback к обычному импорту (для обратной совместимости)
+        from .ai_manager import AIManager, get_ai_manager
+        __all__ = ['AIManager', 'get_ai_manager']
 except ImportError as e:
     err_msg = str(e).lower()
     if "bad magic number" in err_msg or "bad magic" in err_msg:
@@ -104,13 +167,16 @@ except ImportError as e:
         _logger.error(f"[AI] [ERROR] ai_manager.pyc несовместим с текущей версией Python: {python_version}")
         _logger.error("[AI] [ERROR] Модуль был скомпилирован под другую версию Python.")
         _logger.error("[AI] [ERROR] Обратитесь к разработчику для получения правильной версии модулей.")
-        if python_version == "3.12":
-            _logger.error("[AI] [ERROR] Или пересоздайте .venv_gpu: python scripts/setup_python_gpu.py")
-        else:
-            _logger.error("[AI] [ERROR] Или пересоздайте .venv: python scripts/ensure_python314_venv.py")
         __all__ = []
     else:
         # Модули еще не созданы - это нормально на этапе разработки
+        __all__ = []
+except Exception as e:
+    # Другие ошибки - пробуем обычный импорт
+    try:
+        from .ai_manager import AIManager, get_ai_manager
+        __all__ = ['AIManager', 'get_ai_manager']
+    except:
         __all__ = []
 
 # Экспорт главного модуля AI системы (новый модуль)
@@ -212,7 +278,13 @@ def check_premium_license(force_refresh: bool = False) -> bool:
         return _LICENSE_STATUS
 
     try:
-        from .license_checker import get_license_checker
+        # Пытаемся загрузить license_checker из версионированной директории
+        license_checker_module = _load_versioned_module('license_checker', 'bot_engine.ai.license_checker')
+        if license_checker_module is not None:
+            get_license_checker = license_checker_module.get_license_checker
+        else:
+            # Fallback к обычному импорту
+            from .license_checker import get_license_checker
     except Exception as exc:
         _license_logger.debug(f"License checker module unavailable: {exc}")
         _LICENSE_STATUS = False
