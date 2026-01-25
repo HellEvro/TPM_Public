@@ -25,6 +25,31 @@ if not os.environ.get('INFOBOT_AI_VENV_RESTART'):
     # Если .venv_gpu существует и текущий Python 3.14+ → перезапуск через .venv_gpu (для TensorFlow)
     if venv_gpu_python.exists() and current_python_version >= (3, 14):
         print(f"[INFO] Python {current_python_version[0]}.{current_python_version[1]} обнаружен, переключаюсь на .venv_gpu (Python 3.12) для TensorFlow")
+        
+        # Проверяем, установлены ли зависимости в .venv_gpu
+        try:
+            check_result = subprocess.run(
+                [str(venv_gpu_python), '-c', 'import requests'],
+                capture_output=True,
+                timeout=5
+            )
+            if check_result.returncode != 0:
+                print("[INFO] Зависимости не установлены в .venv_gpu, устанавливаю...")
+                # Устанавливаем зависимости
+                req_file = project_root / 'requirements.txt'
+                if req_file.exists():
+                    install_result = subprocess.run(
+                        [str(venv_gpu_python), '-m', 'pip', 'install', '-r', str(req_file)],
+                        cwd=project_root,
+                        timeout=300
+                    )
+                    if install_result.returncode == 0:
+                        print("[OK] Зависимости установлены в .venv_gpu")
+                    else:
+                        print("[WARNING] Не удалось установить зависимости, продолжаем...")
+        except Exception as e:
+            print(f"[WARNING] Не удалось проверить зависимости: {e}")
+        
         os.environ['INFOBOT_AI_VENV_RESTART'] = 'true'
         try:
             subprocess.run([str(venv_gpu_python), __file__] + sys.argv[1:], check=False)
