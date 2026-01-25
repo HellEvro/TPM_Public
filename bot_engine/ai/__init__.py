@@ -102,12 +102,12 @@ except ImportError as e:
         # Если .pyc несовместим - сообщаем пользователю
         python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
         _logger.error(f"[AI] [ERROR] ai_manager.pyc несовместим с текущей версией Python: {python_version}")
+        _logger.error("[AI] [ERROR] Модуль был скомпилирован под другую версию Python.")
+        _logger.error("[AI] [ERROR] Обратитесь к разработчику для получения правильной версии модулей.")
         if python_version == "3.12":
-            _logger.error("[AI] [ERROR] Выполните: python scripts/setup_python_gpu.py (для .venv_gpu)")
-            _logger.error("[AI] [ERROR] Или: .venv_gpu\\Scripts\\python license_generator\\compile_all.py")
+            _logger.error("[AI] [ERROR] Или пересоздайте .venv_gpu: python scripts/setup_python_gpu.py")
         else:
-            _logger.error("[AI] [ERROR] Выполните: python scripts/ensure_python314_venv.py (для .venv)")
-            _logger.error("[AI] [ERROR] Или: python license_generator/compile_all.py")
+            _logger.error("[AI] [ERROR] Или пересоздайте .venv: python scripts/ensure_python314_venv.py")
         __all__ = []
     else:
         # Модули еще не созданы - это нормально на этапе разработки
