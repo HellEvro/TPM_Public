@@ -239,24 +239,22 @@ def check_python_312_available():
     # Пытаемся найти Python 3.12 напрямую (без py launcher)
     python312_exe = find_python312_executable()
     if python312_exe:
+        print(f"[OK] Найден Python 3.12: {python312_exe}")
         return True, python312_exe
     
     # Если не нашли напрямую, пробуем команды (но НЕ py -3.12, так как он пытается установить)
-    commands = [
-        ['python3.12', '--version'],
-        ['python312', '--version'],
-    ]
+    import shutil
+    commands = ['python3.12', 'python312']
     for cmd in commands:
-        try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-            if r.returncode == 0 and '3.12' in (r.stdout or '') + (r.stderr or ''):
-                # Находим полный путь к исполняемому файлу
-                import shutil
-                exe_path = shutil.which(cmd[0])
-                if exe_path:
+        exe_path = shutil.which(cmd)
+        if exe_path:
+            try:
+                r = subprocess.run([exe_path, '--version'], capture_output=True, text=True, timeout=5)
+                if r.returncode == 0 and '3.12' in (r.stdout or '') + (r.stderr or ''):
+                    print(f"[OK] Найден Python 3.12 через PATH: {exe_path}")
                     return True, exe_path
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            continue
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                continue
     
     # Python 3.12 не найден - пробуем установить
     print("[INFO] Python 3.12 не найден, пытаемся установить автоматически...")
@@ -266,18 +264,19 @@ def check_python_312_available():
         time.sleep(5)  # Увеличиваем задержку для обновления PATH
         python312_exe = find_python312_executable()
         if python312_exe:
+            print(f"[OK] Python 3.12 найден после установки: {python312_exe}")
             return True, python312_exe
         
         for cmd in commands:
-            try:
-                r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-                if r.returncode == 0 and '3.12' in (r.stdout or '') + (r.stderr or ''):
-                    import shutil
-                    exe_path = shutil.which(cmd[0])
-                    if exe_path:
+            exe_path = shutil.which(cmd)
+            if exe_path:
+                try:
+                    r = subprocess.run([exe_path, '--version'], capture_output=True, text=True, timeout=5)
+                    if r.returncode == 0 and '3.12' in (r.stdout or '') + (r.stderr or ''):
+                        print(f"[OK] Python 3.12 найден после установки: {exe_path}")
                         return True, exe_path
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                continue
+                except (FileNotFoundError, subprocess.TimeoutExpired):
+                    continue
     
     return False, None
 
@@ -324,9 +323,21 @@ def create_venv(python_cmd, project_root, python_version="3.12"):
             print("[INFO] Используйте прямой путь к Python 3.12 или установите его вручную")
             return None
         else:
-            cmd = [python_cmd]
+            # Пробуем найти через which/shutil
+            import shutil
+            exe_path = shutil.which(python_cmd)
+            if exe_path and os.path.exists(exe_path):
+                cmd = [exe_path]
+            else:
+                cmd = [python_cmd]
     else:
         cmd = list(python_cmd)
+    
+    # Проверяем, что команда существует перед использованием
+    if not os.path.exists(cmd[0]):
+        print(f"[ERROR] Python не найден по пути: {cmd[0]}")
+        print("[INFO] Попробуйте установить Python 3.12 вручную или запустите: python scripts/setup_python_gpu.py")
+        return None
     
     create = cmd + ['-m', 'venv', str(venv_path)]
     print(f"Создание .venv_gpu с Python {python_version}...")
@@ -449,8 +460,11 @@ def install_dependencies(venv_path, project_root):
                 with open(req_main, 'r', encoding='utf-8') as f:
                     content = f.read()
                     # Убираем environment marker для Python 3.12 (в .venv_gpu всегда Python 3.12)
-                    content = content.replace('tensorflow>=2.16.0; python_version < "3.14"', 'tensorflow>=2.16.0')
+                    # Заменяем все варианты маркеров на простой tensorflow>=2.16.0
+                    import re
+                    content = re.sub(r'tensorflow[^;\n]*;.*python_version.*', 'tensorflow>=2.16.0', content)
                     content = content.replace('tf-nightly>=2.21.0.dev', 'tensorflow>=2.16.0')
+                    content = content.replace('tensorflow>=2.16.0; python_version < "3.14"', 'tensorflow>=2.16.0')
                     tmp.write(content)
                     tmp_path = tmp.name
                 
