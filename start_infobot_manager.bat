@@ -130,12 +130,9 @@ if errorlevel 1 (
     echo.
     echo [ERROR] Error starting manager. Return code: %ERRORLEVEL%
     echo.
-    echo Running diagnostics...
-    call "%PYTHON_BIN%" "check_setup.py"
-    echo.
     echo Check:
-    echo   1. Is Python 3.8+ installed?
-    echo   2. Are dependencies installed: pip install -r requirements.txt
+    echo   1. Is Python 3.14.2+ installed?
+    echo   2. Are dependencies installed: use GUI button "Create/Update Environment"
     echo   3. Does app\config.py exist?
     echo   4. Does app\keys.py exist?
     echo.

@@ -51,7 +51,7 @@ def _check_python_version(python_exec: str) -> tuple[int, int] | None:
     try:
         cmd = python_exec.split() if " " in python_exec else [python_exec]
         result = subprocess.run(
-            cmd + ["-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")],
+            cmd + ["-c", "import sys; print(f\"{sys.version_info.major}.{sys.version_info.minor}\")"],
             capture_output=True,
             text=True,
             timeout=5
