@@ -38,12 +38,33 @@ if not os.environ.get('INFOBOT_AI_VENV_RESTART'):
                 # Устанавливаем зависимости
                 req_file = project_root / 'requirements.txt'
                 if req_file.exists():
-                    # Увеличиваем таймаут до 600 секунд (10 минут) для больших пакетов типа TensorFlow
-                    install_result = subprocess.run(
-                        [str(venv_gpu_python), '-m', 'pip', 'install', '-r', str(req_file)],
-                        cwd=project_root,
-                        timeout=600
-                    )
+                    # Для Python 3.12 нужно использовать tensorflow==2.15.0 вместо tf-nightly
+                    import tempfile
+                    import re
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tmp:
+                        with open(req_file, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                            # Для Python 3.12 заменяем tf-nightly и маркеры на tensorflow==2.15.0
+                            content = re.sub(r'tensorflow[^;\n]*;.*python_version.*', 'tensorflow==2.15.0', content)
+                            content = re.sub(r'tf-nightly[^;\n]*;.*python_version.*', 'tensorflow==2.15.0', content)
+                            content = content.replace('tf-nightly>=2.21.0.dev', 'tensorflow==2.15.0')
+                            content = content.replace('tensorflow>=2.15.0; python_version < "3.13"', 'tensorflow==2.15.0')
+                        tmp.write(content)
+                        tmp_path = tmp.name
+                    
+                    try:
+                        # Увеличиваем таймаут до 600 секунд (10 минут) для больших пакетов типа TensorFlow
+                        install_result = subprocess.run(
+                            [str(venv_gpu_python), '-m', 'pip', 'install', '-r', tmp_path],
+                            cwd=project_root,
+                            timeout=600
+                        )
+                    finally:
+                        import os
+                        try:
+                            os.unlink(tmp_path)
+                        except:
+                            pass
                     if install_result.returncode == 0:
                         print("[OK] Зависимости установлены в .venv_gpu")
                     else:

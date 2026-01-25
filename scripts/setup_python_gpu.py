@@ -495,11 +495,13 @@ def install_dependencies(venv_path, project_root):
                 with open(req_main, 'r', encoding='utf-8') as f:
                     content = f.read()
                     # Убираем environment marker для Python 3.12 (в .venv_gpu всегда Python 3.12)
-                    # Заменяем все варианты маркеров на простой tensorflow>=2.16.0
+                    # Заменяем все варианты маркеров на tensorflow==2.15.0 (последняя версия для Python 3.12)
                     import re
-                    content = re.sub(r'tensorflow[^;\n]*;.*python_version.*', 'tensorflow>=2.16.0', content)
-                    content = content.replace('tf-nightly>=2.21.0.dev', 'tensorflow>=2.16.0')
-                    content = content.replace('tensorflow>=2.16.0; python_version < "3.14"', 'tensorflow>=2.16.0')
+                    content = re.sub(r'tensorflow[^;\n]*;.*python_version.*', 'tensorflow==2.15.0', content)
+                    content = re.sub(r'tf-nightly[^;\n]*;.*python_version.*', 'tensorflow==2.15.0', content)
+                    content = content.replace('tf-nightly>=2.21.0.dev', 'tensorflow==2.15.0')
+                    content = content.replace('tensorflow>=2.15.0; python_version < "3.13"', 'tensorflow==2.15.0')
+                    content = content.replace('tensorflow>=2.16.0', 'tensorflow==2.15.0')
                     tmp.write(content)
                     tmp_path = tmp.name
                 
