@@ -146,15 +146,103 @@ def install_python312():
     
     return False
 
+def find_python312_executable():
+    """Находит путь к исполняемому файлу Python 3.12, избегая py launcher"""
+    if platform.system() != 'Windows':
+        # Для Linux/macOS используем стандартные команды
+        import shutil
+        for cmd in ['python3.12', 'python312']:
+            exe_path = shutil.which(cmd)
+            if exe_path:
+                try:
+                    result = subprocess.run(
+                        [exe_path, '--version'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0 and '3.12' in (result.stdout or '') + (result.stderr or ''):
+                        return exe_path
+                except:
+                    continue
+        return None
+    
+    # Windows: проверяем стандартные пути установки Python
+    possible_paths = []
+    
+    # 1. Проверяем через реестр (стандартные установки Python)
+    try:
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Python\PythonCore\3.12\InstallPath") as key:
+                install_path = winreg.QueryValueEx(key, "")[0]
+                python_exe = os.path.join(install_path, "python.exe")
+                if os.path.exists(python_exe):
+                    possible_paths.append(python_exe)
+        except:
+            pass
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Python\PythonCore\3.12\InstallPath") as key:
+                install_path = winreg.QueryValueEx(key, "")[0]
+                python_exe = os.path.join(install_path, "python.exe")
+                if os.path.exists(python_exe):
+                    possible_paths.append(python_exe)
+        except:
+            pass
+    except ImportError:
+        pass  # winreg недоступен (не Windows)
+    
+    # 2. Проверяем стандартные пути установки
+    common_paths = [
+        r"C:\Python312\python.exe",
+        r"C:\Program Files\Python312\python.exe",
+        r"C:\Program Files (x86)\Python312\python.exe",
+        os.path.expanduser(r"~\AppData\Local\Programs\Python\Python312\python.exe"),
+        os.path.expanduser(r"~\AppData\Local\Programs\Python\Python312-32\python.exe"),
+    ]
+    
+    for path in common_paths:
+        if os.path.exists(path):
+            possible_paths.append(path)
+    
+    # 3. Проверяем через PATH (но НЕ через py launcher)
+    import shutil
+    for cmd in ['python3.12', 'python312']:
+        exe_path = shutil.which(cmd)
+        if exe_path and os.path.exists(exe_path):
+            # Проверяем что это не ссылка на py launcher
+            if 'WindowsApps' not in exe_path:
+                possible_paths.append(exe_path)
+    
+    # Проверяем каждый найденный путь
+    for python_exe in possible_paths:
+        try:
+            result = subprocess.run(
+                [python_exe, '--version'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0 and '3.12' in (result.stdout or '') + (result.stderr or ''):
+                return python_exe
+        except:
+            continue
+    
+    return None
+
 def check_python_312_available():
     """Проверяет, доступен ли Python 3.12 в системе, при необходимости устанавливает"""
     # Сначала проверяем текущий Python
     if sys.version_info.major == 3 and sys.version_info.minor == 12:
-        return True, 'python'  # Текущий Python уже 3.12
+        return True, sys.executable  # Текущий Python уже 3.12
     
-    # Если текущий не 3.12, ищем внешние команды
+    # Пытаемся найти Python 3.12 напрямую (без py launcher)
+    python312_exe = find_python312_executable()
+    if python312_exe:
+        return True, python312_exe
+    
+    # Если не нашли напрямую, пробуем команды (но НЕ py -3.12, так как он пытается установить)
     commands = [
-        ['py', '-3.12', '--version'],
         ['python3.12', '--version'],
         ['python312', '--version'],
     ]
@@ -162,8 +250,11 @@ def check_python_312_available():
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
             if r.returncode == 0 and '3.12' in (r.stdout or '') + (r.stderr or ''):
-                launcher = 'py -3.12' if cmd[0] == 'py' else cmd[0]
-                return True, launcher
+                # Находим полный путь к исполняемому файлу
+                import shutil
+                exe_path = shutil.which(cmd[0])
+                if exe_path:
+                    return True, exe_path
         except (FileNotFoundError, subprocess.TimeoutExpired):
             continue
     
@@ -172,13 +263,19 @@ def check_python_312_available():
     if install_python312():
         # После установки пробуем найти снова
         import time
-        time.sleep(2)
+        time.sleep(5)  # Увеличиваем задержку для обновления PATH
+        python312_exe = find_python312_executable()
+        if python312_exe:
+            return True, python312_exe
+        
         for cmd in commands:
             try:
                 r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
                 if r.returncode == 0 and '3.12' in (r.stdout or '') + (r.stderr or ''):
-                    launcher = 'py -3.12' if cmd[0] == 'py' else cmd[0]
-                    return True, launcher
+                    import shutil
+                    exe_path = shutil.which(cmd[0])
+                    if exe_path:
+                        return True, exe_path
             except (FileNotFoundError, subprocess.TimeoutExpired):
                 continue
     
@@ -216,10 +313,16 @@ def create_venv(python_cmd, project_root, python_version="3.12"):
         shutil.rmtree(venv_path)
     
     # Правильно обрабатываем команду Python
+    # python_cmd теперь всегда должен быть путем к исполняемому файлу, а не командой
     if isinstance(python_cmd, str):
-        # Если это 'py -3.12', нужно разделить правильно
-        if python_cmd.startswith('py '):
-            cmd = python_cmd.split()
+        # Если это путь к исполняемому файлу, используем его напрямую
+        if os.path.exists(python_cmd):
+            cmd = [python_cmd]
+        elif python_cmd.startswith('py '):
+            # Старый формат 'py -3.12' - не используем, так как он пытается установить
+            print("[ERROR] Не используйте 'py -3.12' - он пытается установить Python через Microsoft Store")
+            print("[INFO] Используйте прямой путь к Python 3.12 или установите его вручную")
+            return None
         else:
             cmd = [python_cmd]
     else:
