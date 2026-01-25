@@ -51,9 +51,9 @@ rich>=13.0.0
 cryptography>=41.0.0
 
 # AI/ML dependencies
-# TensorFlow (пытается установиться для любой версии Python, включая 3.14+)
-# ВНИМАНИЕ: TensorFlow официально не поддерживает Python 3.14+, но пробуем установить
-tensorflow>=2.16.0
+# TensorFlow (устанавливается только для Python < 3.14)
+# Для Python 3.14+: TensorFlow устанавливается в .venv_gpu с Python 3.12 (автоматически при запуске ai.py)
+tensorflow>=2.16.0; python_version < "3.14"
 
 # Machine Learning libraries
 scikit-learn>=1.3.0

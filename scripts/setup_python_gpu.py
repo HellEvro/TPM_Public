@@ -212,7 +212,8 @@ def install_dependencies(venv_path, project_root):
             with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tmp:
                 with open(req_main, 'r', encoding='utf-8') as f:
                     content = f.read()
-                    # Заменяем tf-nightly на tensorflow для Python 3.12
+                    # Убираем environment marker для Python 3.12 (в .venv_gpu всегда Python 3.12)
+                    content = content.replace('tensorflow>=2.16.0; python_version < "3.14"', 'tensorflow>=2.16.0')
                     content = content.replace('tf-nightly>=2.21.0.dev', 'tensorflow>=2.16.0')
                     tmp.write(content)
                     tmp_path = tmp.name
