@@ -254,15 +254,35 @@ def create_venv(python_cmd, project_root, python_version="3.11"):
 
 def install_dependencies(venv_path, project_root):
     """Устанавливает зависимости в .venv_gpu."""
-    python = venv_path / ('Scripts' if platform.system() == 'win32' else 'bin') / 'python'
+    # Определяем правильный путь к Python в venv
     if platform.system() == 'win32':
         python = venv_path / 'Scripts' / 'python.exe'
     else:
         python = venv_path / 'bin' / 'python'
     
     if not python.exists():
-        print("[ERROR] Python не найден в .venv_gpu")
-        return False
+        print(f"[ERROR] Python не найден в .venv_gpu по пути: {python}")
+        print(f"[INFO] Проверяем альтернативные пути...")
+        # Пробуем альтернативные пути
+        alt_paths = []
+        if platform.system() == 'win32':
+            alt_paths = [
+                venv_path / 'Scripts' / 'pythonw.exe',
+                venv_path / 'Scripts' / 'python3.exe',
+            ]
+        else:
+            alt_paths = [
+                venv_path / 'bin' / 'python3',
+            ]
+        
+        for alt_path in alt_paths:
+            if alt_path.exists():
+                print(f"[INFO] Найден альтернативный Python: {alt_path}")
+                python = alt_path
+                break
+        else:
+            print("[ERROR] Python не найден в .venv_gpu ни по одному из путей")
+            return False
     
     # Используем requirements.txt для установки всех зависимостей (включая TensorFlow)
     req_main = project_root / 'requirements.txt'
