@@ -128,28 +128,40 @@ def _load_versioned_module(module_name, module_import_name):
     
     pyc_path = _get_versioned_module_path(module_name)
     if pyc_path is None:
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        _logger.warning(f"[AI] [WARNING] Версионированный .pyc файл для {module_name} не найден (Python {python_version})")
+        _logger.warning(f"[AI] [WARNING] Ожидаемый путь: bot_engine/ai/pyc_{sys.version_info.major}{sys.version_info.minor}/{module_name}.pyc")
         # Пробуем обычный импорт (для обратной совместимости)
         return None
     
+    if not pyc_path.exists():
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        _logger.warning(f"[AI] [WARNING] Файл {pyc_path} не существует для Python {python_version}")
+        return None
+    
     try:
+        _logger.debug(f"[AI] [DEBUG] Загрузка модуля {module_name} из {pyc_path}")
         loader = importlib.machinery.SourcelessFileLoader(module_import_name, str(pyc_path))
         spec = importlib.util.spec_from_loader(module_import_name, loader)
         if spec is None:
+            _logger.warning(f"[AI] [WARNING] Не удалось создать spec для {module_name} из {pyc_path}")
             return None
         module = importlib.util.module_from_spec(spec)
         loader.exec_module(module)
+        _logger.debug(f"[AI] [DEBUG] Модуль {module_name} успешно загружен из {pyc_path}")
         return module
     except Exception as e:
         err_msg = str(e).lower()
         if "bad magic number" in err_msg or "bad magic" in err_msg:
             python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
             _logger.error(f"[AI] [ERROR] {module_name}.pyc несовместим с текущей версией Python: {python_version}")
+            _logger.error(f"[AI] [ERROR] Путь к файлу: {pyc_path}")
             _logger.error("[AI] [ERROR] Модуль был скомпилирован под другую версию Python.")
             _logger.error("[AI] [ERROR] Обратитесь к разработчику для получения правильной версии модулей.")
             # Не выбрасываем исключение, возвращаем None чтобы система могла продолжить работу
             return None
         # Для других ошибок тоже возвращаем None вместо raise
-        _logger.debug(f"Ошибка загрузки модуля {module_name}: {e}")
+        _logger.warning(f"[AI] [WARNING] Ошибка загрузки модуля {module_name} из {pyc_path}: {e}")
         return None
 
 # Пытаемся загрузить ai_manager из версионированной директории
