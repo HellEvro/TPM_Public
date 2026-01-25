@@ -524,33 +524,6 @@ def install_dependencies(venv_path, project_root):
         
         print("[OK] Все зависимости установлены")
         
-        # Компилируем защищенные модули под Python 3.12 для .venv_gpu
-        print("[INFO] Компиляция защищенных модулей под Python 3.12...")
-        try:
-            compile_script = project_root / 'license_generator' / 'compile_all.py'
-            if not compile_script.exists():
-                print(f"[WARNING] Файл компиляции не найден: {compile_script}")
-                print(f"[INFO] Проверьте, что проект находится в: {project_root}")
-                print("[INFO] Пропускаем компиляцию модулей")
-            else:
-                result = subprocess.run(
-                    [str(python), str(compile_script)],
-                    cwd=str(project_root),
-                    capture_output=True,
-                    text=True
-                )
-                if result.returncode == 0:
-                    print("[OK] Защищенные модули скомпилированы под Python 3.12")
-                else:
-                    error_msg = result.stderr or result.stdout or "Неизвестная ошибка"
-                    print(f"[WARNING] Ошибка компиляции модулей: {error_msg[:300]}")
-                    if result.stdout:
-                        print(f"[DEBUG] stdout: {result.stdout[:200]}")
-        except Exception as e:
-            print(f"[WARNING] Не удалось скомпилировать модули: {e}")
-            import traceback
-            print(f"[DEBUG] Детали ошибки: {traceback.format_exc()[:300]}")
-        
         return True
     except subprocess.CalledProcessError as e:
         print(f"[ERROR] Ошибка установки: {e}")
