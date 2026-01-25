@@ -429,7 +429,7 @@ def open_firewall_port_5001():
         if system == 'Windows':
             # Проверяем правило для порта 5001
             try:
-                result = subprocess.run(
+                check_result = subprocess.run(
                     ['netsh', 'advfirewall', 'firewall', 'show', 'rule', 'name=InfoBot Bot Service'],
                     capture_output=True,
                     text=True,
@@ -437,17 +437,32 @@ def open_firewall_port_5001():
                     errors='replace'
                 )
                 
-                if result.stdout and 'InfoBot Bot Service' not in result.stdout:
+                # Если правило не найдено (код возврата != 0 или имя не в выводе)
+                rule_exists = (
+                    check_result.returncode == 0 and 
+                    check_result.stdout and 
+                    'InfoBot Bot Service' in check_result.stdout
+                )
+                
+                if not rule_exists:
                     logger.info("🔥 Открываем порт 5001...")
-                    subprocess.run([
+                    add_result = subprocess.run([
                         'netsh', 'advfirewall', 'firewall', 'add', 'rule',
                         'name=InfoBot Bot Service',
                         'dir=in',
                         'action=allow',
                         'protocol=TCP',
                         f'localport={port}'
-                    ], check=True, encoding='utf-8', errors='replace')
-                    logger.info("✅ Порт 5001 открыт")
+                    ], capture_output=True, text=True, encoding='utf-8', errors='replace')
+                    
+                    if add_result.returncode == 0:
+                        logger.info("✅ Порт 5001 открыт")
+                    else:
+                        # Возможно правило уже существует или нужны права администратора
+                        if 'уже существует' in add_result.stderr or 'already exists' in add_result.stderr.lower():
+                            logger.info("✅ Порт 5001 уже открыт")
+                        else:
+                            logger.warning(f"⚠️ Не удалось открыть порт 5001: {add_result.stderr or add_result.stdout}")
                 else:
                     logger.info("✅ Порт 5001 уже открыт")
             except Exception as e:

@@ -2123,7 +2123,7 @@ def open_firewall_ports():
                 
                 # Проверяем существует ли правило
                 try:
-                    result = subprocess.run(
+                    check_result = subprocess.run(
                         ['netsh', 'advfirewall', 'firewall', 'show', 'rule', f'name={service_name}'],
                         capture_output=True,
                         text=True,
@@ -2131,17 +2131,32 @@ def open_firewall_ports():
                         errors='replace'
                     )
                     
-                    if result.stdout and service_name not in result.stdout:
+                    # Если правило не найдено (код возврата != 0 или имя не в выводе)
+                    rule_exists = (
+                        check_result.returncode == 0 and 
+                        check_result.stdout and 
+                        service_name in check_result.stdout
+                    )
+                    
+                    if not rule_exists:
                         app_logger.info(f"[APP] 🔥 Открываем порт {port}...")
-                        subprocess.run([
+                        add_result = subprocess.run([
                             'netsh', 'advfirewall', 'firewall', 'add', 'rule',
                             f'name={service_name}',
                             'dir=in',
                             'action=allow',
                             'protocol=TCP',
                             f'localport={port}'
-                        ], check=True, encoding='utf-8', errors='replace')
-                        app_logger.info(f"[APP] ✅ Порт {port} открыт")
+                        ], capture_output=True, text=True, encoding='utf-8', errors='replace')
+                        
+                        if add_result.returncode == 0:
+                            app_logger.info(f"[APP] ✅ Порт {port} открыт")
+                        else:
+                            # Возможно правило уже существует или нужны права администратора
+                            if 'уже существует' in add_result.stderr or 'already exists' in add_result.stderr.lower():
+                                app_logger.info(f"[APP] ✅ Порт {port} уже открыт")
+                            else:
+                                app_logger.warning(f"[APP] ⚠️ Не удалось открыть порт {port}: {add_result.stderr or add_result.stdout}")
                     else:
                         app_logger.info(f"[APP] ✅ Порт {port} уже открыт")
                 except Exception as e:
