@@ -117,18 +117,35 @@ def install_dependencies(venv_path, project_root):
     if not pip.exists():
         print("[ERROR] pip не найден в .venv_gpu")
         return False
-    req = project_root / 'requirements.txt'
+    # Используем requirements_ai.txt для установки TensorFlow и AI зависимостей
+    req_ai = project_root / 'requirements_ai.txt'
+    req_main = project_root / 'requirements.txt'
+    
     print("Установка зависимостей...")
     try:
         subprocess.run([str(python), '-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel', '--no-warn-script-location'], check=True)
-        subprocess.run([str(python), '-m', 'pip', 'install', '-r', str(req), '--no-warn-script-location'], check=True)
-        print("[OK] Зависимости установлены")
-        try:
-            subprocess.run([str(python), '-m', 'pip', 'install', 'tensorflow[and-cuda]>=2.13.0', '--no-warn-script-location'], check=True)
-            print("[OK] TensorFlow с GPU установлен")
-        except subprocess.CalledProcessError:
-            subprocess.run([str(python), '-m', 'pip', 'install', 'tensorflow>=2.13.0', '--no-warn-script-location'], check=True)
-            print("[OK] TensorFlow (CPU) установлен")
+        
+        # Сначала устанавливаем основные зависимости (без TensorFlow)
+        if req_main.exists():
+            print("[INFO] Установка основных зависимостей (без TensorFlow)...")
+            subprocess.run([str(python), '-m', 'pip', 'install', '-r', str(req_main), '--no-warn-script-location'], check=True)
+        
+        # Затем устанавливаем AI зависимости включая TensorFlow
+        if req_ai.exists():
+            print("[INFO] Установка AI зависимостей (TensorFlow и ML библиотеки)...")
+            subprocess.run([str(python), '-m', 'pip', 'install', '-r', str(req_ai), '--no-warn-script-location'], check=True)
+            print("[OK] TensorFlow и AI зависимости установлены")
+        else:
+            # Fallback: устанавливаем TensorFlow вручную
+            print("[WARNING] requirements_ai.txt не найден, устанавливаю TensorFlow вручную...")
+            try:
+                subprocess.run([str(python), '-m', 'pip', 'install', 'tensorflow[and-cuda]>=2.16.0', '--no-warn-script-location'], check=True)
+                print("[OK] TensorFlow с GPU установлен")
+            except subprocess.CalledProcessError:
+                subprocess.run([str(python), '-m', 'pip', 'install', 'tensorflow>=2.16.0', '--no-warn-script-location'], check=True)
+                print("[OK] TensorFlow (CPU) установлен")
+        
+        print("[OK] Все зависимости установлены")
         return True
     except subprocess.CalledProcessError as e:
         print(f"[ERROR] Ошибка установки: {e}")
@@ -142,28 +159,26 @@ def main():
     root = Path(__file__).resolve().parents[1]
     print(f"Текущий Python: {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
 
-    # Пробуем Python 3.14 (основная версия)
-    ok, cmd = check_python_314_available()
-    python_version = "3.14"
+    # TensorFlow НЕ поддерживает Python 3.14, используем Python 3.12 для .venv_gpu
+    ok, cmd = check_python_312_available()
+    python_version = "3.12"
     if not ok:
-        print("[WARNING] Python 3.14 не найден. Пробую Python 3.11 (fallback для GPU)...")
+        print("[WARNING] Python 3.12 не найден. Пробую Python 3.11 (fallback для GPU)...")
         ok, cmd = check_python_311_available()
         python_version = "3.11"
         if not ok:
-            print("[ERROR] Python 3.14 или 3.11 не найден.")
-            print("Установите Python 3.14: https://www.python.org/downloads/")
+            print("[ERROR] Python 3.12 или 3.11 не найден.")
+            print("ВНИМАНИЕ: TensorFlow НЕ поддерживает Python 3.14!")
+            print("Установите Python 3.12: https://www.python.org/downloads/release/python-3120/")
             if platform.system() == 'Windows':
-                print("Или используйте: py -3.14")
+                print("Или используйте: py -3.12")
             else:
-                print("Или: sudo apt install python3.14 python3.14-venv  (Ubuntu/Debian)")
-                print("     brew install python@3.14  (macOS)")
+                print("Или: sudo apt install python3.12 python3.12-venv  (Ubuntu/Debian)")
+                print("     brew install python@3.12  (macOS)")
             return 1
     
     print(f"[OK] Python {python_version}: {cmd}")
-    if python_version == "3.14":
-        print("[INFO] Python 3.14 выбран для GPU поддержки TensorFlow")
-    else:
-        print("[WARNING] Python 3.11 выбран как fallback, рекомендуется Python 3.14")
+    print(f"[INFO] Python {python_version} выбран для .venv_gpu (TensorFlow требует Python <= 3.12)")
 
     venv = create_venv(cmd, root, python_version)
     if not venv:
