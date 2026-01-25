@@ -17,24 +17,24 @@ _gpu_warning_shown = False
 _tensorflow_checked = False
 
 def check_python_version():
-    """Проверяет версию Python. Проект требует Python 3.12."""
+    """Проверяет версию Python. Проект требует Python 3.14."""
     version = sys.version_info
     major, minor = version.major, version.minor
     
-    if major == 3 and minor == 12:
+    if major == 3 and minor == 14:
         return {
             'supported': True,
             'gpu_supported': True,
-            'message': 'Python 3.12 поддерживает GPU в TensorFlow',
+            'message': 'Python 3.14 поддерживает GPU в TensorFlow',
             'recommended': None
         }
     
-    # Все остальные версии — не поддерживаются, нужен 3.12
+    # Все остальные версии — не поддерживаются, нужен 3.14
     return {
         'supported': False,
         'gpu_supported': False,
-        'message': f'Python {major}.{minor} не поддерживается. Требуется Python 3.12. Выполните: python scripts/setup_python_gpu.py или установите Python 3.12.',
-        'recommended': 'Python 3.12'
+        'message': f'Python {major}.{minor} не поддерживается. Требуется Python 3.14. Выполните: python scripts/setup_python_gpu.py или установите Python 3.14.',
+        'recommended': 'Python 3.14'
     }
 
 def check_gpu_available():

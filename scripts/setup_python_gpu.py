@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Настройка Python 3.12 для InfoBot (по умолчанию).
-Создаёт .venv_gpu с Python 3.12 и устанавливает зависимости, включая TensorFlow с GPU.
+Настройка Python 3.14 для InfoBot (по умолчанию).
+Создаёт .venv_gpu с Python 3.14 и устанавливает зависимости, включая TensorFlow с GPU.
 """
 
 import sys
@@ -142,27 +142,28 @@ def main():
     root = Path(__file__).resolve().parents[1]
     print(f"Текущий Python: {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
 
-    # Сначала пробуем Python 3.11 (для GPU поддержки TensorFlow)
-    ok, cmd = check_python_311_available()
-    python_version = "3.11"
+    # Пробуем Python 3.14 (основная версия)
+    ok, cmd = check_python_314_available()
+    python_version = "3.14"
     if not ok:
-        print("[WARNING] Python 3.11 не найден. Пробую Python 3.12...")
-        ok, cmd = check_python_312_available()
-        python_version = "3.12"
+        print("[WARNING] Python 3.14 не найден. Пробую Python 3.11 (fallback для GPU)...")
+        ok, cmd = check_python_311_available()
+        python_version = "3.11"
         if not ok:
-            print("[ERROR] Python 3.11 или 3.12 не найден.")
+            print("[ERROR] Python 3.14 или 3.11 не найден.")
+            print("Установите Python 3.14: https://www.python.org/downloads/")
             if platform.system() == 'Windows':
-                install_python_311_windows()
+                print("Или используйте: py -3.14")
             else:
-                print("Установите: sudo apt install python3.11 python3.11-venv  (Ubuntu/Debian)")
-                print("           brew install python@3.11  (macOS)")
+                print("Или: sudo apt install python3.14 python3.14-venv  (Ubuntu/Debian)")
+                print("     brew install python@3.14  (macOS)")
             return 1
     
     print(f"[OK] Python {python_version}: {cmd}")
-    if python_version == "3.11":
-        print("[INFO] Python 3.11 выбран для GPU поддержки TensorFlow")
+    if python_version == "3.14":
+        print("[INFO] Python 3.14 выбран для GPU поддержки TensorFlow")
     else:
-        print("[WARNING] Python 3.12 выбран, но GPU поддержка может быть недоступна")
+        print("[WARNING] Python 3.11 выбран как fallback, рекомендуется Python 3.14")
 
     venv = create_venv(cmd, root, python_version)
     if not venv:
