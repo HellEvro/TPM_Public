@@ -111,31 +111,6 @@ if exist .venv_gpu\Scripts\activate.bat (
         exit /b 1
     )
 )
-    
-    REM Проверяем наличие зависимостей - если нет, запускаем автонастройку
-    "%PYTHON_BIN%" -c "import flask" >nul 2>&1
-    if errorlevel 1 (
-        echo.
-        echo [INFO] Dependencies not found. Running automatic setup...
-        echo.
-        REM Запускаем скрипт настройки с полным подавлением вывода
-        "%PYTHON_BIN%" "scripts\first_run_setup.py" >nul 2>&1
-        if errorlevel 1 (
-            echo [ERROR] Automatic setup failed.
-            echo Run manually: python scripts\first_run_setup.py
-            pause
-            exit /b 1
-        )
-        echo.
-        echo [OK] Automatic setup completed. Restarting manager...
-        echo.
-        REM Активируем .venv если он был создан
-        if exist .venv\Scripts\activate.bat (
-            call .venv\Scripts\activate.bat
-            set "PYTHON_BIN=python"
-        )
-    )
-)
 
 REM Проверка наличия Python
 "%PYTHON_BIN%" --version >nul 2>&1
