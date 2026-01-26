@@ -17,7 +17,7 @@ from datetime import datetime
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from bot_engine.ai.lstm_predictor import LSTMPredictor, TENSORFLOW_AVAILABLE
+from bot_engine.ai.lstm_predictor import LSTMPredictor, PYTORCH_AVAILABLE
 from utils.rsi_calculator import calculate_rsi
 
 
@@ -364,10 +364,10 @@ def main():
     print("LSTM PREDICTOR TRAINING")
     print("=" * 60)
     
-    # Проверяем TensorFlow
-    if not TENSORFLOW_AVAILABLE:
-        print("[ERROR] TensorFlow not installed!")
-        print("Install: pip install tensorflow")
+    # Проверяем PyTorch
+    if not PYTORCH_AVAILABLE:
+        print("[ERROR] PyTorch not installed!")
+        print("Install: pip install torch")
         return 1
     
     # Проверяем и настраиваем GPU NVIDIA
