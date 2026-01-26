@@ -8,13 +8,8 @@ import os
 import sys
 import subprocess
 import webbrowser
-import warnings
 from threading import Timer
 from pathlib import Path
-
-# До любых импортов sklearn/joblib: подавление спама delayed/Parallel
-os.environ.setdefault("PYTHONWARNINGS", "ignore::UserWarning:sklearn.utils.parallel")
-warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.utils.parallel")
 
 # Настройка кодировки для Windows консоли
 if os.name == 'nt':

@@ -1708,7 +1708,7 @@ class AITrainer:
                     min_samples_split=5,
                     min_samples_leaf=2,
                     random_state=42,
-                    n_jobs=-1,
+                    n_jobs=1,  # без параллелизма — устраняет UserWarning про delayed/Parallel
                     class_weight='balanced'
                 )
                 logger.info("   📈 Обучение новой модели на симулированных сделках...")
@@ -2105,7 +2105,7 @@ class AITrainer:
                 n_estimators=100,
                 max_depth=10,
                 random_state=42,
-                n_jobs=-1
+                n_jobs=1  # без параллелизма — устраняет UserWarning про delayed/Parallel
             )
             self.signal_predictor.fit(X_train, y_signal_train)
             
@@ -2373,7 +2373,7 @@ class AITrainer:
                             n_estimators=100,
                             max_depth=10,
                             random_state=42,
-                            n_jobs=-1
+                            n_jobs=1  # без параллелизма — устраняет UserWarning про delayed/Parallel
                         )
                         self.signal_predictor.fit(X_train, y_signal_train)
                         
@@ -3424,7 +3424,7 @@ class AITrainer:
                         min_samples_split=5,
                         min_samples_leaf=2,
                         random_state=42,
-                        n_jobs=-1,
+                        n_jobs=1,  # без параллелизма — устраняет UserWarning про delayed/Parallel
                         class_weight='balanced'  # Балансировка классов
                     )
                 
@@ -4872,7 +4872,7 @@ class AITrainer:
                                 max_depth=10,
                                 min_samples_split=3,
                                 random_state=coin_model_seed,  # Разный seed для каждого обучения
-                                n_jobs=-1,
+                                n_jobs=1,  # без параллелизма — устраняет UserWarning про delayed/Parallel
                                 class_weight='balanced'
                             )
                             symbol_signal_predictor.fit(X_symbol_scaled, y_signal_symbol)

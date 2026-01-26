@@ -47,7 +47,7 @@ class AnomalyDetector:
                 max_samples='auto',
                 max_features=1.0,
                 bootstrap=False,
-                n_jobs=-1,  # Используем все ядра
+                n_jobs=1,  # без параллелизма — устраняет UserWarning про delayed/Parallel
                 verbose=0
             )
             self.scaler = StandardScaler()

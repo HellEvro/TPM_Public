@@ -6,11 +6,6 @@
 # Базовые импорты
 import os
 import sys
-import warnings
-
-# До любых импортов sklearn/joblib: подавление спама delayed/Parallel (в т.ч. в воркерах joblib)
-os.environ.setdefault("PYTHONWARNINGS", "ignore::UserWarning:sklearn.utils.parallel")
-warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.utils.parallel")
 
 # 🔍 Проверка и создание bot_config.py из example.bot_config.py (если отсутствует)
 # Также настраиваем git skip-worktree для игнорирования локальных изменений

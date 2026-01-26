@@ -1296,6 +1296,21 @@ class BybitExchange(BaseExchange):
                                     'success': False,
                                     'error': 'Timestamp error, maximum retries reached'
                                 }
+                        elif 'timed out' in error_str or 'timeout' in error_str:
+                            # Таймаут HTTP — ретраи с backoff, меньше спама и повторных обрывов
+                            retry_count += 1
+                            backoff = min(2.0 * (2 ** (retry_count - 1)), 15.0)
+                            logger.warning(
+                                f"⏱️ Таймаут при получении данных графика для {symbol}, "
+                                f"повтор {retry_count}/{max_retries} через {backoff:.1f}с..."
+                            )
+                            time.sleep(backoff)
+                            if retry_count < max_retries:
+                                continue
+                            return {
+                                'success': False,
+                                'error': f'Read timed out после {max_retries} попыток'
+                            }
                         else:
                             # Другая ошибка - пробрасываем дальше
                             raise
