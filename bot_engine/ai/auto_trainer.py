@@ -301,7 +301,9 @@ class AutoTrainer:
                 cmd.extend(['--limit', str(limit)])
                 logger.info(f"[AutoTrainer] Режим: Топ {limit} монет")
             
-            logger.info(f"[AutoTrainer] Запуск: {' '.join(cmd)}")
+            # Показываем команду без полного пути к Python
+            cmd_display = ['python'] + cmd[1:]
+            logger.info(f"[AutoTrainer] Запуск: {' '.join(cmd_display)}")
             
             result = subprocess.run(
                 cmd,
@@ -475,7 +477,9 @@ class AutoTrainer:
             if args:
                 cmd.extend([str(arg) for arg in args])
             
-            logger.info(f"[AutoTrainer] Запуск: {' '.join(cmd)}")
+            # Показываем команду без полного пути к Python
+            cmd_display = ['python'] + cmd[1:]
+            logger.info(f"[AutoTrainer] Запуск: {' '.join(cmd_display)}")
             
             result = subprocess.run(
                 cmd,
