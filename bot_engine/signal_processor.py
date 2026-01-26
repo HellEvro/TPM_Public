@@ -6,6 +6,12 @@ import logging
 
 logger = logging.getLogger('SignalProcessor')
 
+# Импорт функции логирования сигналов (с fallback если недоступна)
+try:
+    from bot_engine.bot_history import log_bot_signal
+except ImportError:
+    def log_bot_signal(*args, **kwargs): pass
+
 
 def get_effective_signal(coin, config):
     """
@@ -160,6 +166,13 @@ def process_auto_bot_signals(coins_rsi_data, bots_data, config, filter_check_fun
                 signal = 'ENTER_SHORT'
             
             if signal:
+                # Логируем обнаруженный сигнал
+                price = coin_data.get('price', 0)
+                log_bot_signal(symbol, signal, rsi, price, {
+                    'trend': trend,
+                    'source': 'autobot_scanner'
+                })
+                
                 # Проверяем фильтры
                 if filter_check_func(symbol, signal, coin_data):
                     potential_coins.append({
