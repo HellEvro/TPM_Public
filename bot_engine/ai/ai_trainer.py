@@ -1737,7 +1737,8 @@ class AITrainer:
             self.profit_predictor.fit(X_scaled, y_profit)
             profit_pred = self.profit_predictor.predict(X_scaled)
             profit_mse = mean_squared_error(y_profit, profit_pred)
-            logger.info(f"   ✅ Модель прибыли обучена! MSE: {profit_mse:.2f}")
+            profit_rmse = np.sqrt(profit_mse)  # RMSE более интерпретируем
+            logger.info(f"   ✅ Модель прибыли обучена! RMSE: {profit_rmse:.2f} USDT (ошибка предсказания)")
             
             # Сохраняем модели
             self._save_models()
@@ -2177,8 +2178,9 @@ class AITrainer:
             avg_profit_actual = np.mean(y_profit_test)
             avg_profit_pred = np.mean(y_profit_pred)
             
+            rmse = np.sqrt(mse)  # RMSE более интерпретируем
             logger.info(f"✅ Модель прибыли обучена!")
-            logger.info(f"   📊 MSE: {mse:.2f}")
+            logger.info(f"   📊 RMSE: {rmse:.2f} USDT (средняя ошибка предсказания)")
             logger.info(f"   📈 Средняя прибыль (реальная): {avg_profit_actual:.2f} USDT")
             logger.info(f"   📈 Средняя прибыль (предсказанная): {avg_profit_pred:.2f} USDT")
             
@@ -3464,10 +3466,23 @@ class AITrainer:
                 logger.info("   💰 Обучение модели предсказания прибыли...")
                 self.profit_predictor.fit(X_scaled, y_profit)
                 
-                # Оценка предсказания прибыли
+                # Оценка предсказания прибыли с информативными метриками
                 profit_pred = self.profit_predictor.predict(X_scaled)
                 profit_mse = mean_squared_error(y_profit, profit_pred)
-                logger.info(f"   ✅ Модель прибыли обучена! MSE: {profit_mse:.2f}")
+                profit_rmse = np.sqrt(profit_mse)  # RMSE более интерпретируем
+                
+                # R² - коэффициент детерминации (0-1, чем ближе к 1 тем лучше)
+                y_var = np.var(y_profit)
+                r2_score = 1 - (profit_mse / y_var) if y_var > 0 else 0
+                
+                # Нормализованный MSE (относительно среднего PnL)
+                y_mean = np.mean(np.abs(y_profit))
+                normalized_mse = profit_mse / (y_mean ** 2) if y_mean > 0 else profit_mse
+                
+                logger.info(f"   ✅ Модель прибыли обучена!")
+                logger.info(f"      RMSE: {profit_rmse:.2f} USDT (средняя ошибка предсказания)")
+                logger.info(f"      R²: {r2_score:.4f} (качество модели: 0-1)")
+                logger.info(f"      MSE/Var: {normalized_mse:.4f} (нормализованная ошибка)")
                 
                 # Сохраняем модели
                 self._save_models()
