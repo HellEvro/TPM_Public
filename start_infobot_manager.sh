@@ -170,13 +170,9 @@ if [[ -f "scripts/ensure_python314_venv.py" ]]; then
   ${PYTHON_CMD:-python3} scripts/ensure_python314_venv.py >/dev/null 2>&1
 fi
 
-# Определение Python для запуска: .venv_gpu > .venv > глобальный Python
+# Определение Python для запуска: .venv > глобальный Python 3.14+
 # Если venv нет, используем глобальный Python
-if [[ -f ".venv_gpu/bin/activate" ]]; then
-  source ".venv_gpu/bin/activate"
-  PYTHON_BIN="python"
-  echo "[INFO] Используется .venv_gpu"
-elif [[ -f ".venv/bin/activate" ]]; then
+if [[ -f ".venv/bin/activate" ]]; then
   source ".venv/bin/activate"
   PYTHON_BIN="python"
   echo "[INFO] Используется .venv"

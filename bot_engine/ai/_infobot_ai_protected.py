@@ -3,7 +3,7 @@
 """
 Loader stub для защищённого AI лаунчера.
 Подгружает bot_engine/ai/_ai_launcher.pyc и регистрирует его как модуль.
-Поддерживает версионированные .pyc файлы для Python 3.14 и 3.12.
+Поддерживает версионированные .pyc файлы для Python 3.12+ (pyc_312 для 3.12, pyc_314 для 3.14+).
 """
 
 import importlib.machinery
@@ -16,11 +16,13 @@ def _get_versioned_pyc_path():
     python_version = sys.version_info[:2]
 
     # Определяем версию Python и соответствующую директорию
+    # Поддерживаем Python 3.12+ (pyc_312 для 3.12, pyc_314 для 3.14+)
     if python_version >= (3, 14):
         version_dir = base_dir / 'pyc_314'
     elif python_version == (3, 12):
         version_dir = base_dir / 'pyc_312'
     else:
+        # Для других версий используем основную директорию (fallback)
         version_dir = base_dir
 
     # Путь к версионированному .pyc файлу

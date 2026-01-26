@@ -93,7 +93,7 @@ def _detect_project_root() -> Path:
 # Экспорты будут добавлены по мере создания модулей
 # ВАЖНО: Используем .pyc файлы для защиты логики лицензирования
 # .pyc файлы должны быть скомпилированы при сборке проекта через license_generator/compile_all.py
-# Поддерживаются версионированные .pyc файлы для Python 3.14 и 3.12
+# Поддерживаются версионированные .pyc файлы для Python 3.12+ (pyc_312 для 3.12, pyc_314 для 3.14+)
 
 def _get_versioned_module_path(module_name):
     """Определяет путь к версионированному .pyc модулю на основе текущей версии Python."""
@@ -101,12 +101,13 @@ def _get_versioned_module_path(module_name):
     python_version = sys.version_info[:2]
     
     # Определяем версию Python и соответствующую директорию
+    # Поддерживаем Python 3.12+ (pyc_312 для 3.12, pyc_314 для 3.14+)
     if python_version >= (3, 14):
         version_dir = base_dir / 'pyc_314'
     elif python_version == (3, 12):
         version_dir = base_dir / 'pyc_312'
     else:
-        # Для других версий используем основную директорию
+        # Для других версий используем основную директорию (fallback)
         version_dir = base_dir
     
     # Путь к версионированному .pyc файлу

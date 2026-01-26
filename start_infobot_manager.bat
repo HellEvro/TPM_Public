@@ -95,13 +95,9 @@ if not exist app\config.py (
     )
 )
 
-REM Определение Python для запуска: .venv_gpu > .venv > глобальный Python 3.14+
+REM Определение Python для запуска: .venv > глобальный Python 3.14+
 REM Если venv нет, используем глобальный Python
-if exist .venv_gpu\Scripts\activate.bat (
-    call .venv_gpu\Scripts\activate.bat
-    set "PYTHON_BIN=python"
-    echo [INFO] Используется .venv_gpu
-) else if exist .venv\Scripts\activate.bat (
+if exist .venv\Scripts\activate.bat (
     call .venv\Scripts\activate.bat
     set "PYTHON_BIN=python"
     echo [INFO] Используется .venv

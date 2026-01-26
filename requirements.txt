@@ -1,7 +1,10 @@
 # =============================================================================
-# InfoBot требует Python 3.14 или выше.
+# InfoBot требует Python 3.12 или выше (рекомендуется 3.14+).
 # Установка: https://www.python.org/downloads/
 # Или: python scripts/ensure_python314_venv.py (создаёт .venv с Python 3.14+)
+#
+# PyTorch работает на всех версиях Python 3.8+, включая 3.12 и 3.14+.
+# Для установки PyTorch с GPU: python scripts/setup_python_gpu.py
 #
 # pip install -r requirements.txt --no-warn-script-location  — меньше предупреждений PATH
 # =============================================================================
