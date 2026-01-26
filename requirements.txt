@@ -56,31 +56,43 @@ rich>=13.0.0
 cryptography>=41.0.0
 
 # =============================================================================
-# AI/ML dependencies - PyTorch (работает на CPU и GPU)
+# AI/ML dependencies - PyTorch (ОБЯЗАТЕЛЕН для LSTM Predictor)
 # =============================================================================
-# ВАЖНО: PyTorch поддерживает Python 3.8+ (включая Python 3.14+)
-# 
+# ⚠️ ВАЖНО: PyTorch ОБЯЗАТЕЛЕН для работы LSTM Predictor!
+# Без PyTorch LSTM Predictor не будет работать (даже на CPU).
+# PyTorch работает на CPU и GPU - если GPU нет, автоматически используется CPU.
+#
 # УСТАНОВКА PYTORCH:
 # 
-# 1. С GPU (NVIDIA CUDA):
+# РЕКОМЕНДУЕТСЯ: Автоматическая установка (определяет GPU и устанавливает нужную версию):
+#    python scripts/setup_python_gpu.py
+#
+# РУЧНАЯ УСТАНОВКА:
+#
+# 1. С GPU (NVIDIA CUDA) - если есть GPU:
 #    - Проверьте наличие GPU: nvidia-smi
 #    - Установите PyTorch с CUDA 12.1:
 #      pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 #    - Или CUDA 11.8 (если CUDA 12.1 не поддерживается):
 #      pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-#    - Автоматическая установка: python scripts/setup_python_gpu.py
 #
-# 2. CPU версия (без GPU):
+# 2. БЕЗ GPU (CPU версия) - если GPU нет:
 #    pip install torch torchvision torchaudio
+#    Система автоматически будет использовать CPU для обучения и предсказаний.
 #
 # 3. Проверка установки:
-#    python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'N/A')"
+#    python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU (GPU не найден)')"
+#
+# КАК РАБОТАЕТ:
+# - Если GPU доступен: PyTorch использует GPU для ускорения обучения и предсказаний
+# - Если GPU НЕ доступен: PyTorch автоматически использует CPU (работает медленнее, но функционально)
+# - LSTM Predictor автоматически определяет доступное устройство и использует его
 #
 # РАЗМЕРЫ:
 # - PyTorch с CUDA: ~2-3 GB
 # - PyTorch CPU: ~200-300 MB
 #
-# ТРЕБОВАНИЯ ДЛЯ GPU:
+# ТРЕБОВАНИЯ ДЛЯ GPU (опционально):
 # - NVIDIA GPU с поддержкой CUDA
 # - Драйверы NVIDIA (проверьте: nvidia-smi)
 # - CUDA Toolkit 11.8 или 12.1 (устанавливается автоматически с PyTorch)
