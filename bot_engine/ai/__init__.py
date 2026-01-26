@@ -95,86 +95,46 @@ def _detect_project_root() -> Path:
 # .pyc файлы должны быть скомпилированы при сборке проекта через license_generator/compile_all.py
 # Поддерживаются версионированные .pyc файлы для Python 3.12+ (pyc_312 для 3.12, pyc_314 для 3.14+)
 
-def _get_versioned_module_path(module_name):
-    """Определяет путь к версионированному .pyc модулю на основе текущей версии Python."""
+def _get_module_pyc_path(module_name):
+    """Определяет путь к .pyc модулю (без версионирования)."""
     base_dir = Path(__file__).resolve().parent
-    python_version = sys.version_info[:2]
+    pyc_path = base_dir / f"{module_name}.pyc"
     
-    # Определяем версию Python и соответствующую директорию
-    # Поддерживаем Python 3.12+ (pyc_312 для 3.12, pyc_314 для 3.14+)
-    if python_version >= (3, 14):
-        version_dir = base_dir / 'pyc_314'
-    elif python_version == (3, 12):
-        version_dir = base_dir / 'pyc_312'
-    else:
-        # Для других версий используем основную директорию (fallback)
-        version_dir = base_dir
-    
-    # Путь к версионированному .pyc файлу
-    versioned_path = version_dir / f"{module_name}.pyc"
-    
-    # Если версионированный файл не найден, пробуем основную директорию (для обратной совместимости)
-    if not versioned_path.exists():
-        fallback_path = base_dir / f"{module_name}.pyc"
-        if fallback_path.exists():
-            return fallback_path
-        # Файл не найден ни в версионированной, ни в основной директории
-        return None
-    
-    return versioned_path
+    if pyc_path.exists():
+        return pyc_path
+    return None
 
-def _load_versioned_module(module_name, module_import_name):
-    """Загружает версионированный .pyc модуль используя importlib."""
+def _load_pyc_module(module_name, module_import_name):
+    """Загружает .pyc модуль используя importlib."""
     import importlib.util
     import importlib.machinery
     
-    python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
-    _logger.info(f"[AI] [INFO] Попытка загрузки модуля {module_name} для Python {python_version}")
-    
-    pyc_path = _get_versioned_module_path(module_name)
+    pyc_path = _get_module_pyc_path(module_name)
     if pyc_path is None:
-        _logger.warning(f"[AI] [WARNING] Версионированный .pyc файл для {module_name} не найден (Python {python_version})")
-        _logger.warning(f"[AI] [WARNING] Ожидаемый путь: bot_engine/ai/pyc_{sys.version_info.major}{sys.version_info.minor}/{module_name}.pyc")
-        # Пробуем обычный импорт (для обратной совместимости)
+        _logger.debug(f"[AI] .pyc файл для {module_name} не найден")
         return None
-    
-    if not pyc_path.exists():
-        _logger.warning(f"[AI] [WARNING] Файл {pyc_path} не существует для Python {python_version}")
-        return None
-    
-    _logger.info(f"[AI] [INFO] Найден файл {pyc_path}, начинаю загрузку...")
     
     try:
         loader = importlib.machinery.SourcelessFileLoader(module_import_name, str(pyc_path))
         spec = importlib.util.spec_from_loader(module_import_name, loader)
         if spec is None:
-            _logger.error(f"[AI] [ERROR] Не удалось создать spec для {module_name} из {pyc_path}")
+            _logger.error(f"[AI] Не удалось создать spec для {module_name}")
             return None
-        _logger.info(f"[AI] [INFO] Spec создан, создаю модуль...")
         module = importlib.util.module_from_spec(spec)
-        _logger.info(f"[AI] [INFO] Модуль создан, выполняю exec_module...")
         loader.exec_module(module)
-        _logger.info(f"[AI] [INFO] Модуль {module_name} успешно загружен из {pyc_path}")
-        # Проверяем, что модуль имеет содержимое
-        attrs = [attr for attr in dir(module) if not attr.startswith('_')]
-        _logger.info(f"[AI] [INFO] Модуль содержит {len(attrs)} публичных атрибутов: {attrs[:10]}...")
+        _logger.debug(f"[AI] Модуль {module_name} загружен из {pyc_path}")
         return module
     except Exception as e:
         err_msg = str(e).lower()
         if "bad magic number" in err_msg or "bad magic" in err_msg:
-            _logger.error(f"[AI] [ERROR] {module_name}.pyc несовместим с текущей версией Python: {python_version}")
-            _logger.error(f"[AI] [ERROR] Путь к файлу: {pyc_path}")
-            _logger.error("[AI] [ERROR] Модуль был скомпилирован под другую версию Python.")
-            _logger.error("[AI] [ERROR] Обратитесь к разработчику для получения правильной версии модулей.")
-            # Не выбрасываем исключение, возвращаем None чтобы система могла продолжить работу
+            _logger.error(f"[AI] {module_name}.pyc несовместим с текущей версией Python")
             return None
-        # Для других ошибок тоже возвращаем None вместо raise
-        _logger.error(f"[AI] [ERROR] Ошибка загрузки модуля {module_name} из {pyc_path}: {e}", exc_info=True)
+        _logger.error(f"[AI] Ошибка загрузки {module_name}: {e}")
         return None
 
 # Пытаемся загрузить ai_manager из версионированной директории
 try:
-    ai_manager_module = _load_versioned_module('ai_manager', 'bot_engine.ai.ai_manager')
+    ai_manager_module = _load_pyc_module('ai_manager', 'bot_engine.ai.ai_manager')
     if ai_manager_module is not None:
         AIManager = ai_manager_module.AIManager
         get_ai_manager = ai_manager_module.get_ai_manager
@@ -307,42 +267,22 @@ def check_premium_license(force_refresh: bool = False) -> bool:
         return _LICENSE_STATUS
 
     try:
-        # Пытаемся загрузить license_checker из версионированной директории
-        python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
-        _license_logger.info(f"[AI] [INFO] Попытка загрузки license_checker для Python {python_version}")
-        
-        license_checker_module = _load_versioned_module('license_checker', 'bot_engine.ai.license_checker')
+        # Загружаем license_checker из .pyc
+        license_checker_module = _load_pyc_module('license_checker', 'bot_engine.ai.license_checker')
         get_license_checker = None
         
         if license_checker_module is not None:
-            _license_logger.info(f"[AI] [INFO] Модуль license_checker успешно загружен из версионированной директории")
-            # Проверяем, что модуль имеет нужный атрибут
             if hasattr(license_checker_module, 'get_license_checker'):
                 get_license_checker = license_checker_module.get_license_checker
-                _license_logger.info(f"[AI] [INFO] Функция get_license_checker найдена в модуле")
-            else:
-                _license_logger.error(f"[AI] [ERROR] Модуль license_checker загружен, но не содержит get_license_checker")
-                _license_logger.error(f"[AI] [ERROR] Доступные атрибуты: {[attr for attr in dir(license_checker_module) if not attr.startswith('_')]}")
         
-        # Если не удалось загрузить из версионированной директории, пробуем fallback
+        # Fallback к обычному импорту
         if get_license_checker is None:
-            _license_logger.warning(f"[AI] [WARNING] Не удалось загрузить license_checker из версионированной директории, пробуем fallback")
-            # Fallback к обычному импорту
             try:
                 from .license_checker import get_license_checker
-                _license_logger.info(f"[AI] [INFO] Модуль license_checker загружен через fallback импорт")
-            except ImportError as import_err:
-                _license_logger.error(f"[AI] [ERROR] Не удалось загрузить license_checker даже через fallback: {import_err}")
+            except ImportError:
                 _LICENSE_STATUS = False
                 _LICENSE_INFO = None
                 return False
-        
-        # Если get_license_checker все еще None, возвращаем False
-        if get_license_checker is None:
-            _license_logger.error(f"[AI] [ERROR] get_license_checker не найден ни в версионированном модуле, ни через fallback")
-            _LICENSE_STATUS = False
-            _LICENSE_INFO = None
-            return False
     except Exception as exc:
         _license_logger.error(f"[AI] [ERROR] Ошибка при загрузке license_checker: {exc}", exc_info=True)
         _LICENSE_STATUS = False
@@ -375,7 +315,7 @@ def _load_ai_module(module_name: str):
     Возвращает модуль или None если загрузка не удалась.
     """
     import_name = f'bot_engine.ai.{module_name}'
-    module = _load_versioned_module(module_name, import_name)
+    module = _load_pyc_module(module_name, import_name)
     if module is None:
         # Fallback: пробуем импортировать .py файл (для разработки)
         try:

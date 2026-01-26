@@ -370,30 +370,23 @@ def main():
         print("Install: pip install torch")
         return 1
     
-    # Проверяем и настраиваем GPU NVIDIA
+    # Проверяем и настраиваем GPU NVIDIA (PyTorch)
     gpu_device = None
     try:
-        import tensorflow as tf
-        gpus = tf.config.list_physical_devices('GPU')
-        if gpus:
-            # В TensorFlow с CUDA обычно все найденные GPU - это NVIDIA
-            # Используем первый доступный GPU
-            primary_gpu = gpus[0]
+        import torch
+        if torch.cuda.is_available():
+            gpu_count = torch.cuda.device_count()
+            print(f"\n[GPU] Найдено GPU устройств: {gpu_count}")
+            for i in range(gpu_count):
+                gpu_name = torch.cuda.get_device_name(i)
+                print(f"  GPU {i}: {gpu_name}")
             
-            print(f"\n[GPU] Найдено GPU устройств: {len(gpus)}")
-            for i, gpu in enumerate(gpus):
-                print(f"  GPU {i}: {gpu.name}")
-            
-            # Настраиваем рост памяти GPU
-            for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
-            
-            gpu_device = primary_gpu
-            print(f"[GPU] ✅ GPU NVIDIA будет использоваться для обучения: {gpu_device.name}")
+            gpu_device = torch.device('cuda:0')
+            print(f"[GPU] GPU NVIDIA будет использоваться для обучения: {torch.cuda.get_device_name(0)}")
         else:
-            print("\n[GPU] ℹ️ GPU устройства не найдены, используется CPU")
+            print("\n[GPU] GPU устройства не найдены, используется CPU")
     except Exception as e:
-        print(f"\n[GPU] ⚠️ Ошибка проверки GPU: {e}")
+        print(f"\n[GPU] Ошибка проверки GPU: {e}")
         print("[GPU] Продолжаем с CPU...")
     
     print(f"\nParameters:")
