@@ -7,6 +7,8 @@ Sentiment Analysis для криптовалют
 - Интеграция с торговыми решениями
 
 Placeholder для API интеграций (Twitter, Reddit, News)
+
+ТРЕБУЕТ ПРЕМИУМ ЛИЦЕНЗИЮ
 """
 
 import logging
@@ -17,6 +19,22 @@ from dataclasses import dataclass
 from enum import Enum
 
 logger = logging.getLogger('Sentiment')
+
+# Проверка премиум лицензии
+def _check_premium():
+    """Проверяет наличие премиум лицензии"""
+    try:
+        from bot_engine.ai import check_premium_license
+        if not check_premium_license():
+            raise ImportError(
+                "SentimentAnalyzer требует премиум лицензию.\n"
+                "Для активации: python scripts/activate_premium.py"
+            )
+    except ImportError as e:
+        if "check_premium_license" in str(e):
+            pass
+        else:
+            raise
 
 # Проверяем transformers (опционально)
 try:
@@ -50,9 +68,14 @@ class SentimentAnalyzer:
     
     Использует transformers если доступен,
     иначе rule-based подход
+    
+    ТРЕБУЕТ ПРЕМИУМ ЛИЦЕНЗИЮ
     """
     
     def __init__(self, use_transformers: bool = True):
+        # Проверка премиум лицензии
+        _check_premium()
+        
         self.use_transformers = use_transformers and TRANSFORMERS_AVAILABLE
         self.model = None
         

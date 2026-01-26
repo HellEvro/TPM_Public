@@ -842,12 +842,30 @@ if PYTORCH_AVAILABLE:
             return F.softmax(logits, dim=-1)
 
 
+def _check_premium_cnn():
+    """Проверяет наличие премиум лицензии для CNN"""
+    try:
+        from bot_engine.ai import check_premium_license
+        if not check_premium_license():
+            raise ImportError(
+                "CNNPatternDetector требует премиум лицензию.\n"
+                "Для активации: python scripts/activate_premium.py"
+            )
+    except ImportError as e:
+        if "check_premium_license" in str(e):
+            pass
+        else:
+            raise
+
+
 class CNNPatternDetector:
     """
     CNN-based Pattern Detector
     
     Использует сверточную нейросеть для распознавания паттернов
     на свечных графиках. Более точный чем эвристический подход.
+    
+    ТРЕБУЕТ ПРЕМИУМ ЛИЦЕНЗИЮ
     """
     
     def __init__(
@@ -855,6 +873,9 @@ class CNNPatternDetector:
         model_path: str = "data/ai/models/cnn_pattern_detector.pth",
         use_cnn: bool = True
     ):
+        # Проверка премиум лицензии
+        _check_premium_cnn()
+        
         self.model_path = model_path
         self.use_cnn = use_cnn and PYTORCH_AVAILABLE
         self.model = None

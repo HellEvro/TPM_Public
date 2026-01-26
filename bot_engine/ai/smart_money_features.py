@@ -10,6 +10,8 @@ Smart Money Concepts (SMC) - Институциональный анализ р�
 - Market Structure (HH, HL, LH, LL)
 
 Основа: RSI + SMC = минимум шума, максимум качества сигналов
+
+ТРЕБУЕТ ПРЕМИУМ ЛИЦЕНЗИЮ
 """
 
 import logging
@@ -20,6 +22,23 @@ from dataclasses import dataclass
 from enum import Enum
 
 logger = logging.getLogger('SMC')
+
+# Проверка премиум лицензии
+def _check_premium():
+    """Проверяет наличие премиум лицензии"""
+    try:
+        from bot_engine.ai import check_premium_license
+        if not check_premium_license():
+            raise ImportError(
+                "SmartMoneyFeatures требует премиум лицензию.\n"
+                "Для активации: python scripts/activate_premium.py"
+            )
+    except ImportError as e:
+        if "check_premium_license" in str(e):
+            # Модуль лицензирования недоступен - разрешаем (для разработки)
+            pass
+        else:
+            raise
 
 
 class SignalType(Enum):
@@ -91,6 +110,8 @@ class SmartMoneyFeatures:
     
     Основа: RSI 6H + Order Blocks + FVG + Liquidity + Market Structure
     Минимум шума, максимум качества сигналов
+    
+    ТРЕБУЕТ ПРЕМИУМ ЛИЦЕНЗИЮ
     """
     
     def __init__(
@@ -111,6 +132,9 @@ class SmartMoneyFeatures:
             fvg_min_size: Минимальный размер FVG (0.1%)
             equal_level_tolerance: Допуск для определения equal levels (0.2%)
         """
+        # Проверка премиум лицензии
+        _check_premium()
+        
         self.rsi_period = rsi_period
         self.swing_lookback = swing_lookback
         self.impulse_threshold = impulse_threshold

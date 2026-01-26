@@ -9,6 +9,8 @@ Transformer Predictor - Temporal Fusion Transformer для предсказан�
 - Quantile outputs для оценки неопределенности
 
 Совместимый API с LSTMPredictor для легкой замены.
+
+ТРЕБУЕТ ПРЕМИУМ ЛИЦЕНЗИЮ
 """
 
 import os
@@ -23,6 +25,22 @@ import numpy as np
 import pandas as pd
 
 logger = logging.getLogger('Transformer')
+
+# Проверка премиум лицензии
+def _check_premium():
+    """Проверяет наличие премиум лицензии"""
+    try:
+        from bot_engine.ai import check_premium_license
+        if not check_premium_license():
+            raise ImportError(
+                "TransformerPredictor требует премиум лицензию.\n"
+                "Для активации: python scripts/activate_premium.py"
+            )
+    except ImportError as e:
+        if "check_premium_license" in str(e):
+            pass
+        else:
+            raise
 
 # Проверяем PyTorch
 try:
@@ -400,6 +418,8 @@ class TransformerPredictor:
     Predictor на основе Temporal Fusion Transformer
     
     API совместим с LSTMPredictor для легкой замены
+    
+    ТРЕБУЕТ ПРЕМИУМ ЛИЦЕНЗИЮ
     """
     
     def __init__(
@@ -408,6 +428,9 @@ class TransformerPredictor:
         scaler_path: str = "data/ai/models/transformer_scaler.pkl",
         config_path: str = "data/ai/models/transformer_config.json"
     ):
+        # Проверка премиум лицензии
+        _check_premium()
+        
         self.model_path = model_path
         self.scaler_path = scaler_path
         self.config_path = config_path

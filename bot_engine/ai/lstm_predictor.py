@@ -9,6 +9,8 @@ LSTM Predictor для предсказания движения цены кри�
 Используется для улучшения точности входов в сделки.
 
 Теперь использует PyTorch вместо TensorFlow для лучшей поддержки Python 3.14+ и GPU.
+
+ТРЕБУЕТ ПРЕМИУМ ЛИЦЕНЗИЮ
 """
 
 import os
@@ -30,6 +32,22 @@ except ImportError:  # pragma: no cover - fallback если scikit-learn не у
         pass
 
 logger = logging.getLogger('LSTM')
+
+# Проверка премиум лицензии
+def _check_premium():
+    """Проверяет наличие премиум лицензии для LSTM"""
+    try:
+        from bot_engine.ai import check_premium_license
+        if not check_premium_license():
+            raise ImportError(
+                "LSTMPredictor требует премиум лицензию.\n"
+                "Для активации: python scripts/activate_premium.py"
+            )
+    except ImportError as e:
+        if "check_premium_license" in str(e):
+            pass  # Для разработки
+        else:
+            raise
 
 # Отключаем предупреждения PyTorch
 warnings.filterwarnings('ignore', category=UserWarning, module='torch')
@@ -378,6 +396,9 @@ class LSTMPredictor:
             config_path: Путь к конфигурации модели
             use_improved_model: Использовать улучшенную модель с Attention (по умолчанию True)
         """
+        # Проверка премиум лицензии
+        _check_premium()
+        
         self.model_path = model_path
         self.scaler_path = scaler_path
         self.config_path = config_path

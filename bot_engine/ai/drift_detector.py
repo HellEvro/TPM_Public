@@ -9,6 +9,8 @@ Data Drift Detection - обнаружение дрифта данных и де�
 Использует:
 - Kolmogorov-Smirnov тест для детекции дрифта
 - Скользящие метрики для мониторинга производительности
+
+ТРЕБУЕТ ПРЕМИУМ ЛИЦЕНЗИЮ
 """
 
 import logging
@@ -21,6 +23,22 @@ import json
 import os
 
 logger = logging.getLogger('DriftDetector')
+
+# Проверка премиум лицензии
+def _check_premium():
+    """Проверяет наличие премиум лицензии"""
+    try:
+        from bot_engine.ai import check_premium_license
+        if not check_premium_license():
+            raise ImportError(
+                "DriftDetector требует премиум лицензию.\n"
+                "Для активации: python scripts/activate_premium.py"
+            )
+    except ImportError as e:
+        if "check_premium_license" in str(e):
+            pass
+        else:
+            raise
 
 # Опциональные зависимости
 try:
@@ -58,6 +76,8 @@ class DataDriftDetector:
     
     Использует Kolmogorov-Smirnov тест для сравнения
     распределений признаков между reference и текущими данными
+    
+    ТРЕБУЕТ ПРЕМИУМ ЛИЦЕНЗИЮ
     """
     
     def __init__(
@@ -74,6 +94,9 @@ class DataDriftDetector:
             threshold: Порог p-value для определения дрифта
             min_samples: Минимальное количество сэмплов для теста
         """
+        # Проверка премиум лицензии
+        _check_premium()
+        
         self.reference_data = reference_data
         self.feature_names = feature_names or []
         self.threshold = threshold

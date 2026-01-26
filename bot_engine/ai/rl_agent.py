@@ -8,6 +8,8 @@ Reinforcement Learning Agent для торговли
 - Epsilon-greedy exploration
 
 Действия: HOLD=0, BUY=1, SELL=2, CLOSE=3
+
+ТРЕБУЕТ ПРЕМИУМ ЛИЦЕНЗИЮ
 """
 
 import logging
@@ -19,6 +21,22 @@ import os
 import json
 
 logger = logging.getLogger('RL')
+
+# Проверка премиум лицензии
+def _check_premium():
+    """Проверяет наличие премиум лицензии"""
+    try:
+        from bot_engine.ai import check_premium_license
+        if not check_premium_license():
+            raise ImportError(
+                "RLTrader требует премиум лицензию.\n"
+                "Для активации: python scripts/activate_premium.py"
+            )
+    except ImportError as e:
+        if "check_premium_license" in str(e):
+            pass
+        else:
+            raise
 
 # Проверяем PyTorch
 try:
@@ -384,6 +402,8 @@ class RLTrader:
     Высокоуровневый RL Trader
     
     Обертка для обучения и использования RL агента
+    
+    ТРЕБУЕТ ПРЕМИУМ ЛИЦЕНЗИЮ
     """
     
     def __init__(
@@ -391,6 +411,9 @@ class RLTrader:
         model_path: str = "data/ai/models/rl_trader.pth",
         window_size: int = 20
     ):
+        # Проверка премиум лицензии
+        _check_premium()
+        
         self.model_path = model_path
         self.window_size = window_size
         self.state_size = window_size * 5 + 3

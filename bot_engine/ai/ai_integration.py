@@ -54,11 +54,17 @@ def get_ai_system():
 
 
 def get_smc_features():
-    """Получить экземпляр SmartMoneyFeatures (lazy init)"""
+    """Получить экземпляр SmartMoneyFeatures (lazy init) - ТРЕБУЕТ ПРЕМИУМ"""
     global _smc_features
     
     if _smc_features is None:
         try:
+            # Проверка лицензии
+            from bot_engine.ai import check_premium_license
+            if not check_premium_license():
+                logger.debug("SMC требует премиум лицензию")
+                return None
+            
             from bot_engine.ai.smart_money_features import SmartMoneyFeatures
             _smc_features = SmartMoneyFeatures()
             logger.info("SmartMoneyFeatures инициализирован")

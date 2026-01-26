@@ -10,6 +10,8 @@ Ensemble модели - объединение нескольких предик
 - Уменьшение дисперсии предсказаний
 - Повышение робастности
 - Комбинирование сильных сторон разных архитектур
+
+ТРЕБУЕТ ПРЕМИУМ ЛИЦЕНЗИЮ
 """
 
 import logging
@@ -20,6 +22,22 @@ import json
 import os
 
 logger = logging.getLogger('Ensemble')
+
+# Проверка премиум лицензии
+def _check_premium():
+    """Проверяет наличие премиум лицензии"""
+    try:
+        from bot_engine.ai import check_premium_license
+        if not check_premium_license():
+            raise ImportError(
+                "Ensemble требует премиум лицензию.\n"
+                "Для активации: python scripts/activate_premium.py"
+            )
+    except ImportError as e:
+        if "check_premium_license" in str(e):
+            pass
+        else:
+            raise
 
 # Проверяем PyTorch
 try:
@@ -45,6 +63,8 @@ class VotingEnsemble:
     - Soft voting (усреднение вероятностей)
     - Hard voting (голосование по классам)
     - Динамические веса на основе производительности
+    
+    ТРЕБУЕТ ПРЕМИУМ ЛИЦЕНЗИЮ
     """
     
     def __init__(self, voting: str = 'soft'):
@@ -52,6 +72,9 @@ class VotingEnsemble:
         Args:
             voting: 'soft' или 'hard'
         """
+        # Проверка премиум лицензии
+        _check_premium()
+        
         self.voting = voting
         self.models: Dict[str, Dict] = {}  # name -> {model, weight, stats}
         self.performance_history: Dict[str, List[float]] = {}
