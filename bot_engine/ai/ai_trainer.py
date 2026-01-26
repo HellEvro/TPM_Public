@@ -2179,17 +2179,31 @@ class AITrainer:
             avg_profit_pred = np.mean(y_profit_pred)
             
             rmse = np.sqrt(mse)  # RMSE более интерпретируем
-            logger.info(f"✅ Модель прибыли обучена!")
-            logger.info(f"   📊 RMSE: {rmse:.2f} USDT (средняя ошибка предсказания)")
-            logger.info(f"   📈 Средняя прибыль (реальная): {avg_profit_actual:.2f} USDT")
-            logger.info(f"   📈 Средняя прибыль (предсказанная): {avg_profit_pred:.2f} USDT")
             
             # УЛУЧШЕНИЕ: Дополнительные метрики качества
             if len(y_profit_test) > 0:
                 from sklearn.metrics import r2_score, mean_absolute_error
                 r2 = r2_score(y_profit_test, y_profit_pred)
                 mae = mean_absolute_error(y_profit_test, y_profit_pred)
-                logger.info(f"   📊 R² Score: {r2:.3f}")
+                
+                # Статистика PnL для диагностики
+                y_std = np.std(y_profit_test)
+                y_min = np.min(y_profit_test)
+                y_max = np.max(y_profit_test)
+                
+                logger.info(f"✅ Модель прибыли обучена!")
+                logger.info(f"   📊 RMSE: {rmse:.2f} USDT (средняя ошибка предсказания)")
+                logger.info(f"   📈 Средняя прибыль (реальная): {avg_profit_actual:.2f} USDT")
+                logger.info(f"   📈 Средняя прибыль (предсказанная): {avg_profit_pred:.2f} USDT")
+                logger.info(f"   📊 R² Score: {r2:.4f} (качество: 0-1, >0 хорошо, <0 плохо)")
+                
+                # КРИТИЧНО: Предупреждение если R² отрицательный
+                if r2 < 0:
+                    logger.warning(f"   ⚠️ КРИТИЧЕСКАЯ ПРОБЛЕМА: R² = {r2:.4f} < 0!")
+                    logger.warning(f"   ⚠️ Модель работает ХУЖЕ чем простое среднее значение!")
+                    logger.warning(f"   ⚠️ Статистика PnL: min={y_min:.2f}, max={y_max:.2f}, std={y_std:.2f} USDT")
+                    logger.warning(f"   💡 Рекомендация: Используйте модель сигналов (успех/неуспех) вместо предсказания абсолютного PnL")
+                
                 logger.info(f"   📊 MAE: {mae:.2f} USDT")
                 
                 # Процент точности предсказания (в пределах 10%)
@@ -3472,17 +3486,34 @@ class AITrainer:
                 profit_rmse = np.sqrt(profit_mse)  # RMSE более интерпретируем
                 
                 # R² - коэффициент детерминации (0-1, чем ближе к 1 тем лучше)
-                y_var = np.var(y_profit)
-                r2_score = 1 - (profit_mse / y_var) if y_var > 0 else 0
+                from sklearn.metrics import r2_score as sklearn_r2_score
+                r2_score = sklearn_r2_score(y_profit, profit_pred)
                 
                 # Нормализованный MSE (относительно среднего PnL)
                 y_mean = np.mean(np.abs(y_profit))
                 normalized_mse = profit_mse / (y_mean ** 2) if y_mean > 0 else profit_mse
                 
+                # Статистика PnL для диагностики
+                y_std = np.std(y_profit)
+                y_min = np.min(y_profit)
+                y_max = np.max(y_profit)
+                
                 logger.info(f"   ✅ Модель прибыли обучена!")
                 logger.info(f"      RMSE: {profit_rmse:.2f} USDT (средняя ошибка предсказания)")
-                logger.info(f"      R²: {r2_score:.4f} (качество модели: 0-1)")
+                logger.info(f"      R²: {r2_score:.4f} (качество модели: 0-1, >0 хорошо, <0 плохо)")
+                
+                # КРИТИЧНО: Предупреждение если R² отрицательный
+                if r2_score < 0:
+                    logger.warning(f"      ⚠️ КРИТИЧЕСКАЯ ПРОБЛЕМА: R² = {r2_score:.4f} < 0!")
+                    logger.warning(f"      ⚠️ Модель работает ХУЖЕ чем простое среднее значение!")
+                    logger.warning(f"      ⚠️ Возможные причины:")
+                    logger.warning(f"         - Слишком большой разброс PnL (min={y_min:.2f}, max={y_max:.2f}, std={y_std:.2f})")
+                    logger.warning(f"         - Недостаточно данных для обучения")
+                    logger.warning(f"         - Признаки не информативны для предсказания прибыли")
+                    logger.warning(f"      💡 Рекомендация: Используйте модель сигналов (успех/неуспех) вместо предсказания абсолютного PnL")
+                
                 logger.info(f"      MSE/Var: {normalized_mse:.4f} (нормализованная ошибка)")
+                logger.info(f"      Статистика PnL: min={y_min:.2f}, max={y_max:.2f}, std={y_std:.2f} USDT")
                 
                 # Сохраняем модели
                 self._save_models()
