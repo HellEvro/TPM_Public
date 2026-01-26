@@ -1681,19 +1681,23 @@ class AITrainer:
             y_profit = np.array(y_profit)
             
             # Нормализация
-            if not hasattr(self.scaler, 'mean_') or self.scaler.mean_ is None:
-                from sklearn.preprocessing import StandardScaler
+            # ВАЖНО: Проверяем совместимость scaler с текущим количеством фич
+            from sklearn.preprocessing import StandardScaler
+            current_features = X.shape[1] if len(X.shape) > 1 else len(X[0])
+            scaler_features = getattr(self.scaler, 'n_features_in_', None)
+            
+            if scaler_features is None or scaler_features != current_features:
+                # Scaler не обучен или несовместим - пересоздаём
+                logger.info(f"   🔄 Пересоздание scaler: было {scaler_features} фич, нужно {current_features}")
                 self.scaler = StandardScaler()
                 X_scaled = self.scaler.fit_transform(X)
-                # Сохраняем количество признаков
-                if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
-                    self.expected_features = self.scaler.n_features_in_
             else:
-                # Дополняем существующий scaler (используем transform для совместимости)
+                # Scaler совместим - используем transform
                 X_scaled = self.scaler.transform(X)
-                # Обновляем количество признаков
-                if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
-                    self.expected_features = self.scaler.n_features_in_
+            
+            # Сохраняем количество признаков
+            if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
+                self.expected_features = self.scaler.n_features_in_
             
             # Обучаем модели (дополняем существующие или создаем новые)
             if not self.signal_predictor:
@@ -3366,19 +3370,26 @@ class AITrainer:
                 y_profit = np.array(y_profit)
                 
                 # Нормализация
-                if not hasattr(self.scaler, 'mean_') or self.scaler.mean_ is None:
-                    from sklearn.preprocessing import StandardScaler
+                # ВАЖНО: Всегда пересоздаем scaler при обучении на реальных сделках,
+                # потому что количество фич (7) отличается от _prepare_features (12)
+                from sklearn.preprocessing import StandardScaler
+                
+                # Проверяем совместимость scaler с текущим количеством фич
+                current_features = X.shape[1] if len(X.shape) > 1 else len(X[0])
+                scaler_features = getattr(self.scaler, 'n_features_in_', None)
+                
+                if scaler_features is None or scaler_features != current_features:
+                    # Scaler не обучен или обучен на другом количестве фич - пересоздаём
+                    logger.info(f"   🔄 Пересоздание scaler: было {scaler_features} фич, нужно {current_features}")
                     self.scaler = StandardScaler()
                     X_scaled = self.scaler.fit_transform(X)
-                    # Сохраняем количество признаков
-                    if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
-                        self.expected_features = self.scaler.n_features_in_
                 else:
-                    # Переобучение на новых данных (incremental learning)
+                    # Scaler совместим - используем transform
                     X_scaled = self.scaler.transform(X)
-                    # Обновляем количество признаков
-                    if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
-                        self.expected_features = self.scaler.n_features_in_
+                
+                # Сохраняем количество признаков
+                if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
+                    self.expected_features = self.scaler.n_features_in_
                 
                 # Обучаем модель предсказания успешности сделок
                 if not self.signal_predictor:
