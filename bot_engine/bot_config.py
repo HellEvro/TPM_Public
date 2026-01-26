@@ -453,3 +453,10 @@ class AIConfig:
     AI_STOP_TRAINING_ON_DEGRADATION = True  # Остановить обучение при ухудшении качества
     AI_DEGRADATION_THRESHOLD = 0.05      # Порог ухудшения качества (0.05 = 5% снижения)
     AI_MIN_TRAINING_ATTEMPTS = 3         # Минимальное количество попыток обучения перед проверкой качества
+    
+    # Триггеры переобучения при ухудшении на реальных сделках
+    AI_RETRAIN_ON_REAL_PERFORMANCE_DEGRADATION = True  # Переобучать при ухудшении на реальных сделках
+    AI_REAL_WIN_RATE_THRESHOLD = 0.40    # Минимальный win_rate на реальных сделках (0.40 = 40%)
+    AI_REAL_AVG_PNL_THRESHOLD = -10.0    # Минимальный средний PnL на реальных сделках (USDT)
+    AI_REAL_VS_SIMULATED_DIFF_THRESHOLD = 0.30  # Максимальная разница win_rate между виртуальными и реальными (0.30 = 30%)
+    AI_REAL_PERFORMANCE_WINDOW = 20      # Окно реальных сделок для оценки производительности

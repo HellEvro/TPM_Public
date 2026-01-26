@@ -3627,22 +3627,39 @@ class AIDatabase:
             cursor.execute(sim_query, sim_params)
             sim_stats = dict(cursor.fetchone())
             
-            # Статистика реальных сделок
-            real_query = "SELECT AVG(pnl) as avg_pnl, COUNT(*) as count FROM bot_trades WHERE is_simulated = 0 AND status = 'CLOSED' AND pnl IS NOT NULL"
+            # Статистика реальных сделок (с win_rate)
+            real_query = """
+                SELECT 
+                    AVG(pnl) as avg_pnl, 
+                    COUNT(*) as count,
+                    AVG(CASE WHEN pnl > 0 THEN 1.0 ELSE 0.0 END) as win_rate,
+                    SUM(pnl) as total_pnl
+                FROM bot_trades 
+                WHERE is_simulated = 0 AND status = 'CLOSED' AND pnl IS NOT NULL
+            """
             real_params = []
             if symbol:
                 real_query += " AND symbol = ?"
                 real_params.append(symbol)
             
             cursor.execute(real_query, real_params)
-            real_stats = dict(cursor.fetchone())
+            real_row = cursor.fetchone()
+            real_stats = dict(real_row) if real_row else {'avg_pnl': 0, 'count': 0, 'win_rate': 0, 'total_pnl': 0}
+            
+            # Вычисляем разницу производительности
+            sim_win_rate = sim_stats.get('win_rate') or 0
+            real_win_rate = real_stats.get('win_rate') or 0
+            win_rate_diff = sim_win_rate - real_win_rate
             
             return {
                 'simulated': sim_stats,
                 'real': real_stats,
                 'comparison': {
                     'pnl_diff': (sim_stats.get('avg_pnl') or 0) - (real_stats.get('avg_pnl') or 0),
-                    'count_ratio': (sim_stats.get('count') or 0) / max(real_stats.get('count') or 1, 1)
+                    'count_ratio': (sim_stats.get('count') or 0) / max(real_stats.get('count') or 1, 1),
+                    'win_rate_diff': win_rate_diff,
+                    'win_rate_simulated': sim_win_rate,
+                    'win_rate_real': real_win_rate
                 }
             }
     

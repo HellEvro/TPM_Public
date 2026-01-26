@@ -63,6 +63,11 @@ class AutoTrainer:
             logger.info(f"[AutoTrainer]   - Триггер остановки: точность >= {AIConfig.AI_HIGH_ACCURACY_THRESHOLD:.0%}")
         if AIConfig.AI_STOP_TRAINING_ON_DEGRADATION:
             logger.info(f"[AutoTrainer]   - Триггер остановки: ухудшение >= {AIConfig.AI_DEGRADATION_THRESHOLD:.0%}")
+        if AIConfig.AI_RETRAIN_ON_REAL_PERFORMANCE_DEGRADATION:
+            logger.info(f"[AutoTrainer]   - Триггер переобучения на реальных сделках:")
+            logger.info(f"[AutoTrainer]     * Win_rate < {AIConfig.AI_REAL_WIN_RATE_THRESHOLD:.0%}")
+            logger.info(f"[AutoTrainer]     * Avg_pnl < {AIConfig.AI_REAL_AVG_PNL_THRESHOLD:.2f} USDT")
+            logger.info(f"[AutoTrainer]     * Разница виртуальных/реальных > {AIConfig.AI_REAL_VS_SIMULATED_DIFF_THRESHOLD:.0%}")
     
     def stop(self):
         """Останавливает автоматический тренер"""
@@ -598,9 +603,95 @@ class AutoTrainer:
             if max_accuracy > 0:
                 self._last_model_accuracy = max_accuracy
                 logger.info(f"[AutoTrainer] 📊 Максимальная точность модели: {max_accuracy:.2%}")
+            
+            # Проверяем производительность на реальных сделках
+            self._check_real_trades_performance()
         
         except Exception as e:
             logger.debug(f"[AutoTrainer] ⚠️ Ошибка проверки качества модели: {e}")
+    
+    def _check_real_trades_performance(self):
+        """
+        Проверяет производительность модели на реальных сделках и запускает переобучение при ухудшении
+        
+        Если модель показывает 90%+ на виртуальных сделках, но на реальных сделках результаты отрицательные,
+        запускается переобучение на реальных данных.
+        """
+        if not AIConfig.AI_RETRAIN_ON_REAL_PERFORMANCE_DEGRADATION:
+            return
+        
+        try:
+            from bot_engine.ai.ai_database import AIDatabase
+            ai_db = AIDatabase()
+            
+            # Получаем статистику виртуальных vs реальных сделок
+            comparison = ai_db.compare_simulated_vs_real()
+            
+            sim_stats = comparison.get('simulated', {})
+            real_stats = comparison.get('real', {})
+            comp_data = comparison.get('comparison', {})
+            
+            sim_win_rate = sim_stats.get('win_rate') or 0
+            real_win_rate = real_stats.get('win_rate') or 0
+            real_avg_pnl = real_stats.get('avg_pnl') or 0
+            real_count = real_stats.get('count') or 0
+            win_rate_diff = comp_data.get('win_rate_diff', 0)
+            
+            # Проверяем, достаточно ли реальных сделок для оценки
+            if real_count < AIConfig.AI_REAL_PERFORMANCE_WINDOW:
+                logger.debug(f"[AutoTrainer] 📊 Недостаточно реальных сделок для оценки: {real_count} < {AIConfig.AI_REAL_PERFORMANCE_WINDOW}")
+                return
+            
+            logger.info(f"[AutoTrainer] 📊 Производительность на реальных сделках:")
+            logger.info(f"   Виртуальные: win_rate = {sim_win_rate:.2%}, avg_pnl = {sim_stats.get('avg_pnl', 0):.2f} USDT")
+            logger.info(f"   Реальные: win_rate = {real_win_rate:.2%}, avg_pnl = {real_avg_pnl:.2f} USDT")
+            logger.info(f"   Разница win_rate: {win_rate_diff:.2%}")
+            
+            # Триггер 1: Низкий win_rate на реальных сделках
+            if real_win_rate < AIConfig.AI_REAL_WIN_RATE_THRESHOLD:
+                logger.warning(f"[AutoTrainer] ⚠️ Низкий win_rate на реальных сделках: {real_win_rate:.2%} < {AIConfig.AI_REAL_WIN_RATE_THRESHOLD:.2%}")
+                logger.warning(f"[AutoTrainer] 🔄 Запуск переобучения на реальных данных...")
+                self._trigger_retrain_on_real_trades()
+                return
+            
+            # Триггер 2: Отрицательный средний PnL на реальных сделках
+            if real_avg_pnl < AIConfig.AI_REAL_AVG_PNL_THRESHOLD:
+                logger.warning(f"[AutoTrainer] ⚠️ Отрицательный avg_pnl на реальных сделках: {real_avg_pnl:.2f} < {AIConfig.AI_REAL_AVG_PNL_THRESHOLD:.2f} USDT")
+                logger.warning(f"[AutoTrainer] 🔄 Запуск переобучения на реальных данных...")
+                self._trigger_retrain_on_real_trades()
+                return
+            
+            # Триггер 3: Большая разница между виртуальными и реальными сделками
+            if win_rate_diff > AIConfig.AI_REAL_VS_SIMULATED_DIFF_THRESHOLD:
+                logger.warning(f"[AutoTrainer] ⚠️ Большая разница win_rate: виртуальные {sim_win_rate:.2%} vs реальные {real_win_rate:.2%} (разница: {win_rate_diff:.2%})")
+                logger.warning(f"[AutoTrainer] 🔄 Запуск переобучения на реальных данных...")
+                self._trigger_retrain_on_real_trades()
+                return
+        
+        except Exception as e:
+            logger.debug(f"[AutoTrainer] ⚠️ Ошибка проверки производительности на реальных сделках: {e}")
+    
+    def _trigger_retrain_on_real_trades(self):
+        """Запускает переобучение на реальных сделках"""
+        try:
+            from bot_engine.ai import get_ai_system
+            ai_system = get_ai_system()
+            if not ai_system or not ai_system.trainer:
+                logger.warning("[AutoTrainer] ⚠️ AI System недоступен для переобучения")
+                return
+            
+            # Запускаем переобучение в отдельном потоке
+            import threading
+            retrain_thread = threading.Thread(
+                target=ai_system.trainer.train_on_history,
+                daemon=True,
+                name="RetrainOnRealTrades"
+            )
+            retrain_thread.start()
+            logger.info("[AutoTrainer] 🚀 Запущено переобучение на реальных сделках (в фоне)")
+        
+        except Exception as e:
+            logger.error(f"[AutoTrainer] ❌ Ошибка запуска переобучения на реальных сделках: {e}")
     
     def _check_should_stop_training(self) -> bool:
         """
