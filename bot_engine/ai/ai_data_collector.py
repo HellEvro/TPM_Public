@@ -317,8 +317,10 @@ class AIDataCollector:
             if ai_db:
                 # Загружаем сделки ботов из БД
                 # ВАЖНО: min_trades=0 чтобы получить ВСЕ сделки, не только для символов с >=10 сделками
+                # ВАЖНО: Загружаем ВСЕ сделки - и реальные, и симуляции
+                # Симуляции нужны для обучения ИИ на разных параметрах
                 db_trades = ai_db.get_trades_for_training(
-                    include_simulated=False,
+                    include_simulated=True,  # ВКЛЮЧАЕМ симуляции для обучения!
                     include_real=True,
                     include_exchange=True,  # ВАЖНО: Включаем сделки с биржи тоже!
                     min_trades=0,  # КРИТИЧНО: 0 чтобы получить все сделки, не фильтровать по символам

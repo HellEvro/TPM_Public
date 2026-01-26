@@ -806,28 +806,20 @@ class AITrainer:
         if self.ai_db:
             logger.debug("   📦 _load_history_data(): БД доступна, загрузка через get_trades_for_training()...")
             try:
-                # Получаем сделки для обучения (приоритет: реальные, если мало - добавляем симуляции)
+                # ВАЖНО: Загружаем ВСЕ сделки - и реальные, и симуляции
+                # Симуляции нужны для обучения ИИ на разных параметрах и поиска оптимальных
                 db_trades = self.ai_db.get_trades_for_training(
-                    include_simulated=False,
+                    include_simulated=True,  # ВКЛЮЧАЕМ симуляции для обучения!
                     include_real=True,
                     include_exchange=True,  # ВАЖНО: Включаем сделки с биржи!
                     min_trades=0,  # КРИТИЧНО: 0 чтобы получить все сделки, не фильтровать по символам
                     limit=None
                 )
                 
-                # Если реальных сделок мало - добавляем симуляции
-                if len(db_trades) < self._real_trades_min_samples:
-                    logger.info(f"📊 Реальных сделок мало ({len(db_trades)}) < {self._real_trades_min_samples}), добавляем симуляции...")
-                    simulated_trades = self.ai_db.get_trades_for_training(
-                        include_simulated=True,
-                        include_real=False,
-                        include_exchange=False,
-                        min_trades=0,
-                        limit=None
-                    )
-                    if simulated_trades:
-                        logger.info(f"📊 Добавлено {len(simulated_trades)} симулированных сделок")
-                        db_trades.extend(simulated_trades)
+                # Подсчитываем количество разных типов сделок
+                simulated_count = sum(1 for t in db_trades if t.get('is_simulated', False))
+                real_count = len(db_trades) - simulated_count
+                logger.info(f"📊 Загружено для обучения: {len(db_trades)} сделок (реальных: {real_count}, симуляций: {simulated_count})")
                 if db_trades:
                     # Конвертируем формат БД в формат для обучения
                     for trade in db_trades:
@@ -2742,8 +2734,9 @@ class AITrainer:
                     # ВАЖНО: Используем get_trades_for_training() вместо get_bot_trades()
                     # потому что get_trades_for_training() загружает сделки из bots_data.db -> bot_trades_history,
                     # а get_bot_trades() только из ai_data.db -> bot_trades (который может быть пуст)
+                    # ВАЖНО: Включаем симуляции для обучения ИИ на разных параметрах
                     bot_trades = self.ai_db.get_trades_for_training(
-                        include_simulated=False,
+                        include_simulated=True,  # ВКЛЮЧАЕМ симуляции для обучения!
                         include_real=True,  # Включаем реальные сделки из bots_data.db
                         include_exchange=False,  # Сделки биржи загружаем отдельно
                         min_trades=0,  # Не фильтруем по символам

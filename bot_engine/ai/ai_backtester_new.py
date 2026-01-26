@@ -245,8 +245,9 @@ class AIBacktester:
             from bot_engine.ai.ai_database import get_ai_database
             ai_db = get_ai_database()
             if ai_db:
+                # ВАЖНО: Включаем симуляции для обучения ИИ на разных параметрах
                 db_trades = ai_db.get_trades_for_training(
-                    include_simulated=False,
+                    include_simulated=True,  # ВКЛЮЧАЕМ симуляции для обучения!
                     include_real=True,
                     include_exchange=True,  # ВАЖНО: Включаем сделки с биржи!
                     min_trades=0,  # КРИТИЧНО: 0 чтобы получить все сделки, не фильтровать по символам
