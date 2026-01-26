@@ -10,6 +10,98 @@
 import os
 os.environ['INFOBOT_AI_PROCESS'] = 'true'
 
+# Проверка и автоматическая установка PyTorch ПЕРЕД импортом защищенного модуля
+def _check_and_install_pytorch():
+    """Проверяет наличие PyTorch и устанавливает его при необходимости"""
+    try:
+        import torch
+        # PyTorch уже установлен
+        return True
+    except ImportError:
+        # PyTorch не установлен, нужно установить
+        import sys
+        import subprocess
+        import platform
+        
+        print("=" * 80)
+        print("🔍 ПРОВЕРКА PYTORCH")
+        print("=" * 80)
+        print("⚠️ PyTorch не найден. Начинаю автоматическую установку...")
+        print()
+        
+        # Определяем путь к скрипту установки
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        setup_script = os.path.join(script_dir, 'scripts', 'setup_python_gpu.py')
+        
+        if not os.path.exists(setup_script):
+            print("❌ Ошибка: не найден скрипт установки PyTorch")
+            print(f"   Ожидаемый путь: {setup_script}")
+            print()
+            print("💡 Установите PyTorch вручную:")
+            print("   python scripts/setup_python_gpu.py")
+            print("   или")
+            print("   pip install torch torchvision torchaudio")
+            return False
+        
+        # Запускаем скрипт установки
+        print(f"🚀 Запускаю установку PyTorch через {setup_script}...")
+        print()
+        
+        try:
+            result = subprocess.run(
+                [sys.executable, setup_script],
+                cwd=script_dir,
+                timeout=600,  # 10 минут максимум
+                capture_output=False  # Показываем вывод в реальном времени
+            )
+            
+            if result.returncode == 0:
+                print()
+                print("=" * 80)
+                print("✅ PyTorch успешно установлен!")
+                print("=" * 80)
+                print()
+                
+                # Проверяем, что PyTorch теперь доступен
+                try:
+                    import torch
+                    print(f"✅ PyTorch версия: {torch.__version__}")
+                    if torch.cuda.is_available():
+                        print(f"✅ CUDA доступна: {torch.version.cuda}")
+                        print(f"✅ GPU: {torch.cuda.get_device_name(0)}")
+                    else:
+                        print("ℹ️ CUDA недоступна, будет использоваться CPU")
+                    print()
+                    return True
+                except ImportError:
+                    print("⚠️ PyTorch установлен, но не импортируется. Может потребоваться перезапуск.")
+                    return False
+            else:
+                print()
+                print("=" * 80)
+                print("❌ Ошибка установки PyTorch")
+                print("=" * 80)
+                print("💡 Попробуйте установить вручную:")
+                print("   python scripts/setup_python_gpu.py")
+                print("   или")
+                print("   pip install torch torchvision torchaudio")
+                print("=" * 80)
+                return False
+                
+        except subprocess.TimeoutExpired:
+            print()
+            print("❌ Установка PyTorch заняла слишком много времени (>10 минут)")
+            print("💡 Попробуйте установить вручную: python scripts/setup_python_gpu.py")
+            return False
+        except Exception as e:
+            print()
+            print(f"❌ Ошибка при запуске установки PyTorch: {e}")
+            print("💡 Попробуйте установить вручную: python scripts/setup_python_gpu.py")
+            return False
+
+# Выполняем проверку PyTorch перед импортом защищенного модуля
+_check_and_install_pytorch()
+
 # Настройка логирования ПЕРЕД импортом защищенного модуля
 import logging
 try:
