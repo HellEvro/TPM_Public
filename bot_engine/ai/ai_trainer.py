@@ -4124,55 +4124,67 @@ class AITrainer:
                     coin_base_min_rsi_low = _get_float_value('min_rsi_low', base_min_rsi_low)
                     coin_base_max_rsi_high = _get_float_value('max_rsi_high', base_max_rsi_high)
 
-                    # ВАЖНО: Используем лучшие параметры для монеты если они есть
-                    # Иначе используем общие параметры из начала функции
-                    if coin_best_params:
-                        coin_rsi_params = coin_best_params
-                        logger.debug(f"   ⭐ {symbol}: применяем сохранённые лучшие параметры")
-                    else:
-                        coin_rsi_params = None
-                        
-                        # ВАЖНО: Используем ML модель для генерации оптимальных параметров
-                        # Вместо случайных - AI предсказывает какие параметры будут хорошими
-                        if self.param_quality_predictor and self.param_quality_predictor.is_trained:
-                            try:
-                                # Получаем предложения от ML модели
-                                risk_params = {
-                                    'stop_loss': MAX_LOSS_PERCENT,
-                                    'take_profit': TAKE_PROFIT_PERCENT,
-                                    'trailing_stop_activation': TRAILING_STOP_ACTIVATION,
-                                    'trailing_stop_distance': TRAILING_STOP_DISTANCE,
-                                }
-                                suggestions = self.param_quality_predictor.suggest_optimal_params(
-                                    base_params, risk_params, num_suggestions=5
-                                )
-                                
-                                # Пробуем использовать лучшие предложения
-                                for suggested_params, predicted_quality in suggestions:
-                                    # Проверяем, не использовались ли уже
-                                    if self.param_tracker and not self.param_tracker.is_params_used(suggested_params):
-                                        coin_rsi_params = suggested_params
-                                        ml_params_generated_count += 1
-                                        logger.debug(f"   🤖 {symbol}: ML модель предложила оптимальные параметры (качество: {predicted_quality:.3f})")
-                                        break
-                            except Exception as e:
-                                logger.debug(f"   ⚠️ {symbol}: ошибка использования ML модели: {e}")
-                        
-                        # Fallback: используем трекер параметров
-                        if not coin_rsi_params and self.param_tracker:
-                            suggested_params = self.param_tracker.get_unused_params_suggestion(base_params, variation_range)
-                            if suggested_params:
-                                coin_rsi_params = suggested_params
-                                logger.debug(f"   🎯 {symbol}: получили новую комбинацию параметров из трекера")
-                        
-                        # Fallback: генерируем адаптивные параметры на основе анализа рынка
-                        if not coin_rsi_params:
-                            coin_rsi_params = self._generate_adaptive_params(
-                                symbol, rsi_history, coin_base_rsi_oversold, coin_base_rsi_overbought,
-                                coin_base_exit_long_with, coin_base_exit_long_against,
-                                coin_base_exit_short_with, coin_base_exit_short_against,
-                                coin_rng, base_params
+                    # ПРИОРИТЕТ 1: Используем ML модель для генерации оптимальных параметров
+                    # ИИ САМ НАХОДИТ оптимальные параметры на основе обучения на предыдущих симуляциях
+                    coin_rsi_params = None
+                    
+                    if self.param_quality_predictor and self.param_quality_predictor.is_trained:
+                        try:
+                            # Получаем предложения от ML модели (ИИ сам находит лучшие параметры)
+                            risk_params = {
+                                'stop_loss': coin_base_stop_loss,
+                                'take_profit': coin_base_take_profit,
+                                'trailing_stop_activation': coin_base_trailing_activation,
+                                'trailing_stop_distance': coin_base_trailing_distance,
+                            }
+                            
+                            # ИИ генерирует оптимальные параметры на основе обучения
+                            suggestions = self.param_quality_predictor.suggest_optimal_params(
+                                base_params, risk_params, num_suggestions=10  # Увеличено для лучшего выбора
                             )
+                            
+                            # Пробуем использовать лучшие предложения от ИИ
+                            for suggested_params, predicted_quality in suggestions:
+                                # Проверяем, не использовались ли уже
+                                if self.param_tracker and not self.param_tracker.is_params_used(suggested_params):
+                                    coin_rsi_params = suggested_params
+                                    ml_params_generated_count += 1
+                                    if symbol_idx <= 10 or symbol_idx % progress_interval == 0:
+                                        logger.info(f"   🤖 {symbol}: ИИ нашел оптимальные параметры (предсказанное качество: {predicted_quality:.3f})")
+                                    else:
+                                        logger.debug(f"   🤖 {symbol}: ИИ нашел оптимальные параметры (качество: {predicted_quality:.3f})")
+                                    break
+                        except Exception as e:
+                            logger.debug(f"   ⚠️ {symbol}: ошибка использования ML модели: {e}")
+                    
+                    # ПРИОРИТЕТ 2: Используем сохранённые лучшие параметры для монеты
+                    if not coin_rsi_params and coin_best_params:
+                        coin_rsi_params = coin_best_params
+                        if symbol_idx <= 10 or symbol_idx % progress_interval == 0:
+                            logger.info(f"   ⭐ {symbol}: применяем сохранённые лучшие параметры (Win Rate: {coin_best_params.get('win_rate', 0):.1f}%)")
+                        else:
+                            logger.debug(f"   ⭐ {symbol}: применяем сохранённые лучшие параметры")
+                    
+                    # ПРИОРИТЕТ 3: Используем трекер параметров для новых комбинаций
+                    if not coin_rsi_params and self.param_tracker:
+                        suggested_params = self.param_tracker.get_unused_params_suggestion(base_params, variation_range)
+                        if suggested_params:
+                            coin_rsi_params = suggested_params
+                            logger.debug(f"   🎯 {symbol}: получили новую комбинацию параметров из трекера")
+                    
+                    # ПРИОРИТЕТ 4: Генерируем адаптивные параметры на основе анализа рынка
+                    # (используется только если ML модель не обучена или не дала результатов)
+                    if not coin_rsi_params:
+                        coin_rsi_params = self._generate_adaptive_params(
+                            symbol, rsi_history, coin_base_rsi_oversold, coin_base_rsi_overbought,
+                            coin_base_exit_long_with, coin_base_exit_long_against,
+                            coin_base_exit_short_with, coin_base_exit_short_against,
+                            coin_rng, base_params
+                        )
+                        if symbol_idx <= 10 or symbol_idx % progress_interval == 0:
+                            logger.info(f"   📊 {symbol}: сгенерированы адаптивные параметры на основе анализа рынка")
+                        else:
+                            logger.debug(f"   📊 {symbol}: адаптивные параметры")
 
                     if symbol_idx <= 5 or symbol_idx % progress_interval == 0:
                         logger.info(f"   ⚙️ {symbol}: RSI params {coin_rsi_params}, seed {coin_seed}")
@@ -4647,8 +4659,9 @@ class AITrainer:
                     else:
                         symbol_win_rate = 0.0
                     
-                    # Добавляем образец в ML модель для обучения
-                    # AI учится на ВСЕХ результатах - успешных и неуспешных
+                    # ВАЖНО: Добавляем образец в ML модель для обучения
+                    # ИИ УЧИТСЯ на ВСЕХ результатах симуляций - успешных и неуспешных
+                    # Это позволяет ИИ САМОМУ находить оптимальные параметры в будущем
                     if self.param_quality_predictor:
                         try:
                             # ВАЖНО: Если сделок нет (trades_for_symbol == 0), это всегда блокировка
@@ -4658,6 +4671,8 @@ class AITrainer:
                             was_blocked = trades_for_symbol == 0
                             rsi_entered_zones = rsi_entered_long_zone + rsi_entered_short_zone
                             total_blocked = filters_blocked_long + filters_blocked_short
+                            
+                            # ИИ учится на результатах этой симуляции
                             self.param_quality_predictor.add_training_sample(
                                 coin_rsi_params,
                                 symbol_win_rate,
@@ -4670,6 +4685,13 @@ class AITrainer:
                                 filters_blocked=total_blocked,
                                 block_reasons=filter_block_reasons
                             )
+                            
+                            # Логируем обучение ИИ (только для важных монет)
+                            if symbol_idx <= 10 or symbol_idx % progress_interval == 0:
+                                if trades_for_symbol > 0:
+                                    logger.debug(f"   🧠 {symbol}: ИИ учится на результатах (Win Rate: {symbol_win_rate:.1f}%, сделок: {trades_for_symbol})")
+                                else:
+                                    logger.debug(f"   🧠 {symbol}: ИИ учится на блокировке (попыток: {rsi_entered_zones}, заблокировано: {total_blocked})")
                         except Exception as e:
                             logger.debug(f"   ⚠️ {symbol}: ошибка добавления образца в ML модель: {e}")
                     
@@ -5226,9 +5248,10 @@ class AITrainer:
                     logger.info("=" * 80)
                     logger.info("🤖 ОБУЧЕНИЕ/ПЕРЕОБУЧЕНИЕ ML МОДЕЛИ ПРЕДСКАЗАНИЯ КАЧЕСТВА ПАРАМЕТРОВ")
                     logger.info("=" * 80)
-                    logger.info("   💡 AI учится на успешных/неуспешных параметрах")
-                    logger.info("   💡 В будущем будет генерировать оптимальные параметры вместо случайных")
-                    logger.info("   💡 Модель автоматически переобучается при накоплении новых данных")
+                    logger.info("   🧠 ИИ УЧИТСЯ на результатах всех симуляций (успешных и неуспешных)")
+                    logger.info("   🎯 ИИ САМ НАХОДИТ оптимальные параметры на основе обучения")
+                    logger.info("   🔄 Модель автоматически переобучается при накоплении новых данных")
+                    logger.info("   💡 Чем больше симуляций - тем лучше ИИ находит оптимальные параметры")
                     
                     # УЛУЧШЕНИЕ: Проверяем, нужно ли переобучение
                     should_retrain = self._should_retrain_parameter_quality_model()
