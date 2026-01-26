@@ -639,6 +639,11 @@ class AITrainer:
                     'n_estimators': getattr(self.signal_predictor, 'n_estimators', 'unknown'),
                     'max_depth': getattr(self.signal_predictor, 'max_depth', 'unknown')
                 }
+                # Добавляем accuracy если она была вычислена при обучении
+                signal_accuracy = getattr(self, '_signal_predictor_accuracy', None)
+                if signal_accuracy is not None:
+                    metadata['accuracy'] = float(signal_accuracy)
+                    metadata['signal_accuracy'] = float(signal_accuracy)  # Дублируем для совместимости
                 if self.ai_db:
                     self.ai_db.save_model_version(metadata)
             
@@ -2102,6 +2107,9 @@ class AITrainer:
             y_signal_pred = self.signal_predictor.predict(X_test)
             accuracy = accuracy_score(y_signal_test, y_signal_pred)
             final_accuracy = float(accuracy)
+            
+            # Сохраняем accuracy для последующего сохранения в метаданных
+            self._signal_predictor_accuracy = final_accuracy
             
             # Дополнительная статистика
             profitable_pred = sum(y_signal_pred)
