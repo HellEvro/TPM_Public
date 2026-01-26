@@ -8,7 +8,13 @@
 # ⚠️ КРИТИЧНО: Устанавливаем переменную окружения для идентификации процесса ai.py
 # Это гарантирует, что функции из filters.py будут сохранять свечи в ai_data.db, а не в bots_data.db
 import os
+import sys
+import warnings
 os.environ['INFOBOT_AI_PROCESS'] = 'true'
+
+# До любых импортов sklearn/joblib: подавление спама delayed/Parallel
+os.environ.setdefault("PYTHONWARNINGS", "ignore::UserWarning:sklearn.utils.parallel")
+warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.utils.parallel")
 
 # Проверка и автоматическая установка PyTorch ПЕРЕД импортом защищенного модуля
 def _check_and_install_pytorch():
