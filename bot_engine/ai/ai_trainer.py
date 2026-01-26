@@ -5330,22 +5330,17 @@ class AITrainer:
                         'reason': f'Накопилось {new_samples} новых образцов (было {last_trained_samples}, стало {current_samples_count}, порог: {new_samples_threshold})'
                     }
                 
-                # Проверяем время с последнего обучения (если прошло больше 7 дней)
-                last_trained_time = getattr(self.param_quality_predictor, '_last_trained_time', None)
-                if last_trained_time:
-                    from datetime import datetime, timedelta
-                    time_since_training = datetime.now() - last_trained_time
-                    if isinstance(time_since_training, timedelta):
-                        days_since_training = time_since_training.days
-                        if days_since_training >= 7:
-                            return {
-                                'retrain': True,
-                                'reason': f'Прошло {days_since_training} дней с последнего обучения (порог: 7 дней)'
-                            }
+                # НЕПРЕРЫВНОЕ ОБУЧЕНИЕ: Если данных достаточно, всегда обучаем
+                # Убрана проверка на 7 дней - обучение происходит непрерывно
+                if current_samples_count >= 50:  # Минимум данных для обучения
+                    return {
+                        'retrain': True,
+                        'reason': f'Непрерывное обучение: достаточно данных ({current_samples_count} образцов)'
+                    }
                 
                 return {
                     'retrain': False,
-                    'reason': f'Достаточно данных ({current_samples_count} образцов), новых: {new_samples} < {new_samples_threshold}'
+                    'reason': f'Недостаточно данных для обучения ({current_samples_count} образцов, нужно минимум 50)'
                 }
             else:
                 return {'retrain': False, 'reason': 'AI Database недоступна'}
@@ -5566,9 +5561,11 @@ class AITrainer:
         """
         Определяет, нужно ли переобучать основные модели (signal_predictor, profit_predictor) на реальных сделках.
         
+        НЕПРЕРЫВНОЕ ОБУЧЕНИЕ: Обучение происходит непрерывно, если данных достаточно.
+        
         Проверяет:
         1. Накопилось ли достаточно новых сделок (минимум 10, или 20% от предыдущего обучения)
-        2. Прошло ли достаточно времени с последнего обучения (7 дней)
+        2. Достаточно ли данных для обучения (непрерывное обучение, без проверки времени)
         3. Модели не обучены вообще
         
         Returns:
@@ -5617,21 +5614,18 @@ class AITrainer:
                         'trades_count': current_trades_count
                     }
             
-            # Проверяем время с последнего обучения (если прошло больше 7 дней)
-            if self._last_real_trades_training_time:
-                time_since_training = datetime.now() - self._last_real_trades_training_time
-                if isinstance(time_since_training, timedelta):
-                    days_since_training = time_since_training.days
-                    if days_since_training >= 7:
-                        return {
-                            'retrain': True,
-                            'reason': f'Прошло {days_since_training} дней с последнего обучения (порог: 7 дней)',
-                            'trades_count': current_trades_count
-                        }
+            # НЕПРЕРЫВНОЕ ОБУЧЕНИЕ: Если данных достаточно, всегда обучаем
+            # Убрана проверка на 7 дней - обучение происходит непрерывно
+            if current_trades_count >= self._real_trades_min_samples:
+                return {
+                    'retrain': True,
+                    'reason': f'Непрерывное обучение: достаточно данных ({current_trades_count} сделок)',
+                    'trades_count': current_trades_count
+                }
             
             return {
                 'retrain': False,
-                'reason': f'Достаточно данных ({current_trades_count} сделок), новых: {current_trades_count - self._last_real_trades_training_count if self._last_real_trades_training_count > 0 else 0}',
+                'reason': f'Недостаточно данных для обучения ({current_trades_count} сделок, нужно минимум {self._real_trades_min_samples})',
                 'trades_count': current_trades_count
             }
         except Exception as e:

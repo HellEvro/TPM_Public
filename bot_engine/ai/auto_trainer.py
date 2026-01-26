@@ -50,9 +50,10 @@ class AutoTrainer:
         self.thread.start()
         
         logger.info("[AutoTrainer] ✅ Запущен в фоновом режиме")
+        logger.info(f"[AutoTrainer] Режим: НЕПРЕРЫВНОЕ ОБУЧЕНИЕ")
         logger.info(f"[AutoTrainer] Расписание:")
         logger.info(f"[AutoTrainer]   - Обновление данных: каждые {AIConfig.AI_DATA_UPDATE_INTERVAL/3600:.0f}ч")
-        logger.info(f"[AutoTrainer]   - Переобучение: каждые {AIConfig.AI_RETRAIN_INTERVAL/3600:.0f}ч")
+        logger.info(f"[AutoTrainer]   - Переобучение: НЕПРЕРЫВНО (сразу после завершения предыдущего)")
     
     def stop(self):
         """Останавливает автоматический тренер"""
@@ -202,17 +203,26 @@ class AutoTrainer:
         return elapsed >= AIConfig.AI_DATA_UPDATE_INTERVAL
     
     def _should_retrain(self, current_time: float) -> bool:
-        """Проверяет нужно ли переобучить модель"""
+        """Проверяет нужно ли переобучить модель
+        
+        НЕПРЕРЫВНОЕ ОБУЧЕНИЕ: Всегда возвращает True если обучение не идет,
+        чтобы модели обучались непрерывно без перерыва.
+        """
         if not AIConfig.AI_AUTO_RETRAIN:
             return False
         
-        # При первом запуске НЕ переобучаем сразу (модель уже обучена)
+        # Если обучение уже идет, не запускаем новое
+        if self._training_in_progress:
+            return False
+        
+        # При первом запуске НЕ переобучаем сразу (модель уже обучена или будет обучена при старте)
         if self.last_training is None:
             self.last_training = current_time  # Инициализируем текущим временем
             return False
         
-        elapsed = current_time - self.last_training
-        return elapsed >= AIConfig.AI_RETRAIN_INTERVAL
+        # НЕПРЕРЫВНОЕ ОБУЧЕНИЕ: Всегда возвращаем True, если обучение завершено
+        # Это обеспечивает непрерывное обучение без перерыва
+        return True
     
     def _update_data(self, initial: bool = False) -> bool:
         """
@@ -560,7 +570,8 @@ class AutoTrainer:
             'last_data_update': datetime.fromtimestamp(self.last_data_update).isoformat() if self.last_data_update else None,
             'last_training': datetime.fromtimestamp(self.last_training).isoformat() if self.last_training else None,
             'next_data_update': datetime.fromtimestamp(self.last_data_update + AIConfig.AI_DATA_UPDATE_INTERVAL).isoformat() if self.last_data_update else None,
-            'next_training': datetime.fromtimestamp(self.last_training + AIConfig.AI_RETRAIN_INTERVAL).isoformat() if self.last_training else None
+            'next_training': 'continuous' if self.last_training else None,  # Непрерывное обучение - сразу после завершения предыдущего
+            'training_mode': 'continuous'  # Режим непрерывного обучения
         }
 
 
