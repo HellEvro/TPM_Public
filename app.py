@@ -62,7 +62,7 @@ from bot_engine.app_database import get_app_database
 # Конфигурация резервного копирования (значения по умолчанию)
 _DATABASE_BACKUP_DEFAULTS = {
     'ENABLED': True,
-    'INTERVAL_MINUTES': 60,
+    'INTERVAL_MINUTES': 1440,  # 24 часа = 1 раз в день
     'RUN_ON_START': True,
     'AI_ENABLED': True,
     'BOTS_ENABLED': True,

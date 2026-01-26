@@ -138,7 +138,7 @@ TELEGRAM_NOTIFY = {
 # Настройки резервного копирования баз данных
 DATABASE_BACKUP = {
     'ENABLED': True,             # Включить фоновые бэкапы
-    'INTERVAL_MINUTES': 60,      # Интервал между бэкапами в минутах
+    'INTERVAL_MINUTES': 1440,    # Интервал между бэкапами (1440 = раз в день)
     'RUN_ON_START': True,        # Сделать бэкап сразу при запуске
     'AI_ENABLED': True,          # Включить бэкап AI БД
     'BOTS_ENABLED': True,        # Включить бэкап Bots БД
