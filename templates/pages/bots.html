@@ -2402,6 +2402,78 @@
                                 </div>
                             </div>
                         </div>
+                        
+                        <!-- AI Performance Monitoring -->
+                        <div class="config-subsection">
+                            <h4>📈 <span data-translate="ai_performance_title">AI Performance</span></h4>
+                            
+                            <div class="ai-performance-dashboard" id="aiPerformanceDashboard">
+                                <div class="performance-header">
+                                    <button class="btn btn-sm btn-outline-primary" id="refreshAiPerformanceBtn">
+                                        <span data-translate="refresh_performance_btn">🔄 Обновить</span>
+                                    </button>
+                                </div>
+                                
+                                <div class="performance-cards" id="aiPerformanceCards">
+                                    <!-- Карточка точности -->
+                                    <div class="perf-card">
+                                        <div class="perf-card-icon">🎯</div>
+                                        <div class="perf-card-content">
+                                            <div class="perf-card-value" id="aiAccuracyValue">--</div>
+                                            <div class="perf-card-label" data-translate="ai_accuracy">Точность</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Карточка предсказаний -->
+                                    <div class="perf-card">
+                                        <div class="perf-card-icon">📊</div>
+                                        <div class="perf-card-content">
+                                            <div class="perf-card-value" id="aiPredictionsValue">--</div>
+                                            <div class="perf-card-label" data-translate="ai_predictions">Предсказаний</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Карточка уверенности -->
+                                    <div class="perf-card">
+                                        <div class="perf-card-icon">💪</div>
+                                        <div class="perf-card-content">
+                                            <div class="perf-card-value" id="aiConfidenceValue">--</div>
+                                            <div class="perf-card-label" data-translate="ai_avg_confidence">Уверенность</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Карточка здоровья -->
+                                    <div class="perf-card">
+                                        <div class="perf-card-icon">💚</div>
+                                        <div class="perf-card-content">
+                                            <div class="perf-card-value" id="aiHealthValue">--</div>
+                                            <div class="perf-card-label" data-translate="ai_health">Здоровье</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Рекомендации -->
+                                <div class="ai-recommendations" id="aiRecommendations" style="display: none;">
+                                    <h5>💡 <span data-translate="ai_recommendations">Рекомендации</span></h5>
+                                    <ul id="aiRecommendationsList"></ul>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Smart Money Concepts -->
+                        <div class="config-subsection">
+                            <h4>💰 <span data-translate="smc_title">Smart Money Concepts</span></h4>
+                            
+                            <div class="smc-info">
+                                <p class="smc-description" data-translate="smc_description">
+                                    Институциональный анализ: Order Blocks, FVG, Liquidity Zones, BOS/CHoCH
+                                </p>
+                                <div class="smc-status" id="smcStatus">
+                                    <span class="status-indicator">✅</span>
+                                    <span data-translate="smc_active">SMC модуль активен</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="config-section-actions">

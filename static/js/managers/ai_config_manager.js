@@ -287,9 +287,13 @@ class AIConfigManager {
                 await this.saveAIConfig();
             });
             console.log('[AIConfigManager] ✅ События привязаны');
+        }
 
         // События для самообучения AI
         this.bindSelfLearningEvents();
+        
+        // События для AI Performance
+        this.bindPerformanceRefreshEvent();
     }
 
     /**
@@ -500,7 +504,128 @@ class AIConfigManager {
         // Автоматически загружаем результаты при открытии секции AI
         setTimeout(() => {
             this.loadSelfLearningResults();
+            this.loadAIPerformance(); // Также загружаем AI Performance
         }, 500); // Небольшая задержка для завершения анимации
+    }
+    
+    /**
+     * Загрузка AI Performance данных
+     */
+    async loadAIPerformance() {
+        try {
+            console.log('[AIConfigManager] Загрузка AI Performance...');
+            
+            // Загружаем performance
+            const perfResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/ai/performance`);
+            const perfData = await perfResponse.json();
+            
+            // Загружаем health
+            const healthResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/ai/health`);
+            const healthData = await healthResponse.json();
+            
+            this.updatePerformanceCards(perfData, healthData);
+            
+        } catch (error) {
+            console.error('[AIConfigManager] Ошибка загрузки AI Performance:', error);
+            this.updatePerformanceCards(null, null);
+        }
+    }
+    
+    /**
+     * Обновление карточек AI Performance
+     */
+    updatePerformanceCards(perfData, healthData) {
+        // Accuracy
+        const accuracyEl = document.getElementById('aiAccuracyValue');
+        if (accuracyEl) {
+            if (perfData && perfData.success && perfData.performance.daily_metrics) {
+                const accuracy = perfData.performance.daily_metrics.direction_accuracy;
+                if (accuracy !== null && accuracy !== undefined) {
+                    const pct = (accuracy * 100).toFixed(1);
+                    accuracyEl.textContent = `${pct}%`;
+                    accuracyEl.className = 'perf-card-value ' + (accuracy >= 0.6 ? 'good' : accuracy >= 0.4 ? 'warning' : 'danger');
+                } else {
+                    accuracyEl.textContent = 'N/A';
+                    accuracyEl.className = 'perf-card-value';
+                }
+            } else {
+                accuracyEl.textContent = '--';
+                accuracyEl.className = 'perf-card-value';
+            }
+        }
+        
+        // Predictions count
+        const predictionsEl = document.getElementById('aiPredictionsValue');
+        if (predictionsEl) {
+            if (perfData && perfData.success && perfData.performance.daily_metrics) {
+                const count = perfData.performance.daily_metrics.total_predictions || 0;
+                predictionsEl.textContent = count.toLocaleString();
+            } else {
+                predictionsEl.textContent = '--';
+            }
+        }
+        
+        // Confidence
+        const confidenceEl = document.getElementById('aiConfidenceValue');
+        if (confidenceEl) {
+            if (perfData && perfData.success && perfData.performance.daily_metrics) {
+                const conf = perfData.performance.daily_metrics.avg_confidence;
+                if (conf !== null && conf !== undefined) {
+                    confidenceEl.textContent = `${conf.toFixed(1)}%`;
+                } else {
+                    confidenceEl.textContent = 'N/A';
+                }
+            } else {
+                confidenceEl.textContent = '--';
+            }
+        }
+        
+        // Health
+        const healthEl = document.getElementById('aiHealthValue');
+        if (healthEl) {
+            if (healthData && healthData.success && healthData.health) {
+                const status = healthData.health.overall_status || 'unknown';
+                const statusMap = {
+                    'healthy': { text: 'OK', class: 'good' },
+                    'warning': { text: '⚠️', class: 'warning' },
+                    'critical': { text: '❌', class: 'danger' },
+                    'unknown': { text: '?', class: '' }
+                };
+                const s = statusMap[status] || statusMap['unknown'];
+                healthEl.textContent = s.text;
+                healthEl.className = 'perf-card-value ' + s.class;
+            } else {
+                healthEl.textContent = '--';
+                healthEl.className = 'perf-card-value';
+            }
+        }
+        
+        // Recommendations
+        const recsContainer = document.getElementById('aiRecommendations');
+        const recsList = document.getElementById('aiRecommendationsList');
+        if (recsContainer && recsList) {
+            if (perfData && perfData.success && perfData.performance.recommendations && perfData.performance.recommendations.length > 0) {
+                recsList.innerHTML = perfData.performance.recommendations
+                    .slice(0, 5)
+                    .map(rec => `<li>${rec}</li>`)
+                    .join('');
+                recsContainer.style.display = 'block';
+            } else {
+                recsContainer.style.display = 'none';
+            }
+        }
+    }
+    
+    /**
+     * Привязка события обновления AI Performance
+     */
+    bindPerformanceRefreshEvent() {
+        const refreshBtn = document.getElementById('refreshAiPerformanceBtn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                this.loadAIPerformance();
+            });
+        }
     }
     
     // Утилиты для работы с формой
