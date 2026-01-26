@@ -16,6 +16,7 @@ import json
 import pickle
 import logging
 import warnings
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 import numpy as np
@@ -304,10 +305,17 @@ class LSTMPredictor:
             # Добавляем batch dimension и конвертируем в tensor
             features_tensor = torch.FloatTensor(features_scaled).unsqueeze(0).to(DEVICE)
             
+            # Логируем использование GPU для предсказания
+            if GPU_AVAILABLE and DEVICE and features_tensor.device.type == 'cuda':
+                logger.debug(f"🚀 Предсказание выполняется на GPU: {DEVICE}")
+            
             # Предсказание
             self.model.eval()
             with torch.no_grad():
                 prediction = self.model(features_tensor)
+                # Синхронизируем GPU перед переносом на CPU
+                if GPU_AVAILABLE and DEVICE and features_tensor.device.type == 'cuda':
+                    torch.cuda.synchronize()
                 prediction = prediction.cpu().numpy()[0]
             
             # Распаковываем результат
@@ -435,16 +443,47 @@ class LSTMPredictor:
             patience_counter = 0
             history = {'loss': [], 'val_loss': []}
             
+            # Логируем использование GPU при обучении
+            if GPU_AVAILABLE and DEVICE:
+                logger.info(f"🚀 Обучение на GPU: {DEVICE}")
+                memory_before = torch.cuda.memory_allocated(0) / 1024**2
+                memory_reserved = torch.cuda.memory_reserved(0) / 1024**2
+                logger.info(f"📊 Память GPU до обучения: {memory_before:.2f} MB (выделено) / {memory_reserved:.2f} MB (зарезервировано)")
+            
             for epoch in range(epochs):
                 # Обучение
                 epoch_loss = 0.0
-                for batch_X, batch_y in train_loader:
+                epoch_start_time = time.time()
+                
+                for batch_idx, (batch_X, batch_y) in enumerate(train_loader):
+                    # Проверяем, что данные на правильном устройстве
+                    if GPU_AVAILABLE and DEVICE:
+                        if batch_X.device.type != 'cuda':
+                            logger.warning(f"⚠️ Batch {batch_idx}: данные не на GPU! Перемещаю...")
+                            batch_X = batch_X.to(DEVICE)
+                            batch_y = batch_y.to(DEVICE)
+                    
                     optimizer.zero_grad()
                     outputs = self.model(batch_X)
                     loss = criterion(outputs, batch_y)
                     loss.backward()
                     optimizer.step()
                     epoch_loss += loss.item()
+                    
+                    # Логируем использование GPU каждые 10 батчей (только для первых 3 эпох)
+                    if GPU_AVAILABLE and DEVICE and epoch < 3 and batch_idx % 10 == 0:
+                        memory_used = torch.cuda.memory_allocated(0) / 1024**2
+                        logger.debug(f"📊 Эпоха {epoch+1}/{epochs}, Батч {batch_idx}: GPU память = {memory_used:.2f} MB, Loss = {loss.item():.6f}")
+                
+                # Синхронизируем GPU после каждой эпохи
+                if GPU_AVAILABLE and DEVICE:
+                    torch.cuda.synchronize()
+                    memory_after = torch.cuda.memory_allocated(0) / 1024**2
+                    if epoch % 5 == 0 or epoch == 0:  # Логируем каждые 5 эпох
+                        logger.info(f"📊 Эпоха {epoch+1}/{epochs}: Loss={avg_train_loss:.6f}, GPU память={memory_after:.2f} MB")
+                
+                epoch_time = time.time() - epoch_start_time
+                avg_train_loss = epoch_loss / len(train_loader)
                 
                 avg_train_loss = epoch_loss / len(train_loader)
                 
