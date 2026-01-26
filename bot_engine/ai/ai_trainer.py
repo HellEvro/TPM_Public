@@ -2064,10 +2064,6 @@ class AITrainer:
                 y_profit.append(pnl)
                 
                 processed += 1
-                
-                # Логируем прогресс каждые 20 сделок
-                if processed % 20 == 0:
-                    logger.info(f"📊 Обработано {processed}/{len(trades)} сделок...")
             
             if skipped > 0:
                 logger.info(f"⚠️ Пропущено {skipped} сделок (недостаточно данных)")
@@ -2144,7 +2140,7 @@ class AITrainer:
             profitable_actual = sum(y_signal_test)
             
             logger.info(f"✅ Модель сигналов обучена!")
-            logger.info(f"   📊 Точность: {accuracy:.2%}")
+            logger.info(f"   📊 Точность: {final_accuracy:.2%}")
             logger.info(f"   📈 Предсказано прибыльных: {profitable_pred}/{len(y_signal_test)}")
             logger.info(f"   📈 Реально прибыльных: {profitable_actual}/{len(y_signal_test)}")
             

@@ -709,3 +709,345 @@ class PatternDetector:
             'confidence_threshold': self.config['confidence_threshold']
         }
 
+
+# ==================== CNN PATTERN DETECTOR ====================
+
+# Проверяем PyTorch
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    PYTORCH_AVAILABLE = True
+    
+    if torch.cuda.is_available():
+        CNN_DEVICE = torch.device('cuda:0')
+    else:
+        CNN_DEVICE = torch.device('cpu')
+except ImportError:
+    PYTORCH_AVAILABLE = False
+    CNN_DEVICE = None
+
+
+# Метки паттернов для CNN
+PATTERN_LABELS = {
+    0: 'no_pattern',
+    1: 'bullish_engulfing',
+    2: 'bearish_engulfing',
+    3: 'hammer',
+    4: 'shooting_star',
+    5: 'double_bottom',
+    6: 'double_top',
+    7: 'ascending_triangle',
+    8: 'descending_triangle',
+    9: 'doji'
+}
+
+
+if PYTORCH_AVAILABLE:
+    
+    class CNNPatternModel(nn.Module):
+        """
+        CNN модель для распознавания паттернов на свечных графиках
+        
+        Архитектура:
+        - Multi-scale Conv1d (kernel sizes 3, 5, 7)
+        - Global Average и Max Pooling
+        - Classification head
+        """
+        
+        def __init__(
+            self,
+            input_channels: int = 5,  # OHLCV
+            num_classes: int = 10,
+            hidden_dim: int = 64
+        ):
+            super(CNNPatternModel, self).__init__()
+            
+            # Multi-scale convolutions
+            self.conv3 = nn.Sequential(
+                nn.Conv1d(input_channels, hidden_dim, kernel_size=3, padding=1),
+                nn.BatchNorm1d(hidden_dim),
+                nn.ReLU(),
+                nn.Conv1d(hidden_dim, hidden_dim, kernel_size=3, padding=1),
+                nn.BatchNorm1d(hidden_dim),
+                nn.ReLU()
+            )
+            
+            self.conv5 = nn.Sequential(
+                nn.Conv1d(input_channels, hidden_dim, kernel_size=5, padding=2),
+                nn.BatchNorm1d(hidden_dim),
+                nn.ReLU(),
+                nn.Conv1d(hidden_dim, hidden_dim, kernel_size=5, padding=2),
+                nn.BatchNorm1d(hidden_dim),
+                nn.ReLU()
+            )
+            
+            self.conv7 = nn.Sequential(
+                nn.Conv1d(input_channels, hidden_dim, kernel_size=7, padding=3),
+                nn.BatchNorm1d(hidden_dim),
+                nn.ReLU(),
+                nn.Conv1d(hidden_dim, hidden_dim, kernel_size=7, padding=3),
+                nn.BatchNorm1d(hidden_dim),
+                nn.ReLU()
+            )
+            
+            # Объединяем features
+            self.combine = nn.Sequential(
+                nn.Conv1d(hidden_dim * 3, hidden_dim * 2, kernel_size=3, padding=1),
+                nn.BatchNorm1d(hidden_dim * 2),
+                nn.ReLU(),
+                nn.Dropout(0.3)
+            )
+            
+            # Classification head
+            self.classifier = nn.Sequential(
+                nn.Linear(hidden_dim * 4, hidden_dim),  # *4 потому что avg + max pooling
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(hidden_dim, num_classes)
+            )
+        
+        def forward(self, x):
+            """
+            Args:
+                x: (batch, seq_len, channels) or (batch, channels, seq_len)
+            """
+            # Убеждаемся что формат (batch, channels, seq_len)
+            if x.dim() == 3 and x.size(2) < x.size(1):
+                x = x.transpose(1, 2)
+            
+            # Multi-scale features
+            f3 = self.conv3(x)
+            f5 = self.conv5(x)
+            f7 = self.conv7(x)
+            
+            # Concatenate
+            combined = torch.cat([f3, f5, f7], dim=1)
+            combined = self.combine(combined)
+            
+            # Global pooling
+            avg_pool = F.adaptive_avg_pool1d(combined, 1).squeeze(-1)
+            max_pool = F.adaptive_max_pool1d(combined, 1).squeeze(-1)
+            
+            pooled = torch.cat([avg_pool, max_pool], dim=1)
+            
+            # Classification
+            out = self.classifier(pooled)
+            
+            return out
+        
+        def predict_proba(self, x):
+            """Возвращает вероятности классов"""
+            logits = self.forward(x)
+            return F.softmax(logits, dim=-1)
+
+
+class CNNPatternDetector:
+    """
+    CNN-based Pattern Detector
+    
+    Использует сверточную нейросеть для распознавания паттернов
+    на свечных графиках. Более точный чем эвристический подход.
+    """
+    
+    def __init__(
+        self,
+        model_path: str = "data/ai/models/cnn_pattern_detector.pth",
+        use_cnn: bool = True
+    ):
+        self.model_path = model_path
+        self.use_cnn = use_cnn and PYTORCH_AVAILABLE
+        self.model = None
+        self.is_trained = False
+        
+        if self.use_cnn:
+            self._create_model()
+            if os.path.exists(model_path):
+                self.load_model()
+    
+    def _create_model(self):
+        """Создает CNN модель"""
+        if not PYTORCH_AVAILABLE:
+            return
+        
+        self.model = CNNPatternModel(
+            input_channels=5,  # OHLCV
+            num_classes=len(PATTERN_LABELS),
+            hidden_dim=64
+        )
+        self.model.to(CNN_DEVICE)
+        logger.info("CNN Pattern Detector создан")
+    
+    def prepare_input(self, candles: List[Dict], window_size: int = 20) -> Optional[np.ndarray]:
+        """Подготавливает входные данные для CNN"""
+        if len(candles) < window_size:
+            return None
+        
+        # Берем последние window_size свечей
+        recent = candles[-window_size:]
+        
+        # Извлекаем OHLCV
+        features = []
+        for c in recent:
+            features.append([
+                c.get('open', 0),
+                c.get('high', 0),
+                c.get('low', 0),
+                c.get('close', 0),
+                c.get('volume', 0)
+            ])
+        
+        arr = np.array(features, dtype=np.float32)
+        
+        # Нормализуем по каждому признаку
+        for i in range(arr.shape[1]):
+            col = arr[:, i]
+            if col.std() > 0:
+                arr[:, i] = (col - col.mean()) / col.std()
+        
+        return arr
+    
+    def detect(self, candles: List[Dict]) -> Dict:
+        """
+        Детектирует паттерны на свечах
+        
+        Args:
+            candles: Список свечей
+        
+        Returns:
+            Dict с обнаруженными паттернами
+        """
+        if not self.use_cnn or self.model is None:
+            return {'pattern': 'no_pattern', 'confidence': 0, 'use_cnn': False}
+        
+        inp = self.prepare_input(candles)
+        if inp is None:
+            return {'pattern': 'no_pattern', 'confidence': 0, 'error': 'insufficient_data'}
+        
+        # Конвертируем в tensor
+        inp_tensor = torch.FloatTensor(inp).unsqueeze(0).to(CNN_DEVICE)  # (1, seq, channels)
+        inp_tensor = inp_tensor.transpose(1, 2)  # (1, channels, seq)
+        
+        self.model.eval()
+        with torch.no_grad():
+            probs = self.model.predict_proba(inp_tensor)
+            probs = probs.cpu().numpy()[0]
+        
+        # Находим наиболее вероятный паттерн
+        predicted_class = int(np.argmax(probs))
+        confidence = float(probs[predicted_class])
+        
+        return {
+            'pattern': PATTERN_LABELS.get(predicted_class, 'unknown'),
+            'pattern_id': predicted_class,
+            'confidence': confidence * 100,
+            'all_probs': {PATTERN_LABELS[i]: float(p) for i, p in enumerate(probs)},
+            'use_cnn': True
+        }
+    
+    def train(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        epochs: int = 50,
+        batch_size: int = 32,
+        lr: float = 0.001
+    ) -> Dict:
+        """
+        Обучает CNN модель
+        
+        Args:
+            X_train: (n_samples, seq_len, channels)
+            y_train: (n_samples,) - метки классов
+            epochs: Количество эпох
+            batch_size: Размер батча
+            lr: Learning rate
+        
+        Returns:
+            Dict с результатами обучения
+        """
+        if not PYTORCH_AVAILABLE or self.model is None:
+            return {'error': 'CNN not available'}
+        
+        import torch.optim as optim
+        from torch.utils.data import DataLoader, TensorDataset
+        
+        # Подготовка данных
+        X_tensor = torch.FloatTensor(X_train).transpose(1, 2).to(CNN_DEVICE)  # (N, C, L)
+        y_tensor = torch.LongTensor(y_train).to(CNN_DEVICE)
+        
+        dataset = TensorDataset(X_tensor, y_tensor)
+        loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        
+        optimizer = optim.Adam(self.model.parameters(), lr=lr)
+        criterion = nn.CrossEntropyLoss()
+        
+        self.model.train()
+        history = []
+        
+        for epoch in range(epochs):
+            epoch_loss = 0
+            correct = 0
+            total = 0
+            
+            for batch_x, batch_y in loader:
+                optimizer.zero_grad()
+                outputs = self.model(batch_x)
+                loss = criterion(outputs, batch_y)
+                loss.backward()
+                optimizer.step()
+                
+                epoch_loss += loss.item()
+                _, predicted = outputs.max(1)
+                total += batch_y.size(0)
+                correct += predicted.eq(batch_y).sum().item()
+            
+            accuracy = correct / total
+            avg_loss = epoch_loss / len(loader)
+            history.append({'loss': avg_loss, 'accuracy': accuracy})
+            
+            if (epoch + 1) % 10 == 0:
+                logger.info(f"CNN Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f}, Acc: {accuracy:.2%}")
+        
+        self.is_trained = True
+        self.save_model()
+        
+        return {
+            'success': True,
+            'epochs': epochs,
+            'final_loss': history[-1]['loss'],
+            'final_accuracy': history[-1]['accuracy']
+        }
+    
+    def save_model(self):
+        """Сохраняет модель"""
+        if self.model is None:
+            return
+        
+        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
+        torch.save(self.model.state_dict(), self.model_path)
+        logger.info(f"CNN Pattern model saved: {self.model_path}")
+    
+    def load_model(self):
+        """Загружает модель"""
+        if not PYTORCH_AVAILABLE or self.model is None:
+            return
+        
+        try:
+            self.model.load_state_dict(torch.load(self.model_path, map_location=CNN_DEVICE))
+            self.model.eval()
+            self.is_trained = True
+            logger.info(f"CNN Pattern model loaded: {self.model_path}")
+        except Exception as e:
+            logger.warning(f"Failed to load CNN model: {e}")
+    
+    def get_status(self) -> Dict:
+        """Возвращает статус модели"""
+        return {
+            'use_cnn': self.use_cnn,
+            'is_trained': self.is_trained,
+            'model_path': self.model_path,
+            'pattern_labels': PATTERN_LABELS,
+            'pytorch_available': PYTORCH_AVAILABLE,
+            'device': str(CNN_DEVICE) if CNN_DEVICE else 'cpu'
+        }
