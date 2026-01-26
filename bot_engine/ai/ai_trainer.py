@@ -4041,11 +4041,16 @@ class AITrainer:
                         continue
                     
                     # Готовим индивидуальную базу конфигурации (общий конфиг + индивидуальные настройки монеты)
+                    # ВАЖНО: Используем сохраненные настройки как базовые для симуляций
+                    from bot_engine.bot_config import AIConfig
+                    use_saved_as_base = AIConfig.AI_USE_SAVED_SETTINGS_AS_BASE
+                    
                     existing_coin_settings = _get_existing_coin_settings(symbol) or {}
-                    if existing_coin_settings:
-                        logger.debug(f"   🧩 {symbol}: обнаружены индивидуальные настройки, используем их как базу")
+                    if existing_coin_settings and use_saved_as_base:
+                        logger.info(f"   🧩 {symbol}: обнаружены индивидуальные настройки (Win Rate: {existing_coin_settings.get('ai_win_rate', 0):.1f}%), используем их как базу для симуляций")
                     coin_base_config = base_config.copy() if isinstance(base_config, dict) else {}
-                    if existing_coin_settings:
+                    if existing_coin_settings and use_saved_as_base:
+                        # Используем сохраненные настройки как базовые, но позволяем вариацию
                         coin_base_config.update(existing_coin_settings)
                     if self.training_param_overrides:
                         coin_base_config.update(self.training_param_overrides)
@@ -4952,20 +4957,22 @@ class AITrainer:
                             total_models_saved += 1
                             model_trained = True
                             
-                            # ВАЖНО: Сохраняем параметры в индивидуальные настройки для ВСЕХ монет, если модель обучена
-                            # Это позволяет AI выставлять уникальные улучшенные параметры для каждой монеты
-                            # Win Rate сохраняется в метаданных для будущего использования и фильтрации
-                            save_params = True
-                            if symbol_win_rate >= win_rate_target:
+                            # ВАЖНО: Сохраняем параметры в индивидуальные настройки ТОЛЬКО при win_rate >= 90%
+                            # Это позволяет AI сохранять только лучшие параметры для каждой монеты
+                            from bot_engine.bot_config import AIConfig
+                            min_win_rate_for_save = AIConfig.AI_SAVE_BEST_PARAMS_MIN_WIN_RATE * 100  # Конвертируем в проценты
+                            
+                            save_params = symbol_win_rate >= min_win_rate_for_save
+                            if save_params:
                                 logger.info(
-                                    f"   🎯 {symbol}: Win Rate {symbol_win_rate:.1f}% >= цель {win_rate_target:.1f}% "
-                                    "- сохраняем параметры в индивидуальные настройки (высокое качество)"
+                                    f"   🎯 {symbol}: Win Rate {symbol_win_rate:.1f}% >= минимум {min_win_rate_for_save:.1f}% "
+                                    "- сохраняем ЛУЧШИЕ параметры в индивидуальные настройки ✅"
                                 )
                                 self._register_win_rate_success(symbol, symbol_win_rate)
                             else:
                                 logger.info(
-                                    f"   🎯 {symbol}: Win Rate {symbol_win_rate:.1f}% < цель {win_rate_target:.1f}% "
-                                    "- сохраняем параметры в индивидуальные настройки (для дальнейшего обучения)"
+                                    f"   ⏭️ {symbol}: Win Rate {symbol_win_rate:.1f}% < минимум {min_win_rate_for_save:.1f}% "
+                                    "- параметры НЕ сохраняются (недостаточно хорошие)"
                                 )
                             
                             if save_params:
