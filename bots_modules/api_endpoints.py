@@ -3864,100 +3864,10 @@ def get_ai_decisions():
         logger.error(f" Ошибка получения решений AI: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@bots_app.route('/api/ai/performance', methods=['GET'])
-def get_ai_performance():
-    """Получает метрики производительности AI"""
-    try:
-        try:
-            from bot_engine.ai.ai_data_storage import AIDataStorage
-            storage = AIDataStorage()
-            period = request.args.get('period')
-            if period and period.lower() == 'all':
-                period = 'all'
-            if not period:
-                period = 'all'
-            
-            # Вычисляем актуальные метрики
-            metrics = storage.calculate_performance_metrics()
 
-            # Fallback: если решений AI ещё нет, построим метрики по реальным сделкам с decision_source='AI'
-            def _metrics_from_trades() -> Dict:
-                if bot_history_manager is None:
-                    return {}
-                trades = bot_history_manager.get_bot_trades(
-                    symbol=None, trade_type=None, limit=500000, period=period
-                )
-                ai_trades = [t for t in trades if (t.get('decision_source') or 'SCRIPT').upper() == 'AI' and t.get('pnl') is not None]
-                if not ai_trades:
-                    return {}
-                total = len(ai_trades)
-                successful = sum(1 for t in ai_trades if (t.get('pnl') or 0) > 0)
-                failed = total - successful
-                total_pnl = sum((t.get('pnl') or 0) for t in ai_trades)
-                avg_pnl = total_pnl / total if total else 0
-                win_rate = successful / total if total else 0
-                by_symbol = {}
-                for t in ai_trades:
-                    sym = t.get('symbol')
-                    if not sym:
-                        continue
-                    if sym not in by_symbol:
-                        by_symbol[sym] = {'decisions': 0, 'successful': 0, 'failed': 0, 'total_pnl': 0}
-                    by_symbol[sym]['decisions'] += 1
-                    if (t.get('pnl') or 0) > 0:
-                        by_symbol[sym]['successful'] += 1
-                    else:
-                        by_symbol[sym]['failed'] += 1
-                    by_symbol[sym]['total_pnl'] += (t.get('pnl') or 0)
-                for sym, m in by_symbol.items():
-                    m['win_rate'] = m['successful'] / m['decisions'] if m['decisions'] else 0
-                    m['avg_pnl'] = m['total_pnl'] / m['decisions'] if m['decisions'] else 0
-                return {
-                    'overall': {
-                        'total_ai_decisions': total,
-                        'successful_decisions': successful,
-                        'failed_decisions': failed,
-                        'win_rate': win_rate,
-                        'avg_pnl': avg_pnl,
-                        'total_pnl': total_pnl,
-                        'last_updated': datetime.now().isoformat()
-                    },
-                    'by_symbol': by_symbol
-                }
+# Endpoint /api/ai/performance регистрируется в bot_engine/api/endpoints_ai.py через register_ai_endpoints().
+# Дубликат здесь удалён во избежание AssertionError: View function mapping is overwriting an existing endpoint.
 
-            if (not metrics) or (metrics.get('overall', {}).get('total_ai_decisions', 0) == 0):
-                trade_metrics = _metrics_from_trades()
-                if trade_metrics:
-                    metrics = trade_metrics
-            
-            # Обновляем сохраненные метрики
-            if metrics:
-                storage.update_performance_metrics(metrics)
-            
-            # Получаем сохраненные метрики (включая сравнение с скриптовыми)
-            saved_metrics = storage.get_performance_metrics()
-            
-            # Объединяем вычисленные и сохраненные метрики
-            result = {
-                'overall': metrics.get('overall', {}) if metrics else saved_metrics.get('overall', {}),
-                'vs_script': saved_metrics.get('vs_script', {}),
-                'by_symbol': metrics.get('by_symbol', {}) if metrics else saved_metrics.get('by_symbol', {})
-            }
-            
-            return jsonify({
-                'success': True,
-                'metrics': result
-            })
-        except ImportError:
-            return jsonify({
-                'success': False,
-                'error': 'AI data storage not available',
-                'metrics': {}
-            })
-        
-    except Exception as e:
-        logger.error(f" Ошибка получения метрик AI: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 @bots_app.route('/api/ai/training-history', methods=['GET'])
 def get_ai_training_history():
