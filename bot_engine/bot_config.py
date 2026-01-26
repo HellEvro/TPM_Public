@@ -460,3 +460,9 @@ class AIConfig:
     AI_REAL_AVG_PNL_THRESHOLD = -10.0    # Минимальный средний PnL на реальных сделках (USDT)
     AI_REAL_VS_SIMULATED_DIFF_THRESHOLD = 0.30  # Максимальная разница win_rate между виртуальными и реальными (0.30 = 30%)
     AI_REAL_PERFORMANCE_WINDOW = 20      # Окно реальных сделок для оценки производительности
+    
+    # Обучение на симуляциях с оптимизацией параметров
+    AI_TRAIN_ON_SIMULATIONS = True       # Использовать симуляции для обучения когда реальных сделок мало
+    AI_SIMULATIONS_TARGET_WIN_RATE = 0.90  # Целевой win_rate для поиска оптимальных параметров (0.90 = 90%)
+    AI_SIMULATIONS_MAX_ITERATIONS = 1000  # Максимальное количество симуляций для поиска оптимальных параметров
+    AI_USE_SIMULATIONS_WHEN_REAL_LOW = True  # Автоматически использовать симуляции когда реальных сделок < минимума

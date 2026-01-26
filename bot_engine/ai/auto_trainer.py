@@ -68,6 +68,11 @@ class AutoTrainer:
             logger.info(f"[AutoTrainer]     * Win_rate < {AIConfig.AI_REAL_WIN_RATE_THRESHOLD:.0%}")
             logger.info(f"[AutoTrainer]     * Avg_pnl < {AIConfig.AI_REAL_AVG_PNL_THRESHOLD:.2f} USDT")
             logger.info(f"[AutoTrainer]     * Разница виртуальных/реальных > {AIConfig.AI_REAL_VS_SIMULATED_DIFF_THRESHOLD:.0%}")
+        if AIConfig.AI_TRAIN_ON_SIMULATIONS:
+            logger.info(f"[AutoTrainer]   - Обучение на симуляциях: ВКЛЮЧЕНО")
+            logger.info(f"[AutoTrainer]     * Целевой win_rate: {AIConfig.AI_SIMULATIONS_TARGET_WIN_RATE:.0%}")
+            logger.info(f"[AutoTrainer]     * Максимум симуляций: {AIConfig.AI_SIMULATIONS_MAX_ITERATIONS}")
+            logger.info(f"[AutoTrainer]     * Автопереключение: {'ДА' if AIConfig.AI_USE_SIMULATIONS_WHEN_REAL_LOW else 'НЕТ'}")
     
     def stop(self):
         """Останавливает автоматический тренер"""
@@ -367,7 +372,35 @@ class AutoTrainer:
                 if not success:
                     all_success = False
             
-            # 2. Обучаем LSTM Predictor
+            # 2. Обучаем основные модели (signal_predictor, profit_predictor)
+            # Проверяем количество реальных сделок
+            from bot_engine.ai import get_ai_system
+            ai_system = get_ai_system()
+            if ai_system and ai_system.trainer:
+                trainer = ai_system.trainer
+                
+                # Проверяем количество реальных сделок
+                real_trades_count = trainer.get_trades_count()
+                
+                if real_trades_count < trainer._real_trades_min_samples and AIConfig.AI_USE_SIMULATIONS_WHEN_REAL_LOW:
+                    logger.info(f"[AutoTrainer] 📊 Реальных сделок мало ({real_trades_count} < {trainer._real_trades_min_samples})")
+                    logger.info("[AutoTrainer] 🎲 Переключаемся на обучение на симуляциях с оптимизацией параметров...")
+                    
+                    if AIConfig.AI_TRAIN_ON_SIMULATIONS:
+                        success = trainer.train_on_simulations(
+                            target_win_rate=AIConfig.AI_SIMULATIONS_TARGET_WIN_RATE,
+                            max_simulations=AIConfig.AI_SIMULATIONS_MAX_ITERATIONS
+                        )
+                        if not success:
+                            all_success = False
+                    else:
+                        logger.warning("[AutoTrainer] ⚠️ Обучение на симуляциях отключено в конфиге")
+                else:
+                    # Обучаем на реальных сделках
+                    logger.info("[AutoTrainer] 📊 Обучение на реальных сделках...")
+                    trainer.train_on_history()
+            
+            # 3. Обучаем LSTM Predictor
             if AIConfig.AI_LSTM_ENABLED:
                 logger.info("[AutoTrainer] 🧠 Обучение LSTM Predictor...")
                 success = self._train_model(
@@ -379,7 +412,7 @@ class AutoTrainer:
                 if not success:
                     all_success = False
             
-            # 3. Обучаем Pattern Detector
+            # 4. Обучаем Pattern Detector
             if AIConfig.AI_PATTERN_ENABLED:
                 logger.info("[AutoTrainer] 📊 Обучение Pattern Detector...")
                 success = self._train_model(
