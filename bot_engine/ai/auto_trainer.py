@@ -419,13 +419,32 @@ class AutoTrainer:
         """Первичная настройка - сбор данных и обучение"""
         logger.info("[AutoTrainer] Первичная настройка...")
         
-        # 1. Собираем данные
-        logger.info("[AutoTrainer] Шаг 1/2: Сбор исторических данных...")
-        success = self._update_data(initial=True)
+        # 1. Проверяем наличие данных в БД
+        data_exists = False
+        try:
+            from bot_engine.ai.ai_database import get_ai_database
+            ai_db = get_ai_database()
+            if ai_db:
+                candles_count = ai_db.count_candles()
+                symbols_count = ai_db.count_symbols_with_candles()
+                if candles_count > 100000 and symbols_count > 100:
+                    logger.info(f"[AutoTrainer] ✅ Данные уже есть в БД: {candles_count:,} свечей, {symbols_count} монет - пропускаем сбор")
+                    data_exists = True
+                else:
+                    logger.info(f"[AutoTrainer] ℹ️ В БД: {candles_count:,} свечей, {symbols_count} монет - нужен сбор")
+        except Exception as e:
+            logger.debug(f"[AutoTrainer] Ошибка проверки БД: {e}")
         
-        if not success:
-            logger.error("[AutoTrainer] ❌ Не удалось собрать данные")
-            return
+        # 2. Собираем данные только если их нет
+        if not data_exists:
+            logger.info("[AutoTrainer] Шаг 1/2: Сбор исторических данных...")
+            success = self._update_data(initial=True)
+            
+            if not success:
+                logger.error("[AutoTrainer] ❌ Не удалось собрать данные")
+                return
+        else:
+            logger.info("[AutoTrainer] Шаг 1/2: Пропущен (данные уже в БД)")
         
         # 2. Обучаем модель
         logger.info("[AutoTrainer] Шаг 2/2: Обучение модели...")

@@ -5382,6 +5382,17 @@ class AIDatabase:
             logger.error(f"❌ Ошибка подсчета свечей: {e}")
             return 0
     
+    def count_symbols_with_candles(self, timeframe: str = '6h') -> int:
+        """Подсчитывает количество уникальных символов со свечами"""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(DISTINCT symbol) FROM candles_history WHERE timeframe = ?", (timeframe,))
+                return cursor.fetchone()[0]
+        except Exception as e:
+            logger.error(f"❌ Ошибка подсчета символов: {e}")
+            return 0
+    
     def get_candles_last_time(self, symbol: str, timeframe: str = '6h') -> Optional[int]:
         """Получает время последней свечи для символа"""
         try:
