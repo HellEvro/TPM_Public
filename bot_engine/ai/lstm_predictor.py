@@ -580,7 +580,7 @@ class LSTMPredictor:
             self.config.get('training_samples', 0) > 0
         )
         
-        return {
+        status = {
             'available': True,
             'trained': is_trained,
             'model_path': self.model_path,
@@ -591,3 +591,17 @@ class LSTMPredictor:
             'features': self.config['features'],
             'framework': 'PyTorch'
         }
+        
+        # Добавляем информацию о GPU
+        if PYTORCH_AVAILABLE:
+            status['gpu_available'] = GPU_AVAILABLE
+            status['device'] = str(DEVICE) if DEVICE else 'cpu'
+            if GPU_AVAILABLE and DEVICE:
+                try:
+                    import torch
+                    status['gpu_name'] = torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
+                    status['cuda_version'] = torch.version.cuda if torch.cuda.is_available() else None
+                except:
+                    pass
+        
+        return status
