@@ -572,7 +572,7 @@ class ParameterQualityPredictor:
                         max_depth=6,
                         learning_rate=0.05,
                         random_state=42,
-                        n_jobs=1  # без параллелизма — устраняет UserWarning про delayed/Parallel,
+                        n_jobs=1,  # без параллелизма — устраняет UserWarning про delayed/Parallel
                         subsample=0.8,
                         colsample_bytree=0.8
                     )

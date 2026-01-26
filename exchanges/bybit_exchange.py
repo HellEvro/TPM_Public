@@ -1111,6 +1111,17 @@ class BybitExchange(BaseExchange):
                                     else:
                                         logger.error(f"❌ Превышено максимальное количество попыток для {symbol} ({interval_name})")
                                         break
+                                elif 'timed out' in error_str or 'timeout' in error_str:
+                                    retry_count += 1
+                                    backoff = min(2.0 * (2 ** (retry_count - 1)), 15.0)
+                                    logger.warning(
+                                        f"⏱️ Таймаут при получении данных для {symbol} ({interval_name}), "
+                                        f"повтор {retry_count}/{max_retries} через {backoff:.1f}с..."
+                                    )
+                                    time.sleep(backoff)
+                                    if retry_count < max_retries:
+                                        continue
+                                    break
                                 else:
                                     # Другая ошибка - пробрасываем дальше
                                     raise
