@@ -306,7 +306,7 @@ class BotsDatabase:
     
     def _backup_database(self, max_retries: int = 3) -> Optional[str]:
         """
-        Создает резервную копию БД перед удалением с retry логикой
+        Создает резервную копию БД в data/backups с retry логикой.
         
         Args:
             max_retries: Максимальное количество попыток при блокировке файла
@@ -317,28 +317,26 @@ class BotsDatabase:
         if not os.path.exists(self.db_path):
             return None
         
-        # Создаем имя резервной копии с timestamp
+        project_root = _get_project_root()
+        backup_dir = project_root / 'data' / 'backups'
+        backup_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = f"{self.db_path}.backup_{timestamp}"
+        backup_path = str(backup_dir / f"bots_data_{timestamp}.db")
         
-        # Пытаемся создать резервную копию с retry логикой
         for attempt in range(max_retries):
             try:
-                # Пытаемся закрыть все соединения перед копированием
                 if attempt > 0:
                     logger.debug(f"🔄 Попытка создания резервной копии {attempt + 1}/{max_retries}...")
-                    time.sleep(1.0 * attempt)  # Увеличиваем задержку с каждой попыткой (1s, 2s, 3s...)
+                    time.sleep(1.0 * attempt)
                 
-                # Копируем БД и связанные файлы
                 shutil.copy2(self.db_path, backup_path)
                 
-                # Копируем WAL и SHM файлы если есть
                 wal_file = self.db_path + '-wal'
                 shm_file = self.db_path + '-shm'
                 if os.path.exists(wal_file):
-                    shutil.copy2(wal_file, f"{backup_path}-wal")
+                    shutil.copy2(wal_file, backup_path + '-wal')
                 if os.path.exists(shm_file):
-                    shutil.copy2(shm_file, f"{backup_path}-shm")
+                    shutil.copy2(shm_file, backup_path + '-shm')
                 
                 logger.warning(f"💾 Создана резервная копия БД: {backup_path}")
                 return backup_path
@@ -981,9 +979,6 @@ class BotsDatabase:
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_db_metadata_key ON db_metadata(key)")
             
-            # Миграция: добавляем новые поля если их нет
-            self._migrate_schema(cursor, conn)
-            
             # ==================== ТАБЛИЦА: БОТЫ (НОРМАЛИЗОВАННАЯ СТРУКТУРА) ====================
             # НОВАЯ НОРМАЛИЗОВАННАЯ СТРУКТУРА: одна строка = один бот со всеми полями
             cursor.execute("""
@@ -1386,6 +1381,9 @@ class BotsDatabase:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bot_trades_exit_time ON bot_trades_history(exit_timestamp)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bot_trades_decision_source ON bot_trades_history(decision_source)")
             
+            # Миграция: добавляем новые поля в существующие таблицы (после создания всех таблиц)
+            self._migrate_schema(cursor, conn)
+            
             # Если БД новая - устанавливаем флаг что миграция не выполнена
             if not db_exists:
                 now = datetime.now().isoformat()
@@ -1399,6 +1397,11 @@ class BotsDatabase:
             
             conn.commit()
     
+    def _table_exists(self, cursor, name: str) -> bool:
+        """Проверяет существование таблицы (для миграций при новой БД)."""
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,))
+        return cursor.fetchone() is not None
+
     def _migrate_schema(self, cursor, conn):
         """
         Миграция схемы БД: добавляет новые поля если их нет
@@ -1529,28 +1532,33 @@ class BotsDatabase:
                 pass
             
             # ==================== МИГРАЦИЯ: Добавляем break_even_stop_set в таблицу bots ====================
-            try:
-                cursor.execute("SELECT break_even_stop_set FROM bots LIMIT 1")
-            except sqlite3.OperationalError:
-                # Поля нет - добавляем
-                logger.info("📦 Миграция: добавляем break_even_stop_set в bots")
-                cursor.execute("ALTER TABLE bots ADD COLUMN break_even_stop_set INTEGER DEFAULT 0")
-                conn.commit()
+            if self._table_exists(cursor, 'bots'):
+                try:
+                    cursor.execute("SELECT break_even_stop_set FROM bots LIMIT 1")
+                except sqlite3.OperationalError:
+                    try:
+                        logger.info("📦 Миграция: добавляем break_even_stop_set в bots")
+                        cursor.execute("ALTER TABLE bots ADD COLUMN break_even_stop_set INTEGER DEFAULT 0")
+                        conn.commit()
+                    except sqlite3.OperationalError as e:
+                        logger.debug(f"⚠️ Ошибка миграции схемы: {e}")
             
             # ==================== МИГРАЦИЯ: Добавляем поля защиты от повторных входов в individual_coin_settings ====================
-            try:
-                cursor.execute("SELECT loss_reentry_protection FROM individual_coin_settings LIMIT 1")
-            except sqlite3.OperationalError:
-                # Поля нет - добавляем новые колонки
-                logger.info("📦 Миграция: добавляем поля защиты от повторных входов в individual_coin_settings")
-                cursor.execute("ALTER TABLE individual_coin_settings ADD COLUMN loss_reentry_protection INTEGER DEFAULT 1")
-                cursor.execute("ALTER TABLE individual_coin_settings ADD COLUMN loss_reentry_count INTEGER DEFAULT 1")
-                cursor.execute("ALTER TABLE individual_coin_settings ADD COLUMN loss_reentry_candles INTEGER DEFAULT 3")
-                conn.commit()
-                logger.info("✅ Миграция: поля защиты от повторных входов добавлены в individual_coin_settings")
+            if self._table_exists(cursor, 'individual_coin_settings'):
+                try:
+                    cursor.execute("SELECT loss_reentry_protection FROM individual_coin_settings LIMIT 1")
+                except sqlite3.OperationalError:
+                    try:
+                        logger.info("📦 Миграция: добавляем поля защиты от повторных входов в individual_coin_settings")
+                        cursor.execute("ALTER TABLE individual_coin_settings ADD COLUMN loss_reentry_protection INTEGER DEFAULT 1")
+                        cursor.execute("ALTER TABLE individual_coin_settings ADD COLUMN loss_reentry_count INTEGER DEFAULT 1")
+                        cursor.execute("ALTER TABLE individual_coin_settings ADD COLUMN loss_reentry_candles INTEGER DEFAULT 3")
+                        conn.commit()
+                        logger.info("✅ Миграция: поля защиты от повторных входов добавлены в individual_coin_settings")
+                    except sqlite3.OperationalError as e:
+                        logger.debug(f"⚠️ Ошибка миграции схемы: {e}")
             
             # ==================== МИГРАЦИЯ: bots_state из JSON в нормализованные таблицы ====================
-            # Проверяем, есть ли данные в старой таблице bots_state
             try:
                 cursor.execute("SELECT value_json FROM bots_state WHERE key = 'main'")
                 row = cursor.fetchone()
@@ -6143,43 +6151,41 @@ class BotsDatabase:
     
     def list_backups(self) -> List[Dict[str, Any]]:
         """
-        Список доступных резервных копий БД
+        Список доступных резервных копий БД из data/backups.
         
         Returns:
             Список словарей с информацией о резервных копиях
         """
         backups = []
-        db_dir = os.path.dirname(self.db_path)
-        db_name = os.path.basename(self.db_path)
-        
         try:
-            if not os.path.exists(db_dir):
+            backup_dir = _get_project_root() / 'data' / 'backups'
+            if not backup_dir.exists():
                 return backups
             
-            # Ищем все файлы резервных копий
-            for filename in os.listdir(db_dir):
-                if filename.startswith(f"{db_name}.backup_") and not filename.endswith('-wal') and not filename.endswith('-shm'):
-                    backup_path = os.path.join(db_dir, filename)
+            for filename in os.listdir(backup_dir):
+                if not filename.startswith("bots_data_") or not filename.endswith(".db"):
+                    continue
+                if filename.count(".db") != 1 or "-wal" in filename or "-shm" in filename:
+                    continue
+                backup_path = os.path.join(backup_dir, filename)
+                try:
+                    file_size = os.path.getsize(backup_path)
+                    timestamp_str = filename.replace("bots_data_", "").replace(".db", "")
                     try:
-                        file_size = os.path.getsize(backup_path)
-                        # Извлекаем timestamp из имени файла
-                        timestamp_str = filename.replace(f"{db_name}.backup_", "")
-                        try:
-                            backup_time = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
-                        except:
-                            backup_time = datetime.fromtimestamp(os.path.getmtime(backup_path))
-                        
-                        backups.append({
-                            'path': backup_path,
-                            'filename': filename,
-                            'size_mb': file_size / 1024 / 1024,
-                            'created_at': backup_time.isoformat(),
-                            'timestamp': timestamp_str
-                        })
-                    except Exception as e:
-                        logger.debug(f"⚠️ Ошибка обработки резервной копии {filename}: {e}")
+                        backup_time = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
+                    except Exception:
+                        backup_time = datetime.fromtimestamp(os.path.getmtime(backup_path))
+                    
+                    backups.append({
+                        'path': backup_path,
+                        'filename': filename,
+                        'size_mb': file_size / 1024 / 1024,
+                        'created_at': backup_time.isoformat(),
+                        'timestamp': timestamp_str
+                    })
+                except Exception as e:
+                    logger.debug(f"⚠️ Ошибка обработки резервной копии {filename}: {e}")
             
-            # Сортируем по дате создания (новые первыми)
             backups.sort(key=lambda x: x['created_at'], reverse=True)
             return backups
         except Exception as e:

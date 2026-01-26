@@ -304,3 +304,24 @@ def check_premium_license(force_refresh: bool = False) -> bool:
 
 # check_premium_license экспортируется для использования в других модулях
 __all__.append('check_premium_license')
+
+
+def check_license():
+    """
+    Для API и др.: возвращает {'valid': bool, 'type': str}.
+    Использует check_premium_license и _LICENSE_INFO.
+    """
+    try:
+        check_premium_license(force_refresh=False)
+        valid = bool(_LICENSE_STATUS)
+        info = _LICENSE_INFO
+        if isinstance(info, dict):
+            typ = info.get('type') or info.get('license_type') or ''
+        else:
+            typ = ''
+        return {'valid': valid, 'type': str(typ)}
+    except Exception:
+        return {'valid': False, 'type': ''}
+
+
+__all__.append('check_license')

@@ -98,8 +98,12 @@ from app.telegram_notifier import TelegramNotifier
 from exchanges.exchange_factory import ExchangeFactory
 import json
 import logging
+import warnings
 from utils.color_logger import setup_color_logging
 from bot_engine.backup_service import get_backup_service
+
+# Подавляем UserWarning sklearn про delayed/Parallel (joblib workers configuration)
+warnings.filterwarnings('ignore', message=r'.*delayed.*Parallel.*', category=UserWarning)
 
 # Проверка валидности API ключей
 def check_api_keys():

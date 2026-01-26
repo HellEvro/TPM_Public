@@ -118,7 +118,7 @@ class AIDatabase:
     
     def _backup_database(self, max_retries: int = 3) -> Optional[str]:
         """
-        Создает резервную копию БД перед удалением
+        Создает резервную копию БД в data/backups.
         
         Args:
             max_retries: Максимальное количество попыток при блокировке файла
@@ -132,41 +132,39 @@ class AIDatabase:
         import shutil
         from datetime import datetime
         
-        # Создаем имя резервной копии с timestamp
+        project_root = _get_project_root()
+        backup_dir = project_root / 'data' / 'backups'
+        backup_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = f"{self.db_path}.backup_{timestamp}"
+        backup_path = backup_dir / f"ai_data_{timestamp}.db"
+        backup_path = str(backup_path)
         
         # Пытаемся создать резервную копию с retry логикой
         for attempt in range(max_retries):
             try:
-                # Пытаемся закрыть все соединения перед копированием
-                # Это может помочь освободить файл
                 if attempt > 0:
                     try:
                         logger.debug(f"🔄 Попытка создания резервной копии {attempt + 1}/{max_retries}...")
                     except MemoryError:
                         pass
-                    time.sleep(1.0 * attempt)  # Увеличиваем задержку с каждой попыткой
+                    time.sleep(1.0 * attempt)
                 
-                # Копируем БД и связанные файлы
                 try:
                     shutil.copy2(self.db_path, backup_path)
                 except MemoryError:
-                    # Нехватка памяти - не можем создать резервную копию
                     print("⚠️ Нехватка памяти при создании резервной копии БД")
                     return None
                 
-                # Копируем WAL и SHM файлы если есть
                 wal_file = self.db_path + '-wal'
                 shm_file = self.db_path + '-shm'
                 if os.path.exists(wal_file):
                     try:
-                        shutil.copy2(wal_file, f"{backup_path}-wal")
+                        shutil.copy2(wal_file, backup_path + '-wal')
                     except Exception as e:
                         logger.debug(f"⚠️ Не удалось скопировать WAL файл: {e}")
                 if os.path.exists(shm_file):
                     try:
-                        shutil.copy2(shm_file, f"{backup_path}-shm")
+                        shutil.copy2(shm_file, backup_path + '-shm')
                     except Exception as e:
                         logger.debug(f"⚠️ Не удалось скопировать SHM файл: {e}")
                 
@@ -671,6 +669,7 @@ class AIDatabase:
             
             # Пытаемся использовать VACUUM для исправления (только если БД не слишком повреждена)
             vacuum_tried = False
+            vacuum_failed_malformed = False
             try:
                 # Подключаемся без retry для VACUUM (может быть долго)
                 conn = sqlite3.connect(self.db_path, timeout=300.0)  # 5 минут для VACUUM
@@ -694,9 +693,10 @@ class AIDatabase:
             except Exception as vacuum_error:
                 error_str = str(vacuum_error).lower()
                 if "malformed" in error_str or "disk i/o error" in error_str:
+                    vacuum_failed_malformed = True
                     try:
                         logger.warning(f"⚠️ VACUUM невозможен из-за критического повреждения: {vacuum_error}")
-                        logger.info("💡 Пропускаю VACUUM, пытаюсь восстановить из резервной копии...")
+                        logger.info("💡 Пропускаю VACUUM, при малформном повреждении бэкапы — копия битой БД, восстановление не выполняю.")
                     except MemoryError:
                         print("⚠️ VACUUM невозможен из-за критического повреждения")
                 else:
@@ -718,46 +718,68 @@ class AIDatabase:
                 else:
                     logger.warning(f"⚠️ БД все еще повреждена после VACUUM: {error_msg[:200]}...")
             
-            # Пытаемся восстановить из резервной копии
+            # При критическом повреждении (malformed) бэкапы — копия битой БД. Восстановление не делаем, сразу миграция.
+            if vacuum_failed_malformed:
+                try:
+                    logger.warning("🔄 Пропуск восстановления из бэкапа (бэкапы созданы из повреждённой БД). Миграция на новую ai_data.db.")
+                except MemoryError:
+                    print("🔄 Миграция на новую ai_data.db (бэкапы — копия битой БД).")
+                if self._migrate_corrupted_to_fresh():
+                    return True
+                try:
+                    logger.error("⚠️ Миграция повреждённой БД не удалась (файл занят?). Закройте процессы и перезапустите.")
+                except MemoryError:
+                    pass
+                return False
+
+            # Пытаемся восстановить из резервной копии (только если VACUUM не падал с malformed)
             try:
                 logger.info("🔄 Попытка восстановления из резервной копии...")
             except MemoryError:
                 print("🔄 Попытка восстановления из резервной копии...")
-            
+
             try:
                 backups = self.list_backups()
             except MemoryError:
                 print("⚠️ Нехватка памяти при получении списка резервных копий")
                 backups = []
-            
+
+            restored_ok = False
             if backups:
                 # Если мы создали резервную копию только что, используем более старую
                 if backup_created and len(backups) > 1:
-                    # Используем предпоследнюю копию (последняя - это та, что мы только что создали)
                     older_backup = backups[1]['path']
                     try:
                         logger.info(f"📦 Восстанавливаю из более старой резервной копии: {older_backup}")
                     except MemoryError:
-                        print(f"📦 Восстанавливаю из более старой резервной копии")
+                        print("📦 Восстанавливаю из более старой резервной копии")
                     try:
-                        if self.restore_from_backup(older_backup):
-                            return True
+                        restored_ok = self.restore_from_backup(older_backup)
                     except MemoryError:
                         print("⚠️ Нехватка памяти при восстановлении из резервной копии")
                 else:
-                    # Используем последнюю доступную копию
                     latest_backup = backups[0]['path']
                     try:
                         logger.info(f"📦 Восстанавливаю из резервной копии: {latest_backup}")
                     except MemoryError:
                         print("📦 Восстанавливаю из резервной копии")
                     try:
-                        if self.restore_from_backup(latest_backup):
-                            return True
+                        restored_ok = self.restore_from_backup(latest_backup)
                     except MemoryError:
                         print("⚠️ Нехватка памяти при восстановлении из резервной копии")
-            
-            # Если не удалось восстановить из резервной копии — миграция: новая ai_data.db для всех пользователей
+
+            if restored_ok:
+                is_ok, _ = self._check_integrity()
+                if not is_ok:
+                    try:
+                        logger.warning("⚠️ Восстановленная БД повреждена. Миграция на новую ai_data.db.")
+                    except MemoryError:
+                        print("⚠️ Восстановленная БД повреждена, миграция на новую.")
+                    if self._migrate_corrupted_to_fresh():
+                        return True
+                    return False
+                return True
+
             if not backups:
                 try:
                     logger.error("❌ Нет доступных резервных копий для восстановления")
@@ -5525,43 +5547,42 @@ class AIDatabase:
     
     def list_backups(self) -> List[Dict[str, Any]]:
         """
-        Список доступных резервных копий БД
+        Список доступных резервных копий БД из data/backups.
         
         Returns:
             Список словарей с информацией о резервных копиях
         """
         backups = []
-        db_dir = os.path.dirname(self.db_path)
-        db_name = os.path.basename(self.db_path)
-        
         try:
-            if not os.path.exists(db_dir):
+            backup_dir = _get_project_root() / 'data' / 'backups'
+            if not backup_dir.exists():
                 return backups
             
-            # Ищем все файлы резервных копий
-            for filename in os.listdir(db_dir):
-                if filename.startswith(f"{db_name}.backup_") and not filename.endswith('-wal') and not filename.endswith('-shm'):
-                    backup_path = os.path.join(db_dir, filename)
+            for filename in os.listdir(backup_dir):
+                if not filename.startswith("ai_data_") or not filename.endswith(".db"):
+                    continue
+                if filename.count(".db") != 1 or "-wal" in filename or "-shm" in filename:
+                    continue
+                backup_path = os.path.join(backup_dir, filename)
+                try:
+                    file_size = os.path.getsize(backup_path)
+                    # ai_data_20260127_020021.db -> 20260127_020021
+                    timestamp_str = filename.replace("ai_data_", "").replace(".db", "")
                     try:
-                        file_size = os.path.getsize(backup_path)
-                        # Извлекаем timestamp из имени файла
-                        timestamp_str = filename.replace(f"{db_name}.backup_", "")
-                        try:
-                            backup_time = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
-                        except:
-                            backup_time = datetime.fromtimestamp(os.path.getmtime(backup_path))
-                        
-                        backups.append({
-                            'path': backup_path,
-                            'filename': filename,
-                            'size_mb': file_size / 1024 / 1024,
-                            'created_at': backup_time.isoformat(),
-                            'timestamp': timestamp_str
-                        })
-                    except Exception as e:
-                        logger.debug(f"⚠️ Ошибка обработки резервной копии {filename}: {e}")
+                        backup_time = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
+                    except Exception:
+                        backup_time = datetime.fromtimestamp(os.path.getmtime(backup_path))
+                    
+                    backups.append({
+                        'path': backup_path,
+                        'filename': filename,
+                        'size_mb': file_size / 1024 / 1024,
+                        'created_at': backup_time.isoformat(),
+                        'timestamp': timestamp_str
+                    })
+                except Exception as e:
+                    logger.debug(f"⚠️ Ошибка обработки резервной копии {filename}: {e}")
             
-            # Сортируем по дате создания (новые первыми)
             backups.sort(key=lambda x: x['created_at'], reverse=True)
             return backups
         except Exception as e:

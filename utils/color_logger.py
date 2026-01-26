@@ -232,6 +232,32 @@ class LogLevelFilter(logging.Filter):
         
         return True
 
+
+class NoiseLogFilter(logging.Filter):
+    """Скрывает шумные сообщения: FakeTensor cache, urllib3/requests retry, неформатированные %s и т.д."""
+
+    _NOISE_PATTERNS = (
+        'FakeTensor cache stats',
+        'cache_hits: %s',
+        'cache_misses: %s',
+        'Retrying (%r) after connection broken by',
+        "Resetting dropped connection: %s",
+        "Incremented Retry for (url='%s')",
+    )
+
+    def filter(self, record):
+        try:
+            msg = record.getMessage()
+        except Exception:
+            msg = str(getattr(record, 'msg', ''))
+        if not isinstance(msg, str):
+            return True
+        for pat in self._NOISE_PATTERNS:
+            if pat in msg:
+                return False
+        return True
+
+
 class Colors:
     """ANSI цветовые коды"""
     RESET = '\033[0m'
@@ -616,6 +642,7 @@ def setup_color_logging(console_log_levels=None, enable_file_logging=True, log_f
     # Создаем фильтр всегда (даже для пустого списка или None - это означает "все уровни разрешены")
     level_filter = LogLevelFilter(console_log_levels)
     console_handler.addFilter(level_filter)
+    console_handler.addFilter(NoiseLogFilter())
     
     # Устанавливаем цветной форматтер
     formatter = ColorFormatter()

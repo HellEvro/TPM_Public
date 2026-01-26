@@ -178,10 +178,14 @@ import signal
 import threading
 import time
 import logging
+import warnings
 import json
 from datetime import datetime
 from flask import Flask
 from flask_cors import CORS
+
+# Подавляем UserWarning sklearn про delayed/Parallel (joblib workers configuration)
+warnings.filterwarnings('ignore', message=r'.*delayed.*Parallel.*', category=UserWarning)
 
 # Добавляем текущую директорию в путь
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))

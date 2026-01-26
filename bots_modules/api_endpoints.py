@@ -4249,7 +4249,7 @@ def get_ai_self_learning_stats():
         # Проверяем премиум лицензию
         is_premium = False
         try:
-            from bot_engine.ai.license_checker import check_license
+            from bot_engine.ai import check_license
             license_result = check_license()
             is_premium = license_result.get('valid', False) and license_result.get('type', '').lower() == 'premium'
         except Exception as e:
@@ -4296,7 +4296,7 @@ def get_ai_self_learning_performance():
         # Проверяем премиум лицензию
         is_premium = False
         try:
-            from bot_engine.ai.license_checker import check_license
+            from bot_engine.ai import check_license
             license_result = check_license()
             is_premium = license_result.get('valid', False) and license_result.get('type', '').lower() == 'premium'
         except Exception as e:
