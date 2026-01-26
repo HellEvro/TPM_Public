@@ -516,7 +516,6 @@ class AIBacktester:
                         trend=trend,
                     )
                     if not filters_allowed:
-                        logger.debug(f"   🚫 {symbol}: фильтры блокируют вход ({filters_reason})")
                         continue
                     
                     direction = 'LONG' if should_enter_long else 'SHORT'

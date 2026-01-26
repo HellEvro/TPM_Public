@@ -4543,7 +4543,6 @@ class AITrainer:
                                         
                                         filter_block_reasons[main_reason] = filter_block_reasons.get(main_reason, 0) + 1
                                         
-                                        logger.debug(f"   🚫 {symbol}: фильтры блокируют вход ({filters_reason})")
                                         should_enter_long = False
                                         should_enter_short = False
                                 

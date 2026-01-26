@@ -246,9 +246,6 @@ def check_coin_maturity(symbol, candles):
         else:
             reason = 'Монета зрелая для торговли'
         
-        logger.debug(f"[MATURITY] {symbol}: {reason}")
-        logger.debug(f"[MATURITY] {symbol}: Свечи={len(candles)}, RSI={rsi_min:.1f}-{rsi_max:.1f}")
-        
         return {
             'is_mature': is_mature,
             'reason': reason,
