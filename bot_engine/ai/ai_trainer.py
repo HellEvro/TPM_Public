@@ -2198,6 +2198,13 @@ class AITrainer:
             # Сохранение моделей
             self._save_models()
             
+            # Подсчитываем количество обученных моделей
+            models_count = 0
+            if self.signal_predictor is not None:
+                models_count += 1
+            if self.profit_predictor is not None:
+                models_count += 1
+            
             logger.info("✅ Обучение на истории завершено")
             self._record_training_event(
                 'history_trades_training',
@@ -2205,7 +2212,8 @@ class AITrainer:
                 duration_seconds=(datetime.now() - start_time).total_seconds(),
                 samples=processed_samples,
                 accuracy=final_accuracy,
-                mse=final_mse
+                mse=final_mse,
+                models_saved=models_count
             )
             
         except Exception as e:
@@ -3502,6 +3510,13 @@ class AITrainer:
                     except Exception as e:
                         logger.debug(f"⚠️ Ошибка обновления сессии обучения: {e}")
                 
+                # Подсчитываем количество обученных моделей
+                models_count = 0
+                if self.signal_predictor is not None:
+                    models_count += 1
+                if self.profit_predictor is not None:
+                    models_count += 1
+                
                 self._record_training_event(
                     'real_trades_training',
                     status='SUCCESS',
@@ -3509,7 +3524,8 @@ class AITrainer:
                     trades=processed_trades,
                     samples=samples_count,
                     accuracy=float(train_score) if train_score is not None else None,
-                    mse=float(profit_mse) if profit_mse is not None else None
+                    mse=float(profit_mse) if profit_mse is not None else None,
+                    models_saved=models_count
                 )
             else:
                 logger.warning(f"⚠️ Недостаточно сделок для обучения (нужно минимум 20, есть {len(all_samples)})")
