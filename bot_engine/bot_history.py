@@ -1132,7 +1132,64 @@ class BotHistoryManager:
         Returns:
             Список сделок (от новых к старым)
         """
-        # ПРИОРИТЕТ: Загружаем из БД (если доступна)
+        # ПРИОРИТЕТ 1: Загружаем из bots_db (BotsDatabase) - основное хранилище сделок ботов
+        try:
+            from bot_engine.bots_database import get_bots_database
+            bots_db = get_bots_database()
+            if bots_db:
+                bots_trades = bots_db.get_bot_trades_history(
+                    bot_id=None,
+                    symbol=symbol,
+                    status='CLOSED',  # Только закрытые сделки для UI
+                    decision_source=None,
+                    limit=limit,
+                    offset=0
+                )
+                
+                if bots_trades:
+                    # Конвертируем формат bots_db в формат для API
+                    result = []
+                    for trade in bots_trades:
+                        converted = {
+                            'id': trade.get('trade_id') or f"bots_db_{trade.get('id')}",
+                            'timestamp': trade.get('entry_time'),
+                            'bot_id': trade.get('bot_id'),
+                            'symbol': trade.get('symbol'),
+                            'direction': trade.get('direction'),
+                            'size': trade.get('position_size_coins'),
+                            'entry_price': trade.get('entry_price'),
+                            'exit_price': trade.get('exit_price'),
+                            'pnl': trade.get('pnl'),
+                            'roi': trade.get('roi'),
+                            'status': trade.get('status', 'CLOSED'),
+                            'decision_source': trade.get('decision_source', 'SCRIPT'),
+                            'rsi': trade.get('entry_rsi'),
+                            'trend': trade.get('entry_trend'),
+                            'close_timestamp': trade.get('exit_time'),
+                            'close_reason': trade.get('close_reason'),
+                            'is_successful': trade.get('is_successful', False),
+                            'is_simulated': bool(trade.get('is_simulated', 0))
+                        }
+                        result.append(converted)
+                    
+                    # Фильтр по направлению
+                    if trade_type:
+                        direction_upper = trade_type.upper()
+                        result = [t for t in result if (t.get('direction') or '').upper() == direction_upper]
+                    
+                    # Фильтр по периоду
+                    if period:
+                        result = self._filter_by_period(result, period, ['close_timestamp', 'timestamp'])
+                    
+                    # Сортируем от новых к старым
+                    result.sort(key=lambda x: x.get('close_timestamp') or x.get('timestamp', ''), reverse=True)
+                    
+                    if result:
+                        return result[:limit]
+        except Exception as e:
+            logger.debug(f"⚠️ Ошибка загрузки сделок из bots_db: {e}, пробуем ai_db")
+        
+        # ПРИОРИТЕТ 2: Загружаем из ai_db (AIDatabase) - дополнительное хранилище
         if self.ai_db:
             try:
                 trades = self.ai_db.get_bot_trades(
