@@ -5,6 +5,7 @@
 #
 # PyTorch работает на всех версиях Python 3.8+, включая 3.12 и 3.14+.
 # Для установки PyTorch с GPU: python scripts/setup_python_gpu.py
+# Или вручную: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 #
 # pip install -r requirements.txt --no-warn-script-location  — меньше предупреждений PATH
 # =============================================================================
@@ -37,6 +38,7 @@ pandas>=2.1.1
 numpy>=1.26.0
 matplotlib>=3.7.0
 pytz>=2023.3.post1
+python-dateutil>=2.8.2
 
 # Database (SQLite встроен в Python, но может потребоваться для расширенных функций)
 # sqlite3 встроен в Python 3.x, дополнительные зависимости не требуются
@@ -53,16 +55,39 @@ rich>=13.0.0
 # Security
 cryptography>=41.0.0
 
-# AI/ML dependencies
-# PyTorch (работает на CPU и GPU)
+# =============================================================================
+# AI/ML dependencies - PyTorch (работает на CPU и GPU)
+# =============================================================================
 # ВАЖНО: PyTorch поддерживает Python 3.8+ (включая Python 3.14+)
-# Для GPU: установите PyTorch с CUDA поддержкой через pip install torch --index-url https://download.pytorch.org/whl/cu121
-# Для CPU: pip install torch (автоматически установит CPU версию)
-# PyTorch работает на всех версиях Python, включая 3.14+
+# 
+# УСТАНОВКА PYTORCH:
+# 
+# 1. С GPU (NVIDIA CUDA):
+#    - Проверьте наличие GPU: nvidia-smi
+#    - Установите PyTorch с CUDA 12.1:
+#      pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+#    - Или CUDA 11.8 (если CUDA 12.1 не поддерживается):
+#      pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+#    - Автоматическая установка: python scripts/setup_python_gpu.py
+#
+# 2. CPU версия (без GPU):
+#    pip install torch torchvision torchaudio
+#
+# 3. Проверка установки:
+#    python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'N/A')"
+#
+# РАЗМЕРЫ:
+# - PyTorch с CUDA: ~2-3 GB
+# - PyTorch CPU: ~200-300 MB
+#
+# ТРЕБОВАНИЯ ДЛЯ GPU:
+# - NVIDIA GPU с поддержкой CUDA
+# - Драйверы NVIDIA (проверьте: nvidia-smi)
+# - CUDA Toolkit 11.8 или 12.1 (устанавливается автоматически с PyTorch)
+# =============================================================================
 torch>=2.0.0
-# Для GPU с CUDA 12.1: pip install torch --index-url https://download.pytorch.org/whl/cu121
-# Для GPU с CUDA 11.8: pip install torch --index-url https://download.pytorch.org/whl/cu118
-# Для CPU: просто pip install torch
+torchvision>=0.15.0
+torchaudio>=2.0.0
 
 # Machine Learning libraries
 scikit-learn>=1.3.0
@@ -71,10 +96,10 @@ joblib>=1.3.0
 
 # Deep Learning (LSTM/CNN) — PyTorch уже выше
 
-# Для обработки изображений (Pattern Recognition)
+# Для обработки изображений (Pattern Recognition) - опционально
 # opencv-python>=4.8.0  # Обработка изображений для CNN
 
-# Для защиты модулей (только для сборки)
+# Для защиты модулей (только для сборки) - опционально
 # Cython>=3.0.0        # Компиляция Python в .pyd/.so
 # pyarmor>=8.0.0       # Обфускация кода
 
@@ -86,18 +111,21 @@ joblib>=1.3.0
 # Примечания:
 # ===========================================
 # 
-# 1. PyTorch: ~2 GB (с CUDA), ~200 MB (CPU). GPU: pip install torch --index-url https://download.pytorch.org/whl/cu121
+# 1. PyTorch: ~2-3 GB (с CUDA), ~200-300 MB (CPU). 
+#    GPU: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+#    CPU: pip install torch torchvision torchaudio
 #
 # 2. Для GPU:
-#    Установите PyTorch с CUDA поддержкой:
-#    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121  (CUDA 12.1)
-#    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118  (CUDA 11.8)
-#    Для CPU: pip install torch torchvision torchaudio
-#    Требуется NVIDIA GPU с драйверами (проверьте: nvidia-smi)
+#    - Установите PyTorch с CUDA поддержкой (см. инструкции выше)
+#    - Требуется NVIDIA GPU с драйверами (проверьте: nvidia-smi)
+#    - Автоматическая установка: python scripts/setup_python_gpu.py
 #
-# 3. Минимальные требования для Anomaly Detection:
-#    scikit-learn + numpy + pandas + joblib + scipy
+# 3. Минимальные требования для AI модулей:
+#    - PyTorch (torch, torchvision, torchaudio)
+#    - scikit-learn + numpy + pandas + joblib + scipy
+#    - Все эти зависимости уже включены выше
 #
-# 4. Проект требует Python 3.14 или выше. Остальные версии не поддерживаются.
+# 4. Проект требует Python 3.12 или выше (рекомендуется 3.14+).
+#    PyTorch работает на всех версиях Python 3.8+, включая 3.12 и 3.14+.
 #
 # ===========================================

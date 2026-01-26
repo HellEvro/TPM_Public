@@ -42,11 +42,67 @@
 
 ## Шаг 1: Установка зависимостей
 
+### 1.1. Базовые зависимости
+
 ```bash
 pip install -r requirements.txt --no-warn-script-location
 ```
 
 Флаг `--no-warn-script-location` подавляет предупреждения о том, что скрипты (dotenv, pygmentize и др.) установлены в каталог, которого нет в PATH.
+
+### 1.2. Установка PyTorch с GPU поддержкой (рекомендуется)
+
+**Автоматическая установка:**
+```bash
+python scripts/setup_python_gpu.py
+```
+
+Этот скрипт:
+- Проверяет наличие NVIDIA GPU
+- Устанавливает PyTorch с CUDA поддержкой (cu121 или cu118)
+- Устанавливает CPU версию, если GPU не найден
+- Проверяет установку и выводит информацию о GPU
+
+**Ручная установка:**
+
+1. **Проверьте наличие GPU:**
+   ```bash
+   nvidia-smi
+   ```
+
+2. **Если GPU найден, установите PyTorch с CUDA:**
+   ```bash
+   # CUDA 12.1 (рекомендуется)
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+   
+   # Или CUDA 11.8 (если CUDA 12.1 не поддерживается)
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+   ```
+
+3. **Если GPU не найден, установите CPU версию:**
+   ```bash
+   pip install torch torchvision torchaudio
+   ```
+
+4. **Проверьте установку:**
+   ```bash
+   python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'N/A')"
+   ```
+
+**Ожидаемый вывод при успешной установке с GPU:**
+```
+PyTorch: 2.5.1+cu121
+CUDA: True
+GPU: NVIDIA GeForce RTX 4090
+```
+
+**Требования для GPU:**
+- NVIDIA GPU с поддержкой CUDA
+- Драйверы NVIDIA (проверьте: `nvidia-smi`)
+- CUDA Toolkit 11.8 или 12.1 (устанавливается автоматически с PyTorch)
+
+> ⚠️ **ВАЖНО:** PyTorch работает на всех версиях Python 3.8+, включая 3.12 и 3.14+. 
+> Отдельное виртуальное окружение `.venv_gpu` больше не требуется — PyTorch устанавливается в текущее окружение Python.
 
 ## Шаг 2: Настройка конфигурации
 
@@ -78,7 +134,7 @@ TELEGRAM_CHAT_ID = 'ваш_chat_id'
 
 ## Шаг 4: Запуск
 
-⚠️ **ВАЖНО:** Нужно запустить ОБА сервиса в отдельных терминалах!
+⚠️ **ВАЖНО:** Нужно запустить ВСЕ ТРИ сервиса в отдельных терминалах!
 
 **Терминал 1 (Web UI):**
 ```bash
@@ -89,6 +145,13 @@ python app.py
 ```bash
 python bots.py
 ```
+
+**Терминал 3 (AI Service):**
+```bash
+python ai.py
+```
+
+Или запустите все сервисы через менеджер: `start_infobot_manager.bat` (Windows) или `./start_infobot_manager.sh` (Linux/macOS).
 
 ### Проверка что оба сервиса работают:
 - **Web UI**: http://localhost:5000 → должен открыться интерфейс
