@@ -42,6 +42,7 @@ try:
     from torch.utils.data import Dataset, DataLoader, TensorDataset
     from sklearn.preprocessing import MinMaxScaler
     PYTORCH_AVAILABLE = True
+    TENSORFLOW_AVAILABLE = False  # Используем PyTorch вместо TensorFlow
     
     # Настройка GPU для PyTorch
     def configure_gpu():
