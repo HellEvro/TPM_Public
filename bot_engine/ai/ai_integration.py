@@ -4,20 +4,23 @@
 Модуль интеграции AI в bots.py
 
 Применяет обученные стратегии AI в процессе принятия торговых решений
+Включает Smart Money Concepts (SMC) для институционального анализа
 """
 
 import os
 import logging
 import threading
 import time
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 from datetime import datetime
+import pandas as pd
 
 logger = logging.getLogger('AI.Integration')
 
 # Глобальный экземпляр AI системы
 _ai_system = None
 _ai_data_storage = None
+_smc_features = None
 
 
 def _get_ai_data_storage():
@@ -48,6 +51,110 @@ def get_ai_system():
             return None
     
     return _ai_system
+
+
+def get_smc_features():
+    """Получить экземпляр SmartMoneyFeatures (lazy init)"""
+    global _smc_features
+    
+    if _smc_features is None:
+        try:
+            from bot_engine.ai.smart_money_features import SmartMoneyFeatures
+            _smc_features = SmartMoneyFeatures()
+            logger.info("SmartMoneyFeatures инициализирован")
+        except Exception as e:
+            logger.debug(f"SmartMoneyFeatures недоступен: {e}")
+            return None
+    
+    return _smc_features
+
+
+def get_smc_signal(candles: List[Dict], current_price: float = None) -> Optional[Dict]:
+    """
+    Получить сигнал Smart Money Concepts
+    
+    Args:
+        candles: Список свечей с OHLCV данными
+        current_price: Текущая цена (опционально)
+    
+    Returns:
+        Сигнал SMC или None
+    """
+    try:
+        smc = get_smc_features()
+        if smc is None:
+            return None
+        
+        # Конвертируем в DataFrame
+        if isinstance(candles, list):
+            df = pd.DataFrame(candles)
+        else:
+            df = candles
+        
+        # Проверяем необходимые колонки
+        required = ['open', 'high', 'low', 'close']
+        if not all(col in df.columns for col in required):
+            logger.warning(f"SMC: отсутствуют колонки {required}")
+            return None
+        
+        if len(df) < 10:
+            logger.debug("SMC: недостаточно данных (минимум 10 свечей)")
+            return None
+        
+        # Получаем комплексный сигнал
+        signal = smc.get_smc_signal(df)
+        
+        return signal
+        
+    except Exception as e:
+        logger.debug(f"Ошибка получения SMC сигнала: {e}")
+        return None
+
+
+def get_smc_analysis(candles: List[Dict]) -> Optional[Dict]:
+    """
+    Получить детальный SMC анализ
+    
+    Args:
+        candles: Список свечей с OHLCV данными
+    
+    Returns:
+        Детальный анализ SMC или None
+    """
+    try:
+        smc = get_smc_features()
+        if smc is None:
+            return None
+        
+        # Конвертируем в DataFrame
+        if isinstance(candles, list):
+            df = pd.DataFrame(candles)
+        else:
+            df = candles
+        
+        if len(df) < 10:
+            return None
+        
+        current_price = df['close'].iloc[-1]
+        
+        # Собираем все данные SMC
+        analysis = {
+            'rsi': smc.get_rsi_signal(df),
+            'order_blocks': smc.get_active_order_blocks(df, current_price),
+            'fvg': smc.get_unfilled_fvg(df, current_price),
+            'structure': smc.analyze_market_structure(df),
+            'bos': smc.detect_bos(df),
+            'choch': smc.detect_choch(df),
+            'price_zone': smc.get_price_zone(df),
+            'liquidity_zones': smc.find_liquidity_zones(df),
+            'signal': smc.get_smc_signal(df)
+        }
+        
+        return analysis
+        
+    except Exception as e:
+        logger.debug(f"Ошибка получения SMC анализа: {e}")
+        return None
 
 
 def should_use_ai_prediction(symbol: str, config: Dict = None) -> bool:
@@ -217,14 +324,15 @@ def should_open_position_with_ai(
     rsi: float,
     trend: str,
     price: float,
-    config: Dict = None
+    config: Dict = None,
+    candles: List[Dict] = None
 ) -> Dict:
     """
-    Проверяет, нужно ли открывать позицию с учетом AI предсказания
+    Проверяет, нужно ли открывать позицию с учетом AI предсказания и SMC
     
-    Использует обученные модели из data/ai/models/:
-    - signal_predictor.pkl - предсказание сигналов
-    - profit_predictor.pkl - предсказание прибыльности
+    Использует:
+    - Smart Money Concepts (Order Blocks, FVG, Market Structure)
+    - Обученные модели из data/ai/models/
     
     Args:
         symbol: Символ монеты
@@ -233,21 +341,70 @@ def should_open_position_with_ai(
         trend: Текущий тренд
         price: Текущая цена
         config: Конфигурация бота
+        candles: Список свечей для SMC анализа (опционально)
     
     Returns:
-        Словарь с решением и информацией об AI
+        Словарь с решением и информацией об AI/SMC
     """
     try:
-        # ВАЖНО: bots.py должен работать даже если ai.py не запущен
+        result = {
+            'should_open': True,
+            'ai_used': False,
+            'smc_used': False,
+            'reason': 'Default allow',
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        # === SMC АНАЛИЗ (если есть свечи) ===
+        smc_signal = None
+        if candles and len(candles) >= 10:
+            smc_signal = get_smc_signal(candles, price)
+            
+            if smc_signal:
+                result['smc_used'] = True
+                result['smc_signal'] = smc_signal['signal']
+                result['smc_score'] = smc_signal['score']
+                result['smc_confidence'] = smc_signal['confidence']
+                result['smc_reasons'] = smc_signal.get('reasons', [])
+                result['smc_entry_zone'] = smc_signal.get('entry_zone')
+                
+                # SMC порог для использования сигнала
+                smc_threshold = config.get('smc_min_score', 40) if config else 40
+                
+                # Проверяем согласованность SMC с направлением
+                if direction == 'LONG':
+                    if smc_signal['signal'] == 'LONG' and smc_signal['score'] >= smc_threshold:
+                        result['reason'] = f"SMC подтверждает LONG (score: {smc_signal['score']})"
+                        logger.debug(f"[SMC] {symbol}: LONG подтвержден, score={smc_signal['score']}")
+                    elif smc_signal['signal'] == 'SHORT' and smc_signal['score'] <= -smc_threshold:
+                        result['should_open'] = False
+                        result['reason'] = f"SMC против LONG (score: {smc_signal['score']})"
+                        logger.debug(f"[SMC] {symbol}: LONG заблокирован, score={smc_signal['score']}")
+                        return result
+                        
+                elif direction == 'SHORT':
+                    if smc_signal['signal'] == 'SHORT' and smc_signal['score'] <= -smc_threshold:
+                        result['reason'] = f"SMC подтверждает SHORT (score: {smc_signal['score']})"
+                        logger.debug(f"[SMC] {symbol}: SHORT подтвержден, score={smc_signal['score']}")
+                    elif smc_signal['signal'] == 'LONG' and smc_signal['score'] >= smc_threshold:
+                        result['should_open'] = False
+                        result['reason'] = f"SMC против SHORT (score: {smc_signal['score']})"
+                        logger.debug(f"[SMC] {symbol}: SHORT заблокирован, score={smc_signal['score']}")
+                        return result
+        
+        # === AI СИСТЕМА (классические ML модели) ===
         ai_system = get_ai_system()
         
-        # Проверяем наличие обученных моделей
         if not ai_system:
-            return {'should_open': True, 'ai_used': False, 'reason': 'AI system not available'}
+            if smc_signal:
+                return result  # Используем только SMC
+            return {'should_open': True, 'ai_used': False, 'smc_used': False, 'reason': 'AI system not available'}
         
         if not ai_system.trainer or not ai_system.trainer.signal_predictor:
-            logger.debug(f"🤖 AI модели не обучены для {symbol} - используем базовую логику")
-            return {'should_open': True, 'ai_used': False, 'reason': 'AI models not trained yet'}
+            logger.debug(f"AI модели не обучены для {symbol}")
+            if smc_signal:
+                return result  # Используем только SMC
+            return {'should_open': True, 'ai_used': False, 'smc_used': result.get('smc_used', False), 'reason': 'AI models not trained yet'}
         
         # Подготавливаем рыночные данные
         market_data = {
@@ -257,65 +414,98 @@ def should_open_position_with_ai(
             'direction': direction
         }
         
+        # Добавляем SMC данные если есть
+        if smc_signal:
+            market_data['smc_signal'] = smc_signal['signal']
+            market_data['smc_score'] = smc_signal['score']
+            market_data['smc_confidence'] = smc_signal['confidence']
+        
         # Получаем предсказание от обученной модели
         prediction = ai_system.predict_signal(symbol, market_data)
         
         if 'error' in prediction:
-            logger.debug(f"⚠️ Ошибка предсказания AI для {symbol}: {prediction.get('error')}")
-            return {'should_open': True, 'ai_used': False, 'reason': f"AI prediction error: {prediction.get('error')}"}
+            logger.debug(f"Ошибка предсказания AI для {symbol}: {prediction.get('error')}")
+            if smc_signal:
+                return result  # Используем только SMC
+            return {'should_open': True, 'ai_used': False, 'smc_used': result.get('smc_used', False), 'reason': f"AI prediction error: {prediction.get('error')}"}
         
         signal = prediction.get('signal')
         confidence = prediction.get('confidence', 0)
         
+        result['ai_used'] = True
+        result['ai_signal'] = signal
+        result['ai_confidence'] = confidence
+        
         ai_confidence_threshold = config.get('ai_min_confidence', 0.65) if config else 0.65
         
+        # === КОМБИНИРОВАННАЯ ЛОГИКА AI + SMC ===
         should_open = False
-        reason = f"AI signal: {signal}, confidence: {confidence:.2%}"
         
-        # Применяем логику AI
-        if direction == 'LONG' and signal == 'LONG' and confidence >= ai_confidence_threshold:
-            should_open = True
-            logger.debug(f"🤖 AI подтверждает LONG для {symbol} (уверенность: {confidence:.2%})")
-        elif direction == 'SHORT' and signal == 'SHORT' and confidence >= ai_confidence_threshold:
-            should_open = True
-            logger.debug(f"🤖 AI подтверждает SHORT для {symbol} (уверенность: {confidence:.2%})")
-        elif signal == 'WAIT':
-            should_open = False
-            logger.debug(f"🤖 AI рекомендует WAIT для {symbol} (уверенность: {confidence:.2%})")
-        elif confidence < ai_confidence_threshold:
-            should_open = False
-            reason = f"AI confidence too low: {confidence:.2%} < {ai_confidence_threshold:.2%}"
-            logger.debug(f"🤖 AI блокирует {direction} для {symbol} (низкая уверенность: {confidence:.2%})")
+        # Если и AI и SMC согласны - высокая уверенность
+        if smc_signal:
+            ai_agrees = (direction == signal and confidence >= ai_confidence_threshold)
+            smc_agrees = (
+                (direction == 'LONG' and smc_signal['signal'] == 'LONG') or
+                (direction == 'SHORT' and smc_signal['signal'] == 'SHORT')
+            )
+            
+            if ai_agrees and smc_agrees:
+                should_open = True
+                result['reason'] = f"AI + SMC подтверждают {direction}"
+                logger.debug(f"[AI+SMC] {symbol}: {direction} подтвержден обеими системами")
+            elif smc_agrees and not ai_agrees:
+                # SMC согласен, AI нет - используем SMC (приоритет SMC)
+                if abs(smc_signal['score']) >= 50:
+                    should_open = True
+                    result['reason'] = f"SMC подтверждает {direction} (AI не согласен)"
+                else:
+                    should_open = False
+                    result['reason'] = f"AI не подтверждает {direction}, SMC слабый"
+            elif ai_agrees and not smc_agrees:
+                # AI согласен, SMC нет - блокируем (SMC имеет приоритет)
+                if smc_signal['signal'] == 'WAIT':
+                    should_open = True
+                    result['reason'] = f"AI подтверждает {direction}, SMC нейтрален"
+                else:
+                    should_open = False
+                    result['reason'] = f"SMC против {direction}"
+            else:
+                should_open = False
+                result['reason'] = f"Ни AI ни SMC не подтверждают {direction}"
+        else:
+            # Только AI (нет свечей для SMC)
+            if direction == 'LONG' and signal == 'LONG' and confidence >= ai_confidence_threshold:
+                should_open = True
+                result['reason'] = f"AI подтверждает LONG (confidence: {confidence:.2%})"
+            elif direction == 'SHORT' and signal == 'SHORT' and confidence >= ai_confidence_threshold:
+                should_open = True
+                result['reason'] = f"AI подтверждает SHORT (confidence: {confidence:.2%})"
+            elif signal == 'WAIT':
+                should_open = False
+                result['reason'] = f"AI рекомендует WAIT"
+            elif confidence < ai_confidence_threshold:
+                should_open = False
+                result['reason'] = f"AI confidence too low: {confidence:.2%}"
         
-        result = {
-            'should_open': should_open,
-            'ai_used': True,
-            'ai_confidence': confidence,
-            'ai_signal': signal,
-            'reason': reason,
-            'model_used': 'signal_predictor.pkl',  # Указываем какая модель использовалась
-            'timestamp': datetime.now().isoformat()
-        }
+        result['should_open'] = should_open
+        result['model_used'] = 'signal_predictor.pkl + SMC' if smc_signal else 'signal_predictor.pkl'
         
         # ВАЖНО: Сохраняем решение AI для отслеживания результатов торговли
         if should_open:
             try:
-                # Сохраняем решение AI для последующего анализа результатов
-                # Это будет использовано когда позиция закроется
                 result['ai_decision_id'] = _track_ai_decision(
                     symbol, direction, rsi, trend, price, signal, confidence, market_data
                 )
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка отслеживания решения AI: {e}")
+                logger.debug(f"Ошибка отслеживания решения AI: {e}")
         
         return result
         
     except Exception as e:
-        logger.error(f"❌ Ошибка при получении AI предсказания для {symbol}: {e}")
+        logger.error(f"Ошибка при получении AI/SMC предсказания для {symbol}: {e}")
         import traceback
         logger.debug(traceback.format_exc())
-        # ВАЖНО: Возвращаем разрешение на открытие если AI недоступен
-        return {'should_open': True, 'ai_used': False, 'reason': f'AI error: {e}'}
+        return {'should_open': True, 'ai_used': False, 'smc_used': False, 'reason': f'AI/SMC error: {e}'}
 
 # Глобальная функция для отслеживания решений AI
 _ai_decisions_tracking = {}

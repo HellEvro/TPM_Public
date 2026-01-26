@@ -83,11 +83,67 @@ except ImportError:
     logger.warning("PyTorch не установлен. LSTM Predictor недоступен.")
 
 
-# Определяем класс LSTMModel только если PyTorch доступен
+# Определяем классы моделей только если PyTorch доступен
 if PYTORCH_AVAILABLE:
+    
+    class MultiHeadSelfAttention(nn.Module):
+        """
+        Multi-Head Self-Attention модуль для временных рядов
+        
+        Позволяет модели фокусироваться на важных временных шагах
+        """
+        
+        def __init__(self, embed_dim: int, num_heads: int = 4, dropout: float = 0.1):
+            super(MultiHeadSelfAttention, self).__init__()
+            
+            self.attention = nn.MultiheadAttention(
+                embed_dim=embed_dim,
+                num_heads=num_heads,
+                dropout=dropout,
+                batch_first=True
+            )
+            self.layer_norm = nn.LayerNorm(embed_dim)
+            self.dropout = nn.Dropout(dropout)
+            
+        def forward(self, x, return_weights: bool = False):
+            """
+            Args:
+                x: (batch, seq_len, embed_dim)
+                return_weights: Вернуть ли attention weights для визуализации
+            
+            Returns:
+                out: (batch, seq_len, embed_dim)
+                weights: (batch, seq_len, seq_len) если return_weights=True
+            """
+            # Self-attention
+            attn_out, attn_weights = self.attention(x, x, x)
+            
+            # Residual connection + Layer Normalization
+            out = self.layer_norm(x + self.dropout(attn_out))
+            
+            if return_weights:
+                return out, attn_weights
+            return out
+    
+    
+    class GatedLinearUnit(nn.Module):
+        """
+        Gated Linear Unit (GLU) для улучшенной нелинейности
+        """
+        
+        def __init__(self, input_dim: int, output_dim: int):
+            super(GatedLinearUnit, self).__init__()
+            self.linear = nn.Linear(input_dim, output_dim * 2)
+            
+        def forward(self, x):
+            out = self.linear(x)
+            out, gate = out.chunk(2, dim=-1)
+            return out * torch.sigmoid(gate)
+    
+    
     class LSTMModel(nn.Module):
         """
-        PyTorch LSTM модель для предсказания движения цены
+        PyTorch LSTM модель для предсказания движения цены (базовая версия)
         """
         
         def __init__(self, input_size: int, hidden_sizes: List[int] = [128, 64, 32], dropout: float = 0.2):
@@ -145,10 +201,154 @@ if PYTORCH_AVAILABLE:
             out = self.fc3(out)  # Линейный выход
             
             return out
+    
+    
+    class ImprovedLSTMModel(nn.Module):
+        """
+        Улучшенная LSTM модель с Self-Attention для предсказания движения цены
+        
+        Архитектура:
+        - Bidirectional LSTM для захвата контекста в обоих направлениях
+        - Multi-Head Self-Attention для фокусировки на важных временных шагах
+        - Layer Normalization для стабильности обучения
+        - Residual connections для улучшения градиентного потока
+        - Gated Linear Units в MLP голове
+        - Отдельные головы для direction, change, confidence
+        """
+        
+        def __init__(
+            self,
+            input_size: int,
+            hidden_sizes: List[int] = [256, 128],
+            num_attention_heads: int = 4,
+            dropout: float = 0.2
+        ):
+            super(ImprovedLSTMModel, self).__init__()
+            
+            self.hidden_sizes = hidden_sizes
+            self.input_size = input_size
+            
+            # Input projection
+            self.input_proj = nn.Linear(input_size, hidden_sizes[0])
+            self.input_norm = nn.LayerNorm(hidden_sizes[0])
+            
+            # Bidirectional LSTM слой 1
+            self.lstm1 = nn.LSTM(
+                hidden_sizes[0],
+                hidden_sizes[0] // 2,  # //2 потому что bidirectional удвоит
+                batch_first=True,
+                num_layers=1,
+                bidirectional=True,
+                dropout=0
+            )
+            self.ln1 = nn.LayerNorm(hidden_sizes[0])
+            self.dropout1 = nn.Dropout(dropout)
+            
+            # Self-Attention после первого LSTM
+            self.attention = MultiHeadSelfAttention(
+                embed_dim=hidden_sizes[0],
+                num_heads=num_attention_heads,
+                dropout=dropout
+            )
+            
+            # Bidirectional LSTM слой 2
+            self.lstm2 = nn.LSTM(
+                hidden_sizes[0],
+                hidden_sizes[1] // 2,
+                batch_first=True,
+                num_layers=1,
+                bidirectional=True,
+                dropout=0
+            )
+            self.ln2 = nn.LayerNorm(hidden_sizes[1])
+            self.dropout2 = nn.Dropout(dropout)
+            
+            # MLP головы с GLU
+            self.glu1 = GatedLinearUnit(hidden_sizes[1], 64)
+            self.glu2 = GatedLinearUnit(64, 32)
+            
+            # Отдельные головы для каждого выхода
+            self.direction_head = nn.Linear(32, 1)  # -1 до 1
+            self.change_head = nn.Linear(32, 1)     # % изменения
+            self.confidence_head = nn.Linear(32, 1) # 0 до 1
+            
+            # Для хранения attention weights (для визуализации)
+            self.last_attention_weights = None
+            
+            logger.info(f"ImprovedLSTMModel создан: input={input_size}, hidden={hidden_sizes}, heads={num_attention_heads}")
+        
+        def forward(self, x, return_attention: bool = False):
+            """
+            Args:
+                x: (batch, seq_len, input_size)
+                return_attention: Вернуть ли attention weights
+            
+            Returns:
+                out: (batch, 3) - [direction, change_percent, confidence]
+                attention_weights: (batch, seq_len, seq_len) если return_attention=True
+            """
+            batch_size, seq_len, _ = x.shape
+            
+            # Input projection + normalization
+            x = self.input_proj(x)
+            x = self.input_norm(x)
+            
+            # LSTM 1 (bidirectional)
+            lstm_out1, _ = self.lstm1(x)
+            lstm_out1 = self.ln1(lstm_out1)
+            lstm_out1 = self.dropout1(lstm_out1)
+            
+            # Residual connection
+            if lstm_out1.shape == x.shape:
+                lstm_out1 = lstm_out1 + x
+            
+            # Self-Attention
+            attn_out, attn_weights = self.attention(lstm_out1, return_weights=True)
+            self.last_attention_weights = attn_weights.detach()
+            
+            # LSTM 2 (bidirectional)
+            lstm_out2, _ = self.lstm2(attn_out)
+            lstm_out2 = self.ln2(lstm_out2)
+            lstm_out2 = self.dropout2(lstm_out2)
+            
+            # Берем последний временной шаг
+            # Можно также использовать attention pooling или mean pooling
+            final_hidden = lstm_out2[:, -1, :]  # (batch, hidden_sizes[1])
+            
+            # MLP с GLU
+            out = self.glu1(final_hidden)
+            out = self.glu2(out)
+            
+            # Отдельные головы
+            direction = torch.tanh(self.direction_head(out))      # -1 до 1
+            change = self.change_head(out)                         # любое значение
+            confidence = torch.sigmoid(self.confidence_head(out))  # 0 до 1
+            
+            # Собираем выход
+            output = torch.cat([direction, change, confidence], dim=-1)
+            
+            if return_attention:
+                return output, attn_weights
+            return output
+        
+        def get_attention_weights(self) -> Optional[torch.Tensor]:
+            """Возвращает последние attention weights для визуализации"""
+            return self.last_attention_weights
+
 else:
-    # Заглушка для случая, когда PyTorch недоступен
+    # Заглушки для случая, когда PyTorch недоступен
     class LSTMModel:
         """Заглушка для LSTMModel когда PyTorch недоступен"""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch не установлен. Установите: pip install torch")
+    
+    class ImprovedLSTMModel:
+        """Заглушка для ImprovedLSTMModel когда PyTorch недоступен"""
+        def __init__(self, *args, **kwargs):
+            raise ImportError("PyTorch не установлен. Установите: pip install torch")
+    
+    class MultiHeadSelfAttention:
+        """Заглушка для MultiHeadSelfAttention когда PyTorch недоступен"""
         def __init__(self, *args, **kwargs):
             raise ImportError("PyTorch не установлен. Установите: pip install torch")
 
@@ -156,13 +356,18 @@ else:
 class LSTMPredictor:
     """
     LSTM модель для предсказания движения цены криптовалют (PyTorch версия)
+    
+    Поддерживает две архитектуры:
+    - LSTMModel: базовая LSTM (обратная совместимость)
+    - ImprovedLSTMModel: Bidirectional LSTM + Self-Attention
     """
     
     def __init__(
         self,
         model_path: str = "data/ai/models/lstm_predictor.pth",  # PyTorch формат
         scaler_path: str = "data/ai/models/lstm_scaler.pkl",
-        config_path: str = "data/ai/models/lstm_config.json"
+        config_path: str = "data/ai/models/lstm_config.json",
+        use_improved_model: bool = True  # Использовать улучшенную модель с Attention
     ):
         """
         Инициализация LSTM предиктора
@@ -171,10 +376,12 @@ class LSTMPredictor:
             model_path: Путь к сохраненной модели
             scaler_path: Путь к сохраненному scaler'у
             config_path: Путь к конфигурации модели
+            use_improved_model: Использовать улучшенную модель с Attention (по умолчанию True)
         """
         self.model_path = model_path
         self.scaler_path = scaler_path
         self.config_path = config_path
+        self.use_improved_model = use_improved_model
         
         self.model = None
         self.scaler = None
@@ -182,7 +389,8 @@ class LSTMPredictor:
             'sequence_length': 60,  # 60 свечей для предсказания
             'features': ['close', 'volume', 'high', 'low', 'rsi', 'ema_fast', 'ema_slow'],
             'prediction_horizon': 6,  # Предсказание на 6 часов вперед (1 свеча)
-            'model_version': '2.0',  # Версия 2.0 для PyTorch
+            'model_version': '3.0',  # Версия 3.0 для ImprovedLSTM с Attention
+            'model_architecture': 'improved' if use_improved_model else 'basic',
             'trained_at': None,
             'training_samples': 0
         }
@@ -191,12 +399,13 @@ class LSTMPredictor:
             logger.error("PyTorch недоступен. Установите: pip install torch")
             return
         
-        # Выводим информацию о GPU при инициализации
+        # Выводим информацию о GPU и архитектуре при инициализации
         if PYTORCH_AVAILABLE:
+            arch_name = "ImprovedLSTM + Attention" if use_improved_model else "Basic LSTM"
             if GPU_AVAILABLE and DEVICE:
-                logger.info(f"🚀 LSTM Predictor инициализирован с поддержкой GPU NVIDIA: {DEVICE}")
+                logger.info(f"LSTM Predictor инициализирован: {arch_name}, GPU: {DEVICE}")
             else:
-                logger.info("💻 LSTM Predictor инициализирован (CPU режим)")
+                logger.info(f"LSTM Predictor инициализирован: {arch_name}, CPU режим")
         
         # Загружаем модель, если существует
         if os.path.exists(model_path) and os.path.exists(scaler_path):
@@ -206,7 +415,7 @@ class LSTMPredictor:
             self._create_new_model()
     
     def _create_new_model(self):
-        """Создает новую LSTM модель"""
+        """Создает новую LSTM модель (базовую или улучшенную)"""
         if not PYTORCH_AVAILABLE:
             return
         
@@ -214,10 +423,26 @@ class LSTMPredictor:
             sequence_length = self.config['sequence_length']
             n_features = len(self.config['features'])
             
-            # Создаем PyTorch модель
-            self.model = LSTMModel(input_size=n_features)
+            # Выбираем архитектуру модели
+            if self.use_improved_model:
+                # Улучшенная модель с Attention
+                self.model = ImprovedLSTMModel(
+                    input_size=n_features,
+                    hidden_sizes=[256, 128],
+                    num_attention_heads=4,
+                    dropout=0.2
+                )
+                arch_name = "ImprovedLSTM + Attention"
+                self.config['model_architecture'] = 'improved'
+            else:
+                # Базовая модель для обратной совместимости
+                self.model = LSTMModel(input_size=n_features)
+                arch_name = "Basic LSTM"
+                self.config['model_architecture'] = 'basic'
+            
             self.model.to(DEVICE)
             self.model.eval()  # Режим оценки по умолчанию
+            
         except NameError as e:
             logger.error(f"Ошибка создания модели: {e}. PyTorch недоступен.")
             return
@@ -225,8 +450,8 @@ class LSTMPredictor:
         # Создаем scaler
         self.scaler = MinMaxScaler(feature_range=(0, 1))
         
-        logger.info("✅ Создана новая модель")
-        logger.info(f"Архитектура: {sequence_length} свечей → {n_features} признаков")
+        logger.info(f"Создана новая модель: {arch_name}")
+        logger.info(f"Архитектура: {sequence_length} свечей -> {n_features} признаков")
     
     def prepare_features(self, candles: List[Dict]) -> np.ndarray:
         """
@@ -581,28 +806,46 @@ class LSTMPredictor:
                     loaded_config = json.load(f)
                     self.config.update(loaded_config)
             
-            # Создаем модель с правильными параметрами
+            # Определяем архитектуру из конфига или используем текущую настройку
+            model_architecture = self.config.get('model_architecture', 'basic')
             n_features = len(self.config['features'])
-            self.model = LSTMModel(input_size=n_features)
+            
+            # Создаем модель с правильной архитектурой
+            if model_architecture == 'improved':
+                self.model = ImprovedLSTMModel(
+                    input_size=n_features,
+                    hidden_sizes=[256, 128],
+                    num_attention_heads=4,
+                    dropout=0.2
+                )
+                self.use_improved_model = True
+                arch_name = "ImprovedLSTM + Attention"
+            else:
+                self.model = LSTMModel(input_size=n_features)
+                self.use_improved_model = False
+                arch_name = "Basic LSTM"
+            
             self.model.to(DEVICE)
             
             # Загружаем веса модели
             self.model.load_state_dict(torch.load(self.model_path, map_location=DEVICE))
             self.model.eval()
-        except NameError as e:
-            logger.error(f"Ошибка загрузки модели: {e}. PyTorch недоступен.")
-            self._create_new_model()
             
             # Загружаем scaler
             with open(self.scaler_path, 'rb') as f:
                 self.scaler = pickle.load(f)
             
-            logger.info(f"✅ Модель загружена: {self.model_path}")
+            logger.info(f"Модель загружена: {self.model_path}")
+            logger.info(f"Архитектура: {arch_name}")
             logger.info(f"Обучена: {self.config.get('trained_at', 'неизвестно')}")
             logger.info(f"Образцов: {self.config.get('training_samples', 0)}")
             
+        except NameError as e:
+            logger.error(f"Ошибка загрузки модели: {e}. PyTorch недоступен.")
+            self._create_new_model()
+            
         except Exception as e:
-            logger.error(f"❌ Ошибка загрузки модели: {e}")
+            logger.warning(f"Ошибка загрузки модели: {e}. Создаем новую.")
             self._create_new_model()
     
     def get_status(self) -> Dict:
@@ -619,6 +862,10 @@ class LSTMPredictor:
             self.config.get('training_samples', 0) > 0
         )
         
+        # Определяем архитектуру
+        model_architecture = self.config.get('model_architecture', 'basic')
+        arch_name = "ImprovedLSTM + Attention" if model_architecture == 'improved' else "Basic LSTM"
+        
         status = {
             'available': True,
             'trained': is_trained,
@@ -628,7 +875,10 @@ class LSTMPredictor:
             'trained_at': self.config.get('trained_at'),
             'training_samples': self.config.get('training_samples', 0),
             'features': self.config['features'],
-            'framework': 'PyTorch'
+            'framework': 'PyTorch',
+            'model_architecture': model_architecture,
+            'architecture_name': arch_name,
+            'use_attention': model_architecture == 'improved'
         }
         
         # Добавляем информацию о GPU
@@ -644,3 +894,22 @@ class LSTMPredictor:
                     pass
         
         return status
+    
+    def get_attention_weights(self) -> Optional[np.ndarray]:
+        """
+        Возвращает последние attention weights для визуализации (только для ImprovedLSTMModel)
+        
+        Returns:
+            numpy array с attention weights или None
+        """
+        if not self.use_improved_model or self.model is None:
+            return None
+        
+        try:
+            weights = self.model.get_attention_weights()
+            if weights is not None:
+                return weights.cpu().numpy()
+        except Exception as e:
+            logger.debug(f"Не удалось получить attention weights: {e}")
+        
+        return None
