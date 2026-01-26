@@ -448,5 +448,149 @@ def register_ai_endpoints(app):
                 'error': str(e)
             }), 500
     
+    @app.route('/api/ai/performance', methods=['GET'])
+    def get_ai_performance():
+        """Получить метрики производительности AI моделей"""
+        try:
+            from bot_engine.ai.monitoring import get_performance_api_data
+            
+            data = get_performance_api_data()
+            return jsonify({
+                'success': True,
+                'performance': data
+            })
+        
+        except ImportError:
+            # Модуль мониторинга не загружен
+            return jsonify({
+                'success': True,
+                'performance': {
+                    'available': False,
+                    'message': 'AI мониторинг не активирован'
+                }
+            })
+        except Exception as e:
+            logger.error(f"Ошибка получения AI performance: {e}")
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 500
+    
+    @app.route('/api/ai/health', methods=['GET'])
+    def get_ai_health():
+        """Получить состояние здоровья AI моделей"""
+        try:
+            from bot_engine.ai.monitoring import get_health_api_data
+            
+            data = get_health_api_data()
+            return jsonify({
+                'success': True,
+                'health': data
+            })
+        
+        except ImportError:
+            return jsonify({
+                'success': True,
+                'health': {
+                    'available': False,
+                    'message': 'AI мониторинг не активирован'
+                }
+            })
+        except Exception as e:
+            logger.error(f"Ошибка получения AI health: {e}")
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 500
+    
+    @app.route('/api/ai/experiments', methods=['GET'])
+    def get_ai_experiments():
+        """Получить историю экспериментов обучения"""
+        try:
+            from bot_engine.ai.auto_trainer import get_experiment_tracker
+            
+            limit = request.args.get('limit', 10, type=int)
+            tracker = get_experiment_tracker()
+            runs = tracker.get_runs_history(limit=limit)
+            
+            return jsonify({
+                'success': True,
+                'experiments': runs,
+                'total': len(runs)
+            })
+        
+        except ImportError:
+            return jsonify({
+                'success': True,
+                'experiments': [],
+                'message': 'Трекер экспериментов не активирован'
+            })
+        except Exception as e:
+            logger.error(f"Ошибка получения экспериментов: {e}")
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 500
+    
+    @app.route('/api/ai/experiments/best', methods=['GET'])
+    def get_best_experiment():
+        """Получить лучший эксперимент по метрике"""
+        try:
+            from bot_engine.ai.auto_trainer import get_experiment_tracker
+            
+            metric = request.args.get('metric', 'accuracy')
+            maximize = request.args.get('maximize', 'true').lower() == 'true'
+            
+            tracker = get_experiment_tracker()
+            best = tracker.get_best_run(metric=metric, maximize=maximize)
+            
+            return jsonify({
+                'success': True,
+                'best_run': best
+            })
+        
+        except Exception as e:
+            logger.error(f"Ошибка получения лучшего эксперимента: {e}")
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 500
+    
+    @app.route('/api/ai/smc/signal', methods=['POST'])
+    def get_smc_signal():
+        """Получить SMC сигнал для символа"""
+        try:
+            from bot_engine.ai.ai_integration import get_smc_signal as _get_smc_signal
+            
+            data = request.get_json()
+            if not data:
+                return jsonify({
+                    'success': False,
+                    'error': 'Требуются данные: candles, current_price'
+                }), 400
+            
+            candles = data.get('candles', [])
+            current_price = data.get('current_price', 0)
+            
+            if not candles or not current_price:
+                return jsonify({
+                    'success': False,
+                    'error': 'Требуются candles и current_price'
+                }), 400
+            
+            signal = _get_smc_signal(candles, current_price)
+            
+            return jsonify({
+                'success': True,
+                'signal': signal
+            })
+        
+        except Exception as e:
+            logger.error(f"Ошибка получения SMC сигнала: {e}")
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 500
+    
     logger.info("[API] ✅ AI endpoints зарегистрированы")
 

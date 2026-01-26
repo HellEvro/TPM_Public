@@ -3,6 +3,8 @@
 
 Автоматически обновляет исторические данные и переобучает модели по расписанию.
 Запускается как фоновый процесс вместе с ботом.
+
+Включает ExperimentTracker для логирования экспериментов (опционально MLflow).
 """
 
 import logging
@@ -10,12 +12,238 @@ import threading
 import time
 import subprocess
 import sys
+import json
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any, List
 from bot_engine.bot_config import AIConfig
 
 logger = logging.getLogger('AI.AutoTrainer')
+
+# Проверяем доступность MLflow
+try:
+    import mlflow
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    MLFLOW_AVAILABLE = False
+
+
+class ExperimentTracker:
+    """
+    Трекер экспериментов для AI моделей
+    
+    Поддерживает:
+    - MLflow (если установлен)
+    - Локальное сохранение в JSON (fallback)
+    
+    Использование:
+        tracker = ExperimentTracker("lstm_training")
+        tracker.start_run("run_001")
+        tracker.log_params({"epochs": 100, "lr": 0.001})
+        tracker.log_metrics({"loss": 0.5, "accuracy": 0.85}, step=10)
+        tracker.end_run()
+    """
+    
+    def __init__(
+        self,
+        experiment_name: str = "ai_training",
+        tracking_uri: str = "data/ai/mlruns",
+        use_mlflow: bool = True
+    ):
+        """
+        Args:
+            experiment_name: Название эксперимента
+            tracking_uri: Путь для хранения логов (для MLflow или JSON)
+            use_mlflow: Использовать MLflow если доступен
+        """
+        self.experiment_name = experiment_name
+        self.tracking_uri = Path(tracking_uri)
+        self.use_mlflow = use_mlflow and MLFLOW_AVAILABLE
+        
+        self.current_run = None
+        self.current_run_data = {}
+        
+        # Создаём директорию для логов
+        self.tracking_uri.mkdir(parents=True, exist_ok=True)
+        
+        if self.use_mlflow:
+            mlflow.set_tracking_uri(str(self.tracking_uri))
+            mlflow.set_experiment(experiment_name)
+            logger.info(f"[ExperimentTracker] MLflow эксперимент: {experiment_name}")
+        else:
+            self.local_log_file = self.tracking_uri / f"{experiment_name}_runs.json"
+            self.runs_history = self._load_local_runs()
+            logger.info(f"[ExperimentTracker] Локальный трекинг: {self.local_log_file}")
+    
+    def _load_local_runs(self) -> List[Dict]:
+        """Загружает историю запусков из локального файла"""
+        if self.local_log_file.exists():
+            try:
+                with open(self.local_log_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except:
+                return []
+        return []
+    
+    def _save_local_runs(self):
+        """Сохраняет историю запусков в локальный файл"""
+        try:
+            with open(self.local_log_file, 'w', encoding='utf-8') as f:
+                json.dump(self.runs_history, f, indent=2, ensure_ascii=False, default=str)
+        except Exception as e:
+            logger.error(f"[ExperimentTracker] Ошибка сохранения: {e}")
+    
+    def start_run(self, run_name: Optional[str] = None) -> str:
+        """
+        Начинает новый запуск эксперимента
+        
+        Returns:
+            run_id: Идентификатор запуска
+        """
+        run_name = run_name or f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        if self.use_mlflow:
+            self.current_run = mlflow.start_run(run_name=run_name)
+            run_id = self.current_run.info.run_id
+        else:
+            run_id = f"{run_name}_{int(time.time())}"
+            self.current_run_data = {
+                'run_id': run_id,
+                'run_name': run_name,
+                'start_time': datetime.now().isoformat(),
+                'end_time': None,
+                'params': {},
+                'metrics': {},
+                'tags': {},
+                'status': 'RUNNING'
+            }
+        
+        logger.debug(f"[ExperimentTracker] Запуск: {run_name} ({run_id})")
+        return run_id
+    
+    def log_params(self, params: Dict[str, Any]):
+        """Логирует гиперпараметры"""
+        if not self.current_run and not self.current_run_data:
+            logger.warning("[ExperimentTracker] Нет активного запуска")
+            return
+        
+        if self.use_mlflow:
+            mlflow.log_params(params)
+        else:
+            self.current_run_data['params'].update(params)
+        
+        logger.debug(f"[ExperimentTracker] Params: {params}")
+    
+    def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None):
+        """Логирует метрики"""
+        if not self.current_run and not self.current_run_data:
+            logger.warning("[ExperimentTracker] Нет активного запуска")
+            return
+        
+        if self.use_mlflow:
+            mlflow.log_metrics(metrics, step=step)
+        else:
+            for key, value in metrics.items():
+                if key not in self.current_run_data['metrics']:
+                    self.current_run_data['metrics'][key] = []
+                self.current_run_data['metrics'][key].append({
+                    'value': value,
+                    'step': step,
+                    'timestamp': datetime.now().isoformat()
+                })
+    
+    def log_metric(self, key: str, value: float, step: Optional[int] = None):
+        """Логирует одну метрику"""
+        self.log_metrics({key: value}, step=step)
+    
+    def set_tag(self, key: str, value: str):
+        """Устанавливает тег"""
+        if self.use_mlflow:
+            mlflow.set_tag(key, value)
+        elif self.current_run_data:
+            self.current_run_data['tags'][key] = value
+    
+    def log_model(self, model, model_name: str):
+        """Логирует модель (только для MLflow)"""
+        if self.use_mlflow:
+            try:
+                # Пробуем разные форматы
+                if hasattr(model, 'state_dict'):
+                    # PyTorch
+                    mlflow.pytorch.log_model(model, model_name)
+                else:
+                    # Sklearn или другие
+                    mlflow.sklearn.log_model(model, model_name)
+            except Exception as e:
+                logger.debug(f"[ExperimentTracker] Не удалось залогировать модель: {e}")
+    
+    def end_run(self, status: str = 'FINISHED'):
+        """Завершает текущий запуск"""
+        if self.use_mlflow:
+            if self.current_run:
+                mlflow.end_run(status=status)
+                self.current_run = None
+        else:
+            if self.current_run_data:
+                self.current_run_data['end_time'] = datetime.now().isoformat()
+                self.current_run_data['status'] = status
+                self.runs_history.append(self.current_run_data)
+                self._save_local_runs()
+                self.current_run_data = {}
+        
+        logger.debug(f"[ExperimentTracker] Запуск завершён: {status}")
+    
+    def get_best_run(self, metric: str = 'accuracy', maximize: bool = True) -> Optional[Dict]:
+        """Возвращает лучший запуск по метрике"""
+        if self.use_mlflow:
+            try:
+                runs = mlflow.search_runs(order_by=[f"metrics.{metric} {'DESC' if maximize else 'ASC'}"])
+                if not runs.empty:
+                    return runs.iloc[0].to_dict()
+            except:
+                pass
+            return None
+        else:
+            if not self.runs_history:
+                return None
+            
+            best_run = None
+            best_value = None
+            
+            for run in self.runs_history:
+                if metric in run.get('metrics', {}):
+                    values = run['metrics'][metric]
+                    if values:
+                        last_value = values[-1]['value']
+                        if best_value is None or (maximize and last_value > best_value) or (not maximize and last_value < best_value):
+                            best_value = last_value
+                            best_run = run
+            
+            return best_run
+    
+    def get_runs_history(self, limit: int = 10) -> List[Dict]:
+        """Возвращает историю запусков"""
+        if self.use_mlflow:
+            try:
+                runs = mlflow.search_runs(max_results=limit)
+                return runs.to_dict('records') if not runs.empty else []
+            except:
+                return []
+        else:
+            return self.runs_history[-limit:]
+
+
+# Глобальный экземпляр трекера
+_experiment_tracker: Optional[ExperimentTracker] = None
+
+
+def get_experiment_tracker(experiment_name: str = "ai_training") -> ExperimentTracker:
+    """Получает глобальный экземпляр трекера экспериментов"""
+    global _experiment_tracker
+    if _experiment_tracker is None:
+        _experiment_tracker = ExperimentTracker(experiment_name)
+    return _experiment_tracker
 
 
 class AutoTrainer:
@@ -358,10 +586,25 @@ class AutoTrainer:
             return False
         
         self._training_in_progress = True
+        
+        # Инициализируем трекер экспериментов
+        tracker = get_experiment_tracker("auto_training")
+        run_name = f"retrain_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        tracker.start_run(run_name)
+        
+        # Логируем параметры
+        tracker.log_params({
+            'anomaly_enabled': AIConfig.AI_ANOMALY_DETECTION_ENABLED,
+            'lstm_enabled': AIConfig.AI_LSTM_ENABLED,
+            'pattern_enabled': AIConfig.AI_PATTERN_ENABLED,
+            'training_mode': 'continuous',
+        })
+        
         try:
             logger.info("[AutoTrainer] 🧠 Переобучение моделей...")
             
             all_success = True
+            models_trained = 0
             
             # 1. Обучаем Anomaly Detector
             if AIConfig.AI_ANOMALY_DETECTION_ENABLED:
@@ -371,6 +614,9 @@ class AutoTrainer:
                     "Anomaly Detector",
                     timeout=600
                 )
+                tracker.log_metric('anomaly_success', 1 if success else 0)
+                if success:
+                    models_trained += 1
                 if not success:
                     all_success = False
             
@@ -431,6 +677,15 @@ class AutoTrainer:
                 self.last_training = time.time()
                 self._training_attempts += 1
                 
+                # Логируем финальные метрики
+                tracker.log_metrics({
+                    'models_trained': models_trained,
+                    'all_success': 1,
+                    'training_attempts': self._training_attempts,
+                })
+                tracker.set_tag('status', 'SUCCESS')
+                tracker.end_run('FINISHED')
+                
                 # Проверяем качество модели после обучения
                 self._check_model_quality_after_training()
                 
@@ -440,15 +695,23 @@ class AutoTrainer:
                 return True
             else:
                 logger.warning("[AutoTrainer] ⚠️ Не все модели обучены успешно")
+                tracker.log_metric('all_success', 0)
+                tracker.set_tag('status', 'PARTIAL')
+                tracker.end_run('FINISHED')
                 return False
         
         except KeyboardInterrupt:
             logger.warning("[AutoTrainer] ⚠️ Переобучение прервано пользователем")
+            tracker.set_tag('status', 'INTERRUPTED')
+            tracker.end_run('KILLED')
             # Останавливаем Auto Trainer
             self.running = False
             return False
         except Exception as e:
             logger.error(f"[AutoTrainer] ❌ Ошибка обучения: {e}")
+            tracker.set_tag('status', 'FAILED')
+            tracker.set_tag('error', str(e))
+            tracker.end_run('FAILED')
             return False
         finally:
             self._training_in_progress = False
