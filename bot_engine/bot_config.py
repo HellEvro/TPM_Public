@@ -446,3 +446,10 @@ class AIConfig:
     AI_SELF_LEARNING_BUFFER_SIZE = 50    # Размер буфера для онлайн обучения (макс. сделок)
     AI_ADAPTATION_THRESHOLD = 0.1        # Порог изменения для адаптации к рынку (0.0-1.0)
     AI_PERFORMANCE_WINDOW = 50           # Окно сделок для оценки производительности
+    
+    # Триггеры остановки непрерывного обучения
+    AI_STOP_TRAINING_ON_HIGH_ACCURACY = True  # Остановить обучение при достижении высокой точности
+    AI_HIGH_ACCURACY_THRESHOLD = 0.90    # Порог точности для остановки обучения (0.90 = 90%)
+    AI_STOP_TRAINING_ON_DEGRADATION = True  # Остановить обучение при ухудшении качества
+    AI_DEGRADATION_THRESHOLD = 0.05      # Порог ухудшения качества (0.05 = 5% снижения)
+    AI_MIN_TRAINING_ATTEMPTS = 3         # Минимальное количество попыток обучения перед проверкой качества

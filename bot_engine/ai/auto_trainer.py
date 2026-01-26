@@ -32,6 +32,11 @@ class AutoTrainer:
         self._data_update_in_progress = False
         self._retrain_check_in_progress = False
         
+        # Счетчики для триггеров остановки обучения
+        self._training_attempts = 0  # Количество попыток обучения
+        self._last_model_accuracy = None  # Последняя точность модели
+        self._training_stopped = False  # Флаг остановки обучения
+        
         # Путь к скриптам
         self.scripts_dir = Path('scripts/ai')
         self.collect_script = self.scripts_dir / 'collect_historical_data.py'
@@ -54,6 +59,10 @@ class AutoTrainer:
         logger.info(f"[AutoTrainer] Расписание:")
         logger.info(f"[AutoTrainer]   - Обновление данных: каждые {AIConfig.AI_DATA_UPDATE_INTERVAL/3600:.0f}ч")
         logger.info(f"[AutoTrainer]   - Переобучение: НЕПРЕРЫВНО (сразу после завершения предыдущего)")
+        if AIConfig.AI_STOP_TRAINING_ON_HIGH_ACCURACY:
+            logger.info(f"[AutoTrainer]   - Триггер остановки: точность >= {AIConfig.AI_HIGH_ACCURACY_THRESHOLD:.0%}")
+        if AIConfig.AI_STOP_TRAINING_ON_DEGRADATION:
+            logger.info(f"[AutoTrainer]   - Триггер остановки: ухудшение >= {AIConfig.AI_DEGRADATION_THRESHOLD:.0%}")
     
     def stop(self):
         """Останавливает автоматический тренер"""
@@ -205,8 +214,9 @@ class AutoTrainer:
     def _should_retrain(self, current_time: float) -> bool:
         """Проверяет нужно ли переобучить модель
         
-        НЕПРЕРЫВНОЕ ОБУЧЕНИЕ: Всегда возвращает True если обучение не идет,
-        чтобы модели обучались непрерывно без перерыва.
+        НЕПРЕРЫВНОЕ ОБУЧЕНИЕ с триггерами остановки:
+        - Останавливается при достижении высокой точности (90%+)
+        - Останавливается при ухудшении качества
         """
         if not AIConfig.AI_AUTO_RETRAIN:
             return False
@@ -215,12 +225,25 @@ class AutoTrainer:
         if self._training_in_progress:
             return False
         
+        # Если обучение остановлено триггерами, не запускаем новое
+        if self._training_stopped:
+            return False
+        
         # При первом запуске НЕ переобучаем сразу (модель уже обучена или будет обучена при старте)
         if self.last_training is None:
             self.last_training = current_time  # Инициализируем текущим временем
             return False
         
-        # НЕПРЕРЫВНОЕ ОБУЧЕНИЕ: Всегда возвращаем True, если обучение завершено
+        # Проверяем качество модели перед запуском обучения
+        if self._training_attempts >= AIConfig.AI_MIN_TRAINING_ATTEMPTS:
+            should_stop = self._check_should_stop_training()
+            if should_stop:
+                if not self._training_stopped:
+                    logger.info("[AutoTrainer] 🛑 Обучение остановлено: достигнута высокая точность или обнаружено ухудшение качества")
+                    self._training_stopped = True
+                return False
+        
+        # НЕПРЕРЫВНОЕ ОБУЧЕНИЕ: Всегда возвращаем True, если обучение завершено и нет триггеров остановки
         # Это обеспечивает непрерывное обучение без перерыва
         return True
     
@@ -366,6 +389,10 @@ class AutoTrainer:
             if all_success:
                 logger.info("[AutoTrainer] ✅ Все модели успешно переобучены")
                 self.last_training = time.time()
+                self._training_attempts += 1
+                
+                # Проверяем качество модели после обучения
+                self._check_model_quality_after_training()
                 
                 # Перезагружаем модели в AI Manager
                 self._reload_models()
@@ -543,6 +570,109 @@ class AutoTrainer:
         finally:
             self._retrain_check_in_progress = False
     
+    def _check_model_quality_after_training(self):
+        """Проверяет качество модели после обучения и обновляет метрики"""
+        try:
+            from bot_engine.ai.ai_database import AIDatabase
+            ai_db = AIDatabase()
+            
+            # Получаем последние версии моделей
+            models_to_check = [
+                ('signal_predictor', 'signal_predictor'),
+                ('profit_predictor', 'profit_predictor'),
+                ('ai_decision_model', 'ai_decision_model'),
+            ]
+            
+            max_accuracy = 0.0
+            for model_name, model_type in models_to_check:
+                model_version = ai_db.get_latest_model_version(model_type=model_type)
+                if model_version:
+                    # Проверяем accuracy или signal_accuracy
+                    accuracy = model_version.get('accuracy') or model_version.get('signal_accuracy')
+                    if accuracy is not None:
+                        accuracy = float(accuracy)
+                        max_accuracy = max(max_accuracy, accuracy)
+                        logger.debug(f"[AutoTrainer] 📊 {model_name}: accuracy = {accuracy:.2%}")
+            
+            # Обновляем последнюю точность
+            if max_accuracy > 0:
+                self._last_model_accuracy = max_accuracy
+                logger.info(f"[AutoTrainer] 📊 Максимальная точность модели: {max_accuracy:.2%}")
+        
+        except Exception as e:
+            logger.debug(f"[AutoTrainer] ⚠️ Ошибка проверки качества модели: {e}")
+    
+    def _check_should_stop_training(self) -> bool:
+        """
+        Проверяет, нужно ли остановить обучение на основе качества модели
+        
+        Returns:
+            True если обучение должно быть остановлено
+        """
+        if not AIConfig.AI_STOP_TRAINING_ON_HIGH_ACCURACY and not AIConfig.AI_STOP_TRAINING_ON_DEGRADATION:
+            return False
+        
+        try:
+            from bot_engine.ai.ai_database import AIDatabase
+            ai_db = AIDatabase()
+            
+            # Получаем последние версии моделей
+            models_to_check = [
+                ('signal_predictor', 'signal_predictor'),
+                ('profit_predictor', 'profit_predictor'),
+                ('ai_decision_model', 'ai_decision_model'),
+            ]
+            
+            max_accuracy = 0.0
+            for model_name, model_type in models_to_check:
+                model_version = ai_db.get_latest_model_version(model_type=model_type)
+                if model_version:
+                    # Проверяем accuracy или signal_accuracy
+                    accuracy = model_version.get('accuracy') or model_version.get('signal_accuracy')
+                    if accuracy is not None:
+                        accuracy = float(accuracy)
+                        max_accuracy = max(max_accuracy, accuracy)
+            
+            if max_accuracy == 0:
+                return False  # Нет данных о качестве
+            
+            # Триггер 1: Высокая точность (90%+)
+            if AIConfig.AI_STOP_TRAINING_ON_HIGH_ACCURACY:
+                if max_accuracy >= AIConfig.AI_HIGH_ACCURACY_THRESHOLD:
+                    logger.info(f"[AutoTrainer] 🎯 Достигнута высокая точность: {max_accuracy:.2%} >= {AIConfig.AI_HIGH_ACCURACY_THRESHOLD:.2%}")
+                    logger.info(f"[AutoTrainer] 🛑 Остановка непрерывного обучения: модель достигла целевой точности")
+                    return True
+            
+            # Триггер 2: Ухудшение качества
+            if AIConfig.AI_STOP_TRAINING_ON_DEGRADATION and self._last_model_accuracy is not None:
+                accuracy_diff = self._last_model_accuracy - max_accuracy
+                if accuracy_diff >= AIConfig.AI_DEGRADATION_THRESHOLD:
+                    logger.warning(f"[AutoTrainer] ⚠️ Обнаружено ухудшение качества: {accuracy_diff:.2%}")
+                    logger.warning(f"[AutoTrainer] 🛑 Остановка непрерывного обучения: качество модели ухудшилось")
+                    return True
+            
+            return False
+        
+        except Exception as e:
+            logger.debug(f"[AutoTrainer] ⚠️ Ошибка проверки триггеров остановки: {e}")
+            return False
+    
+    def resume_training(self):
+        """
+        Возобновляет обучение после остановки триггерами
+        
+        Сбрасывает флаг остановки и позволяет продолжить непрерывное обучение
+        """
+        if self._training_stopped:
+            logger.info("[AutoTrainer] 🔄 Возобновление непрерывного обучения...")
+            self._training_stopped = False
+            # Сбрасываем счетчик попыток для новой проверки качества
+            self._training_attempts = 0
+            self._last_model_accuracy = None
+            logger.info("[AutoTrainer] ✅ Обучение возобновлено")
+        else:
+            logger.info("[AutoTrainer] ℹ️ Обучение уже активно")
+    
     def force_update(self) -> bool:
         """
         Принудительное обновление данных и переобучение
@@ -551,6 +681,9 @@ class AutoTrainer:
             True если успешно
         """
         logger.info("[AutoTrainer] 🔄 Принудительное обновление...")
+        
+        # Принудительное обновление сбрасывает флаг остановки
+        self._training_stopped = False
         
         success = self._update_data()
         if success:
@@ -570,8 +703,17 @@ class AutoTrainer:
             'last_data_update': datetime.fromtimestamp(self.last_data_update).isoformat() if self.last_data_update else None,
             'last_training': datetime.fromtimestamp(self.last_training).isoformat() if self.last_training else None,
             'next_data_update': datetime.fromtimestamp(self.last_data_update + AIConfig.AI_DATA_UPDATE_INTERVAL).isoformat() if self.last_data_update else None,
-            'next_training': 'continuous' if self.last_training else None,  # Непрерывное обучение - сразу после завершения предыдущего
-            'training_mode': 'continuous'  # Режим непрерывного обучения
+            'next_training': 'continuous' if self.last_training and not self._training_stopped else None,  # Непрерывное обучение - сразу после завершения предыдущего
+            'training_mode': 'continuous',
+            'training_stopped': self._training_stopped,  # Остановлено ли обучение триггерами
+            'training_attempts': self._training_attempts,  # Количество попыток обучения
+            'last_model_accuracy': self._last_model_accuracy,  # Последняя точность модели
+            'stop_triggers': {
+                'high_accuracy_enabled': AIConfig.AI_STOP_TRAINING_ON_HIGH_ACCURACY,
+                'high_accuracy_threshold': AIConfig.AI_HIGH_ACCURACY_THRESHOLD,
+                'degradation_enabled': AIConfig.AI_STOP_TRAINING_ON_DEGRADATION,
+                'degradation_threshold': AIConfig.AI_DEGRADATION_THRESHOLD,
+            }
         }
 
 
