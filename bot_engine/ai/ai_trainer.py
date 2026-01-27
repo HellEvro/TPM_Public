@@ -197,6 +197,8 @@ class AITrainer:
         self._real_trades_min_samples = 50  # Минимум реальных сделок для обучения (увеличено с 10)
         self._simulated_trades_min_samples = 100  # Минимум симулированных сделок для обучения
         self._real_trades_retrain_threshold = 0.2  # 20% новых сделок для переобучения
+        self._profit_r2: Optional[float] = None  # R² модели прибыли; при <0 не используем для решений
+        self._profit_model_unreliable = False  # True если R²<0 — используем только модель сигналов
         # Пути моделей (нормализуем все пути)
         self.signal_model_path = os.path.normpath(os.path.join(self.models_dir, 'signal_predictor.pkl'))
         self.profit_model_path = os.path.normpath(os.path.join(self.models_dir, 'profit_predictor.pkl'))
@@ -240,7 +242,15 @@ class AITrainer:
         except Exception as e:
             logger.debug(f"⚠️ Не удалось инициализировать AIParameterTracker: {e}")
             self.param_tracker = None
-        
+
+        # Performance Monitoring — опционально для метрик предсказаний
+        try:
+            from bot_engine.ai.monitoring import AIPerformanceMonitor
+            self._perf_monitor = AIPerformanceMonitor(max_records=5000)
+        except Exception as e:
+            logger.debug(f"⚠️ AIPerformanceMonitor недоступен: {e}")
+            self._perf_monitor = None
+
         # Инициализируем ML модель для предсказания качества параметров (только если включено)
         self.param_quality_predictor = None
         try:
@@ -554,6 +564,12 @@ class AITrainer:
                         with open(metadata_path, 'r', encoding='utf-8') as f:
                             metadata = json.load(f)
                             logger.info(f"   📊 Модель обучена: {metadata.get('saved_at', 'unknown')}")
+                            r2 = metadata.get('r2_score')
+                            if r2 is not None:
+                                self._profit_r2 = float(r2)
+                                self._profit_model_unreliable = float(r2) < 0
+                                if self._profit_model_unreliable:
+                                    logger.info(f"   ⚠️ R²={self._profit_r2:.4f} < 0 — для решений используется только модель сигналов")
                     except Exception:
                         pass
             else:
@@ -645,7 +661,8 @@ class AITrainer:
                 logger.info(f"✅ Сохранена модель предсказания прибыли: {self.profit_model_path}")
                 saved_count += 1
                 
-                # Сохраняем метаданные в БД
+                # Сохраняем метаданные в БД и в JSON (r2_score нужен при загрузке — при R²<0 не используем profit для решений)
+                r2 = getattr(self, '_profit_r2', None)
                 metadata = {
                     'id': 'profit_predictor',
                     'model_type': 'profit_predictor',
@@ -653,10 +670,17 @@ class AITrainer:
                     'model_class': 'GradientBoostingRegressor',
                     'saved_at': datetime.now().isoformat(),
                     'n_estimators': getattr(self.profit_predictor, 'n_estimators', 'unknown'),
-                    'max_depth': getattr(self.profit_predictor, 'max_depth', 'unknown')
+                    'max_depth': getattr(self.profit_predictor, 'max_depth', 'unknown'),
+                    'r2_score': float(r2) if r2 is not None else None,
                 }
                 if self.ai_db:
                     self.ai_db.save_model_version(metadata)
+                metadata_path = os.path.normpath(os.path.join(self.models_dir, 'profit_predictor_metadata.json'))
+                try:
+                    with open(metadata_path, 'w', encoding='utf-8') as f:
+                        json.dump(metadata, f, ensure_ascii=False, indent=2)
+                except Exception:
+                    pass
             
             if self.scaler:
                 joblib.dump(self.scaler, self.scaler_path)
@@ -2202,6 +2226,11 @@ class AITrainer:
                 within_10pct = sum(abs(y_profit_test[i] - y_profit_pred[i]) / max(abs(y_profit_test[i]), 1) < 0.1 
                                    for i in range(len(y_profit_test))) / len(y_profit_test) if len(y_profit_test) > 0 else 0
                 logger.info(f"   📊 Точность в пределах 10%: {within_10pct:.2%}")
+                self._profit_r2 = float(r2)
+                self._profit_model_unreliable = r2 < 0
+            else:
+                self._profit_r2 = None
+                self._profit_model_unreliable = True
             
             # Сохранение моделей
             self._save_models()
@@ -3503,6 +3532,9 @@ class AITrainer:
                     logger.warning(f"         - Недостаточно данных для обучения")
                     logger.warning(f"         - Признаки не информативны для предсказания прибыли")
                     logger.warning(f"      💡 Рекомендация: Используйте модель сигналов (успех/неуспех) вместо предсказания абсолютного PnL")
+                
+                self._profit_r2 = float(r2_score)
+                self._profit_model_unreliable = r2_score < 0
                 
                 logger.info(f"      MSE/Var: {normalized_mse:.4f} (нормализованная ошибка)")
                 logger.info(f"      Статистика PnL: min={y_min:.2f}, max={y_max:.2f}, std={y_std:.2f} USDT")
@@ -5633,8 +5665,11 @@ class AITrainer:
         Returns:
             Словарь с предсказанием
         """
-        if not self.signal_predictor or not self.profit_predictor:
+        if not self.signal_predictor:
             return {'error': 'Models not trained'}
+        
+        # Модель прибыли при R²<0 не используется — решения только по модели сигналов
+        use_profit = self.profit_predictor is not None and not getattr(self, '_profit_model_unreliable', True)
         
         try:
             # Определяем ожидаемое количество признаков
@@ -5725,24 +5760,45 @@ class AITrainer:
                 else:
                     raise
             
-            # Предсказание сигнала
+            # Предсказание сигнала (всегда по модели сигналов)
             signal_prob = self.signal_predictor.predict_proba(features_scaled)[0]
-            predicted_profit = self.profit_predictor.predict(features_scaled)[0]
+            if use_profit:
+                predicted_profit = self.profit_predictor.predict(features_scaled)[0]
+            else:
+                predicted_profit = None  # R²<0 или модель не обучена — не используем предсказание PnL
             
             # Определяем сигнал
             if signal_prob[1] > 0.6:  # Вероятность прибыли > 60%
                 signal = 'LONG' if rsi < 35 else 'SHORT' if rsi > 65 else 'WAIT'
             else:
                 signal = 'WAIT'
-            
-            return {
+
+            result = {
                 'signal': signal,
                 'confidence': float(signal_prob[1]),
-                'predicted_profit': float(predicted_profit),
+                'predicted_profit': float(predicted_profit) if predicted_profit is not None else None,
                 'rsi': rsi,
                 'trend': trend
             }
-            
+
+            # Performance Monitoring: логируем предсказание для метрик
+            if getattr(self, '_perf_monitor', None):
+                try:
+                    direction = 1 if signal == 'LONG' else (-1 if signal == 'SHORT' else 0)
+                    self._perf_monitor.track_prediction(
+                        symbol,
+                        {
+                            'direction': direction,
+                            'change_percent': result.get('predicted_profit') or 0,
+                            'confidence': (result.get('confidence') or 0.5) * 100,
+                        },
+                        model='signal_predictor'
+                    )
+                except Exception as mon_e:
+                    logger.debug(f"Performance monitor: {mon_e}")
+
+            return result
+
         except Exception as e:
             logger.error(f"❌ Ошибка предсказания: {e}")
             return {'error': str(e)}
@@ -5966,7 +6022,8 @@ class AITrainer:
                 n_estimators=150,
                 max_depth=6,
                 random_state=42,
-                class_weight='balanced'
+                class_weight='balanced',
+                n_jobs=1,  # без параллелизма — устраняет UserWarning delayed/Parallel
             )
             model.fit(X_train, y_train)
             

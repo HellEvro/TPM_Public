@@ -6,7 +6,10 @@
 # Базовые импорты
 import os
 import sys
-
+# Корень проекта в path до импорта utils — иначе sklearn_parallel_config не найдётся при запуске из другой директории
+_root = os.path.dirname(os.path.abspath(__file__))
+if _root and _root not in sys.path:
+    sys.path.insert(0, _root)
 # Вариант 1: joblib → sklearn.utils.parallel до любых импортов sklearn
 import utils.sklearn_parallel_config  # noqa: F401
 

@@ -1,5 +1,9 @@
 import os
 import sys
+# Корень проекта в path до импорта utils — иначе sklearn_parallel_config не найдётся при запуске из другой директории
+_root = os.path.dirname(os.path.abspath(__file__))
+if _root and _root not in sys.path:
+    sys.path.insert(0, _root)
 import utils.sklearn_parallel_config  # noqa: F401 — первым до sklearn (вариант A: оба Parallel/delayed из sklearn)
 import base64
 from io import BytesIO

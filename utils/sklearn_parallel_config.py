@@ -24,22 +24,12 @@ set_config() в воркеры.
      ai_trainer, parameter_quality_predictor, anomaly_detector, pattern_detector, ml_risk_predictor.
 
 Воркеры loky — отдельные процессы, наш патч там не выполняется.
-LOKY_MAX_CPU_COUNT=1 по умолчанию, PYTHONWARNINGS + filterwarnings — для подавления остаточных предупреждений.
+LOKY_MAX_CPU_COUNT=1 по умолчанию, чтобы не плодить воркеры.
 """
 from __future__ import annotations
 
 import os
 import sys
-import warnings
-
-# Принудительно: воркеры loky наследуют env и не выполняют патч.
-_cur = os.environ.get("PYTHONWARNINGS", "")
-_sk = "ignore::UserWarning:sklearn.utils.parallel"
-_msg = "ignore:.*delayed.*should be used with.*Parallel.*:UserWarning::"
-_to_add = [x for x in (_sk, _msg) if x and x not in _cur]
-if _to_add:
-    _new = ",".join(_to_add) if not _cur.strip() else f"{_cur},{','.join(_to_add)}"
-    os.environ["PYTHONWARNINGS"] = _new
 
 # Исключаем воркеры loky — не создаём дочерние процессы (предупреждение идёт из воркеров).
 # По умолчанию ВСЕГДА 1 воркер, чтобы полностью убрать спам UserWarning про delayed/Parallel.
@@ -62,32 +52,12 @@ if os.environ.get("INFOBOT_QUIET_STARTUP", "").lower() not in ("1", "true", "yes
         pass
 
 import joblib
+# Импорт sklearn.utils.parallel выполняется до патча — внутренний код sklearn
+# при последующих «from joblib import Parallel, delayed» должен получать уже наши классы.
+# Поэтому конфиг обязан загружаться первым (app.py, ai.py, bots.py + sys.path).
 from sklearn.utils.parallel import Parallel, delayed
 
 setattr(joblib, "Parallel", Parallel)
 setattr(joblib, "delayed", delayed)
 
-# Единый источник: для своего кода использовать "from sklearn.utils.parallel import Parallel, delayed"
-__all__ = ["Parallel", "delayed"]
-
-warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.utils.parallel")
-warnings.filterwarnings(
-    "ignore",
-    category=UserWarning,
-    message=".*delayed.*Parallel.*joblib.*",
-)
-# Точные фразы из sklearn.utils.parallel (скопированы из исходников sklearn):
-warnings.filterwarnings(
-    "ignore",
-    category=UserWarning,
-    message=r".*sklearn\.utils\.parallel\.delayed.*should be used with.*sklearn\.utils\.parallel\.Parallel.*",
-)
-warnings.filterwarnings(
-    "ignore",
-    category=UserWarning,
-    message=r".*sklearn\.utils\.parallel\.Parallel.*needs to be used.*joblib\.delayed.*",
-)
-
-# Реэкспорт: для своего кода в проекте, если понадобятся Parallel/delayed —
-# from utils.sklearn_parallel_config import Parallel, delayed  # оба из sklearn
 __all__ = ["Parallel", "delayed"]

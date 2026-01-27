@@ -10,7 +10,10 @@
 import os
 import sys
 os.environ['INFOBOT_AI_PROCESS'] = 'true'
-
+# Корень проекта в path до импорта utils — иначе sklearn_parallel_config не найдётся при запуске из другой директории
+_root = os.path.dirname(os.path.abspath(__file__))
+if _root and _root not in sys.path:
+    sys.path.insert(0, _root)
 import utils.sklearn_parallel_config  # noqa: F401 — вариант 1 до импорта sklearn
 
 # Проверка и автоматическая установка PyTorch ПЕРЕД импортом защищенного модуля
@@ -104,6 +107,28 @@ def _check_and_install_pytorch():
 
 # Выполняем проверку PyTorch перед импортом защищенного модуля
 _check_and_install_pytorch()
+
+
+def _run_rebuild_bot_history_from_exchange():
+    """При старте ai.py подтягивает историю биржи в bot_trades_history (bots_data.db), чтобы ИИ видел сделки для обучения."""
+    if os.environ.get("INFOBOT_SKIP_REBUILD_BOT_HISTORY", "").strip().lower() in ("1", "true", "yes"):
+        return
+    try:
+        import subprocess
+        _script_dir = os.path.dirname(os.path.abspath(__file__))
+        _rebuild = os.path.join(_script_dir, "scripts", "rebuild_bot_history_from_exchange.py")
+        if os.path.isfile(_rebuild):
+            subprocess.run(
+                [sys.executable, _rebuild],
+                cwd=_script_dir,
+                timeout=120,
+                capture_output=False,
+            )
+    except Exception:
+        pass
+
+
+_run_rebuild_bot_history_from_exchange()
 
 # Настройка логирования ПЕРЕД импортом защищенного модуля
 import logging
