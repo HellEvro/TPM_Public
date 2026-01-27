@@ -727,7 +727,7 @@ class NewTradingBot:
             with bots_data_lock:
                 auto_config = bots_data.get('auto_bot_config', {})
             
-            # ✅ КРИТИЧНО: ВСЕГДА проверяем, прошло ли минимум 1 час с последнего закрытия позиции
+            # ✅ КРИТИЧНО: ВСЕГДА проверяем, прошла ли минимум 1 свеча (6ч) с последнего закрытия позиции
             # Это нужно, чтобы история успела подгрузиться в БД после закрытия
             # Работает НЕЗАВИСИМО от настройки loss_reentry_protection (как просил пользователь)
             last_close_timestamp = self.config.get('last_position_close_timestamp')
@@ -750,21 +750,21 @@ class NewTradingBot:
                     from datetime import datetime
                     current_timestamp = datetime.now().timestamp()
                     time_since_close = current_timestamp - float(last_close_timestamp)
-                    min_wait_seconds = 3600  # 1 час минимум
+                    min_wait_seconds = 6 * 3600  # 1 свеча 6h минимум
                     
                     if time_since_close < min_wait_seconds:
                         wait_remaining = min_wait_seconds - time_since_close
-                        wait_remaining_minutes = wait_remaining / 60
+                        wait_remaining_hours = wait_remaining / 3600
                         logger.warning(
-                            f"[NEW_BOT_{self.symbol}] 🚫🚫🚫 ЗАБЛОКИРОВАНО (1 час задержка): После закрытия позиции прошло только {time_since_close:.0f} секунд "
-                            f"(требуется {min_wait_seconds} секунд = 1 час). Осталось ждать: {wait_remaining_minutes:.1f} минут"
+                            f"[NEW_BOT_{self.symbol}] 🚫🚫🚫 ЗАБЛОКИРОВАНО (1 свеча 6ч задержка): После закрытия позиции прошло только {time_since_close:.0f} секунд "
+                            f"(требуется {min_wait_seconds} сек = 1 свеча 6ч). Осталось ждать: {wait_remaining_hours:.1f} ч"
                         )
                         return {
                             'allowed': False,
-                            'reason': f'Minimum 1 hour wait after position close (only {time_since_close:.0f}s passed, need {min_wait_seconds}s)'
+                            'reason': f'Minimum 1 candle (6h) wait after position close (only {time_since_close:.0f}s passed, need {min_wait_seconds}s)'
                         }
                     else:
-                        logger.info(f"[NEW_BOT_{self.symbol}] ✅ Прошло {time_since_close/3600:.2f} часов с последнего закрытия - продолжаем проверку фильтра")
+                        logger.info(f"[NEW_BOT_{self.symbol}] ✅ Прошло {time_since_close/3600:.2f} ч с последнего закрытия - продолжаем проверку фильтра")
                 except Exception as timestamp_check_error:
                     logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка проверки timestamp закрытия: {timestamp_check_error}")
             
@@ -773,7 +773,7 @@ class NewTradingBot:
             loss_reentry_count = self.config.get('loss_reentry_count') or auto_config.get('loss_reentry_count', 1)
             loss_reentry_candles = self.config.get('loss_reentry_candles') or auto_config.get('loss_reentry_candles', 3)
             
-            # Если защита выключена - разрешаем вход (но только если прошло 1 час!)
+            # Если защита выключена - разрешаем вход (но только если прошла 1 свеча 6ч!)
             if not loss_reentry_protection_enabled:
                 return {'allowed': True, 'reason': 'Protection disabled'}
             
@@ -2346,7 +2346,7 @@ class NewTradingBot:
                     if self.symbol in bots_data['bots']:
                         bots_data['bots'][self.symbol]['last_position_close_timestamp'] = current_timestamp
                 
-                logger.info(f"[NEW_BOT_{self.symbol}] ⏰ Сохранен timestamp последнего закрытия: {current_timestamp} (через 1 час разрешим новый вход)")
+                logger.info(f"[NEW_BOT_{self.symbol}] ⏰ Сохранен timestamp последнего закрытия: {current_timestamp} (через 1 свечу 6ч разрешим новый вход)")
             except Exception as timestamp_error:
                 logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка сохранения timestamp закрытия: {timestamp_error}")
             

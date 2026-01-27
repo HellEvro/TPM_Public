@@ -3047,7 +3047,7 @@ def sync_bots_with_exchange():
                                     if 'last_close_timestamps' not in bots_data:
                                         bots_data['last_close_timestamps'] = {}
                                     bots_data['last_close_timestamps'][symbol] = current_timestamp
-                                logger.info(f"[SYNC_EXCHANGE] ⏰ Сохранен timestamp последнего закрытия для {symbol}: {current_timestamp} (через 1 час разрешим новый вход)")
+                                logger.info(f"[SYNC_EXCHANGE] ⏰ Сохранен timestamp последнего закрытия для {symbol}: {current_timestamp} (через 1 свечу 6ч разрешим новый вход)")
                             except Exception as timestamp_error:
                                 logger.warning(f"[SYNC_EXCHANGE] ⚠️ Ошибка сохранения timestamp закрытия для {symbol}: {timestamp_error}")
                             
