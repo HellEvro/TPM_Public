@@ -212,9 +212,19 @@ class LogLevelFilter(logging.Filter):
                    ('ssl' in message_lower or 'sslerror' in message_lower or 'unexpected_eof' in message_lower or 'ssl: unexpected_eof' in message_lower):
                     # Это несущественная SSL ошибка - скрываем её
                     return False
-        except:
+        except Exception:
             pass  # Если не удалось проверить, пропускаем
-        
+
+        # Скрываем шум PyTorch: FakeTensor cache stats, cache_hits/cache_misses (неформатированные %s)
+        try:
+            msg = (record.msg if hasattr(record, 'msg') and isinstance(record.msg, str) else None) or (record.getMessage() if hasattr(record, 'getMessage') else str(record.msg))
+            if isinstance(msg, str) and (
+                'FakeTensor cache stats' in msg or msg.strip() in ('cache_hits: %s', 'cache_misses: %s')
+            ):
+                return False
+        except Exception:
+            pass
+
         # Всегда скрываем DEBUG от внешних библиотек, если DEBUG не включен явно
         if level_name == 'DEBUG' and not self.debug_enabled:
             for external_logger in self.EXTERNAL_LOGGERS:

@@ -237,13 +237,17 @@ class AITrainer:
             logger.debug(f"⚠️ Не удалось инициализировать AIParameterTracker: {e}")
             self.param_tracker = None
         
-        # Инициализируем ML модель для предсказания качества параметров
+        # Инициализируем ML модель для предсказания качества параметров (только если включено)
+        self.param_quality_predictor = None
         try:
-            from bot_engine.ai.parameter_quality_predictor import ParameterQualityPredictor
-            self.param_quality_predictor = ParameterQualityPredictor(self.data_dir)
+            from bot_engine.bot_config import AIConfig
+            if not getattr(AIConfig, 'AI_PARAMETER_QUALITY_ENABLED', True):
+                logger.debug("ℹ️ ParameterQualityPredictor отключён (AI_PARAMETER_QUALITY_ENABLED=False)")
+            else:
+                from bot_engine.ai.parameter_quality_predictor import ParameterQualityPredictor
+                self.param_quality_predictor = ParameterQualityPredictor(self.data_dir)
         except Exception as e:
             logger.debug(f"⚠️ Не удалось инициализировать ParameterQualityPredictor: {e}")
-            self.param_quality_predictor = None
         
         # Загружаем историю биржи при инициализации (если файл пустой или не существует)
         # История будет дополняться при каждом обучении и периодически

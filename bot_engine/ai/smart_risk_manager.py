@@ -98,13 +98,17 @@ class SmartRiskManager:
             logger.warning(f" ⚠️ ИИ модули недоступны: {e}")
     
     def _init_ml_model(self):
-        """Инициализирует ML модель"""
+        """Инициализирует ML модель (только если AI_ML_RISK_ENABLED)"""
+        self.ml_predictor = None
         try:
+            from bot_engine.bot_config import AIConfig
+            if not getattr(AIConfig, 'AI_ML_RISK_ENABLED', True):
+                logger.debug("ℹ️ ML Risk Predictor отключён (AI_ML_RISK_ENABLED=False)")
+                return
             from bot_engine.ai.ml_risk_predictor import MLRiskPredictor
             self.ml_predictor = MLRiskPredictor()
             logger.info(" 🤖 ML модель подключена")
         except Exception as e:
-            self.ml_predictor = None
             logger.warning(f" ⚠️ ML модель недоступна: {e}")
     
     def analyze_stopped_trades(self, limit: int = 100) -> Dict[str, Any]:

@@ -403,6 +403,12 @@ class AIConfig:
     AI_PATTERN_SCALER_PATH = 'data/ai/models/pattern_scaler.pkl'
     AI_PATTERN_WEIGHT = 1.2
     AI_PATTERN_MIN_CONFIDENCE = 0.6
+
+    # Parameter Quality / ML Risk (sklearn). При False модули не загружаются — меньше
+    # использования joblib/sklearn (при спаме UserWarning можно выключить вместе с
+    # AI_ANOMALY_DETECTION_ENABLED и AI_PATTERN_ENABLED).
+    AI_PARAMETER_QUALITY_ENABLED = True
+    AI_ML_RISK_ENABLED = True
     
     # Dynamic Risk Management - умный SL/TP
     AI_RISK_MANAGEMENT_ENABLED = True

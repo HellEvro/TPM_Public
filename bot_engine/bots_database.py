@@ -709,20 +709,12 @@ class BotsDatabase:
                 except sqlite3.OperationalError as e:
                     error_str = str(e).lower()
                     
-                    # Обрабатываем ошибки блокировки
+                    # Обрабатываем ошибки блокировки (ошибка из блока with — нельзя continue и yield снова)
                     if "database is locked" in error_str or "locked" in error_str:
                         conn.rollback()
                         conn.close()
-                        last_error = e
-                        if retry_on_locked and attempt < max_retries - 1:
-                            wait_time = (attempt + 1) * 0.5  # Экспоненциальная задержка: 0.5s, 1s, 1.5s...
-                            logger.debug(f"⚠️ БД заблокирована (попытка {attempt + 1}/{max_retries}), ждем {wait_time:.1f}s...")
-                            time.sleep(wait_time)
-                            continue  # Повторяем попытку
-                        else:
-                            # Превышено количество попыток
-                            logger.warning(f"⚠️ БД заблокирована после {max_retries} попыток")
-                            raise
+                        logger.warning(f"⚠️ БД заблокирована при записи (уже попытка {attempt + 1})")
+                        raise
                     
                     # КРИТИЧНО: Обработка ошибок I/O
                     elif "disk i/o error" in error_str or "i/o error" in error_str:
@@ -744,41 +736,19 @@ class BotsDatabase:
                         else:
                             raise
                     
-                    # КРИТИЧНО: Обработка ошибки "attempt to write a readonly database"
+                    # КРИТИЧНО: Ошибка "attempt to write a readonly database" (из блока with — нельзя retry через yield)
                     elif "readonly" in error_str or "read-only" in error_str or "read only" in error_str:
-                        # ✅ ИСПРАВЛЕНО: Правильно закрываем соединение перед выходом из generator
                         try:
                             conn.rollback()
-                        except:
+                        except Exception:
                             pass
                         try:
                             conn.close()
-                        except:
+                        except Exception:
                             pass
-                        # ✅ КРИТИЧНО: Закрываем generator правильно, чтобы избежать "generator didn't stop after throw()"
                         logger.error(f"❌ КРИТИЧНО: БД открыта в режиме только для чтения: {self.db_path}")
                         logger.error(f"❌ Ошибка: {e}")
-                        logger.warning("🔧 Попытка исправления прав доступа...")
-                        if attempt == 0:
-                            # Пытаемся исправить права доступа
-                            try:
-                                if os.path.exists(self.db_path):
-                                    # Убираем атрибут "только для чтения"
-                                    os.chmod(self.db_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH)
-                                    logger.info("✅ Права доступа к файлу БД исправлены, повторяем операцию...")
-                                    time.sleep(0.5)  # Небольшая задержка перед повтором
-                                    # ✅ ИСПРАВЛЕНО: Выходим из try блока правильно, чтобы generator мог остановиться
-                                    # Используем break чтобы выйти из внутреннего try и повторить цикл
-                                    last_error = e
-                                    break  # Выходим из try: yield conn, чтобы повторить цикл
-                                else:
-                                    logger.error("❌ Файл БД не существует")
-                                    raise
-                            except Exception as fix_error:
-                                logger.error(f"❌ Не удалось исправить права доступа к БД: {fix_error}")
-                                raise
-                        else:
-                            raise
+                        raise
                     else:
                         # Другие OperationalError - не повторяем
                         conn.rollback()
@@ -802,37 +772,37 @@ class BotsDatabase:
                 if "database disk image is malformed" in error_str or "malformed" in error_str:
                     logger.error(f"❌ КРИТИЧНО: БД повреждена (malformed): {self.db_path}")
                     logger.error(f"❌ Ошибка: {e}")
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
                     logger.warning("🔧 Попытка автоматического исправления...")
                     if attempt == 0:
-                        # Пытаемся исправить только один раз
                         if self._repair_database():
                             logger.info("✅ БД исправлена, повторяем подключение...")
-                            time.sleep(1)  # Небольшая задержка перед повтором
+                            time.sleep(1)
                             continue
-                        else:
-                            logger.error("❌ Не удалось исправить поврежденную БД")
-                            raise
-                    else:
-                        raise
+                        logger.error("❌ Не удалось исправить поврежденную БД")
+                    raise
                 
                 # КРИТИЧНО: Обработка ошибки I/O при подключении
                 elif "disk i/o error" in error_str or "i/o error" in error_str:
                     logger.error(f"❌ КРИТИЧНО: Ошибка I/O при подключении к БД: {self.db_path}")
                     logger.error(f"❌ Ошибка: {e}")
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
                     logger.warning("🔧 Попытка автоматического исправления...")
                     if self._is_unc_path():
                         logger.info(self._unc_hint)
                     if attempt == 0:
-                        # Пытаемся исправить только один раз
                         if self._repair_database():
                             logger.info("✅ БД исправлена, повторяем подключение...")
-                            time.sleep(1)  # Небольшая задержка перед повтором
+                            time.sleep(1)
                             continue
-                        else:
-                            logger.error("❌ Не удалось исправить БД после I/O ошибки")
-                            raise
-                    else:
-                        raise
+                        logger.error("❌ Не удалось исправить БД после I/O ошибки")
+                    raise
                 
                 # Обработка "file is not a database"
                 elif "file is not a database" in error_str or ("not a database" in error_str and "unable to open" not in error_str):
@@ -6228,29 +6198,45 @@ class BotsDatabase:
                     logger.info(f"💾 Текущая БД сохранена в: {current_backup}")
             
             # Копируем резервную копию на место основной БД
-            shutil.copy2(backup_path, self.db_path)
-            
+            try:
+                shutil.copy2(backup_path, self.db_path)
+            except OSError as copy_err:
+                err = getattr(copy_err, 'winerror', None)
+                if err in (32, 33, 1224) or 'занят' in str(copy_err).lower() or 'сопоставленной секцией' in str(copy_err):
+                    logger.error("❌ Файл БД занят другим процессом. Остановите bots.py и все воркеры, затем повторите восстановление вручную.")
+                    return False
+                raise
+
             # Восстанавливаем WAL и SHM файлы если есть
             wal_backup = f"{backup_path}-wal"
             shm_backup = f"{backup_path}-shm"
             wal_file = f"{self.db_path}-wal"
             shm_file = f"{self.db_path}-shm"
-            
-            if os.path.exists(wal_backup):
-                shutil.copy2(wal_backup, wal_file)
-                logger.debug("✅ Восстановлен WAL файл")
-            elif os.path.exists(wal_file):
-                # Удаляем старый WAL файл если нет резервной копии
-                os.remove(wal_file)
-                logger.debug("🗑️ Удален старый WAL файл")
-            
-            if os.path.exists(shm_backup):
-                shutil.copy2(shm_backup, shm_file)
-                logger.debug("✅ Восстановлен SHM файл")
-            elif os.path.exists(shm_file):
-                # Удаляем старый SHM файл если нет резервной копии
-                os.remove(shm_file)
-                logger.debug("🗑️ Удален старый SHM файл")
+
+            def _file_in_use(e: Exception) -> bool:
+                err = getattr(e, 'winerror', None)
+                s = str(e).lower()
+                return err in (32, 33, 1224) or 'занят' in s or 'сопоставленной секцией' in s or 'cannot access' in s
+
+            try:
+                if os.path.exists(wal_backup):
+                    shutil.copy2(wal_backup, wal_file)
+                    logger.debug("✅ Восстановлен WAL файл")
+                elif os.path.exists(wal_file):
+                    os.remove(wal_file)
+                    logger.debug("🗑️ Удален старый WAL файл")
+
+                if os.path.exists(shm_backup):
+                    shutil.copy2(shm_backup, shm_file)
+                    logger.debug("✅ Восстановлен SHM файл")
+                elif os.path.exists(shm_file):
+                    os.remove(shm_file)
+                    logger.debug("🗑️ Удален старый SHM файл")
+            except OSError as e:
+                if _file_in_use(e):
+                    logger.error("❌ Файлы БД (-wal/-shm) заняты. Остановите bots.py и воркеры, затем повторите восстановление вручную.")
+                    return False
+                raise
             
             # Проверяем целостность восстановленной БД
             is_ok, error_msg = self._check_integrity()

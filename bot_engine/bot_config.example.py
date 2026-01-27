@@ -414,6 +414,9 @@ class AIConfig:
     AI_PATTERN_SCALER_PATH = 'data/ai/models/pattern_scaler.pkl'
     AI_PATTERN_WEIGHT = 1.2
     AI_PATTERN_MIN_CONFIDENCE = 0.6
+
+    AI_PARAMETER_QUALITY_ENABLED = True
+    AI_ML_RISK_ENABLED = True
     
     # Dynamic Risk Management - умный SL/TP
     AI_RISK_MANAGEMENT_ENABLED = True
