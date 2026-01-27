@@ -19,11 +19,15 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
+try:
+    import utils.sklearn_parallel_config  # noqa: F401 — до импорта sklearn, подавляет UserWarning delayed/Parallel
+except ImportError:
+    pass
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report, mean_squared_error
-import joblib
+import joblib  # только dump/load; Parallel/delayed — оба из sklearn через utils.sklearn_parallel_config (патч joblib)  # только dump/load; Parallel/delayed — через sklearn (патч в utils.sklearn_parallel_config)
 
 from bot_engine.protections import ProtectionState, evaluate_protections
 from bot_engine.ai.filter_utils import apply_entry_filters

@@ -1,12 +1,12 @@
+import os
+import sys
+import utils.sklearn_parallel_config  # noqa: F401 — первым до sklearn (вариант A: оба Parallel/delayed из sklearn)
 import base64
 from io import BytesIO
 from flask import Flask, render_template, jsonify, request
 import threading
 import time
 from datetime import datetime, timedelta
-import os
-import sys
-import utils.sklearn_parallel_config  # noqa: F401 — вариант 1 до импорта sklearn
 import subprocess
 import webbrowser
 from threading import Timer

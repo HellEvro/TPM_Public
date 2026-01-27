@@ -26,6 +26,11 @@ from scipy.stats import linregress
 
 logger = logging.getLogger('AI')
 
+try:
+    import utils.sklearn_parallel_config  # noqa: F401 — до импорта sklearn, подавляет UserWarning delayed/Parallel
+except ImportError:
+    pass
+
 # Проверяем доступность scikit-learn
 try:
     from sklearn.ensemble import RandomForestClassifier

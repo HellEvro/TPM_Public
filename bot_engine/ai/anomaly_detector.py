@@ -8,9 +8,13 @@ Anomaly Detector - обнаружение аномалий (pump/dump)
 import numpy as np
 import logging
 from typing import Dict, Any, List, Optional
+try:
+    import utils.sklearn_parallel_config  # noqa: F401 — до импорта sklearn, подавляет UserWarning delayed/Parallel
+except ImportError:
+    pass
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
-import joblib
+import joblib  # только dump/load; Parallel/delayed — оба из sklearn через utils.sklearn_parallel_config (патч joblib)
 import os
 
 logger = logging.getLogger('AI.AnomalyDetector')

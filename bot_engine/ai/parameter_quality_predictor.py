@@ -17,10 +17,14 @@ import logging
 import numpy as np
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
+try:
+    import utils.sklearn_parallel_config  # noqa: F401 — до импорта sklearn, подавляет UserWarning delayed/Parallel
+except ImportError:
+    pass
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import cross_val_score
-import joblib
+import joblib  # только dump/load; Parallel/delayed — оба из sklearn через utils.sklearn_parallel_config (патч joblib)  # только dump/load; Parallel/delayed — через sklearn (патч в utils.sklearn_parallel_config)
 
 logger = logging.getLogger('AI.ParameterQualityPredictor')
 

@@ -21,6 +21,11 @@ import pickle
 
 logger = logging.getLogger('AI.MLPredictor')
 
+try:
+    import utils.sklearn_parallel_config  # noqa: F401 — до импорта sklearn, подавляет UserWarning delayed/Parallel
+except ImportError:
+    pass
+
 # Проверяем ML библиотеки
 try:
     from sklearn.ensemble import GradientBoostingRegressor

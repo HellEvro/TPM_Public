@@ -2297,7 +2297,7 @@ class BybitExchange(BaseExchange):
                     max_leverage = self.get_max_leverage(symbol)
                     current_leverage = leverage_to_use if leverage_to_use else (original_leverage if original_leverage else None)
                     if max_leverage and current_leverage and current_leverage > max_leverage:
-                        logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Текущее плечо {leverage}x превышает максимум {max_leverage}x. Устанавливаем максимальное...")
+                        logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Текущее плечо {current_leverage}x превышает максимум {max_leverage}x. Устанавливаем максимальное...")
                         leverage_result = self.set_leverage(symbol, int(max_leverage))
                         if leverage_result.get('success'):
                             logger.info(f"[BYBIT_BOT] ✅ {symbol}: Плечо успешно скорректировано до {max_leverage}x. Повторяем размещение ордера...")
