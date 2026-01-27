@@ -251,6 +251,9 @@ class AITrainer:
             logger.debug(f"⚠️ AIPerformanceMonitor недоступен: {e}")
             self._perf_monitor = None
 
+        # Ensemble (LSTM + Transformer + SMC) — ленивая инициализация при AI_USE_ENSEMBLE
+        self._ensemble_predictor = None
+
         # Инициализируем ML модель для предсказания качества параметров (только если включено)
         self.param_quality_predictor = None
         try:
@@ -5644,7 +5647,58 @@ class AITrainer:
             return 'SHORT'
         else:
             return 'WAIT'
-    
+
+    def _get_ensemble_predictor(self):
+        """
+        Ленивое создание EnsemblePredictor (LSTM + Transformer + SMC).
+        Возвращает экземпляр или None при ошибке/отсутствии моделей.
+        """
+        if self._ensemble_predictor is not None:
+            return self._ensemble_predictor
+        try:
+            from bot_engine.bot_config import AIConfig
+            if not getattr(AIConfig, 'AI_USE_ENSEMBLE', False):
+                return None
+        except Exception:
+            return None
+        try:
+            from bot_engine.bot_config import AIConfig
+            from bot_engine.ai.ensemble import EnsemblePredictor
+            lstm_p, trans_p, smc_p = None, None, None
+            lstm_path = getattr(AIConfig, 'AI_LSTM_MODEL_PATH', 'data/ai/models/lstm_predictor.keras')
+            lstm_path_pth = os.path.splitext(lstm_path)[0] + '.pth'
+            if os.path.exists(lstm_path_pth):
+                try:
+                    from bot_engine.ai.lstm_predictor import LSTMPredictor
+                    lstm_scaler = getattr(AIConfig, 'AI_LSTM_SCALER_PATH', 'data/ai/models/lstm_scaler.pkl')
+                    if os.path.exists(lstm_scaler):
+                        lstm_p = LSTMPredictor(model_path=lstm_path_pth, scaler_path=lstm_scaler)
+                except Exception as e:
+                    logger.debug(f"Ensemble: LSTM не загружен: {e}")
+            trans_path = 'data/ai/models/transformer_predictor.pth'
+            if os.path.exists(trans_path):
+                try:
+                    from bot_engine.ai.transformer_predictor import TransformerPredictor
+                    trans_p = TransformerPredictor(model_path=trans_path)
+                except Exception as e:
+                    logger.debug(f"Ensemble: Transformer не загружен: {e}")
+            try:
+                from bot_engine.ai.smart_money_features import SmartMoneyFeatures
+                smc_p = SmartMoneyFeatures()
+            except Exception as e:
+                logger.debug(f"Ensemble: SMC не загружен: {e}")
+            if lstm_p or trans_p or smc_p:
+                self._ensemble_predictor = EnsemblePredictor(
+                    lstm_predictor=lstm_p,
+                    transformer_predictor=trans_p,
+                    smc_features=smc_p,
+                    voting='soft',
+                )
+                return self._ensemble_predictor
+        except Exception as e:
+            logger.debug(f"Ensemble predictor: {e}")
+        return None
+
     def predict(self, symbol: str, market_data: Dict) -> Dict:
         """
         Предсказание торгового сигнала
@@ -5771,6 +5825,24 @@ class AITrainer:
                 'rsi': rsi,
                 'trend': trend
             }
+
+            # Ensemble (LSTM + Transformer + SMC): при AI_USE_ENSEMBLE и наличии candles в market_data
+            try:
+                from bot_engine.bot_config import AIConfig
+                if getattr(AIConfig, 'AI_USE_ENSEMBLE', False):
+                    candles = market_data.get('candles') or []
+                    price = market_data.get('price') or 0
+                    if candles and price:
+                        ep = self._get_ensemble_predictor()
+                        if ep is not None:
+                            ens = ep.predict(candles, float(price))
+                            if ens and 'error' not in ens:
+                                d = ens.get('direction', 0)
+                                result['signal'] = 'LONG' if d == 1 else ('SHORT' if d == -1 else 'WAIT')
+                                result['confidence'] = float(ens.get('confidence', 50)) / 100.0
+                                result['ensemble_used'] = True
+            except Exception as ens_e:
+                logger.debug(f"Ensemble predict: {ens_e}")
 
             # Performance Monitoring: логируем предсказание для метрик
             if getattr(self, '_perf_monitor', None):

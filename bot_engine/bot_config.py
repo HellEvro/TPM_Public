@@ -404,6 +404,9 @@ class AIConfig:
     AI_PATTERN_WEIGHT = 1.2
     AI_PATTERN_MIN_CONFIDENCE = 0.6
 
+    # Ensemble (LSTM + Transformer + SMC) — опционально в predict, когда в market_data есть candles
+    AI_USE_ENSEMBLE = False
+
     # Parameter Quality / ML Risk (sklearn). При False модули не загружаются — меньше
     # использования joblib/sklearn (при спаме UserWarning можно выключить вместе с
     # AI_ANOMALY_DETECTION_ENABLED и AI_PATTERN_ENABLED).
