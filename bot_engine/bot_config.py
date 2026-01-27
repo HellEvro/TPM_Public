@@ -404,9 +404,6 @@ class AIConfig:
     AI_PATTERN_WEIGHT = 1.2
     AI_PATTERN_MIN_CONFIDENCE = 0.6
 
-    # Ensemble (LSTM + Transformer + SMC) — опционально в predict, когда в market_data есть candles
-    AI_USE_ENSEMBLE = False
-
     # Parameter Quality / ML Risk (sklearn). При False модули не загружаются — меньше
     # использования joblib/sklearn (при спаме UserWarning можно выключить вместе с
     # AI_ANOMALY_DETECTION_ENABLED и AI_PATTERN_ENABLED).
@@ -426,6 +423,37 @@ class AIConfig:
     AI_LOG_PREDICTIONS = True
     AI_LOG_ANOMALIES = True
     AI_LOG_PATTERNS = True
+
+    # ------------------------------------------
+    # Sentiment Analysis (дополнение, можно отключить)
+    # ------------------------------------------
+    AI_SENTIMENT_ENABLED = False
+    AI_SENTIMENT_WEIGHT = 0.2  # вес sentiment в решении (0.0–1.0)
+    AI_SENTIMENT_USE_TRANSFORMERS = False  # True = transformers, False = rule-based
+    AI_SENTIMENT_TWITTER_API_KEY = ""  # опционально, для Twitter API
+    AI_SENTIMENT_REDDIT_CLIENT_ID = ""
+    AI_SENTIMENT_REDDIT_CLIENT_SECRET = ""
+    AI_SENTIMENT_NEWS_API_KEY = ""  # CryptoCompare / News API
+
+    # ------------------------------------------
+    # On-Chain Analysis (дополнение, можно отключить)
+    # ------------------------------------------
+    AI_ONCHAIN_ENABLED = False
+    AI_ONCHAIN_WEIGHT = 0.15  # вес on-chain в решении (0.0–1.0)
+    AI_ONCHAIN_GLASSNODE_API_KEY = ""
+    AI_ONCHAIN_WHALE_ALERT_API_KEY = ""
+    AI_ONCHAIN_TRACK_WHALES = True  # киты
+    AI_ONCHAIN_TRACK_NETWORK_METRICS = True  # active addresses, tx count
+
+    # ------------------------------------------
+    # Прочие опциональные фичи (вкл/выкл, без них всё работает)
+    # ------------------------------------------
+    AI_USE_BAYESIAN = True           # оптимизатор: Bayesian vs Grid Search
+    AI_USE_ENSEMBLE = False          # ансамбль LSTM+Transformer+SMC в predict (нужны candles в market_data)
+    AI_USE_TRANSFORMER = False       # учитывать Transformer в ансамбле (если есть модель)
+    AI_DRIFT_DETECTION_ENABLED = True   # автотренер: дрифт данных → переобучение
+    AI_PERFORMANCE_MONITORING_ENABLED = True  # логирование предсказаний для метрик
+    AI_RL_ENABLED = False            # RL-агент (заглушка, интеграция позже)
     
     # ==========================================
     # АВТОМАТИЧЕСКОЕ ОБУЧЕНИЕ

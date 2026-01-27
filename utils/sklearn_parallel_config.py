@@ -25,6 +25,10 @@ set_config() в воркеры.
 
 Воркеры loky — отдельные процессы, наш патч там не выполняется.
 LOKY_MAX_CPU_COUNT=1 по умолчанию, чтобы не плодить воркеры.
+
+Когда INFOBOT_SKLEARN_PARALLEL не включён: подменяем Parallel на подкласс с
+backend='sequential'. Все задачи выполняются в одном процессе, конфиг всегда
+прокидывается — UserWarning про delayed/Parallel не возникает.
 """
 from __future__ import annotations
 
@@ -34,7 +38,8 @@ import sys
 # Исключаем воркеры loky — не создаём дочерние процессы (предупреждение идёт из воркеров).
 # По умолчанию ВСЕГДА 1 воркер, чтобы полностью убрать спам UserWarning про delayed/Parallel.
 # Чтобы снова включить параллелизм: INFOBOT_SKLEARN_PARALLEL=1 и LOKY_MAX_CPU_COUNT=N.
-if os.environ.get("INFOBOT_SKLEARN_PARALLEL", "").strip().lower() not in ("1", "true", "yes", "on"):
+_use_parallel = os.environ.get("INFOBOT_SKLEARN_PARALLEL", "").strip().lower() in ("1", "true", "yes", "on")
+if not _use_parallel:
     os.environ["LOKY_MAX_CPU_COUNT"] = "1"
 else:
     _n = os.cpu_count()
@@ -55,7 +60,20 @@ import joblib
 # Импорт sklearn.utils.parallel выполняется до патча — внутренний код sklearn
 # при последующих «from joblib import Parallel, delayed» должен получать уже наши классы.
 # Поэтому конфиг обязан загружаться первым (app.py, ai.py, bots.py + sys.path).
-from sklearn.utils.parallel import Parallel, delayed
+from sklearn.utils.parallel import Parallel as _SklearnParallel
+from sklearn.utils.parallel import delayed
+
+# При отключённом параллелизме принудительно backend='sequential': все задачи в одном процессе,
+# конфиг всегда прокидывается, UserWarning про delayed/Parallel не возникает (нет воркеров).
+if not _use_parallel:
+
+    class Parallel(_SklearnParallel):
+        def __init__(self, *args, **kwargs):
+            if "backend" not in kwargs:
+                kwargs["backend"] = "sequential"
+            super().__init__(*args, **kwargs)
+else:
+    Parallel = _SklearnParallel
 
 setattr(joblib, "Parallel", Parallel)
 setattr(joblib, "delayed", delayed)
