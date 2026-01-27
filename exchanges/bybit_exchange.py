@@ -802,6 +802,46 @@ class BybitExchange(BaseExchange):
                 'symbol': symbol,
                 'error': str(e)
             }
+    
+    def get_max_leverage(self, symbol):
+        """
+        Получает максимальное кредитное плечо для символа из risk limit
+        
+        Args:
+            symbol (str): Символ торговой пары (например, 'BTC' или 'L3')
+            
+        Returns:
+            float: Максимальное кредитное плечо или None в случае ошибки
+        """
+        try:
+            full_symbol = f"{symbol}USDT"
+            response = self.client.get_risk_limit(
+                category="linear",
+                symbol=full_symbol
+            )
+            
+            if response.get('retCode') == 0 and response.get('result', {}).get('list'):
+                risk_limits = response['result']['list']
+                # Находим максимальное кредитное плечо среди всех risk limit tiers
+                max_leverage = 0
+                for tier in risk_limits:
+                    tier_leverage = float(tier.get('maxLeverage', 0))
+                    if tier_leverage > max_leverage:
+                        max_leverage = tier_leverage
+                
+                if max_leverage > 0:
+                    logger.debug(f"[BYBIT_BOT] 📊 {symbol}: Максимальное кредитное плечо: {max_leverage}x")
+                    return max_leverage
+                else:
+                    logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Не удалось определить максимальное кредитное плечо из risk limit")
+                    return None
+            else:
+                logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Не удалось получить risk limit: {response.get('retMsg', 'Unknown error')}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"[BYBIT_BOT] ❌ {symbol}: Ошибка получения максимального кредитного плеча: {e}")
+            return None
 
     def close_position(self, symbol, size, side, order_type="Limit"):
         try:
@@ -2016,6 +2056,7 @@ class BybitExchange(BaseExchange):
             # ⚠️ КРИТИЧНО: leverage передается как именованный параметр, а не через kwargs!
             leverage_set_successfully = False
             leverage_to_use = None
+            original_leverage = leverage  # Сохраняем исходное значение для обработки ошибок
             if leverage:
                 try:
                     leverage_int = int(leverage)
@@ -2248,7 +2289,35 @@ class BybitExchange(BaseExchange):
                 # Извлекаем retCode и retMsg из строки ошибки
                 if "retCode" in error_str and "retMsg" in error_str:
                     logger.debug(f"[BYBIT_BOT] 📊 {symbol}: Ошибка содержит информацию об ответе: {error_str}")
-                raise api_error  # Пробрасываем дальше
+                
+                # ✅ Обрабатываем ошибку превышения максимального кредитного плеча (110013)
+                if '110013' in error_str or 'maxLeverage' in error_str.lower():
+                    logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Обнаружена ошибка превышения максимального кредитного плеча (110013)")
+                    # Пытаемся получить максимальное кредитное плечо и установить его
+                    max_leverage = self.get_max_leverage(symbol)
+                    current_leverage = leverage_to_use if leverage_to_use else (original_leverage if original_leverage else None)
+                    if max_leverage and current_leverage and current_leverage > max_leverage:
+                        logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Текущее плечо {leverage}x превышает максимум {max_leverage}x. Устанавливаем максимальное...")
+                        leverage_result = self.set_leverage(symbol, int(max_leverage))
+                        if leverage_result.get('success'):
+                            logger.info(f"[BYBIT_BOT] ✅ {symbol}: Плечо успешно скорректировано до {max_leverage}x. Повторяем размещение ордера...")
+                            # Небольшая задержка для применения изменений
+                            import time
+                            time.sleep(0.5)
+                            # Повторяем попытку размещения ордера
+                            try:
+                                response = self.client.place_order(**order_params)
+                                logger.debug(f"[BYBIT_BOT] ✅ {symbol}: ПОЛУЧЕН ОТВЕТ от Bybit API после корректировки: retCode={response.get('retCode')}, retMsg={response.get('retMsg')}")
+                            except Exception as retry_error:
+                                logger.error(f"[BYBIT_BOT] ❌ {symbol}: Ошибка при повторной попытке размещения ордера: {retry_error}")
+                                raise retry_error
+                        else:
+                            logger.error(f"[BYBIT_BOT] ❌ {symbol}: Не удалось установить максимальное кредитное плечо: {leverage_result.get('message')}")
+                            raise api_error
+                    else:
+                        raise api_error
+                else:
+                    raise api_error  # Пробрасываем дальше
             
             if response['retCode'] == 0:
                 # Вычисляем количество в USDT для возврата
@@ -2267,6 +2336,52 @@ class BybitExchange(BaseExchange):
                 # Извлекаем код ошибки из ответа
                 error_code = response.get('retCode', '')
                 error_msg = response.get('retMsg', 'unknown error')
+                
+                # ✅ Обрабатываем ошибку превышения максимального кредитного плеча (110013)
+                if error_code == 110013 or 'maxLeverage' in error_msg.lower():
+                    logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Ошибка превышения максимального кредитного плеча (110013)")
+                    # Пытаемся получить максимальное кредитное плечо и установить его
+                    max_leverage = self.get_max_leverage(symbol)
+                    current_leverage = leverage_to_use if leverage_to_use else (original_leverage if original_leverage else None)
+                    if max_leverage and current_leverage and current_leverage > max_leverage:
+                        logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Текущее плечо {current_leverage}x превышает максимум {max_leverage}x. Устанавливаем максимальное...")
+                        leverage_result = self.set_leverage(symbol, int(max_leverage))
+                        if leverage_result.get('success'):
+                            logger.info(f"[BYBIT_BOT] ✅ {symbol}: Плечо успешно скорректировано до {max_leverage}x. Повторяем размещение ордера...")
+                            # Небольшая задержка для применения изменений
+                            import time
+                            time.sleep(0.5)
+                            # Повторяем попытку размещения ордера
+                            try:
+                                retry_response = self.client.place_order(**order_params)
+                                if retry_response.get('retCode') == 0:
+                                    qty_usdt_actual = (qty_in_coins * current_price) if (qty_in_coins and current_price and current_price > 0) else requested_qty_usdt
+                                    logger.info(f"[BYBIT_BOT] ✅ Ордер успешно размещён после корректировки плеча: {qty_in_coins} монет = {qty_usdt_actual:.4f} USDT @ {current_price}")
+                                    return {
+                                        'success': True,
+                                        'order_id': retry_response['result']['orderId'],
+                                        'message': f'{order_type.title()} ордер успешно размещён (плечо скорректировано до {max_leverage}x)',
+                                        'price': price or current_price or 0,
+                                        'quantity': qty_in_coins,
+                                        'quantity_usdt': qty_usdt_actual
+                                    }
+                                else:
+                                    logger.error(f"[BYBIT_BOT] ❌ {symbol}: Ошибка при повторной попытке размещения ордера: {retry_response.get('retMsg')}")
+                                    return {
+                                        'success': False,
+                                        'message': f"Ошибка размещения ордера после корректировки плеча: {retry_response.get('retMsg')}",
+                                        'error_code': str(retry_response.get('retCode', ''))
+                                    }
+                            except Exception as retry_error:
+                                logger.error(f"[BYBIT_BOT] ❌ {symbol}: Ошибка при повторной попытке размещения ордера: {retry_error}")
+                                return {
+                                    'success': False,
+                                    'message': f"Ошибка размещения ордера после корректировки плеча: {str(retry_error)}",
+                                    'error_code': '110013'
+                                }
+                        else:
+                            logger.error(f"[BYBIT_BOT] ❌ {symbol}: Не удалось установить максимальное кредитное плечо: {leverage_result.get('message')}")
+                
                 return {
                     'success': False,
                     'message': f"Ошибка размещения ордера: {error_msg}",
@@ -2285,6 +2400,52 @@ class BybitExchange(BaseExchange):
                 match = re.search(r'ErrCode:\s*(\d+)', error_str)
                 if match:
                     error_code = match.group(1)
+            
+            # ✅ Обрабатываем ошибку превышения максимального кредитного плеча (110013) в исключении
+            if error_code == '110013' or '110013' in error_str or 'maxLeverage' in error_str.lower():
+                logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Обнаружена ошибка превышения максимального кредитного плеча (110013) в исключении")
+                # Пытаемся получить максимальное кредитное плечо и установить его
+                max_leverage = self.get_max_leverage(symbol)
+                current_leverage = leverage_to_use if leverage_to_use else (original_leverage if original_leverage else None)
+                if max_leverage and current_leverage and current_leverage > max_leverage:
+                    logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Текущее плечо {leverage}x превышает максимум {max_leverage}x. Устанавливаем максимальное...")
+                    leverage_result = self.set_leverage(symbol, int(max_leverage))
+                    if leverage_result.get('success'):
+                        logger.info(f"[BYBIT_BOT] ✅ {symbol}: Плечо успешно скорректировано до {max_leverage}x. Повторяем размещение ордера...")
+                        # Небольшая задержка для применения изменений
+                        import time
+                        time.sleep(0.5)
+                        # Повторяем попытку размещения ордера
+                        try:
+                            retry_response = self.client.place_order(**order_params)
+                            if retry_response.get('retCode') == 0:
+                                qty_usdt_actual = (qty_in_coins * current_price) if (qty_in_coins and current_price and current_price > 0) else requested_qty_usdt
+                                logger.info(f"[BYBIT_BOT] ✅ Ордер успешно размещён после корректировки плеча: {qty_in_coins} монет = {qty_usdt_actual:.4f} USDT @ {current_price}")
+                                return {
+                                    'success': True,
+                                    'order_id': retry_response['result']['orderId'],
+                                    'message': f'{order_type.title()} ордер успешно размещён (плечо скорректировано до {max_leverage}x)',
+                                    'price': price or current_price or 0,
+                                    'quantity': qty_in_coins,
+                                    'quantity_usdt': qty_usdt_actual
+                                }
+                            else:
+                                logger.error(f"[BYBIT_BOT] ❌ {symbol}: Ошибка при повторной попытке размещения ордера: {retry_response.get('retMsg')}")
+                                return {
+                                    'success': False,
+                                    'message': f"Ошибка размещения ордера после корректировки плеча: {retry_response.get('retMsg')}",
+                                    'error_code': str(retry_response.get('retCode', ''))
+                                }
+                        except Exception as retry_error:
+                            logger.error(f"[BYBIT_BOT] ❌ {symbol}: Ошибка при повторной попытке размещения ордера: {retry_error}")
+                            return {
+                                'success': False,
+                                'message': f"Ошибка размещения ордера после корректировки плеча: {str(retry_error)}",
+                                'error_code': '110013'
+                            }
+                    else:
+                        logger.error(f"[BYBIT_BOT] ❌ {symbol}: Не удалось установить максимальное кредитное плечо: {leverage_result.get('message')}")
+            
             return {
                 'success': False,
                 'message': f"Ошибка размещения ордера: {error_str}",
@@ -2659,6 +2820,7 @@ class BybitExchange(BaseExchange):
             dict: Результат установки плеча с полями:
                 - success (bool): Успешность операции
                 - message (str): Сообщение о результате
+                - actual_leverage (int, optional): Фактически установленное плечо (если было ограничено)
         """
         try:
             # Проверяем валидность плеча
@@ -2668,6 +2830,15 @@ class BybitExchange(BaseExchange):
                     'success': False,
                     'message': f'Недопустимое значение плеча: {leverage}. Допустимый диапазон: 1-125'
                 }
+            
+            # ✅ Получаем максимальное кредитное плечо для символа из risk limit
+            max_leverage = self.get_max_leverage(symbol)
+            original_leverage = leverage
+            
+            # Если максимальное кредитное плечо меньше запрошенного, ограничиваем его
+            if max_leverage and leverage > max_leverage:
+                leverage = int(max_leverage)
+                logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Запрошенное плечо {original_leverage}x превышает максимум {max_leverage}x. Ограничиваем до {leverage}x")
             
             # Получаем текущее плечо
             current_leverage = None
@@ -2683,10 +2854,13 @@ class BybitExchange(BaseExchange):
             # Если плечо уже установлено на нужное значение, пропускаем
             if current_leverage and int(current_leverage) == leverage:
                 logger.debug(f"[BYBIT_BOT] ✅ {symbol}: Плечо уже установлено на {leverage}x")
-                return {
+                result = {
                     'success': True,
                     'message': f'Плечо уже установлено на {leverage}x'
                 }
+                if leverage != original_leverage:
+                    result['actual_leverage'] = leverage
+                return result
             
             # Устанавливаем плечо через API Bybit
             response = self.client.set_leverage(
@@ -2698,19 +2872,52 @@ class BybitExchange(BaseExchange):
             
             if response.get('retCode') == 0:
                 logger.info(f"[BYBIT_BOT] ✅ {symbol}: Плечо установлено на {leverage}x")
-                return {
+                result = {
                     'success': True,
                     'message': f'Плечо успешно установлено на {leverage}x'
                 }
+                if leverage != original_leverage:
+                    result['actual_leverage'] = leverage
+                    result['message'] = f'Плечо установлено на {leverage}x (ограничено с {original_leverage}x до максимума)'
+                return result
             else:
                 error_msg = response.get('retMsg', 'Unknown error')
-                logger.error(f"[BYBIT_BOT] ❌ {symbol}: Ошибка установки плеча: {error_msg}")
-                return {
-                    'success': False,
-                    'message': f'Ошибка установки плеча: {error_msg}'
-                }
+                error_code = response.get('retCode', '')
+                
+                # ✅ Обрабатываем ошибку превышения максимального кредитного плеча (110013)
+                if error_code == 110013 or 'maxLeverage' in error_msg.lower():
+                    # Пытаемся получить максимальное кредитное плечо и установить его
+                    if not max_leverage:
+                        max_leverage = self.get_max_leverage(symbol)
+                    
+                    if max_leverage and max_leverage < leverage:
+                        logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Ошибка установки плеча {leverage}x. Пытаемся установить максимальное {max_leverage}x")
+                        # Рекурсивно вызываем себя с ограниченным плечом
+                        return self.set_leverage(symbol, int(max_leverage))
+                    else:
+                        logger.error(f"[BYBIT_BOT] ❌ {symbol}: Ошибка установки плеча: {error_msg}")
+                        return {
+                            'success': False,
+                            'message': f'Ошибка установки плеча: {error_msg}'
+                        }
+                else:
+                    logger.error(f"[BYBIT_BOT] ❌ {symbol}: Ошибка установки плеча: {error_msg}")
+                    return {
+                        'success': False,
+                        'message': f'Ошибка установки плеча: {error_msg}'
+                    }
                 
         except Exception as e:
+            error_str = str(e)
+            # ✅ Обрабатываем ошибку превышения максимального кредитного плеча в исключении
+            if '110013' in error_str or 'maxLeverage' in error_str.lower():
+                logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Обнаружена ошибка превышения максимального кредитного плеча. Пытаемся получить и установить максимум...")
+                max_leverage = self.get_max_leverage(symbol)
+                if max_leverage and max_leverage < leverage:
+                    logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Пытаемся установить максимальное кредитное плечо {max_leverage}x вместо {leverage}x")
+                    # Рекурсивно вызываем себя с ограниченным плечом
+                    return self.set_leverage(symbol, int(max_leverage))
+            
             logger.error(f"[BYBIT_BOT] ❌ {symbol}: Ошибка установки плеча: {e}")
             return {
                 'success': False,

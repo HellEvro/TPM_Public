@@ -34,8 +34,13 @@ _sk = "ignore::UserWarning:sklearn.utils.parallel"
 if _sk not in _cur:
     os.environ["PYTHONWARNINGS"] = _sk if not _cur.strip() else f"{_cur},{_sk}"
 
-# На проблемном ПК (Win11 и т.п.): исключаем воркеры loky — не создаём дочерние процессы.
+# Исключаем воркеры loky — не создаём дочерние процессы:
+# - INFOBOT_SKLEARN_SINGLE_THREAD=1: принудительно;
+# - cpu_count <= 4 (например Win11 мини-ПК): авто, т.к. на малых ядрах чаще спам/lock.
+_n = os.cpu_count()
 if os.environ.get("INFOBOT_SKLEARN_SINGLE_THREAD", "").strip().lower() in ("1", "true", "yes", "on"):
+    os.environ["LOKY_MAX_CPU_COUNT"] = "1"
+elif (_n is not None and _n <= 4) and not os.environ.get("LOKY_MAX_CPU_COUNT", "").strip():
     os.environ["LOKY_MAX_CPU_COUNT"] = "1"
 
 # Первый запуск sklearn→scipy может занимать 5–15+ с (компиляция/загрузка). Чтобы не казалось, что «завис»:
