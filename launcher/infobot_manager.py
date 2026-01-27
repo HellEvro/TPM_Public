@@ -1881,19 +1881,45 @@ class InfoBotManager(tk.Tk):
                 "[git] Локальные изменения будут перезаписаны состоянием origin/main (игнорируются только файлы из .gitignore).",
                 channel="system",
             )
-            # Сначала сбрасываем индекс и рабочее дерево к HEAD — убирает ошибку "Entry not uptodate"
-            # (когда индекс расходится с рабочим деревом, например после изменения bot_config.py).
+            # Снимаем skip-worktree с bot_config.py, иначе "Entry not uptodate" при reset
+            _skip_worktree_path = "bot_engine/bot_config.py"
+            try:
+                subprocess.run(
+                    ["git", "update-index", "--no-skip-worktree", _skip_worktree_path],
+                    cwd=str(PROJECT_ROOT),
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    check=False,
+                    timeout=5,
+                )
+            except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+                pass
+            try:
+                subprocess.run(
+                    ["git", "update-index", "--refresh"],
+                    cwd=str(PROJECT_ROOT),
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    check=False,
+                    timeout=10,
+                )
+            except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+                pass
             try:
                 self._stream_command("git reset (подготовка)", ["git", "reset", "--hard", "HEAD"])
             except subprocess.CalledProcessError:
-                pass  # Продолжаем попытку сброса на origin/main
+                pass
             try:
                 self._stream_command("git reset", ["git", "reset", "--hard", "origin/main"])
             except subprocess.CalledProcessError:
                 self.log(
                     "[git reset] Не удалось сбросить на origin/main. Если было «Entry not uptodate», "
-                    "закройте редакторы, откройте репозиторий в терминале и выполните: "
-                    "git reset --hard HEAD, затем git reset --hard origin/main.",
+                    "в терминале в каталоге репозитория выполните:\n"
+                    "  git update-index --no-skip-worktree bot_engine/bot_config.py\n"
+                    "  git update-index --refresh\n"
+                    "  git reset --hard origin/main",
                     channel="system",
                 )
                 return
