@@ -17,6 +17,7 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+import numpy as np
 from bot_engine.bot_config import AIConfig
 
 logger = logging.getLogger('AI.AutoTrainer')
@@ -27,6 +28,13 @@ try:
     MLFLOW_AVAILABLE = True
 except ImportError:
     MLFLOW_AVAILABLE = False
+
+# Drift Detection — опционально (AI_DRIFT_DETECTION_ENABLED)
+try:
+    from bot_engine.ai.drift_detector import DataDriftDetector
+    _DRIFT_DETECTOR_AVAILABLE = True
+except ImportError:
+    _DRIFT_DETECTOR_AVAILABLE = False
 
 
 class ExperimentTracker:
@@ -271,6 +279,11 @@ class AutoTrainer:
         self.train_anomaly_script = self.scripts_dir / 'train_anomaly_on_real_data.py'
         self.train_lstm_script = self.scripts_dir / 'train_lstm_predictor.py'
         self.train_pattern_script = self.scripts_dir / 'train_pattern_detector.py'
+
+        self._drift_retrain_requested = False
+        self._drift_ref_path = Path('data/ai/drift_reference.npy')
+        self._drift_min_samples = 100
+        self._drift_threshold_pct = 20.0
     
     def start(self):
         """Запускает автоматический тренер в фоновом режиме"""
@@ -331,19 +344,20 @@ class AutoTrainer:
                 if self._should_update_data(current_time) and not self._data_update_in_progress:
                     data_updated = self._update_data()
                 
-                # 2. Проверяем нужно ли переобучить модель
-                # ВАЖНО: Переобучаем только если данные НЕ обновлялись или обновились успешно
-                if self._should_retrain(current_time) and not self._training_in_progress:
-                    if not data_updated or data_updated == True:  # Данные не обновлялись или обновились успешно
-                        self._retrain()
+                if getattr(AIConfig, 'AI_DRIFT_DETECTION_ENABLED', True):
+                    self._check_drift_and_trigger_retrain()
+
+                if (self._should_retrain(current_time) or self._drift_retrain_requested) and not self._training_in_progress:
+                    if not data_updated or data_updated == True:
+                        ok = self._retrain()
+                        if ok and self._drift_retrain_requested:
+                            self._drift_retrain_requested = False
                     else:
                         logger.warning("[AutoTrainer] ⚠️ Переобучение отложено из-за ошибки обновления данных")
                 
-                # 3. УЛУЧШЕНИЕ: Проверяем нужно ли переобучить основные модели на реальных сделках
                 if not self._retrain_check_in_progress:
                     self._check_real_trades_retrain()
                 
-                # Спим до следующей проверки (каждые 10 минут)
                 time.sleep(600)
                 
             except KeyboardInterrupt:
@@ -705,12 +719,10 @@ class AutoTrainer:
                 tracker.set_tag('status', 'SUCCESS')
                 tracker.end_run('FINISHED')
                 
-                # Проверяем качество модели после обучения
                 self._check_model_quality_after_training()
-                
-                # Перезагружаем модели в AI Manager
+                if getattr(AIConfig, 'AI_DRIFT_DETECTION_ENABLED', True):
+                    self._save_drift_reference_after_retrain()
                 self._reload_models()
-                
                 return True
             else:
                 logger.warning("[AutoTrainer] ⚠️ Не все модели обучены успешно")
@@ -734,7 +746,70 @@ class AutoTrainer:
             return False
         finally:
             self._training_in_progress = False
-    
+
+    def _get_candles_matrix_for_drift(self, ai_db, max_symbols: int = 10, max_candles_per_symbol: int = 200):
+        try:
+            data = ai_db.get_all_candles_dict('6h', max_symbols=max_symbols, max_candles_per_symbol=max_candles_per_symbol)
+            rows = []
+            for _sym, candles in (data or {}).items():
+                for c in candles:
+                    rows.append([float(c.get('open', 0)), float(c.get('high', 0)), float(c.get('low', 0)),
+                                 float(c.get('close', 0)), float(c.get('volume', 0))])
+            return np.array(rows, dtype=np.float64) if rows else None
+        except Exception as e:
+            logger.debug(f"[AutoTrainer] Ошибка получения матрицы для дрифта: {e}")
+            return None
+
+    def _check_drift_and_trigger_retrain(self) -> None:
+        if not getattr(AIConfig, 'AI_DRIFT_DETECTION_ENABLED', True) or not _DRIFT_DETECTOR_AVAILABLE:
+            return
+        try:
+            from bot_engine.ai.ai_database import get_ai_database
+            ai_db = get_ai_database()
+            if not ai_db:
+                return
+            current = self._get_candles_matrix_for_drift(ai_db)
+            if current is None or len(current) < self._drift_min_samples:
+                return
+            ref_path = self._drift_ref_path
+            if ref_path.exists():
+                try:
+                    ref = np.load(ref_path, allow_pickle=False)
+                except Exception:
+                    return
+                if ref.size == 0 or (ref.ndim == 2 and ref.shape[0] < self._drift_min_samples):
+                    return
+                det = DataDriftDetector(reference_data=ref, threshold=0.05, min_samples=self._drift_min_samples)
+                res = det.detect_drift(current)
+                if res.drift_detected and res.drifted_features:
+                    n_feat = current.shape[1] if current.ndim > 1 else 1
+                    drift_pct = len(res.drifted_features) / float(n_feat) * 100.0
+                    if drift_pct >= self._drift_threshold_pct:
+                        self._drift_retrain_requested = True
+                        logger.info(f"[AutoTrainer] 📊 Data drift: {drift_pct:.0f}% признаков — запланировано переобучение")
+            else:
+                self._drift_ref_path.parent.mkdir(parents=True, exist_ok=True)
+                np.save(ref_path, current, allow_pickle=False)
+                logger.debug("[AutoTrainer] Сохранён первичный drift reference")
+        except Exception as e:
+            logger.debug(f"[AutoTrainer] Проверка дрифта пропущена: {e}")
+
+    def _save_drift_reference_after_retrain(self) -> None:
+        if not getattr(AIConfig, 'AI_DRIFT_DETECTION_ENABLED', True):
+            return
+        try:
+            from bot_engine.ai.ai_database import get_ai_database
+            ai_db = get_ai_database()
+            if not ai_db:
+                return
+            current = self._get_candles_matrix_for_drift(ai_db)
+            if current is not None and len(current) >= self._drift_min_samples:
+                self._drift_ref_path.parent.mkdir(parents=True, exist_ok=True)
+                np.save(self._drift_ref_path, current, allow_pickle=False)
+                logger.info("[AutoTrainer] ✅ Drift reference обновлён после переобучения")
+        except Exception as e:
+            logger.debug(f"[AutoTrainer] Не удалось обновить drift reference: {e}")
+
     def _train_model(self, script_path: Path, model_name: str, timeout: int = 600, args: list = None) -> bool:
         """
         Обучает конкретную модель

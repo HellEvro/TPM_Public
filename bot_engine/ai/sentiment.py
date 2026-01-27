@@ -230,7 +230,8 @@ class CryptoSentimentCollector:
     
     def get_aggregated_sentiment(self, symbol: str) -> Dict:
         """
-        Агрегирует sentiment из всех источников
+        Агрегирует sentiment из всех источников.
+        Если AI_SENTIMENT_ENABLED=False, возвращает neutral с confidence 0.
         
         Args:
             symbol: Символ монеты (например, BTC, ETH)
@@ -238,6 +239,16 @@ class CryptoSentimentCollector:
         Returns:
             Агрегированный sentiment
         """
+        if not _sentiment_enabled():
+            return {
+                'symbol': symbol,
+                'sentiment': 'neutral',
+                'score': 0,
+                'confidence': 0,
+                'sources': [],
+                'timestamp': datetime.now().isoformat(),
+                'enabled': False,
+            }
         sources = [
             self.get_twitter_sentiment(symbol),
             self.get_reddit_sentiment(symbol),
@@ -284,22 +295,39 @@ class CryptoSentimentCollector:
         }
 
 
+def _sentiment_enabled() -> bool:
+    """Проверка, включён ли Sentiment Analysis в конфиге."""
+    try:
+        from bot_engine.bot_config import AIConfig
+        return bool(getattr(AIConfig, 'AI_SENTIMENT_ENABLED', False))
+    except Exception:
+        return False
+
+
 def integrate_sentiment_signal(
     symbol: str,
     current_signal: Dict,
-    sentiment_weight: float = 0.2
+    sentiment_weight: Optional[float] = None
 ) -> Dict:
     """
-    Интегрирует sentiment в торговый сигнал
+    Интегрирует sentiment в торговый сигнал.
+    Если AI_SENTIMENT_ENABLED=False, возвращает current_signal без изменений (sentiment_used=False).
     
     Args:
         symbol: Символ монеты
         current_signal: Текущий торговый сигнал
-        sentiment_weight: Вес sentiment в финальном решении
+        sentiment_weight: Вес sentiment (0–1). Если None — из AIConfig.AI_SENTIMENT_WEIGHT
     
     Returns:
         Обновленный сигнал
     """
+    if not _sentiment_enabled():
+        return {**current_signal, 'sentiment_used': False, 'sentiment_data': None}
+    try:
+        from bot_engine.bot_config import AIConfig
+        w = sentiment_weight if sentiment_weight is not None else getattr(AIConfig, 'AI_SENTIMENT_WEIGHT', 0.2)
+    except Exception:
+        w = 0.2
     collector = CryptoSentimentCollector()
     sentiment = collector.get_aggregated_sentiment(symbol)
     
@@ -314,8 +342,8 @@ def integrate_sentiment_signal(
     sentiment_score = sentiment['score'] * 100  # Масштабируем к -100..100
     
     combined_score = (
-        original_score * (1 - sentiment_weight) +
-        sentiment_score * sentiment_weight
+        original_score * (1 - w) +
+        sentiment_score * w
     )
     
     # Обновляем сигнал

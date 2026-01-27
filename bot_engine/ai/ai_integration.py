@@ -17,6 +17,50 @@ import pandas as pd
 
 logger = logging.getLogger('AI.Integration')
 
+
+def _score_from_signal(signal: str, confidence: float) -> float:
+    """Score -100..100 из signal + confidence."""
+    if signal == 'LONG':
+        return confidence * 100.0
+    if signal == 'SHORT':
+        return -confidence * 100.0
+    return 0.0
+
+
+def _signal_from_score(score: float) -> str:
+    """LONG/SHORT/WAIT из score (пороги ±40)."""
+    if score >= 40:
+        return 'LONG'
+    if score <= -40:
+        return 'SHORT'
+    return 'WAIT'
+
+
+def _integrate_sentiment_onchain(symbol: str, signal: str, confidence: float) -> tuple:
+    """
+    Интегрирует sentiment и on-chain в сигнал (опционально по конфигу).
+    Возвращает (signal, confidence, sentiment_used, onchain_used).
+    """
+    current = {'signal': signal, 'confidence': confidence, 'score': _score_from_signal(signal, confidence)}
+    sentiment_used = onchain_used = False
+    try:
+        from bot_engine.ai.sentiment import integrate_sentiment_signal
+        current = integrate_sentiment_signal(symbol, current)
+        sentiment_used = current.get('sentiment_used', False)
+    except Exception as e:
+        logger.debug(f"integrate_sentiment_signal: {e}")
+    try:
+        from bot_engine.ai.onchain_analyzer import integrate_onchain_signal
+        current = integrate_onchain_signal(symbol, current)
+        onchain_used = current.get('onchain_used', False)
+    except Exception as e:
+        logger.debug(f"integrate_onchain_signal: {e}")
+    score = current.get('score', _score_from_signal(signal, confidence))
+    out_signal = _signal_from_score(score)
+    out_conf = min(1.0, abs(score) / 100.0) if score else confidence
+    return (out_signal, out_conf, sentiment_used, onchain_used)
+
+
 # Глобальный экземпляр AI системы
 _ai_system = None
 _ai_data_storage = None
@@ -258,11 +302,10 @@ def apply_ai_prediction_to_signal(
         
         ai_signal = ai_prediction.get('signal', 'WAIT')
         ai_confidence = ai_prediction.get('confidence', 0)
-        
-        # Минимальная уверенность для применения AI сигнала
+        ai_signal, ai_confidence, sentiment_used, onchain_used = _integrate_sentiment_onchain(symbol, ai_signal, ai_confidence)
+
         min_confidence = config.get('ai_min_confidence', 0.7) if config else 0.7
-        
-        # Если уверенность AI высокая, используем его сигнал
+
         if ai_confidence >= min_confidence:
             return {
                 'signal': ai_signal,
@@ -270,15 +313,18 @@ def apply_ai_prediction_to_signal(
                 'ai_confidence': ai_confidence,
                 'ai_prediction': ai_prediction,
                 'original_signal': original_signal,
+                'sentiment_used': sentiment_used,
+                'onchain_used': onchain_used,
                 'reason': f'AI signal used (confidence: {ai_confidence:.2%})'
             }
-        
-        # Если уверенность низкая, используем оригинальный сигнал
+
         return {
             'signal': original_signal,
             'ai_used': True,
             'ai_confidence': ai_confidence,
             'ai_prediction': ai_prediction,
+            'sentiment_used': sentiment_used,
+            'onchain_used': onchain_used,
             'reason': f'Original signal used (AI confidence too low: {ai_confidence:.2%})'
         }
         
@@ -351,6 +397,8 @@ def should_open_position_with_ai(
             'should_open': True,
             'ai_used': False,
             'smc_used': False,
+            'sentiment_used': False,
+            'onchain_used': False,
             'reason': 'Default allow',
             'timestamp': datetime.now().isoformat()
         }
@@ -431,11 +479,13 @@ def should_open_position_with_ai(
         
         signal = prediction.get('signal')
         confidence = prediction.get('confidence', 0)
-        
+        signal, confidence, sentiment_used, onchain_used = _integrate_sentiment_onchain(symbol, signal, confidence)
         result['ai_used'] = True
         result['ai_signal'] = signal
         result['ai_confidence'] = confidence
-        
+        result['sentiment_used'] = sentiment_used
+        result['onchain_used'] = onchain_used
+
         ai_confidence_threshold = config.get('ai_min_confidence', 0.65) if config else 0.65
         
         # === КОМБИНИРОВАННАЯ ЛОГИКА AI + SMC ===

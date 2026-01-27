@@ -243,13 +243,13 @@ class AITrainer:
             logger.debug(f"⚠️ Не удалось инициализировать AIParameterTracker: {e}")
             self.param_tracker = None
 
-        # Performance Monitoring — опционально для метрик предсказаний
-        try:
-            from bot_engine.ai.monitoring import AIPerformanceMonitor
-            self._perf_monitor = AIPerformanceMonitor(max_records=5000)
-        except Exception as e:
-            logger.debug(f"⚠️ AIPerformanceMonitor недоступен: {e}")
-            self._perf_monitor = None
+        self._perf_monitor = None
+        if getattr(AIConfig, 'AI_PERFORMANCE_MONITORING_ENABLED', True):
+            try:
+                from bot_engine.ai.monitoring import AIPerformanceMonitor
+                self._perf_monitor = AIPerformanceMonitor(max_records=5000)
+            except Exception as e:
+                logger.debug(f"⚠️ AIPerformanceMonitor недоступен: {e}")
 
         # Ensemble (LSTM + Transformer + SMC) — ленивая инициализация при AI_USE_ENSEMBLE
         self._ensemble_predictor = None
@@ -2538,10 +2538,13 @@ class AITrainer:
                 if len(candles) >= 50:  # Минимум свечей для симуляции
                     # Используем optimizer для симуляции
                     try:
+                        from bot_engine.bot_config import AIConfig
+                        use_bayesian = getattr(AIConfig, 'AI_USE_BAYESIAN', True)
                         optimized_params = optimizer.optimize_coin_parameters_on_candles(
                             symbol=symbol,
                             candles=candles,
-                            current_win_rate=0.0
+                            current_win_rate=0.0,
+                            use_bayesian=use_bayesian,
                         )
                         
                         if optimized_params:
@@ -5676,7 +5679,7 @@ class AITrainer:
                 except Exception as e:
                     logger.debug(f"Ensemble: LSTM не загружен: {e}")
             trans_path = 'data/ai/models/transformer_predictor.pth'
-            if os.path.exists(trans_path):
+            if getattr(AIConfig, 'AI_USE_TRANSFORMER', False) and os.path.exists(trans_path):
                 try:
                     from bot_engine.ai.transformer_predictor import TransformerPredictor
                     trans_p = TransformerPredictor(model_path=trans_path)
@@ -5844,10 +5847,10 @@ class AITrainer:
             except Exception as ens_e:
                 logger.debug(f"Ensemble predict: {ens_e}")
 
-            # Performance Monitoring: логируем предсказание для метрик
             if getattr(self, '_perf_monitor', None):
                 try:
-                    direction = 1 if signal == 'LONG' else (-1 if signal == 'SHORT' else 0)
+                    s = result.get('signal', signal)
+                    direction = 1 if s == 'LONG' else (-1 if s == 'SHORT' else 0)
                     self._perf_monitor.track_prediction(
                         symbol,
                         {

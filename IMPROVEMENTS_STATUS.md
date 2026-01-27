@@ -114,7 +114,7 @@
 
 ### 5. Ensemble методы ✅
 
-**Статус:** ✅ **Реализовано и опционально интегрировано**
+**Статус:** ✅ **Реализовано**
 
 **Файлы:**
 - `bot_engine/ai/ensemble.py`:
@@ -122,14 +122,10 @@
   - ✅ `StackingEnsemble` (мета-модель)
   - ✅ `EnsemblePredictor` (высокоуровневый wrapper)
   - ✅ Поддержка LSTM + Transformer + SMC
-- `bot_engine/ai/ai_trainer.py`:
-  - ✅ `_get_ensemble_predictor()` — ленивая сборка EnsemblePredictor из LSTM/Transformer/SMC
-  - ✅ В `predict()` при `AI_USE_ENSEMBLE=True` и наличии `candles`/`price` в `market_data` используется ансамбль
-- `bot_engine/bot_config.py`:
-  - ✅ `AI_USE_ENSEMBLE = False` — флаг включения ансамбля (по умолчанию выключен)
 
 **Использование:**
-- При `AI_USE_ENSEMBLE=True` и передаче в `market_data` ключей `candles` и `price` предсказание идёт через EnsemblePredictor (LSTM + Transformer + SMC). Иначе — только модель сигналов, как раньше.
+- Модуль готов, но требует интеграции в основной workflow
+- Не используется автоматически в `ai_trainer.py`
 
 ---
 
@@ -187,7 +183,7 @@
 
 ### 9. Performance Monitoring ✅
 
-**Статус:** ✅ **Реализовано и интегрировано**
+**Статус:** ✅ **Реализовано**
 
 **Файлы:**
 - `bot_engine/ai/monitoring.py`:
@@ -195,11 +191,9 @@
   - ✅ Отслеживание предсказаний и результатов
   - ✅ Метрики: direction accuracy, MAE, confidence calibration
   - ✅ Сохранение истории в JSON
-- `bot_engine/ai/ai_trainer.py`:
-  - ✅ `_perf_monitor` в `__init__`, вызов `track_prediction()` в `predict()` после каждого предсказания
 
 **Использование:**
-- Интегрировано в `ai_trainer.predict()`: все предсказания логируются в AIPerformanceMonitor для метрик
+- Модуль готов, но требует интеграции в основной workflow
 
 ---
 
@@ -259,11 +253,11 @@
 | 2 | Transformer (TFT) | ✅ | `transformer_predictor.py` | ⚠️ Готов, не используется | Средний |
 | 3 | Smart Money Concepts | ✅ | `smart_money_features.py` | ✅ Интегрирован | - |
 | 4 | Bayesian Optimization | ⚠️ | `bayesian_optimizer.py` | ❌ Не интегрирован | **Высокий** |
-| 5 | Ensemble методы | ✅ | `ensemble.py`, `ai_trainer.py`, `bot_config.py` | ✅ Опционально (AI_USE_ENSEMBLE + candles) | - |
+| 5 | Ensemble методы | ✅ | `ensemble.py` | ⚠️ Готов, не используется | Средний |
 | 6 | Reinforcement Learning | ✅ | `rl_agent.py` | ❌ Не интегрирован | Низкий |
 | 7 | CNN Pattern Detector | ✅ | `pattern_detector.py` | ✅ Используется | - |
 | 8 | Data Drift Detection | ✅ | `drift_detector.py`, `auto_trainer.py` | ✅ Интегрирован в AutoTrainer | - |
-| 9 | Performance Monitoring | ✅ | `monitoring.py`, `ai_trainer.py` | ✅ Интегрирован в predict() | - |
+| 9 | Performance Monitoring | ✅ | `monitoring.py` | ⚠️ Готов, не используется | Средний |
 | 10 | TCN (Temporal CNN) | ❌ | - | - | Низкий |
 | 11 | Sentiment Analysis | ❌ | - | - | Низкий |
 | 12 | On-Chain Analysis | ❌ | - | - | Низкий |
@@ -284,14 +278,16 @@
    - Использовать `TransformerPredictor` в `ai_trainer.py` (опционально или вместо LSTM)
    - Ожидаемый эффект: лучшие долгосрочные зависимости
 
-3. ~~**Интеграция Ensemble в `ai_trainer.py`**~~ ✅ Выполнено (опционально)
-   - При `AI_USE_ENSEMBLE=True` и `market_data['candles']`/`price` используется `EnsemblePredictor` (LSTM + Transformer + SMC)
+3. **Интеграция Ensemble в `ai_trainer.py`**
+   - Использовать `EnsemblePredictor` для комбинации LSTM + Transformer + SMC
+   - Ожидаемый эффект: более стабильные предсказания
 
 4. ~~**Интеграция Drift Detection в `auto_trainer.py`**~~ ✅ Выполнено
    - Автоматическое переобучение при дрифте ≥20% признаков, эталон обновляется после успешного переобучения
 
-5. ~~**Интеграция Performance Monitoring**~~ ✅ Выполнено
-   - В `ai_trainer.predict()` вызывается `_perf_monitor.track_prediction()` — логирование предсказаний для метрик
+5. **Интеграция Performance Monitoring**
+   - Логирование всех предсказаний и результатов
+   - Ожидаемый эффект: видимость качества моделей
 
 ### Низкий приоритет
 

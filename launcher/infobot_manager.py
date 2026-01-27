@@ -1881,9 +1881,21 @@ class InfoBotManager(tk.Tk):
                 "[git] Локальные изменения будут перезаписаны состоянием origin/main (игнорируются только файлы из .gitignore).",
                 channel="system",
             )
+            # Сначала сбрасываем индекс и рабочее дерево к HEAD — убирает ошибку "Entry not uptodate"
+            # (когда индекс расходится с рабочим деревом, например после изменения bot_config.py).
+            try:
+                self._stream_command("git reset (подготовка)", ["git", "reset", "--hard", "HEAD"])
+            except subprocess.CalledProcessError:
+                pass  # Продолжаем попытку сброса на origin/main
             try:
                 self._stream_command("git reset", ["git", "reset", "--hard", "origin/main"])
             except subprocess.CalledProcessError:
+                self.log(
+                    "[git reset] Не удалось сбросить на origin/main. Если было «Entry not uptodate», "
+                    "закройте редакторы, откройте репозиторий в терминале и выполните: "
+                    "git reset --hard HEAD, затем git reset --hard origin/main.",
+                    channel="system",
+                )
                 return
             try:
                 self._stream_command("git clean", ["git", "clean", "-fd"])
