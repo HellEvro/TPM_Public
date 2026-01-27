@@ -14,7 +14,6 @@ import json
 import logging
 import pickle
 import shutil
-import warnings
 from copy import deepcopy
 import numpy as np
 import pandas as pd
@@ -26,8 +25,6 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report, mean_squared_error
 import joblib
 
-# Подавляем предупреждения о несовместимости версий sklearn при загрузке моделей
-warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
 from bot_engine.protections import ProtectionState, evaluate_protections
 from bot_engine.ai.filter_utils import apply_entry_filters
 try:
@@ -524,91 +521,78 @@ class AITrainer:
         try:
             loaded_count = 0
             
-            # Подавляем предупреждения о несовместимости версий sklearn при загрузке
-            with warnings.catch_warnings():
-                warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
-                warnings.filterwarnings('ignore', message='.*InconsistentVersionWarning.*')
-                
-                if os.path.exists(self.signal_model_path):
-                    self.signal_predictor = joblib.load(self.signal_model_path)
-                    logger.info(f"✅ Загружена модель предсказания сигналов: {self.signal_model_path}")
-                    loaded_count += 1
-                    
-                    # Загружаем метаданные если есть
-                    metadata_path = os.path.normpath(os.path.join(self.models_dir, 'signal_predictor_metadata.json'))
-                    if os.path.exists(metadata_path):
-                        try:
-                            with open(metadata_path, 'r', encoding='utf-8') as f:
-                                metadata = json.load(f)
-                                logger.info(f"   📊 Модель обучена: {metadata.get('saved_at', 'unknown')}")
-                        except:
-                            pass
-                else:
-                    logger.info("ℹ️ Модель предсказания сигналов не найдена (будет создана при обучении)")
-                
-                if os.path.exists(self.profit_model_path):
-                    self.profit_predictor = joblib.load(self.profit_model_path)
-                    logger.info(f"✅ Загружена модель предсказания прибыли: {self.profit_model_path}")
-                    loaded_count += 1
-                    
-                    # Загружаем метаданные если есть
-                    metadata_path = os.path.normpath(os.path.join(self.models_dir, 'profit_predictor_metadata.json'))
-                    if os.path.exists(metadata_path):
-                        try:
-                            with open(metadata_path, 'r', encoding='utf-8') as f:
-                                metadata = json.load(f)
-                                logger.info(f"   📊 Модель обучена: {metadata.get('saved_at', 'unknown')}")
-                        except:
-                            pass
-                else:
-                    logger.info("ℹ️ Модель предсказания прибыли не найдена (будет создана при обучении)")
-                
-                if os.path.exists(self.scaler_path):
-                    self.scaler = joblib.load(self.scaler_path)
-                    logger.info(f"✅ Загружен scaler: {self.scaler_path}")
-                    # Определяем количество признаков из scaler (динамически для любого количества: 7, 8, 9, 10 и т.д.)
-                    if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
-                        self.expected_features = self.scaler.n_features_in_
-                        logger.info(f"   📊 Модель ожидает {self.expected_features} признаков (определено из n_features_in_)")
-                    else:
-                        # Для старых версий sklearn может не быть n_features_in_
-                        # Пытаемся определить из shape mean_ или scale_
-                        if hasattr(self.scaler, 'mean_') and self.scaler.mean_ is not None:
-                            self.expected_features = len(self.scaler.mean_)
-                            logger.info(f"   📊 Модель ожидает {self.expected_features} признаков (определено из mean_)")
-                        elif hasattr(self.scaler, 'scale_') and self.scaler.scale_ is not None:
-                            self.expected_features = len(self.scaler.scale_)
-                            logger.info(f"   📊 Модель ожидает {self.expected_features} признаков (определено из scale_)")
-                        else:
-                            logger.warning("   ⚠️ Не удалось определить количество признаков из scaler")
-                    loaded_count += 1
-                else:
-                    logger.info("ℹ️ Scaler не найден (будет создан при обучении)")
-
-                if os.path.exists(self.ai_decision_model_path):
+            if os.path.exists(self.signal_model_path):
+                self.signal_predictor = joblib.load(self.signal_model_path)
+                logger.info(f"✅ Загружена модель предсказания сигналов: {self.signal_model_path}")
+                loaded_count += 1
+                metadata_path = os.path.normpath(os.path.join(self.models_dir, 'signal_predictor_metadata.json'))
+                if os.path.exists(metadata_path):
                     try:
-                        self.ai_decision_model = joblib.load(self.ai_decision_model_path)
-                        logger.info(f"✅ Загружена модель анализа AI решений: {self.ai_decision_model_path}")
-                        metadata_path = os.path.normpath(os.path.join(self.models_dir, 'ai_decision_model_metadata.json'))
-                        if os.path.exists(metadata_path):
-                            with open(metadata_path, 'r', encoding='utf-8') as f:
-                                metadata = json.load(f)
-                                logger.info(
-                                    f"   📊 Модель решений обучена: {metadata.get('saved_at', 'unknown')}, "
-                                    f"образцов: {metadata.get('samples', 'unknown')}, accuracy: {metadata.get('accuracy', 'n/a')}"
-                                )
-                    except Exception as ai_load_error:
-                        logger.warning(f"⚠️ Не удалось загрузить модель решений AI: {ai_load_error}")
-                        self.ai_decision_model = None
+                        with open(metadata_path, 'r', encoding='utf-8') as f:
+                            metadata = json.load(f)
+                            logger.info(f"   📊 Модель обучена: {metadata.get('saved_at', 'unknown')}")
+                    except Exception:
+                        pass
+            else:
+                logger.info("ℹ️ Модель предсказания сигналов не найдена (будет создана при обучении)")
 
-                if os.path.exists(self.ai_decision_scaler_path):
+            if os.path.exists(self.profit_model_path):
+                self.profit_predictor = joblib.load(self.profit_model_path)
+                logger.info(f"✅ Загружена модель предсказания прибыли: {self.profit_model_path}")
+                loaded_count += 1
+                metadata_path = os.path.normpath(os.path.join(self.models_dir, 'profit_predictor_metadata.json'))
+                if os.path.exists(metadata_path):
                     try:
-                        self.ai_decision_scaler = joblib.load(self.ai_decision_scaler_path)
-                        logger.info(f"✅ Загружен scaler для AI решений: {self.ai_decision_scaler_path}")
-                    except Exception as ai_scaler_error:
-                        logger.warning(f"⚠️ Не удалось загрузить scaler решений AI: {ai_scaler_error}")
-                        self.ai_decision_scaler = StandardScaler()
-            
+                        with open(metadata_path, 'r', encoding='utf-8') as f:
+                            metadata = json.load(f)
+                            logger.info(f"   📊 Модель обучена: {metadata.get('saved_at', 'unknown')}")
+                    except Exception:
+                        pass
+            else:
+                logger.info("ℹ️ Модель предсказания прибыли не найдена (будет создана при обучении)")
+
+            if os.path.exists(self.scaler_path):
+                self.scaler = joblib.load(self.scaler_path)
+                logger.info(f"✅ Загружен scaler: {self.scaler_path}")
+                if hasattr(self.scaler, 'n_features_in_') and self.scaler.n_features_in_ is not None:
+                    self.expected_features = self.scaler.n_features_in_
+                    logger.info(f"   📊 Модель ожидает {self.expected_features} признаков (определено из n_features_in_)")
+                elif hasattr(self.scaler, 'mean_') and self.scaler.mean_ is not None:
+                    self.expected_features = len(self.scaler.mean_)
+                    logger.info(f"   📊 Модель ожидает {self.expected_features} признаков (определено из mean_)")
+                elif hasattr(self.scaler, 'scale_') and self.scaler.scale_ is not None:
+                    self.expected_features = len(self.scaler.scale_)
+                    logger.info(f"   📊 Модель ожидает {self.expected_features} признаков (определено из scale_)")
+                else:
+                    logger.warning("   ⚠️ Не удалось определить количество признаков из scaler")
+                loaded_count += 1
+            else:
+                logger.info("ℹ️ Scaler не найден (будет создан при обучении)")
+
+            if os.path.exists(self.ai_decision_model_path):
+                try:
+                    self.ai_decision_model = joblib.load(self.ai_decision_model_path)
+                    logger.info(f"✅ Загружена модель анализа AI решений: {self.ai_decision_model_path}")
+                    metadata_path = os.path.normpath(os.path.join(self.models_dir, 'ai_decision_model_metadata.json'))
+                    if os.path.exists(metadata_path):
+                        with open(metadata_path, 'r', encoding='utf-8') as f:
+                            metadata = json.load(f)
+                            logger.info(
+                                f"   📊 Модель решений обучена: {metadata.get('saved_at', 'unknown')}, "
+                                f"образцов: {metadata.get('samples', 'unknown')}, accuracy: {metadata.get('accuracy', 'n/a')}"
+                            )
+                except Exception as ai_load_error:
+                    logger.warning(f"⚠️ Не удалось загрузить модель решений AI: {ai_load_error}")
+                    self.ai_decision_model = None
+
+            if os.path.exists(self.ai_decision_scaler_path):
+                try:
+                    self.ai_decision_scaler = joblib.load(self.ai_decision_scaler_path)
+                    logger.info(f"✅ Загружен scaler для AI решений: {self.ai_decision_scaler_path}")
+                except Exception as ai_scaler_error:
+                    logger.warning(f"⚠️ Не удалось загрузить scaler решений AI: {ai_scaler_error}")
+                    self.ai_decision_scaler = StandardScaler()
+
             if loaded_count > 0:
                 logger.info(f"🤖 Загружено моделей: {loaded_count}/3 - готовы к использованию ботами!")
             else:
@@ -2126,7 +2110,7 @@ class AITrainer:
             # УЛУЧШЕНИЕ: Кросс-валидация для более надежной оценки
             try:
                 from sklearn.model_selection import cross_val_score
-                cv_scores = cross_val_score(self.signal_predictor, X_scaled, y_signal, cv=min(5, len(X) // 20), scoring='accuracy')
+                cv_scores = cross_val_score(self.signal_predictor, X_scaled, y_signal, cv=min(5, len(X) // 20), scoring='accuracy', n_jobs=1)
                 cv_mean = np.mean(cv_scores)
                 cv_std = np.std(cv_scores)
                 logger.info(f"   📊 Кросс-валидация (5-fold): {cv_mean:.2%} ± {cv_std:.2%}")
@@ -2390,7 +2374,7 @@ class AITrainer:
                         # Кросс-валидация
                         try:
                             from sklearn.model_selection import cross_val_score
-                            cv_scores = cross_val_score(self.signal_predictor, X_scaled, y_signal, cv=min(5, len(X) // 20), scoring='accuracy')
+                            cv_scores = cross_val_score(self.signal_predictor, X_scaled, y_signal, cv=min(5, len(X) // 20), scoring='accuracy', n_jobs=1)
                             cv_mean = np.mean(cv_scores)
                             logger.info(f"📊 Кросс-валидация: {cv_mean:.2%} ± {np.std(cv_scores):.2%}")
                         except Exception as cv_error:

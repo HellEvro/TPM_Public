@@ -87,7 +87,8 @@ class PatternDetector:
             n_estimators=100,
             max_depth=10,
             min_samples_split=10,
-            random_state=42
+            random_state=42,
+            n_jobs=1,
         )
         
         # Scaler для нормализации признаков

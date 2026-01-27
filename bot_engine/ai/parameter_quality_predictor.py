@@ -88,13 +88,8 @@ class ParameterQualityPredictor:
         """Загрузить обученную модель"""
         try:
             if os.path.exists(self.model_file) and os.path.exists(self.scaler_file):
-                import warnings
-                with warnings.catch_warnings():
-                    warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
-                    warnings.filterwarnings('ignore', message='.*InconsistentVersionWarning.*')
-                    self.model = joblib.load(self.model_file)
-                    self.scaler = joblib.load(self.scaler_file)
-                
+                self.model = joblib.load(self.model_file)
+                self.scaler = joblib.load(self.scaler_file)
                 # УЛУЧШЕНИЕ: Проверяем совместимость количества признаков
                 # Генерируем тестовые признаки для проверки
                 test_rsi_params = {
@@ -591,7 +586,7 @@ class ParameterQualityPredictor:
                     score = model.score(X_scaled, y)
                     
                     # Кросс-валидация для более надежной оценки
-                    cv_scores = cross_val_score(model, X_scaled, y, cv=min(5, len(X) // 10), scoring='r2')
+                    cv_scores = cross_val_score(model, X_scaled, y, cv=min(5, len(X) // 10), scoring='r2', n_jobs=1)
                     cv_mean = np.mean(cv_scores)
                     
                     logger.info(f"   📊 {model_name}: R² = {score:.3f}, CV R² = {cv_mean:.3f}")

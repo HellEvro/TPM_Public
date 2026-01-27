@@ -11,7 +11,7 @@ import os
 import sys
 os.environ['INFOBOT_AI_PROCESS'] = 'true'
 
-import utils.sklearn_parallel_fix  # noqa: F401 — конфигурация joblib/sklearn до импортов sklearn
+import utils.sklearn_parallel_config  # noqa: F401 — вариант 1 до импорта sklearn
 
 # Проверка и автоматическая установка PyTorch ПЕРЕД импортом защищенного модуля
 def _check_and_install_pytorch():

@@ -170,7 +170,7 @@ class MLRiskPredictor:
                 n_estimators=100,
                 max_depth=5,
                 learning_rate=0.1,
-                random_state=42
+                random_state=42,
             )
             self.model_sl.fit(X_scaled, y_sl)
             
@@ -179,7 +179,7 @@ class MLRiskPredictor:
                 n_estimators=100,
                 max_depth=5,
                 learning_rate=0.1,
-                random_state=42
+                random_state=42,
             )
             self.model_tp.fit(X_scaled, y_tp)
             

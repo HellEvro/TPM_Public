@@ -7,8 +7,8 @@
 import os
 import sys
 
-# Конфигурация sklearn/joblib: joblib → sklearn.utils.parallel до любых импортов sklearn
-import utils.sklearn_parallel_fix  # noqa: F401
+# Вариант 1: joblib → sklearn.utils.parallel до любых импортов sklearn
+import utils.sklearn_parallel_config  # noqa: F401
 
 # 🔍 Проверка и создание bot_config.py из example.bot_config.py (если отсутствует)
 # Также настраиваем git skip-worktree для игнорирования локальных изменений
