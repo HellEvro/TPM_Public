@@ -2363,6 +2363,7 @@ def _verify_ai_deps_for_venv(
         return True
 
     def run_verify() -> bool:
+        env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
         r = subprocess.run(
             _split_command(python_exec) + [str(script)],
             cwd=str(PROJECT_ROOT),
@@ -2371,10 +2372,11 @@ def _verify_ai_deps_for_venv(
             encoding="utf-8",
             errors="replace",
             timeout=60,
+            env=env,
         )
         if r.returncode != 0 and r.stderr:
             for line in r.stderr.strip().splitlines():
-                enqueue_fn(channel, f"[verify_ai_deps] {line}")
+                enqueue_fn(channel, line.strip() if line.strip() else line)
         return r.returncode == 0
 
     if run_verify():
@@ -2395,6 +2397,7 @@ def _verify_ai_deps_for_venv(
         log_fn("[verify_ai_deps] Не удалось переустановить scikit-learn.", channel=channel)
         return False
 
+    log_fn("[verify_ai_deps] Повторная проверка после переустановки...", channel=channel)
     if run_verify():
         log_fn("[verify_ai_deps] OK после переустановки", channel=channel)
         return True

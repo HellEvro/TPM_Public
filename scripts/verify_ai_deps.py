@@ -16,6 +16,18 @@ import sys
 import warnings
 from pathlib import Path
 
+# Фикс кодировки stderr/stdout на Windows (лаунчер читает UTF-8)
+if os.name == "nt":
+    try:
+        if getattr(sys.stderr, "encoding", None) != "utf-8":
+            import io
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+        if getattr(sys.stdout, "encoding", None) != "utf-8":
+            import io
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 
 def _project_root() -> Path:
     return Path(__file__).resolve().parents[1]
