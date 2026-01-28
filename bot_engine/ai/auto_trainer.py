@@ -749,7 +749,12 @@ class AutoTrainer:
 
     def _get_candles_matrix_for_drift(self, ai_db, max_symbols: int = 10, max_candles_per_symbol: int = 200):
         try:
-            data = ai_db.get_all_candles_dict('6h', max_symbols=max_symbols, max_candles_per_symbol=max_candles_per_symbol)
+            from bot_engine.bot_config import get_current_timeframe
+            data = ai_db.get_all_candles_dict(
+                get_current_timeframe(),
+                max_symbols=max_symbols,
+                max_candles_per_symbol=max_candles_per_symbol
+            )
             rows = []
             for _sym, candles in (data or {}).items():
                 for c in candles:

@@ -11,7 +11,7 @@ import json
 import logging
 from copy import deepcopy
 from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
@@ -67,7 +67,7 @@ def _get_config_snapshot(symbol: Optional[str] = None) -> Dict[str, Any]:
             'individual': individual_config,
             'merged': merged_config,
             'symbol': symbol.upper() if symbol else None,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
 
@@ -155,11 +155,18 @@ class AIBacktester:
                     logger.warning("⚠️ AI Database не доступна")
                     return market_data
                 
-                # Ограничиваем загрузку для экономии памяти
+                # Ограничиваем загрузку (при AI_MEMORY_LIMIT_MB лимиты из AILauncherConfig)
+                from bot_engine.bot_config import get_current_timeframe
+                try:
+                    from bot_engine.ai.ai_launcher_config import AILauncherConfig
+                    _max_sym = min(30, AILauncherConfig.MAX_SYMBOLS_FOR_CANDLES)
+                    _max_candles = AILauncherConfig.MAX_CANDLES_PER_SYMBOL
+                except Exception:
+                    _max_sym, _max_candles = 30, 1000
                 candles_data = ai_db.get_all_candles_dict(
-                    timeframe='6h',
-                    max_symbols=30,
-                    max_candles_per_symbol=1000
+                    timeframe=get_current_timeframe(),
+                    max_symbols=_max_sym,
+                    max_candles_per_symbol=_max_candles
                 )
                 if candles_data:
                     total_candles = sum(len(c) for c in candles_data.values())
@@ -190,7 +197,7 @@ class AIBacktester:
                     if candles:
                         market_data['latest']['candles'][symbol] = {
                             'candles': candles,
-                            'timeframe': '6h',
+                            'timeframe': get_current_timeframe(),
                             'last_update': datetime.now().isoformat(),
                             'count': len(candles),
                             'source': 'ai_data.db'
@@ -212,10 +219,13 @@ class AIBacktester:
                         coins_data = data.get('coins', {})
                         logger.info(f"✅ Загружено индикаторов для {len(coins_data)} монет через API")
                         
+                        # Получаем RSI и тренд с учетом текущего таймфрейма
+                        from bot_engine.bot_config import get_rsi_from_coin_data, get_trend_from_coin_data
+                        
                         for symbol, coin_data in coins_data.items():
                             market_data['latest']['indicators'][symbol] = {
-                                'rsi': coin_data.get('rsi6h'),
-                                'trend': coin_data.get('trend6h'),
+                                'rsi': get_rsi_from_coin_data(coin_data),
+                                'trend': get_trend_from_coin_data(coin_data),
                                 'price': coin_data.get('price'),
                                 'signal': coin_data.get('signal'),
                                 'volume': coin_data.get('volume')

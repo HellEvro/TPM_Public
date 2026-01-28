@@ -72,7 +72,7 @@
         <div class="coins-panel">
             <div class="panel-header">
                 <div class="title-row">
-                        <h3 data-translate="coins_rsi_6h">📊 Монеты (RSI 6H)</h3>
+                        <h3 data-translate="coins_rsi_6h" data-timeframe-placeholder="6h">📊 Монеты (RSI <span id="currentTimeframeDisplay">6H</span>)</h3>
                         <span class="status-dot" id="rsiStatusDot">●</span>
                     </div>
                     <div class="service-status" id="botsServiceStatus">
@@ -185,7 +185,7 @@
                                 <span class="value" id="selectedCoinPrice">$0</span>
                         </div>
                         <div class="data-item">
-                                <span class="label" data-translate="coin_info_rsi">📊 RSI 6H:</span>
+                                <span class="label" data-translate="coin_info_rsi">📊 RSI <span id="selectedCoinTimeframeDisplay">6H</span>:</span>
                                 <span class="value rsi-indicator" id="selectedCoinRSI">-</span>
                                 <span class="status-icon" id="rsiIcon" style="margin-left: 8px; font-size: 16px;"></span>
                         </div>
@@ -1152,6 +1152,40 @@
                     </div>
                     
                     <div class="config-grid">
+                        <!-- Таймфрейм системы -->
+                        <div class="config-item" style="grid-column: 1 / -1; border: 2px solid #4CAF50; padding: 15px; border-radius: 8px; background: rgba(76, 175, 80, 0.1);">
+                            <label class="config-label">
+                                <span class="label-icon">⏱️</span>
+                                <span class="label-text" data-translate="system_timeframe_label">Таймфрейм системы:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <select id="systemTimeframe" class="config-input" style="width: 100%; padding: 8px;">
+                                    <option value="1m">1 минута</option>
+                                    <option value="3m">3 минуты</option>
+                                    <option value="5m">5 минут</option>
+                                    <option value="15m">15 минут</option>
+                                    <option value="30m">30 минут</option>
+                                    <option value="1h">1 час</option>
+                                    <option value="2h">2 часа</option>
+                                    <option value="4h">4 часа</option>
+                                    <option value="6h" selected>6 часов</option>
+                                    <option value="8h">8 часов</option>
+                                    <option value="12h">12 часов</option>
+                                    <option value="1d">1 день</option>
+                                    <option value="3d">3 дня</option>
+                                    <option value="1w">1 неделя</option>
+                                    <option value="1M">1 месяц</option>
+                                </select>
+                            </div>
+                            <small class="config-help" data-translate="system_timeframe_help">
+                                ⚠️ Внимание: При изменении таймфрейма система перезагрузит RSI данные. Текущие данные будут сохранены.
+                            </small>
+                            <button id="applyTimeframeBtn" class="btn btn-primary" style="margin-top: 10px; width: 100%;">
+                                <span>✅ Применить таймфрейм</span>
+                            </button>
+                            <div id="timeframeStatus" style="margin-top: 10px; padding: 8px; border-radius: 4px; display: none;"></div>
+                        </div>
+                        
                         <div class="config-item">
                             <label class="config-label">
                                 <span class="label-icon">🔄</span>

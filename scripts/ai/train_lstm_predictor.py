@@ -353,10 +353,16 @@ def load_all_historical_data(
 
 def main():
     """Основная функция обучения"""
+    default_batch = 32
+    try:
+        from bot_engine.ai.ai_launcher_config import AILauncherConfig
+        default_batch = getattr(AILauncherConfig, 'TRAINING_BATCH_SIZE', 32)
+    except Exception:
+        pass
     parser = argparse.ArgumentParser(description='Обучение LSTM предиктора')
     parser.add_argument('--coins', type=int, default=20, help='Количество монет для обучения (по умолчанию 20 для экономии памяти)')
     parser.add_argument('--epochs', type=int, default=50, help='Количество эпох обучения')
-    parser.add_argument('--batch-size', type=int, default=32, help='Размер батча')
+    parser.add_argument('--batch-size', type=int, default=default_batch, help='Размер батча (при лимите ОЗУ берётся из AILauncherConfig)')
     parser.add_argument('--sequence-length', type=int, default=60, help='Длина последовательности')
     args = parser.parse_args()
     

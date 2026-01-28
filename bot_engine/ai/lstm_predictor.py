@@ -56,14 +56,22 @@ try:
                 gpu_count = torch.cuda.device_count()
                 primary_gpu = torch.device('cuda:0')
                 gpu_name = torch.cuda.get_device_name(0)
-                
+                # Лимит доли видеопамяти процесса (из bot_config.SystemConfig / AI_GPU_MEMORY_FRACTION)
+                try:
+                    import os
+                    frac_str = os.environ.get('AI_GPU_MEMORY_FRACTION', '').strip()
+                    if frac_str:
+                        frac = float(frac_str.replace(',', '.'))
+                        if 0 < frac <= 1:
+                            torch.cuda.set_per_process_memory_fraction(frac, 0)
+                            logger.info(f"   Лимит VRAM процесса: {frac * 100:.0f}%")
+                except Exception:
+                    pass
                 logger.info(f"✅ Найдено GPU устройств: {gpu_count}")
                 for i in range(gpu_count):
                     logger.info(f"   GPU {i}: {torch.cuda.get_device_name(i)}")
-                
                 logger.info(f"✅ GPU NVIDIA доступен и будет использоваться для обучения и предсказаний")
                 logger.info(f"   Основное устройство: {gpu_name}")
-                
                 return True, primary_gpu
             else:
                 logger.info("ℹ️ GPU устройства не найдены, используется CPU")
@@ -189,8 +197,9 @@ if PYTORCH_AVAILABLE:
             lstm_out2 = lstm_out2.reshape(batch_size, seq_len, hidden)
             lstm_out2 = self.dropout2(lstm_out2)
             
-            # Третий LSTM слой (не возвращает последовательность)
-            lstm_out3, _ = self.lstm3(lstm_out2)  # (batch, hidden3)
+            # Третий LSTM слой — берём только последний шаг по времени (batch, 1, hidden3) -> (batch, hidden3)
+            lstm_out3, _ = self.lstm3(lstm_out2)  # (batch, seq_len, hidden3)
+            lstm_out3 = lstm_out3[:, -1, :]  # (batch, hidden3)
             lstm_out3 = self.bn3(lstm_out3)
             lstm_out3 = self.dropout3(lstm_out3)
             
@@ -700,17 +709,16 @@ class LSTMPredictor:
                         memory_used = torch.cuda.memory_allocated(0) / 1024**2
                         logger.debug(f"📊 Эпоха {epoch+1}/{epochs}, Батч {batch_idx}: GPU память = {memory_used:.2f} MB, Loss = {loss.item():.6f}")
                 
+                # Средний loss по эпохе (считаем до использования в логах)
+                avg_train_loss = epoch_loss / len(train_loader) if train_loader else 0.0
+                epoch_time = time.time() - epoch_start_time
+
                 # Синхронизируем GPU после каждой эпохи
                 if GPU_AVAILABLE and DEVICE:
                     torch.cuda.synchronize()
                     memory_after = torch.cuda.memory_allocated(0) / 1024**2
                     if epoch % 5 == 0 or epoch == 0:  # Логируем каждые 5 эпох
                         logger.info(f"📊 Эпоха {epoch+1}/{epochs}: Loss={avg_train_loss:.6f}, GPU память={memory_after:.2f} MB")
-                
-                epoch_time = time.time() - epoch_start_time
-                avg_train_loss = epoch_loss / len(train_loader)
-                
-                avg_train_loss = epoch_loss / len(train_loader)
                 
                 # Валидация
                 self.model.eval()

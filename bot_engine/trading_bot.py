@@ -8,8 +8,8 @@ from typing import Dict, List, Optional, Tuple
 import logging
 
 from .bot_config import (
-    BotStatus, TrendDirection, VolumeMode, 
-    DEFAULT_BOT_CONFIG, TIMEFRAME
+    BotStatus, TrendDirection, VolumeMode,
+    DEFAULT_BOT_CONFIG, TIMEFRAME, get_current_timeframe
 )
 from .indicators import SignalGenerator
 from .scaling_calculator import calculate_scaling_for_bot
@@ -439,25 +439,22 @@ class TradingBot:
                 'message': 'Ошибка проверки позиций на бирже'
             }
         
-        # ПРОВЕРКА RSI ВРЕМЕННОГО ФИЛЬТРА
+        # ПРОВЕРКА RSI ВРЕМЕННОГО ФИЛЬТРА (по выбранному таймфрейму)
         try:
-            # Импортируем функцию проверки временного фильтра
             import sys
             import os
             sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             from bots import check_rsi_time_filter
-            
-            # Получаем свечи для анализа временного фильтра
-            candles = self.exchange.get_candles(self.symbol, '6h', 100)
+
+            tf_entry = get_current_timeframe()
+            candles = self.exchange.get_candles(self.symbol, tf_entry, 100)
             if candles and len(candles) > 0:
-                # Получаем текущий RSI из данных монеты
                 current_rsi = getattr(self, 'current_rsi', None)
                 if current_rsi is None:
-                    # Если RSI не сохранен в боте, получаем из API
                     try:
-                        rsi_data = self.exchange.get_rsi_data(self.symbol, '6h', 14)
+                        rsi_data = self.exchange.get_rsi_data(self.symbol, tf_entry, 14)
                         current_rsi = rsi_data.get('rsi', 50) if rsi_data else 50
-                    except:
+                    except Exception:
                         current_rsi = 50
                 
                 # Проверяем временной фильтр
@@ -540,9 +537,9 @@ class TradingBot:
         
         return None
     
-    def _enter_position(self, side: str) -> Dict:
-        """Входит в позицию"""
-        self.logger.info(f" {self.symbol}: 🎯 _enter_position вызван для {side}")
+    def _enter_position(self, side: str, force_market_entry: bool = False) -> Dict:
+        """Входит в позицию. force_market_entry=True — автоматический вход, всегда по рынку (игнор лимитных ордеров)."""
+        self.logger.info(f" {self.symbol}: 🎯 _enter_position вызван для {side}" + (" (вход по рынку)" if force_market_entry else ""))
         try:
             # ✅ ПРОВЕРКА ДЕЛИСТИНГА: Проверяем ДО всех остальных проверок!
             try:
@@ -619,95 +616,56 @@ class TradingBot:
             except Exception as e:
                 self.logger.warning(f" {self.symbol}: Не удалось проверить позиции на бирже: {e}")
             
-            # ✅ КРИТИЧЕСКАЯ ПРОВЕРКА: ВСЕ ФИЛЬТРЫ ПЕРЕД открытием позиции!
-            try:
-                from bot_engine.ai.filter_utils import apply_entry_filters
-                from bots_modules.imports_and_globals import get_config_snapshot
-                
-                # Получаем правильный конфиг (глобальный + индивидуальные настройки)
-                config_snapshot = get_config_snapshot(self.symbol)
-                filter_config = config_snapshot.get('merged', {})
-                
-                # Получаем свечи для проверки фильтров
-                candles = self._get_candles_data()
-                if not candles or len(candles) < 10:
-                    self.logger.error(f" {self.symbol}: ❌ Недостаточно свечей для проверки фильтров ({len(candles) if candles else 0})")
-                    return {
-                        'success': False,
-                        'error': 'insufficient_candles',
-                        'message': 'Недостаточно свечей для проверки фильтров'
-                    }
-                
-                # Получаем текущий RSI и тренд
-                current_rsi = self.last_rsi
-                current_trend = self.last_trend
-                
-                # Если RSI/тренд не сохранены в боте, пытаемся получить из глобальных данных
-                if current_rsi is None or current_trend is None:
-                    try:
-                        from bots_modules.imports_and_globals import coins_rsi_data, rsi_data_lock
-                        with rsi_data_lock:
-                            coin_data = coins_rsi_data.get('coins', {}).get(self.symbol)
-                            if coin_data:
-                                if current_rsi is None:
-                                    current_rsi = coin_data.get('rsi6h')
-                                if current_trend is None:
-                                    current_trend = coin_data.get('trend6h', 'NEUTRAL')
-                    except Exception:
-                        pass
-                
-                # Если RSI все еще None, рассчитываем из свечей
-                if current_rsi is None:
-                    try:
-                        from bots_modules.calculations import calculate_rsi
-                        closes = [candle.get('close', 0) for candle in candles[-50:]]
-                        if closes:
-                            current_rsi = calculate_rsi(closes, 14)
-                    except Exception:
-                        pass
-                
-                # Если RSI все еще None, используем значение по умолчанию (но это плохо)
-                if current_rsi is None:
-                    self.logger.warning(f" {self.symbol}: ⚠️ Не удалось получить RSI, используем 50.0")
-                    current_rsi = 50.0
-                
-                # Если тренд все еще None, используем NEUTRAL
-                if current_trend is None:
-                    current_trend = 'NEUTRAL'
-                
-                # Определяем сигнал на основе стороны
-                signal = 'ENTER_LONG' if side == 'LONG' else 'ENTER_SHORT'
-                
-                # ✅ ПРОВЕРЯЕМ ВСЕ ФИЛЬТРЫ через apply_entry_filters
-                filters_allowed, filters_reason = apply_entry_filters(
-                    self.symbol,
-                    candles,
-                    current_rsi,
-                    signal,
-                    filter_config,
-                    trend=current_trend
-                )
-                
-                if not filters_allowed:
-                    self.logger.warning(f" {self.symbol}: 🚫 БЛОКИРОВКА: Фильтры заблокировали вход в {side} позицию!")
-                    self.logger.warning(f" {self.symbol}: Причина блокировки: {filters_reason}")
-                    return {
-                        'success': False,
-                        'error': 'filters_blocked',
-                        'message': f'Вход заблокирован фильтрами: {filters_reason}'
-                    }
-                    
-            except Exception as filter_error:
-                self.logger.error(f" {self.symbol}: ❌ Ошибка проверки фильтров: {filter_error}")
-                import traceback
-                self.logger.error(traceback.format_exc())
-                # ⚠️ ВАЖНО: Если фильтр не работает, БЛОКИРУЕМ вход для безопасности!
-                self.logger.error(f" {self.symbol}: 🚫 БЛОКИРУЕМ ОТКРЫТИЕ ПОЗИЦИИ ИЗ-ЗА ОШИБКИ ПРОВЕРКИ ФИЛЬТРОВ!")
-                return {
-                    'success': False,
-                    'error': 'filter_check_failed',
-                    'message': f'Ошибка проверки фильтров: {filter_error}'
-                }
+            # ✅ При автовходе (force_market_entry) фильтры уже проверены в process_auto_bot_signals — не дублируем
+            if not force_market_entry:
+                try:
+                    from bot_engine.ai.filter_utils import apply_entry_filters
+                    from bots_modules.imports_and_globals import get_config_snapshot
+                    config_snapshot = get_config_snapshot(self.symbol)
+                    filter_config = config_snapshot.get('merged', {})
+                    candles = self._get_candles_data()
+                    if not candles or len(candles) < 10:
+                        self.logger.error(f" {self.symbol}: ❌ Недостаточно свечей для проверки фильтров ({len(candles) if candles else 0})")
+                        return {'success': False, 'error': 'insufficient_candles', 'message': 'Недостаточно свечей для проверки фильтров'}
+                    current_rsi = self.last_rsi
+                    current_trend = self.last_trend
+                    if current_rsi is None or current_trend is None:
+                        try:
+                            from bots_modules.imports_and_globals import coins_rsi_data, rsi_data_lock
+                            with rsi_data_lock:
+                                coin_data = coins_rsi_data.get('coins', {}).get(self.symbol)
+                                if coin_data:
+                                    from bot_engine.bot_config import get_rsi_from_coin_data, get_trend_from_coin_data
+                                    if current_rsi is None:
+                                        current_rsi = get_rsi_from_coin_data(coin_data)
+                                    if current_trend is None:
+                                        current_trend = get_trend_from_coin_data(coin_data)
+                        except Exception:
+                            pass
+                    if current_rsi is None:
+                        try:
+                            from bots_modules.calculations import calculate_rsi
+                            closes = [candle.get('close', 0) for candle in candles[-50:]]
+                            if closes:
+                                current_rsi = calculate_rsi(closes, 14)
+                        except Exception:
+                            pass
+                    if current_rsi is None:
+                        current_rsi = 50.0
+                    if current_trend is None:
+                        current_trend = 'NEUTRAL'
+                    signal = 'ENTER_LONG' if side == 'LONG' else 'ENTER_SHORT'
+                    filters_allowed, filters_reason = apply_entry_filters(
+                        self.symbol, candles, current_rsi, signal, filter_config, trend=current_trend
+                    )
+                    if not filters_allowed:
+                        self.logger.warning(f" {self.symbol}: 🚫 БЛОКИРОВКА: Фильтры заблокировали вход в {side}: {filters_reason}")
+                        return {'success': False, 'error': 'filters_blocked', 'message': f'Вход заблокирован фильтрами: {filters_reason}'}
+                except Exception as filter_error:
+                    self.logger.error(f" {self.symbol}: ❌ Ошибка проверки фильтров: {filter_error}")
+                    return {'success': False, 'error': 'filter_check_failed', 'message': str(filter_error)}
+            else:
+                self.logger.info(f" {self.symbol}: Автовход по рынку — проверка фильтров уже выполнена в process_auto_bot_signals")
             
             self.logger.info(f" {self.symbol}: Начинаем открытие {side} позиции...")
             
@@ -719,10 +677,8 @@ class TradingBot:
                     ai_manager = get_ai_manager()
                     
                     if ai_manager and ai_manager.risk_manager and self.volume_mode == VolumeMode.FIXED_USDT:
-                        # Получаем свечи и баланс
-                        # ✅ ИСПРАВЛЕНО: get_chart_data принимает period, а не limit
-                        # Для 6h таймфрейма: 50 свечей × 6ч = 300ч ≈ 12.5 дней, используем '14d'
-                        chart_response = self.exchange.get_chart_data(self.symbol, '6h', '14d')
+                        tf_use = self.config.get('entry_timeframe') or get_current_timeframe()
+                        chart_response = self.exchange.get_chart_data(self.symbol, tf_use, '14d')
                         candles = chart_response.get('data', {}).get('candles', []) if chart_response and chart_response.get('success') else None
                         balance = self._get_available_balance() or 1000  # Fallback
                         
@@ -764,9 +720,12 @@ class TradingBot:
                 percent_steps = []
                 margin_amounts = []
             
+            # ✅ АВТОВХОД: при force_market_entry всегда по рынку, лимитные ордера не используем
+            if force_market_entry:
+                self.logger.info(f" {self.symbol}: 🚀 Автовход — вход строго по рынку (лимитные ордера не используются)")
             # ✅ КРИТИЧНО: Если режим лимитных ордеров ВЫКЛЮЧЕН - пропускаем ВСЮ логику лимитных ордеров!
-            # Если включен набор позиций лимитными ордерами
-            if limit_orders_enabled and percent_steps and margin_amounts:
+            # Если включен набор позиций лимитными ордерами (и не принудительный рыночный вход)
+            elif limit_orders_enabled and percent_steps and margin_amounts:
                 # ✅ КРИТИЧНО: Проверяем, не размещены ли уже лимитные ордера
                 # Проверяем как в памяти бота, так и на бирже
                 has_limit_orders_in_memory = self.limit_orders and len(self.limit_orders) > 0
@@ -947,10 +906,8 @@ class TradingBot:
                             ai_manager = get_ai_manager()
                             
                             if ai_manager and ai_manager.risk_manager:
-                                # Получаем свечи для анализа
-                                # ✅ ИСПРАВЛЕНО: get_chart_data принимает period, а не limit
-                                # Для 6h таймфрейма: 50 свечей × 6ч = 300ч ≈ 12.5 дней, используем '14d'
-                                chart_response = self.exchange.get_chart_data(self.symbol, '6h', '14d')
+                                tf_use = self.config.get('entry_timeframe') or get_current_timeframe()
+                                chart_response = self.exchange.get_chart_data(self.symbol, tf_use, '14d')
                                 candles = chart_response.get('data', {}).get('candles', []) if chart_response and chart_response.get('success') else None
                                 
                                 if candles and len(candles) >= 20:
@@ -1025,6 +982,15 @@ class TradingBot:
                     'entry_price': self.entry_price
                 }
             else:
+                error_message = str(order_result.get('message', '') or order_result.get('error', ''))
+                error_code = str(order_result.get('error_code', ''))
+                if '30228' in error_code or '30228' in error_message or 'delisting' in error_message.lower() or 'No new positions during delisting' in error_message:
+                    try:
+                        from bots_modules.sync_and_cache import add_symbol_to_delisted
+                        add_symbol_to_delisted(self.symbol, reason="No new positions during delisting (ErrCode: 30228)")
+                    except Exception as add_err:
+                        self.logger.debug(f" add_symbol_to_delisted: {add_err}")
+                    self.logger.error(f" {self.symbol}: 🚫 ДЕЛИСТИНГ! Открытие позиции запрещено биржей (ErrCode: 30228)")
                 self.logger.error(f"Failed to enter position: {order_result}")
                 return {'success': False, 'error': order_result.get('error', 'order_failed')}
                 

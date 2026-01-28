@@ -24,6 +24,9 @@ from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
+# Стейблкоины (база к USDT): закрываем только по рынку — цена ~1, лимит не нужен и часто даёт 110017
+STABLECOIN_SYMBOLS = frozenset({'USDE', 'USD1', 'USDC', 'DAI', 'BUSD', 'TUSD', 'USDP', 'FRAX', 'USDD'})
+
 # Глобальная настройка пула соединений для всех HTTP запросов
 def setup_global_connection_pool():
     """Настраивает глобальный пул соединений для всех HTTP запросов"""
@@ -291,10 +294,10 @@ class BybitExchange(BaseExchange):
                             elif position_value > 1000.0 and leverage > 0:
                                 margin = position_value / leverage
                         
-                        # Если маржа все еще 0 или очень маленькая, логируем для отладки
+                        # Если маржа все еще 0 или очень маленькая, логируем для отладки (только DEBUG)
                         if margin == 0 or margin < 0.01:
-                            logger.warning(f"[BYBIT ROI DEBUG] {symbol}: margin={margin}, positionValue={position.get('positionValue')}, leverage={leverage}, size={position_size}, avgPrice={avg_price}, pnl={current_pnl}")
-                            logger.warning(f"[BYBIT ROI DEBUG] Все поля позиции: {list(position.keys())}")
+                            logger.debug(f"[BYBIT ROI] {symbol}: margin={margin}, positionValue={position.get('positionValue')}, leverage={leverage}, size={position_size}, avgPrice={avg_price}, pnl={current_pnl}")
+                            logger.debug(f"[BYBIT ROI] Все поля позиции: {list(position.keys())}")
                             margin = 1.0  # Минимальная маржа для избежания деления на ноль
                         
                         roi = (current_pnl / margin * 100) if margin > 0 else 0
@@ -845,6 +848,11 @@ class BybitExchange(BaseExchange):
 
     def close_position(self, symbol, size, side, order_type="Limit"):
         try:
+            # Стейбл/USDT — всегда закрываем по рынку (цена ~1, лимит не нужен, избегаем 110017)
+            sym_upper = (symbol or '').upper()
+            if sym_upper in STABLECOIN_SYMBOLS and (order_type or '').upper() == "LIMIT":
+                order_type = "Market"
+                logger.info(f"[BYBIT] {symbol}: стейблкоин — закрытие по рынку (без лимита)")
             logger.info(f"[BYBIT] Закрытие позиции {symbol}, объём: {size}, сторона: {side}, тип: {order_type}")
             
             # Проверяем существование активной позиции
@@ -883,7 +891,16 @@ class BybitExchange(BaseExchange):
                         break
                 
                 if not active_position:
-                    # ✅ Детальное логирование для отладки
+                    # Позиция уже закрыта на бирже (size=0 или пустой side) — считаем успехом, бот переведётся в idle
+                    any_zero = any(abs(float(p.get('size', 0))) == 0 for p in positions)
+                    if any_zero or not positions:
+                        logger.info(f"[BYBIT] {symbol}: позиция уже закрыта на бирже (size=0 или нет открытой), считаем успехом")
+                        return {
+                            'success': True,
+                            'message': f'Позиция {side} для {symbol} уже закрыта на бирже',
+                            'order_id': None,
+                            'close_price': None
+                        }
                     logger.debug(f"[BYBIT] DEBUG: ❌ Позиция не найдена! Искали: side={normalized_side} (было {side}), symbol={symbol}USDT")
                     return {
                         'success': False,
@@ -911,6 +928,39 @@ class BybitExchange(BaseExchange):
             # Определяем сторону для закрытия (противоположную текущей позиции)
             close_side = "Sell" if side == "Long" else "Buy"
             
+            # Используем размер из ответа биржи (актуальная позиция)
+            size_to_close = abs(float(active_position.get('size', size)))
+            if size_to_close <= 0:
+                size_to_close = float(size)
+            # ✅ КРИТИЧНО: Округляем объём до qtyStep инструмента (ErrCode 110017 — orderQty truncated to zero)
+            close_qty = size_to_close
+            qty_step = None
+            try:
+                instruments_info = self.get_instruments_info(f"{symbol}USDT")
+                qty_step = instruments_info.get('qtyStep')
+                min_order_qty = instruments_info.get('minOrderQty')
+                if qty_step is not None:
+                    qty_step = float(qty_step)
+                    # Округляем вниз до кратности qtyStep (не закрываем больше, чем есть)
+                    close_qty = math.floor(size_to_close / qty_step) * qty_step
+                if min_order_qty is not None:
+                    min_order_qty = float(min_order_qty)
+                    if close_qty > 0 and close_qty < min_order_qty:
+                        close_qty = min_order_qty
+                if close_qty <= 0:
+                    logger.error(
+                        f"[BYBIT] {symbol}: объём после округления по qtyStep = 0 (size={size_to_close}, qtyStep={qty_step}). "
+                        "Размер позиции меньше минимального шага — закрытие через API невозможно."
+                    )
+                    return {
+                        'success': False,
+                        'message': f"orderQty truncated to zero: позиция {size_to_close} меньше qtyStep {qty_step} для {symbol}. Закройте позицию вручную или рыночным ордером."
+                    }
+            except Exception as e:
+                logger.debug(f"[BYBIT] {symbol}: не удалось округлить по qtyStep: {e}, используем size как есть")
+            # Формат qty: убираем лишние нули после запятой, но не теряем точность для малых qtyStep
+            qty_str = f"{close_qty:.8f}".rstrip('0').rstrip('.') if isinstance(close_qty, float) else str(close_qty)
+            
             # ✅ КРИТИЧНО: Определяем positionIdx в зависимости от режима позиции
             # В One-Way Mode: position_idx = 0 (для обеих сторон)
             # В Hedge Mode: position_idx = 1 (LONG), position_idx = 2 (SHORT)
@@ -929,7 +979,7 @@ class BybitExchange(BaseExchange):
                 "symbol": f"{symbol}USDT",
                 "side": close_side,
                 "orderType": order_type.upper(),  # Важно: используем верхний регистр
-                "qty": str(size),
+                "qty": qty_str,
                 "reduceOnly": True,
                 "positionIdx": position_idx
             }
@@ -946,7 +996,41 @@ class BybitExchange(BaseExchange):
                 logger.debug(f"[BYBIT] Calculated limit price: {limit_price} → rounded: {round(limit_price, 6)}")
             
             logger.debug(f"[BYBIT] Sending order with params: {order_params}")
-            response = self.client.place_order(**order_params)
+            try:
+                response = self.client.place_order(**order_params)
+            except Exception as order_err:
+                err_msg = str(order_err)
+                # При 110017 (orderQty truncated to zero) пробуем закрыть рыночным ордером
+                if '110017' in err_msg or 'truncated to zero' in err_msg.lower():
+                    if order_type.upper() != "MARKET":
+                        logger.warning(f"[BYBIT] {symbol}: Limit закрытие отклонено (110017), пробуем Market закрытие")
+                        market_params = {
+                            "category": "linear",
+                            "symbol": f"{symbol}USDT",
+                            "side": close_side,
+                            "orderType": "MARKET",
+                            "qty": qty_str,
+                            "reduceOnly": True,
+                            "positionIdx": order_params["positionIdx"]
+                        }
+                        try:
+                            response = self.client.place_order(**market_params)
+                            if response.get('retCode') == 0:
+                                close_price = float(ticker.get('last', ticker.get('bid', 0)))
+                                return {
+                                    'success': True,
+                                    'order_id': response['result']['orderId'],
+                                    'message': 'Позиция закрыта рыночным ордером (Limit отклонён)',
+                                    'close_price': close_price
+                                }
+                        except Exception as market_err:
+                            logger.error(f"[BYBIT] {symbol}: Market закрытие тоже не удалось: {market_err}")
+                            return {
+                                'success': False,
+                                'message': f"Закрытие не удалось (110017): объём {qty_str} не соответствует правилам контракта {symbol}. Закройте позицию вручную в интерфейсе Bybit."
+                            }
+                raise order_err
+            
             logger.debug(f"[BYBIT] Order response: {response}")
             
             if response['retCode'] == 0:
@@ -958,9 +1042,34 @@ class BybitExchange(BaseExchange):
                     'close_price': close_price
                 }
             else:
+                ret_msg = response.get('retMsg', '')
+                if '110017' in ret_msg or 'truncated to zero' in ret_msg.lower():
+                    if order_type.upper() != "MARKET":
+                        logger.warning(f"[BYBIT] {symbol}: Limit отклонён (110017), пробуем Market закрытие")
+                        market_params = {
+                            "category": "linear",
+                            "symbol": f"{symbol}USDT",
+                            "side": close_side,
+                            "orderType": "MARKET",
+                            "qty": qty_str,
+                            "reduceOnly": True,
+                            "positionIdx": order_params["positionIdx"]
+                        }
+                        try:
+                            response = self.client.place_order(**market_params)
+                            if response.get('retCode') == 0:
+                                close_price = float(ticker.get('last', ticker.get('bid', 0)))
+                                return {
+                                    'success': True,
+                                    'order_id': response['result']['orderId'],
+                                    'message': 'Позиция закрыта рыночным ордером (Limit отклонён)',
+                                    'close_price': close_price
+                                }
+                        except Exception as market_err:
+                            logger.error(f"[BYBIT] {symbol}: Market закрытие не удалось: {market_err}")
                 return {
                     'success': False,
-                    'message': f"Не удалось разместить {order_type} ордер: {response['retMsg']}"
+                    'message': f"Не удалось разместить {order_type} ордер: {ret_msg}"
                 }
                 
         except Exception as e:
@@ -1005,10 +1114,10 @@ class BybitExchange(BaseExchange):
                     clean_symbol(item['symbol'])
                     for item in trading_pairs
                 ]
-                
+                # Исключаем псевдо-символ "all" (если API когда-либо вернёт ALLUSDT)
+                pairs = [p for p in pairs if p and str(p).strip().lower() != 'all']
                 # Логируем только общее количество пар
                 logger.info(f"✅ Загружено {len(pairs)} торговых пар")
-                
                 return sorted(pairs)
             else:
                 logger.error(f"Ошибка API: {response.get('retMsg', 'Unknown error')}")
@@ -1035,6 +1144,14 @@ class BybitExchange(BaseExchange):
         time.sleep(self.current_request_delay)
         
         try:
+            # Символ "all" не является торговой парой — не вызываем API (Bybit вернёт Symbol Is Invalid)
+            if not symbol or str(symbol).strip().lower() == 'all':
+                logger.warning("[BYBIT] get_chart_data: пропуск запроса для символа 'all' (не поддерживается API)")
+                return {
+                    'success': False,
+                    'error': 'Symbol "all" is not a valid trading pair',
+                    'data': {'candles': []}
+                }
             # Специальная обработка для таймфрейма "all"
             if timeframe == 'all':
                 # Последовательно пробуем разные интервалы
@@ -1222,6 +1339,7 @@ class BybitExchange(BaseExchange):
                 # Стандартная обработка для конкретного таймфрейма
                 timeframe_map = {
                     '1m': '1',
+                    '3m': '3',
                     '5m': '5',
                     '15m': '15',
                     '30m': '30',
@@ -1431,11 +1549,13 @@ class BybitExchange(BaseExchange):
             # Конвертируем таймфрейм в формат Bybit
             timeframe_map = {
                 '1m': '1',
+                '3m': '3',
                 '5m': '5',
                 '15m': '15',
                 '30m': '30',
                 '1h': '60',
                 '4h': '240',
+                '6h': '360',
                 '1d': 'D',
                 '1w': 'W'
             }
@@ -2632,8 +2752,8 @@ class BybitExchange(BaseExchange):
                         'message': f"Ошибка обновления SL: {response['retMsg']}"
                     }
             except Exception as e:
-                # Проверяем код ошибки 34040 (not modified) - это нормально, SL уже установлен
                 error_str = str(e)
+                # 34040 (not modified) — SL уже установлен
                 if "34040" in error_str or "not modified" in error_str:
                     logger.info(f"[BYBIT_BOT] ✅ SL уже установлен на {stop_loss_price:.6f}")
                     return {
@@ -2641,8 +2761,14 @@ class BybitExchange(BaseExchange):
                         'message': f'Stop Loss уже установлен: {stop_loss_price:.6f}',
                         'stop_loss': stop_loss_price
                     }
-                
-                # Для других ошибок - логируем и возвращаем ошибку
+                # 10001 (zero position) — позиция уже закрыта на бирже, стоп выставлять нечего
+                if "10001" in error_str or "zero position" in error_str.lower():
+                    logger.debug(f"[BYBIT_BOT] {symbol}: Позиция уже закрыта (zero position), пропуск установки SL")
+                    return {
+                        'success': False,
+                        'message': 'Позиция уже закрыта на бирже (zero position)',
+                        'zero_position': True
+                    }
                 logger.error(f"[BYBIT_BOT] Ошибка обновления Stop Loss: {e}")
                 import traceback
                 logger.error(f"[BYBIT_BOT] Трейсбек: {traceback.format_exc()}")

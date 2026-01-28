@@ -61,6 +61,13 @@ function updateInterface() {
         // Пропускаем элемент с id="currentPage"
         if (element.id === 'currentPage') return;
         
+        // ✅ КРИТИЧНО: Пропускаем заголовок с таймфреймом - он обновляется отдельно
+        const timeframeDisplay = element.querySelector('#currentTimeframeDisplay');
+        if (timeframeDisplay) {
+            // Не перезаписываем элемент с таймфреймом - он обновляется через updateTimeframeInUI()
+            return;
+        }
+        
         const key = element.getAttribute('data-translate');
         if (key && TRANSLATIONS[currentLang] && TRANSLATIONS[currentLang][key]) {
             element.textContent = TRANSLATIONS[currentLang][key];
@@ -89,6 +96,18 @@ function updateInterface() {
     // Принудительно обновляем данные аккаунта в BotsManager, если он существует
     if (typeof window.botsManager !== 'undefined' && window.botsManager.loadAccountInfo) {
         window.botsManager.loadAccountInfo();
+    }
+    
+    // ✅ КРИТИЧНО: Обновляем таймфрейм в UI после перевода, чтобы заголовок был правильным
+    if (typeof window.botsManager !== 'undefined' && window.botsManager.currentTimeframe) {
+        window.botsManager.updateTimeframeInUI(window.botsManager.currentTimeframe);
+    } else if (typeof window.botsManager !== 'undefined' && window.botsManager.loadTimeframe) {
+        // Если таймфрейм еще не загружен, загружаем его
+        window.botsManager.loadTimeframe().then(timeframe => {
+            if (timeframe) {
+                window.botsManager.updateTimeframeInUI(timeframe);
+            }
+        });
     }
     
     console.log('Interface updated successfully');

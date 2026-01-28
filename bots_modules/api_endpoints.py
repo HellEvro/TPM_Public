@@ -130,7 +130,7 @@ try:
     from bots_modules.filters import (
         get_effective_signal, check_auto_bot_filters,
         process_auto_bot_signals, test_exit_scam_filter, test_rsi_time_filter,
-        process_trading_signals_for_all_bots
+        process_trading_signals_for_all_bots, get_coin_rsi_data
     )
     # Для clear_mature_coins_storage может быть в разных модулях
     try:
@@ -610,10 +610,19 @@ def get_coins_with_rsi():
                 cleaned_coin = {}
                 
                 # Копируем только необходимые базовые поля
-                essential_fields = ['symbol', 'rsi6h', 'trend6h', 'rsi_zone', 'signal', 'price', 
+                # Получаем ключи для текущего таймфрейма
+                from bot_engine.bot_config import get_current_timeframe, get_rsi_key, get_trend_key
+                current_timeframe = get_current_timeframe()
+                rsi_key = get_rsi_key(current_timeframe)
+                trend_key = get_trend_key(current_timeframe)
+                
+                essential_fields = ['symbol', rsi_key, trend_key, 'rsi_zone', 'signal', 'price', 
                                   'change24h', 'last_update', 'blocked_by_scope', 'has_existing_position',
                                   'is_mature', 'blocked_by_exit_scam', 'blocked_by_rsi_time', 'blocked_by_loss_reentry',
                                   'trading_status', 'is_delisting']
+                # Также добавляем старые ключи для обратной совместимости
+                essential_fields.extend(['rsi6h', 'trend6h', 'rsi', 'trend'])
+                
                 for field in essential_fields:
                     if field in coin_data:
                         cleaned_coin[field] = coin_data[field]
@@ -667,6 +676,34 @@ def get_coins_with_rsi():
                 # Добавляем эффективный сигнал для единообразия с фронтендом
                 effective_signal = get_effective_signal(cleaned_coin)
                 cleaned_coin['effective_signal'] = effective_signal
+                # В список LONG/SHORT слева попадают только монеты, прошедшие проверку AI (как в potential_coins)
+                if effective_signal in ('ENTER_LONG', 'ENTER_SHORT'):
+                    try:
+                        auto_config = bots_data.get('auto_bot_config', {})
+                        if auto_config.get('ai_enabled'):
+                            from bot_engine.ai.ai_integration import should_open_position_with_ai
+                            direction = 'LONG' if effective_signal == 'ENTER_LONG' else 'SHORT'
+                            rsi_val = cleaned_coin.get('rsi') or cleaned_coin.get(rsi_key)
+                            trend_val = cleaned_coin.get('trend') or cleaned_coin.get(trend_key) or 'NEUTRAL'
+                            price_val = float(cleaned_coin.get('price') or 0)
+                            config_snapshot = get_config_snapshot(symbol)
+                            filter_config = (config_snapshot.get('merged') or {}) if config_snapshot else auto_config
+                            if not filter_config:
+                                filter_config = auto_config
+                            ai_result = should_open_position_with_ai(
+                                symbol=symbol,
+                                direction=direction,
+                                rsi=rsi_val or 50,
+                                trend=trend_val,
+                                price=price_val,
+                                config=filter_config,
+                                candles=None
+                            )
+                            if ai_result.get('ai_used') and not ai_result.get('should_open'):
+                                effective_signal = 'WAIT'
+                                cleaned_coin['effective_signal'] = 'WAIT'
+                    except Exception as ai_err:
+                        logger.debug(f" AI check for {symbol} in get_coins_with_rsi: {ai_err}")
                 
                 # ✅ ИСПРАВЛЕНИЕ: Добавляем количество свечей из данных зрелых монет
                 try:
@@ -994,43 +1031,13 @@ def create_bot_endpoint():
             bot_runtime_config['rsi_time_filter_enabled'] = False
         
         if enable_maturity_check_coin and not has_manual_position:
-            # Получаем данные свечей для проверки зрелости
-            current_exchange = get_exchange()
-            if not current_exchange:
+            # Проверяем зрелость по каноническому ТФ 6h (хранилище или загрузка 6h свечей при верификации)
+            from bots_modules.filters import check_coin_maturity_stored_or_verify
+            if not check_coin_maturity_stored_or_verify(symbol):
+                logger.warning(f" {symbol}: Монета не прошла проверку зрелости (ТФ 6h)")
                 return jsonify({
                     'success': False,
-                    'error': 'Exchange not initialized'
-                }), 503
-            # ✅ ИСПОЛЬЗУЕМ КЭШ ИЗ ПАМЯТИ ИЛИ БД (не требует запроса к бирже)
-            candles = []
-            candles_cache = coins_rsi_data.get('candles_cache', {})
-            if symbol in candles_cache:
-                cached_data = candles_cache[symbol]
-                candles = cached_data.get('candles', [])
-            else:
-                # Если нет в памяти, читаем из БД
-                try:
-                    from bot_engine.storage import get_candles_for_symbol
-                    db_cached_data = get_candles_for_symbol(symbol)
-                    if db_cached_data:
-                        candles = db_cached_data.get('candles', [])
-                except Exception as e:
-                    logger.debug(f"Не удалось прочитать кэш из БД для {symbol}: {e}")
-            
-            if candles and len(candles) >= 15:
-                maturity_check = check_coin_maturity_with_storage(symbol, candles)
-                if not maturity_check['is_mature']:
-                    logger.warning(f" {symbol}: Монета не прошла проверку зрелости - {maturity_check['reason']}")
-                    return jsonify({
-                        'success': False, 
-                        'error': f'Монета {symbol} не прошла проверку зрелости: {maturity_check["reason"]}',
-                        'maturity_details': maturity_check['details']
-                    }), 400
-            else:
-                logger.warning(f" {symbol}: Недостаточно данных для проверки зрелости")
-                return jsonify({
-                    'success': False, 
-                    'error': f'Недостаточно данных для проверки зрелости монеты {symbol}'
+                    'error': f'Монета {symbol} не прошла проверку зрелости (проверка по таймфрейму 6h)'
                 }), 400
         elif has_manual_position:
             logger.info(f" ✋ {symbol}: Ручная позиция обнаружена - проверка зрелости пропущена")
@@ -1073,6 +1080,7 @@ def create_bot_endpoint():
                 manual_direction = 'LONG'
 
         # ✅ Запускаем вход в позицию АСИНХРОННО (только если НЕТ существующей позиции!)
+        # Бот в списке = проверки пройдены → обязан по рынку зайти в сделку, без ожидания сигнала.
         if not has_existing_position:
             def enter_position_async():
                 try:
@@ -1081,15 +1089,34 @@ def create_bot_endpoint():
                         direction = manual_direction
                         logger.info(f" 🚀 Принудительный вход в {direction} для {symbol} (ручной запуск)")
                     else:
+                        # Автовход — направление только по настройкам конфига (rsi_long_threshold, rsi_short_threshold)
                         with rsi_data_lock:
                             coin_data = coins_rsi_data['coins'].get(symbol)
                             if coin_data and coin_data.get('signal') in ['ENTER_LONG', 'ENTER_SHORT']:
                                 signal = coin_data.get('signal')
                                 direction = 'LONG' if signal == 'ENTER_LONG' else 'SHORT'
+                                logger.info(f" 🚀 Вход по рынку для {symbol}: направление по сигналу (конфиг) → {direction}")
+                            elif coin_data:
+                                from bot_engine.bot_config import get_rsi_key, get_current_timeframe
+                                tf = get_current_timeframe()
+                                rsi_key = get_rsi_key(tf)
+                                rsi_val = coin_data.get(rsi_key) or coin_data.get('rsi')
+                                if rsi_val is not None:
+                                    rsi_val = float(rsi_val)
+                                    with bots_data_lock:
+                                        auto_config = bots_data.get('auto_bot_config', {})
+                                        rsi_long_threshold = bot_state.get('rsi_long_threshold') or auto_config.get('rsi_long_threshold', 29)
+                                        rsi_short_threshold = bot_state.get('rsi_short_threshold') or auto_config.get('rsi_short_threshold', 71)
+                                    if rsi_val <= rsi_long_threshold:
+                                        direction = 'LONG'
+                                        logger.info(f" 🚀 Вход по рынку для {symbol}: RSI={rsi_val:.1f} <= {rsi_long_threshold} (конфиг) → LONG")
+                                    elif rsi_val >= rsi_short_threshold:
+                                        direction = 'SHORT'
+                                        logger.info(f" 🚀 Вход по рынку для {symbol}: RSI={rsi_val:.1f} >= {rsi_short_threshold} (конфиг) → SHORT")
                     
                     if direction:
                         trading_bot = RealTradingBot(symbol, get_exchange(), bot_state)
-                        result = trading_bot._enter_position(direction)
+                        result = trading_bot._enter_position(direction, force_market_entry=True)
                         if result and result.get('success'):
                             logger.info(f" ✅ Успешно вошли в {direction} позицию для {symbol}")
                             with bots_data_lock:
@@ -1098,7 +1125,7 @@ def create_bot_endpoint():
                             error_msg = (result or {}).get('error', 'unknown')
                             logger.error(f" ❌ НЕ УДАЛОСЬ войти в {direction} позицию для {symbol}: {error_msg}")
                     else:
-                        logger.info(f" ℹ️ Нет активного сигнала для {symbol}, бот будет ждать")
+                        logger.info(f" ℹ️ {symbol}: RSI не в зоне порогов конфига — бот будет ждать условия в следующем цикле")
                 except Exception as e:
                     logger.error(f" ❌ Ошибка входа в позицию: {e}")
             
@@ -1588,6 +1615,120 @@ def log_config_change(key, old_value, new_value, description=""):
         return True
     return False
 
+@bots_app.route('/api/bots/timeframe', methods=['GET', 'POST'])
+def timeframe_config():
+    """Получить или установить текущий таймфрейм системы"""
+    try:
+        from bot_engine.bot_config import get_current_timeframe, set_current_timeframe, reset_timeframe_to_config
+        
+        if request.method == 'GET':
+            current_tf = get_current_timeframe()
+            return jsonify({
+                'success': True,
+                'timeframe': current_tf,
+                'supported_timeframes': ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M']
+            })
+        
+        elif request.method == 'POST':
+            data = request.get_json()
+            if not data or 'timeframe' not in data:
+                return jsonify({'success': False, 'error': 'timeframe parameter is required'}), 400
+            
+            new_timeframe = data['timeframe']
+            old_timeframe = get_current_timeframe()
+            
+            # Устанавливаем новый таймфрейм
+            success = set_current_timeframe(new_timeframe)
+            if not success:
+                return jsonify({
+                    'success': False,
+                    'error': f'Unsupported timeframe: {new_timeframe}'
+                }), 400
+            
+            # Сохраняем таймфрейм в БД для сохранения между перезапусками
+            try:
+                from bot_engine.bots_database import get_bots_database
+                db = get_bots_database()
+                db.save_timeframe(new_timeframe)
+                logger.info(f"✅ Таймфрейм сохранен в БД: {new_timeframe}")
+            except Exception as save_db_err:
+                logger.warning(f"⚠️ Не удалось сохранить таймфрейм в БД: {save_db_err}")
+            
+            # Сохраняем таймфрейм в конфиг файл (bot_config.py)
+            # ⚠️ ВАЖНО: НЕ вызываем load_system_config() после сохранения, чтобы не сбросить таймфрейм
+            try:
+                from bots_modules.config_writer import save_system_config_to_py
+                from bot_engine.bot_config import SystemConfig
+                # Обновляем SystemConfig в памяти
+                SystemConfig.SYSTEM_TIMEFRAME = new_timeframe
+                # Сохраняем напрямую в файл БЕЗ перезагрузки модуля
+                save_system_config_to_py({'SYSTEM_TIMEFRAME': new_timeframe})
+                logger.info(f"✅ Таймфрейм сохранен в конфиг файл: {new_timeframe} (без перезагрузки модуля)")
+            except Exception as save_config_err:
+                logger.warning(f"⚠️ Не удалось сохранить таймфрейм в конфиг файл: {save_config_err}")
+            
+            logger.info(f"🔄 Таймфрейм изменен: {old_timeframe} → {new_timeframe}")
+            
+            # Сохраняем текущие данные перед переключением
+            try:
+                from bots_modules.sync_and_cache import save_rsi_cache
+                from bots_modules.imports_and_globals import coins_rsi_data, rsi_data_lock
+                with rsi_data_lock:
+                    if coins_rsi_data.get('coins'):
+                        # Сохраняем текущий кэш
+                        save_rsi_cache()
+            except Exception as save_err:
+                logger.warning(f"⚠️ Не удалось сохранить RSI кэш при переключении таймфрейма: {save_err}")
+            
+            # Очищаем кэш свечей для перезагрузки с новым таймфреймом
+            try:
+                from bots_modules.imports_and_globals import coins_rsi_data, rsi_data_lock
+                with rsi_data_lock:
+                    # Полностью очищаем кэш свечей
+                    coins_rsi_data['candles_cache'] = {}
+                    coins_rsi_data['last_candles_update'] = None
+                    coins_rsi_data['last_update'] = None
+                    # Очищаем данные монет, чтобы они перезагрузились с новым таймфреймом
+                    coins_rsi_data['coins'] = {}
+                    logger.info("🗑️ Кэш свечей и RSI данных очищен для перезагрузки с новым таймфреймом")
+            except Exception as clear_err:
+                logger.warning(f"⚠️ Не удалось очистить кэш свечей: {clear_err}")
+            
+            # Триггерим перезагрузку RSI данных в фоновом режиме
+            try:
+                from bots_modules.filters import load_all_coins_rsi
+                import threading
+                def reload_rsi():
+                    try:
+                        logger.info(f"🔄 Запуск перезагрузки RSI данных для таймфрейма {new_timeframe}...")
+                        load_all_coins_rsi()
+                        logger.info(f"✅ RSI данные перезагружены для таймфрейма {new_timeframe}")
+                    except Exception as reload_err:
+                        logger.error(f"❌ Ошибка перезагрузки RSI данных: {reload_err}")
+                
+                # Запускаем в отдельном потоке, чтобы не блокировать ответ
+                reload_thread = threading.Thread(target=reload_rsi, daemon=True)
+                reload_thread.start()
+                logger.info("🔄 Запущен поток перезагрузки RSI данных")
+            except Exception as trigger_err:
+                logger.warning(f"⚠️ Не удалось запустить перезагрузку RSI данных: {trigger_err}")
+            
+            return jsonify({
+                'success': True,
+                'message': f'Таймфрейм изменен с {old_timeframe} на {new_timeframe}. Данные сохраняются, начинается перезагрузка RSI...',
+                'old_timeframe': old_timeframe,
+                'new_timeframe': new_timeframe
+            })
+    
+    except Exception as e:
+        logger.error(f"❌ Ошибка работы с таймфреймом: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @bots_app.route('/api/bots/system-config', methods=['GET', 'POST'])
 def system_config():
     """Получить или обновить системные настройки"""
@@ -1598,9 +1739,15 @@ def system_config():
                 load_system_config()
             except Exception as load_err:
                 logger.warning(f" ⚠️ Не удалось перезагрузить системную конфигурацию перед GET: {load_err}")
+            
+            # Добавляем текущий таймфрейм в системные настройки
+            config = get_system_config_snapshot()
+            from bot_engine.bot_config import get_current_timeframe
+            config['timeframe'] = get_current_timeframe()
+            
             return jsonify({
                 'success': True,
-                'config': get_system_config_snapshot()
+                'config': config
             })
 
         elif request.method == 'POST':
@@ -1792,6 +1939,7 @@ def system_config():
         else:
             logger.info("ℹ️  System config: изменений не обнаружено")
         
+        # ⚠️ ВАЖНО: При перезагрузке конфига таймфрейм восстанавливается из БД (приоритет БД над файлом)
         if saved_to_file and (changes_count > 0 or system_changes_count > 0):
             load_system_config()
 
@@ -2082,6 +2230,14 @@ def refresh_rsi_for_coin(symbol):
     try:
         global coins_rsi_data
         
+        # Символ "all" не является торговой парой — не вызываем get_coin_rsi_data (биржа вернёт Symbol Is Invalid)
+        if not symbol or str(symbol).strip().lower() == 'all':
+            logger.info(" 🔄 Обновление RSI для 'all': перенаправление на полное обновление или отказ")
+            return jsonify({
+                'success': False,
+                'error': 'Для обновления всех монет используйте полное обновление RSI (refresh-rsi-all). Символ "all" не поддерживается API биржи.'
+            }), 400
+
         logger.info(f" 🔄 Обновление RSI данных для {symbol}...")
         
         # Проверяем биржу
@@ -2120,11 +2276,23 @@ def get_rsi_history_for_chart(symbol):
         from bots_modules.calculations import calculate_rsi_history
         
         # ✅ СНАЧАЛА ПРОВЕРЯЕМ КЭШ В ПАМЯТИ, ПОТОМ БД
+        # ✅ ОПТИМИЗАЦИЯ: Поддержка новой структуры кэша (несколько таймфреймов)
         candles = None
         candles_cache = coins_rsi_data.get('candles_cache', {})
+        from bot_engine.bot_config import get_current_timeframe
+        current_timeframe = get_current_timeframe()
+        
         if symbol in candles_cache:
-            cached_data = candles_cache[symbol]
-            candles = cached_data.get('candles')
+            symbol_cache = candles_cache[symbol]
+            # Новая структура: {timeframe: {candles: [...], ...}}
+            if isinstance(symbol_cache, dict) and current_timeframe in symbol_cache:
+                cached_data = symbol_cache[current_timeframe]
+                candles = cached_data.get('candles')
+            # Старая структура (обратная совместимость)
+            elif isinstance(symbol_cache, dict) and 'candles' in symbol_cache:
+                cached_timeframe = symbol_cache.get('timeframe')
+                if cached_timeframe == current_timeframe:
+                    candles = symbol_cache.get('candles')
         
         # Если нет в памяти, читаем из БД
         if not candles:
@@ -2180,7 +2348,9 @@ def get_candles_from_cache(symbol):
     """Получить свечи из кэша или файла (без запроса к бирже)"""
     try:
         # Получаем параметры запроса
-        timeframe = request.args.get('timeframe', '6h')  # По умолчанию 6h
+        # Получаем текущий таймфрейм из конфига
+        from bot_engine.bot_config import get_current_timeframe
+        timeframe = request.args.get('timeframe', get_current_timeframe())  # По умолчанию текущий таймфрейм
         period_days = request.args.get('period', None)  # Опционально, для совместимости
         
         # ✅ СНАЧАЛА ПРОВЕРЯЕМ КЭШ В ПАМЯТИ, ПОТОМ БД
@@ -2245,11 +2415,19 @@ def get_candles_from_cache(symbol):
                 daily_candles.append(current_candle)
             
             candles = daily_candles
-        elif timeframe == '6h':
-            # Используем 6h свечи как есть
+        # Получаем текущий таймфрейм из конфига
+        from bot_engine.bot_config import get_current_timeframe
+        current_timeframe = get_current_timeframe()
+        
+        if timeframe == current_timeframe:
+            # Используем свечи текущего таймфрейма как есть
+            candles = candles_6h
+        elif timeframe == '1d':
+            # Конвертируем свечи текущего таймфрейма в дневные (если нужно)
+            # Пока возвращаем свечи текущего таймфрейма
             candles = candles_6h
         else:
-            # Для других таймфреймов возвращаем 6h (можно расширить логику)
+            # Для других таймфреймов возвращаем свечи текущего таймфрейма
             candles = candles_6h
         
         # Ограничиваем количество свечей по периоду (если указан)
@@ -2583,11 +2761,16 @@ def copy_individual_settings(symbol):
             persist=True
         )
 
-        return jsonify({
+        resp = {
             'success': True,
             'symbol': symbol.upper(),
             'copied_count': copied_count
-        })
+        }
+        if copied_count == 0:
+            from bots_modules.imports_and_globals import get_individual_coin_settings
+            if not get_individual_coin_settings(symbol):
+                resp['message'] = 'У выбранной монеты нет индивидуальных настроек'
+        return jsonify(resp)
 
     except KeyError as missing_error:
         logger.error(f" ❌ Настройки {symbol} не найдены для копирования: {missing_error}")

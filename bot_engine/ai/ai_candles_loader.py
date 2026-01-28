@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from pathlib import Path
 import concurrent.futures
+from bot_engine.bot_config import get_current_timeframe
 
 logger = logging.getLogger('AI.CandlesLoader')
 
@@ -79,18 +80,24 @@ class AICandlesLoader:
         except:
             return None
     
-    def load_all_candles_full_history(self, max_workers: int = 10) -> bool:
+    def load_all_candles_full_history(self, max_workers: int = None) -> bool:
         """
         Загружает ВСЕ доступные свечи для всех монет
         
         Использует максимальный период для получения максимального количества свечей
         
         Args:
-            max_workers: Количество параллельных потоков
+            max_workers: Количество параллельных потоков (если None — из AILauncherConfig при ограничении ОЗУ).
         
         Returns:
             True если успешно загружено
         """
+        if max_workers is None:
+            try:
+                from bot_engine.ai.ai_launcher_config import AILauncherConfig
+                max_workers = AILauncherConfig.CANDLES_LOADER_MAX_WORKERS
+            except Exception:
+                max_workers = 10
         # Сокращенные логи
         logger.info("📊 Загрузка свечей для AI...")
         
@@ -158,6 +165,7 @@ class AICandlesLoader:
             
             def load_symbol_candles(symbol):
                 """Загружает свечи для одного символа (инкрементально или полностью)"""
+                from bot_engine.bot_config import get_current_timeframe
                 try:
                     # Проверяем существующие свечи для этого символа
                     existing_symbol_data = existing_candles.get(symbol, {})
@@ -234,10 +242,20 @@ class AICandlesLoader:
                             # В инкрементальном режиме НЕ ограничиваем количество - загружаем все новые свечи
                             while (max_requests is None or request_count < max_requests) and (incremental_mode or len(all_candles) < MAX_CANDLES_TO_LOAD):
                                 try:
+                                    # Используем текущий таймфрейм
+                                    current_timeframe = get_current_timeframe()
+                                    # Конвертируем таймфрейм в интервал для биржи (в минутах)
+                                    timeframe_to_interval = {
+                                        '1m': 1, '3m': 3, '5m': 5, '15m': 15, '30m': 30,
+                                        '1h': 60, '2h': 120, '4h': 240, '6h': 360, '8h': 480,
+                                        '12h': 720, '1d': 1440, '3d': 4320, '1w': 10080, '1M': 43200
+                                    }
+                                    interval = timeframe_to_interval.get(current_timeframe, 360)  # По умолчанию 6h
+                                    
                                     response = exchange.client.get_kline(
                                         category="linear",
                                         symbol=f"{clean_sym}USDT",
-                                        interval='360',  # 6H свечи
+                                        interval=interval,
                                         limit=max_candles_per_request,
                                         end=str(end_time)  # Получаем свечи ДО этого времени
                                     )
@@ -455,7 +473,8 @@ class AICandlesLoader:
                                 pass
                     else:
                         # Для других бирж используем стандартный метод
-                        chart_response = exchange.get_chart_data(symbol, '6h', max_period)
+                        current_timeframe = get_current_timeframe()
+                        chart_response = exchange.get_chart_data(symbol, current_timeframe, max_period)
                         if chart_response and chart_response.get('success'):
                             candles = chart_response['data'].get('candles', [])
                             if candles:
@@ -467,7 +486,7 @@ class AICandlesLoader:
                             'candles': all_candles,
                             'count': len(all_candles),
                             'new_count': new_candles_count if 'new_candles_count' in locals() else len(all_candles),
-                            'timeframe': '6h',
+                            'timeframe': get_current_timeframe(),
                             'loaded_at': datetime.now().isoformat(),
                             'last_candle_time': max(c['time'] for c in all_candles) if all_candles else None,
                             'source': 'ai_full_history_loader',
@@ -593,21 +612,25 @@ class AICandlesLoader:
         return '1000'  # По умолчанию 1000 свечей для обучения ИИ
     
     def _load_existing_candles(self) -> Dict:
-        """Загрузить существующие свечи из БД (ограничено до 1000 последних для каждого символа)"""
+        """Загрузить существующие свечи из БД (ограничено по AILauncherConfig при ограничении ОЗУ)."""
         if not self.ai_db:
             return {}
         
         try:
-            # Загружаем свечи из БД с ограничениями для экономии памяти
+            from bot_engine.bot_config import get_current_timeframe
+            try:
+                from bot_engine.ai.ai_launcher_config import AILauncherConfig
+                max_symbols = AILauncherConfig.MAX_SYMBOLS_FOR_CANDLES
+                max_candles_per_symbol = AILauncherConfig.MAX_CANDLES_PER_SYMBOL
+            except Exception:
+                max_symbols = 100
+                max_candles_per_symbol = 1000
             all_candles = self.ai_db.get_all_candles_dict(
-                timeframe='6h',
-                max_symbols=100,  # Больше символов для загрузчика, но все равно ограничено
-                max_candles_per_symbol=1000
+                timeframe=get_current_timeframe(),
+                max_symbols=max_symbols,
+                max_candles_per_symbol=max_candles_per_symbol
             )
-            
-            # КРИТИЧНО: Ограничиваем до 1000 последних свечей для каждого символа
-            # Это предотвращает раздувание БД и оптимизирует использование памяти
-            MAX_CANDLES_PER_SYMBOL = 1000
+            MAX_CANDLES_PER_SYMBOL = max_candles_per_symbol
             limited_candles = {}
             
             for symbol, candles_list in all_candles.items():
@@ -660,7 +683,8 @@ class AICandlesLoader:
                     db_candles_data[symbol] = candles_sorted
             
             if db_candles_data:
-                saved_results = self.ai_db.save_candles_batch(db_candles_data, timeframe='6h')
+                from bot_engine.bot_config import get_current_timeframe
+                saved_results = self.ai_db.save_candles_batch(db_candles_data, timeframe=get_current_timeframe())
                 total_saved = sum(saved_results.values())
                 logger.info(f"✅ Сохранено {total_saved} свечей в БД для {len(saved_results)} монет")
             else:
@@ -677,7 +701,8 @@ class AICandlesLoader:
             return None
         
         try:
-            return self.ai_db.get_candles(symbol, timeframe='6h')
+            from bot_engine.bot_config import get_current_timeframe
+            return self.ai_db.get_candles(symbol, timeframe=get_current_timeframe())
         except Exception as e:
             logger.warning(f"⚠️ Ошибка загрузки свечей для {symbol} из БД: {e}")
             return None

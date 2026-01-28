@@ -273,6 +273,54 @@ class Colors:
     BG_YELLOW = '\033[43m'
     BG_BLUE = '\033[44m'
 
+def _get_timeframe_for_bots_logger(logger_name):
+    """Возвращает текущий таймфрейм для префикса TF:X в логах BOTS, иначе пустую строку."""
+    if not logger_name or ('BotsService' not in logger_name and 'bot' not in logger_name.lower()):
+        return ''
+    try:
+        from bot_engine.bot_config import get_current_timeframe
+        tf = get_current_timeframe()
+        return f" TF:{tf}" if tf else ''
+    except Exception:
+        return ''
+
+
+def _get_timeframe_for_ai_logger(logger_name):
+    """Возвращает текущий таймфрейм для префикса TF:X в логах [AI], иначе пустую строку."""
+    if not logger_name:
+        return ''
+    is_ai = (
+        logger_name.startswith('AI.') or
+        logger_name == 'AI.Main' or
+        (logger_name.lower().startswith('ai') or 'ai.' in logger_name.lower())
+    )
+    if not is_ai:
+        return ''
+    try:
+        from bot_engine.bot_config import get_current_timeframe
+        tf = get_current_timeframe()
+        return f" TF:{tf}" if tf else ''
+    except Exception:
+        return ''
+
+
+class FileFormatterWithTF(logging.Formatter):
+    """Форматтер для файла: для логгеров BOTS и AI добавляет префикс TF:X."""
+    
+    def format(self, record):
+        tf_prefix = _get_timeframe_for_bots_logger(record.name) or _get_timeframe_for_ai_logger(record.name)
+        if tf_prefix:
+            # Вставляем TF после levelname: ... - LEVEL - TF:X - message
+            s = super().format(record)
+            # Стандартный формат: asctime - name - levelname - message
+            if ' - ' in s:
+                parts = s.rsplit(' - ', 1)
+                if len(parts) == 2:
+                    s = f"{parts[0]} -{tf_prefix} - {parts[1]}"
+            return s
+        return super().format(record)
+
+
 class ColorFormatter(logging.Formatter):
     """Форматтер с цветами для разных уровней логирования"""
     
@@ -438,6 +486,14 @@ class ColorFormatter(logging.Formatter):
             else:
                 prefix = '[BOTS]'  # По умолчанию для bots.py
         
+        # Для [BOTS] и [AI] добавляем текущий таймфрейм в префикс (TF:X)
+        if prefix == '[BOTS]':
+            tf_prefix = _get_timeframe_for_bots_logger(logger_name)
+        elif prefix == '[AI]':
+            tf_prefix = _get_timeframe_for_ai_logger(logger_name)
+        else:
+            tf_prefix = ''
+        
         # Форматируем время без даты и миллисекунд (компактный формат)
         try:
             dt = datetime.fromtimestamp(record.created)
@@ -463,8 +519,11 @@ class ColorFormatter(logging.Formatter):
         colored_timestamp = f"{Colors.DIM}{timestamp}{Colors.RESET}"
         colored_level = f"{level_color}{record.levelname}{Colors.RESET}"
         
-        # Компактный формат: [PREFIX] HH:MM:SS - LEVEL - message
-        formatted = f"{colored_prefix} {colored_timestamp} - {colored_level} - {colored_message}"
+        # Компактный формат: [PREFIX] HH:MM:SS - LEVEL - [TF:X -] message
+        if tf_prefix:
+            formatted = f"{colored_prefix} {colored_timestamp} - {colored_level} -{tf_prefix} - {colored_message}"
+        else:
+            formatted = f"{colored_prefix} {colored_timestamp} - {colored_level} - {colored_message}"
         
         return formatted
     
@@ -541,8 +600,8 @@ def setup_color_logging(console_log_levels=None, enable_file_logging=True, log_f
                     encoding='utf-8'
                 )
                 file_handler.setLevel(logging.DEBUG)
-                # Форматтер для файла (без цветов)
-                file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+                # Форматтер для файла (без цветов; для BOTS добавляется префикс TF:X)
+                file_formatter = FileFormatterWithTF('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
                 file_handler.setFormatter(file_formatter)
                 logger.addHandler(file_handler)
             except Exception as e:

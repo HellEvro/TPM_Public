@@ -293,12 +293,14 @@ class AsyncSignalProcessor:
     def _process_signal_sync(self, symbol: str, rsi_data: Dict) -> Optional[Dict]:
         """Синхронная функция для обработки сигнала"""
         try:
+            # Получаем RSI с учетом текущего таймфрейма
+            from bot_engine.bot_config import get_rsi_from_coin_data
             # Здесь вызываем существующие функции обработки сигналов
             # Пока что возвращаем заглушку
             return {
                 'symbol': symbol,
                 'signal': 'NEUTRAL',
-                'rsi': rsi_data.get('rsi6h', 50),
+                'rsi': get_rsi_from_coin_data(rsi_data) or 50,
                 'timestamp': time.time()
             }
         except Exception as e:

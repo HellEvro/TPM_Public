@@ -14,7 +14,7 @@ import time
 import threading
 import logging
 import importlib
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import copy
 import math
@@ -115,7 +115,8 @@ SYSTEM_CONFIG_FIELD_MAP = {
     'trend_min_confirmations': 'TREND_MIN_CONFIRMATIONS',
     'trend_require_slope': 'TREND_REQUIRE_SLOPE',
     'trend_require_price': 'TREND_REQUIRE_PRICE',
-    'trend_require_candles': 'TREND_REQUIRE_CANDLES'
+    'trend_require_candles': 'TREND_REQUIRE_CANDLES',
+    'system_timeframe': 'SYSTEM_TIMEFRAME'  # Таймфрейм системы
 }
 
 
@@ -664,6 +665,16 @@ def save_system_config(config_data):
 def load_system_config():
     """Перезагружает SystemConfig из bot_config.py и применяет значения в память."""
     try:
+        # ✅ КРИТИЧНО: Сохраняем текущий таймфрейм из БД перед перезагрузкой модуля
+        # чтобы не потерять его при reload (приоритет БД над конфигом)
+        saved_timeframe_from_db = None
+        try:
+            from bot_engine.bots_database import get_bots_database
+            db = get_bots_database()
+            saved_timeframe_from_db = db.load_timeframe()
+        except:
+            pass
+        
         bot_config_module = importlib.import_module('bot_engine.bot_config')
         importlib.reload(bot_config_module)
         file_system_config = bot_config_module.SystemConfig
@@ -671,6 +682,23 @@ def load_system_config():
         for attr in SYSTEM_CONFIG_FIELD_MAP.values():
             if hasattr(file_system_config, attr):
                 setattr(SystemConfig, attr, getattr(file_system_config, attr))
+
+        # ✅ КРИТИЧНО: Восстанавливаем таймфрейм после перезагрузки модуля
+        # Приоритет: БД > SystemConfig.SYSTEM_TIMEFRAME из файла
+        try:
+            from bot_engine.bot_config import set_current_timeframe, get_current_timeframe
+            if saved_timeframe_from_db:
+                # Если есть таймфрейм в БД - используем его (пользователь переключал через UI)
+                set_current_timeframe(saved_timeframe_from_db)
+                logger.debug(f"[SYSTEM_CONFIG] ✅ Таймфрейм восстановлен из БД после перезагрузки: {saved_timeframe_from_db}")
+            else:
+                # Если нет в БД - используем из конфига
+                config_timeframe = getattr(file_system_config, 'SYSTEM_TIMEFRAME', None)
+                if config_timeframe:
+                    set_current_timeframe(config_timeframe)
+                    logger.debug(f"[SYSTEM_CONFIG] ✅ Таймфрейм установлен из конфига после перезагрузки: {config_timeframe}")
+        except Exception as tf_err:
+            logger.warning(f"[SYSTEM_CONFIG] ⚠️ Ошибка восстановления таймфрейма: {tf_err}")
 
         logger.info("[SYSTEM_CONFIG] ✅ Конфигурация перезагружена из bot_engine/bot_config.py")
         return True
@@ -802,13 +830,45 @@ def save_auto_bot_config(changed_data=None):
             else:
                 logger.error(f"[SAVE_CONFIG] ❌ НЕКОТОРЫЕ RSI exit пороги отсутствуют в конфигурации!")
             
+            # ✅ КРИТИЧНО: Если сохранялся system_timeframe, сохраняем его в БД ПЕРЕД перезагрузкой модуля
+            if 'system_timeframe' in config_data:
+                try:
+                    from bot_engine.bots_database import get_bots_database
+                    from bot_engine.bot_config import set_current_timeframe
+                    db = get_bots_database()
+                    new_timeframe = config_data['system_timeframe']
+                    db.save_timeframe(new_timeframe)
+                    set_current_timeframe(new_timeframe)
+                    logger.info(f"[SAVE_CONFIG] ✅ Таймфрейм сохранен в БД перед перезагрузкой модуля: {new_timeframe}")
+                except Exception as tf_save_err:
+                    logger.warning(f"[SAVE_CONFIG] ⚠️ Не удалось сохранить таймфрейм в БД: {tf_save_err}")
+            
             # ✅ Перезагружаем модуль bot_config и обновляем конфигурацию из него
             try:
                 if 'bot_engine.bot_config' in sys.modules:
                     logger.debug(f"[SAVE_CONFIG] 🔄 Перезагружаем модуль bot_config...")
+                    
+                    # ✅ КРИТИЧНО: Сохраняем таймфрейм из БД перед перезагрузкой
+                    saved_timeframe_from_db = None
+                    try:
+                        from bot_engine.bots_database import get_bots_database
+                        db = get_bots_database()
+                        saved_timeframe_from_db = db.load_timeframe()
+                    except:
+                        pass
+                    
                     import bot_engine.bot_config
                     importlib.reload(bot_engine.bot_config)
                     logger.debug(f"[SAVE_CONFIG] ✅ Модуль перезагружен")
+                    
+                    # ✅ КРИТИЧНО: Восстанавливаем таймфрейм из БД после перезагрузки
+                    if saved_timeframe_from_db:
+                        try:
+                            from bot_engine.bot_config import set_current_timeframe
+                            set_current_timeframe(saved_timeframe_from_db)
+                            logger.info(f"[SAVE_CONFIG] ✅ Таймфрейм восстановлен из БД после перезагрузки: {saved_timeframe_from_db}")
+                        except Exception as tf_restore_err:
+                            logger.warning(f"[SAVE_CONFIG] ⚠️ Не удалось восстановить таймфрейм: {tf_restore_err}")
                     
                     # ✅ КРИТИЧЕСКИ ВАЖНО: Перезагружаем конфигурацию из обновленного bot_config.py
                     # Это нужно, чтобы значения сразу брались из файла, а не из старой памяти
@@ -959,6 +1019,31 @@ def load_delisted_coins():
     except Exception as e:
         logger.warning(f"Ошибка загрузки делистированных монет из БД: {e}, используем дефолтные данные")
         return {"delisted_coins": {}, "last_scan": None, "scan_enabled": True}
+
+def add_symbol_to_delisted(symbol: str, reason: str = "Delisting detected"):
+    """Добавляет символ в список делистинговых (например, при ошибке 30228 при открытии позиции)."""
+    try:
+        if not symbol or not symbol.strip():
+            return False
+        sym = symbol.strip().upper()
+        delisted_data = load_delisted_coins()
+        if "delisted_coins" not in delisted_data:
+            delisted_data["delisted_coins"] = {}
+        if sym in delisted_data["delisted_coins"]:
+            return True
+        delisted_data["delisted_coins"][sym] = {
+            "reason": reason,
+            "delisting_date": datetime.now().strftime("%Y-%m-%d"),
+            "detected_at": datetime.now().isoformat(),
+            "source": "order_error_30228",
+        }
+        save_delisted_coins(delisted_data)
+        logger.warning(f"🚨 Добавлен в список делистинга: {sym} — {reason}")
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка добавления {symbol} в список делистинга: {e}")
+        return False
+
 
 def save_delisted_coins(data):
     """Сохраняет список делистинговых монет в БД"""
@@ -3023,7 +3108,9 @@ def sync_bots_with_exchange():
                                 if entry_time_str:
                                     try:
                                         entry_time = datetime.fromisoformat(entry_time_str.replace('Z', ''))
-                                        duration_hours = (datetime.utcnow() - entry_time).total_seconds() / 3600.0
+                                        now_utc = datetime.now(timezone.utc)
+                                        entry_utc = entry_time.replace(tzinfo=timezone.utc) if entry_time.tzinfo is None else entry_time
+                                        duration_hours = (now_utc - entry_utc).total_seconds() / 3600.0
                                     except Exception:
                                         duration_hours = 0.0
 
@@ -3052,51 +3139,73 @@ def sync_bots_with_exchange():
                                         reason='MANUAL_CLOSE',
                                         entry_data=entry_data,
                                         market_data=market_data,
-                                        is_simulated=False  # КРИТИЧНО: это сделки ботов, закрытые вручную на бирже
+                                        is_simulated=False,  # КРИТИЧНО: это сделки ботов, закрытые вручную на бирже
                                     )
-                                    
+
                                     # КРИТИЧНО: Также сохраняем в bots_data.db для истории торговли ботов
                                     try:
+                                        from bot_engine.bots_database import get_bots_database
+                                        bots_db = get_bots_database()
+                                        # Аккуратно рассчитываем entry_timestamp, чтобы избежать NameError
+                                        entry_timestamp = None
+                                        if entry_time_str:
+                                            try:
+                                                entry_dt = datetime.fromisoformat(
+                                                    entry_time_str.replace("Z", "")
+                                                )
+                                                entry_timestamp = entry_dt.timestamp() * 1000
+                                            except Exception:
+                                                entry_timestamp = datetime.now().timestamp() * 1000
+                                        else:
+                                            entry_time_str = datetime.now().isoformat()
+                                            entry_timestamp = datetime.now().timestamp() * 1000
+
                                         trade_data = {
-                                            'bot_id': bot_id,
-                                            'symbol': symbol,
-                                            'direction': direction or 'UNKNOWN',
-                                            'entry_price': entry_price or 0.0,
-                                            'exit_price': exit_price or entry_price or 0.0,
-                                            'entry_time': entry_time_str,
-                                            'exit_time': datetime.now().isoformat(),
-                                            'entry_timestamp': entry_timestamp,
-                                            'exit_timestamp': datetime.now().timestamp() * 1000,
-                                            'position_size_usdt': bot_data.get('volume_value'),
-                                            'position_size_coins': position_size_coins,
-                                            'pnl': pnl_usdt,
-                                            'roi': roi_percent,
-                                            'status': 'CLOSED',
-                                            'close_reason': 'MANUAL_CLOSE',
-                                            'decision_source': bot_data.get('decision_source', 'SCRIPT'),
-                                            'ai_decision_id': bot_data.get('ai_decision_id'),
-                                            'ai_confidence': bot_data.get('ai_confidence'),
-                                            'entry_rsi': None,  # TODO: получить из entry_data если есть
-                                            'exit_rsi': None,
-                                            'entry_trend': entry_data.get('trend'),
-                                            'exit_trend': None,
-                                            'entry_volatility': entry_data.get('volatility'),
-                                            'entry_volume_ratio': None,
-                                            'is_successful': pnl_usdt > 0 if pnl_usdt else False,
-                                            'is_simulated': False,
-                                            'source': 'bot_manual_close',
-                                            'order_id': None,
-                                            'extra_data': {
-                                                'entry_data': entry_data,
-                                                'market_data': market_data
-                                            }
+                                            "bot_id": bot_id,
+                                            "symbol": symbol,
+                                            "direction": direction or "UNKNOWN",
+                                            "entry_price": entry_price or 0.0,
+                                            "exit_price": exit_price or entry_price or 0.0,
+                                            "entry_time": entry_time_str,
+                                            "exit_time": datetime.now().isoformat(),
+                                            "entry_timestamp": entry_timestamp,
+                                            "exit_timestamp": datetime.now().timestamp() * 1000,
+                                            "position_size_usdt": bot_data.get("volume_value"),
+                                            "position_size_coins": position_size_coins,
+                                            "pnl": pnl_usdt,
+                                            "roi": roi_percent,
+                                            "status": "CLOSED",
+                                            "close_reason": "MANUAL_CLOSE",
+                                            "decision_source": bot_data.get(
+                                                "decision_source", "SCRIPT"
+                                            ),
+                                            "ai_decision_id": bot_data.get("ai_decision_id"),
+                                            "ai_confidence": bot_data.get("ai_confidence"),
+                                            "entry_rsi": None,  # TODO: получить из entry_data если есть
+                                            "exit_rsi": None,
+                                            "entry_trend": entry_data.get("trend"),
+                                            "exit_trend": None,
+                                            "entry_volatility": entry_data.get("volatility"),
+                                            "entry_volume_ratio": None,
+                                            "is_successful": pnl_usdt > 0 if pnl_usdt else False,
+                                            "is_simulated": False,
+                                            "source": "bot_manual_close",
+                                            "order_id": None,
+                                            "extra_data": {
+                                                "entry_data": entry_data,
+                                                "market_data": market_data,
+                                            },
                                         }
-                                        
+
                                         trade_id = bots_db.save_bot_trade_history(trade_data)
                                         if trade_id:
-                                            logger.info(f"[SYNC_EXCHANGE] ✅ История сделки {symbol} сохранена в bots_data.db (ID: {trade_id})")
+                                            logger.info(
+                                                f"[SYNC_EXCHANGE] ✅ История сделки {symbol} сохранена в bots_data.db (ID: {trade_id})"
+                                            )
                                     except Exception as bots_db_error:
-                                        logger.warning(f"[SYNC_EXCHANGE] ⚠️ Ошибка сохранения истории в bots_data.db: {bots_db_error}")
+                                        logger.warning(
+                                            f"[SYNC_EXCHANGE] ⚠️ Ошибка сохранения истории в bots_data.db: {bots_db_error}"
+                                        )
                                     logger.info(
                                         f"[SYNC_EXCHANGE] ✋ {symbol}: позиция закрыта вручную на бирже "
                                         f"(entry={entry_price:.6f}, exit={exit_price:.6f}, pnl={pnl_usdt:.2f} USDT)"

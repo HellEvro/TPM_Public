@@ -231,7 +231,12 @@ def check_exit_scam_filter(symbol, coin_data, config, exchange_obj, ensure_excha
         if not ensure_exchange_func():
             return False
         
-        chart_response = exchange_obj.get_chart_data(symbol, '6h', '30d')
+        try:
+            from bot_engine.bot_config import get_current_timeframe, TIMEFRAME
+            timeframe = get_current_timeframe()
+        except Exception:
+            timeframe = TIMEFRAME
+        chart_response = exchange_obj.get_chart_data(symbol, timeframe, '30d')
         if not chart_response or not chart_response.get('success'):
             return False
         
