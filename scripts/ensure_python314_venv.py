@@ -165,16 +165,54 @@ def upgrade_dependencies(venv_dir, project_root):
                                 os.unlink(tmp_path)
                 except Exception as e2:
                     print(f"[WARNING] Ошибка при установке зависимостей без TensorFlow: {e2}")
+                _verify_and_fix_sklearn(venv_dir, project_root)
                 return True
             else:
                 print(f"[ERROR] Ошибка установки зависимостей: {result.stderr[:500]}")
                 return False
         else:
             print(f"[OK] Зависимости обновлены")
+            _verify_and_fix_sklearn(venv_dir, project_root)
             return True
     except Exception as e:
         print(f"[ERROR] Ошибка установки зависимостей: {e}")
         return False
+
+
+def _verify_and_fix_sklearn(venv_dir, project_root):
+    """Проверяет sklearn/модели; при ошибке ставит scikit-learn>=1.7,<1.8 и повторяет."""
+    if os.name == 'nt':
+        venv_python = venv_dir / 'Scripts' / 'python.exe'
+    else:
+        venv_python = venv_dir / 'bin' / 'python'
+    script = project_root / 'scripts' / 'verify_ai_deps.py'
+    if not script.exists():
+        return
+    cmd = [str(venv_python), str(script)]
+    try:
+        r = subprocess.run(cmd, cwd=project_root, capture_output=True, text=True, timeout=60)
+        if r.returncode == 0:
+            print("[OK] verify_ai_deps: версии и модели OK")
+            return
+    except Exception as e:
+        print(f"[WARNING] verify_ai_deps: {e}")
+        return
+    print("[INFO] Несовпадение версий sklearn/моделей — переустанавливаем scikit-learn 1.7.x...")
+    try:
+        subprocess.run(
+            [str(venv_python), '-m', 'pip', 'install', 'scikit-learn>=1.7.0,<1.8', '--no-warn-script-location'],
+            cwd=project_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        r2 = subprocess.run(cmd, cwd=project_root, capture_output=True, text=True, timeout=60)
+        if r2.returncode == 0:
+            print("[OK] verify_ai_deps: OK после переустановки scikit-learn")
+        else:
+            print("[WARNING] verify_ai_deps: ошибка сохраняется; переобучите модели или проверьте зависимости.")
+    except Exception as e2:
+        print(f"[WARNING] Не удалось переустановить scikit-learn: {e2}")
 
 def main():
     """Главная функция"""

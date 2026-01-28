@@ -1467,6 +1467,8 @@ class InfoBotManager(tk.Tk):
                 self.log("Не удалось определить Python для установки зависимостей.", channel="system")
                 return False
 
+            # Проверка зависимостей при запуске: pip install (быстро, если уже установлено) + verify
+            self.log("Проверка зависимостей при запуске (установка при необходимости)...", channel="system")
             pip_cmd = _split_command(python_exec) + ["-m", "pip"]
             self._preinstall_ccxt_without_coincurve(pip_cmd)
             requirements_file = self._prepare_requirements_file()
@@ -1483,6 +1485,8 @@ class InfoBotManager(tk.Tk):
 
             # Обязательно устанавливаем cryptography (нужен для ai_manager / license_checker)
             self._ensure_cryptography_installed(pip_cmd, python_exec, channel="system")
+            # Проверка sklearn/joblib и моделей; при несовпадении — переустановка scikit-learn 1.7.x
+            self._verify_ai_deps_and_fix(pip_cmd, python_exec, channel="system")
             PYTHON_EXECUTABLE = _detect_python_executable()
             return True
         finally:
@@ -1559,6 +1563,9 @@ class InfoBotManager(tk.Tk):
                     self.log("[venv] ✅ Зависимости обновлены", channel="system")
                 except subprocess.CalledProcessError as exc:
                     self.log(f"[venv] ⚠️ Ошибка обновления зависимостей ({exc.returncode})", channel="system")
+
+                # 3.1 Проверка sklearn/моделей; при несовпадении — переустановка scikit-learn 1.7.x
+                self._verify_ai_deps_and_fix(pip_cmd, python_exec, channel="system")
                 
                 # 4. Проверяем версию Python
                 try:
@@ -2005,6 +2012,81 @@ class InfoBotManager(tk.Tk):
                 "[Подготовка ccxt] Не удалось установить ccxt без дополнительных зависимостей. Продолжаем стандартную установку.",
                 channel="system",
             )
+
+    def _ensure_cryptography_installed(
+        self, pip_cmd: List[str], python_exec: str, channel: str = "system"
+    ) -> bool:
+        """Устанавливает cryptography при необходимости (ai_manager / license_checker)."""
+        try:
+            r = subprocess.run(
+                _split_command(python_exec) + ["-c", "import cryptography"],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if r.returncode == 0:
+                return True
+        except Exception:
+            pass
+        self.log("[cryptography] Установка cryptography...", channel=channel)
+        try:
+            self._stream_command(
+                "Установка cryptography",
+                pip_cmd + ["install", "cryptography>=41.0.0", "--no-warn-script-location"],
+                channel=channel,
+            )
+        except subprocess.CalledProcessError:
+            self.log("[cryptography] Ошибка установки cryptography.", channel=channel)
+            return False
+        return True
+
+    def _verify_ai_deps_and_fix(
+        self, pip_cmd: List[str], python_exec: str, channel: str = "system"
+    ) -> bool:
+        """Проверяет sklearn/joblib и загрузку моделей; при ошибке ставит scikit-learn>=1.7,<1.8 и повторяет."""
+        script = PROJECT_ROOT / "scripts" / "verify_ai_deps.py"
+        if not script.exists():
+            return True
+
+        def run_verify() -> bool:
+            r = subprocess.run(
+                _split_command(python_exec) + [str(script)],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=60,
+            )
+            if r.returncode != 0 and r.stderr:
+                for line in r.stderr.strip().splitlines():
+                    self._enqueue_log(channel, f"[verify_ai_deps] {line}")
+            return r.returncode == 0
+
+        if run_verify():
+            self.log("[verify_ai_deps] OK", channel=channel)
+            return True
+
+        self.log(
+            "[verify_ai_deps] Ошибка версий/моделей — переустанавливаем scikit-learn>=1.7.0,<1.8...",
+            channel=channel,
+        )
+        try:
+            self._stream_command(
+                "Установка scikit-learn 1.7.x",
+                pip_cmd + ["install", "scikit-learn>=1.7.0,<1.8", "--no-warn-script-location"],
+                channel=channel,
+            )
+        except subprocess.CalledProcessError:
+            self.log("[verify_ai_deps] Не удалось переустановить scikit-learn.", channel=channel)
+            return False
+
+        if run_verify():
+            self.log("[verify_ai_deps] OK после переустановки", channel=channel)
+            return True
+        self.log("[verify_ai_deps] Ошибка сохраняется — переобучите модели или проверьте зависимости.", channel=channel)
+        return False
 
     def _configure_git_upstream(self) -> None:
         if not shutil.which("git"):
