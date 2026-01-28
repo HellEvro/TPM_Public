@@ -413,7 +413,8 @@ def calculate_all_coins_maturity():
         # ⚡ БЕЗ БЛОКИРОВКИ: чтение словаря - атомарная операция
         all_coins = []
         for symbol, coin_data in coins_rsi_data['coins'].items():
-            if coin_data.get('rsi6h') is not None:
+            from bot_engine.bot_config import get_rsi_from_coin_data
+            if get_rsi_from_coin_data(coin_data) is not None:
                 all_coins.append(symbol)
         
         logger.info(f"📊 Найдено {len(all_coins)} монет с RSI данными")
@@ -480,7 +481,13 @@ def calculate_all_coins_maturity():
                     logger.info(f"📊 Прогресс: {i}/{len(coins_to_check)} монет ({round(i/len(coins_to_check)*100)}%)")
                 
                 # Получаем свечи для проверки зрелости
-                chart_response = exchange.get_chart_data(symbol, '6h', '30d')
+                # Получаем текущий таймфрейм динамически
+                try:
+                    from bot_engine.bot_config import get_current_timeframe
+                    current_timeframe = get_current_timeframe()
+                except:
+                    current_timeframe = '6h'  # Fallback
+                chart_response = exchange.get_chart_data(symbol, current_timeframe, '30d')
                 if not chart_response or not chart_response.get('success'):
                     logger.debug(f"⚠️ {symbol}: Не удалось получить свечи")
                     immature_count += 1

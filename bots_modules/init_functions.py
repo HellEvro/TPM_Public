@@ -134,6 +134,39 @@ def init_bot_service():
         # 2. Загружаем системные настройки
         load_system_config()
         
+        # 2.1. Загружаем сохраненный таймфрейм из БД (если есть)
+        try:
+            from bot_engine.bots_database import get_bots_database
+            from bot_engine.bot_config import set_current_timeframe, get_current_timeframe
+            db = get_bots_database()
+            saved_timeframe = db.load_timeframe()
+            
+            if saved_timeframe:
+                # Таймфрейм есть в БД - используем его
+                success = set_current_timeframe(saved_timeframe)
+                if success:
+                    logger.info(f"✅ Таймфрейм восстановлен из БД: {saved_timeframe}")
+                else:
+                    logger.warning(f"⚠️ Неподдерживаемый таймфрейм в БД: {saved_timeframe}, используем дефолтный из конфига")
+                    # Используем дефолтный из конфига
+                    current_tf = get_current_timeframe()
+                    set_current_timeframe(current_tf)
+                    db.save_timeframe(current_tf)
+            else:
+                # Таймфрейма нет в БД - используем дефолтный из конфига (SystemConfig.SYSTEM_TIMEFRAME)
+                current_tf = get_current_timeframe()
+                set_current_timeframe(current_tf)
+                db.save_timeframe(current_tf)
+                logger.info(f"✅ Текущий таймфрейм из конфига сохранен в БД: {current_tf}")
+            
+            # Логируем финальный таймфрейм
+            final_tf = get_current_timeframe()
+            logger.info(f"⏱️ Текущий таймфрейм системы: {final_tf}")
+        except Exception as tf_err:
+            logger.warning(f"⚠️ Ошибка загрузки таймфрейма из БД: {tf_err}")
+            import traceback
+            logger.debug(traceback.format_exc())
+        
         # 3. Загружаем состояние процессов
         load_process_state()
         
@@ -659,7 +692,7 @@ def create_bot(symbol, config=None, exchange_obj=None):
 
 def process_trading_signals_on_candle_close(candle_timestamp: int, exchange_obj=None):
     """
-    Обрабатывает торговые сигналы при закрытии свечи 6H
+    Обрабатывает торговые сигналы при закрытии свечи текущего таймфрейма
     
     Args:
         candle_timestamp: Timestamp закрытой свечи
@@ -690,6 +723,20 @@ def process_trading_signals_on_candle_close(candle_timestamp: int, exchange_obj=
         # Обрабатываем каждого бота
         for symbol, bot_data in active_bots.items():
             try:
+                # ✅ КРИТИЧНО: Определяем таймфрейм для проверки сигналов
+                # Если бот в позиции - используем его entry_timeframe, иначе системный
+                bot_entry_timeframe = bot_data.get('entry_timeframe')
+                if bot_entry_timeframe and bot_data.get('status') in [
+                    BOT_STATUS.get('IN_POSITION_LONG'),
+                    BOT_STATUS.get('IN_POSITION_SHORT')
+                ]:
+                    # Бот в позиции - используем его таймфрейм
+                    timeframe_to_use = bot_entry_timeframe
+                else:
+                    # Бот не в позиции - используем системный таймфрейм
+                    from bot_engine.bot_config import get_current_timeframe
+                    timeframe_to_use = get_current_timeframe()
+                
                 # Получаем актуальные RSI данные для монеты
                 with rsi_data_lock:
                     coin_rsi_data = coins_rsi_data['coins'].get(symbol)
@@ -698,8 +745,10 @@ def process_trading_signals_on_candle_close(candle_timestamp: int, exchange_obj=
                     logger.warning(f"[TRADING] ⚠️ Нет RSI данных для {symbol}")
                     continue
                 
-                rsi = coin_rsi_data.get('rsi6h')
-                trend = coin_rsi_data.get('trend6h', 'NEUTRAL')
+                # Получаем RSI и тренд с учетом таймфрейма бота
+                from bot_engine.bot_config import get_rsi_from_coin_data, get_trend_from_coin_data
+                rsi = get_rsi_from_coin_data(coin_rsi_data, timeframe=timeframe_to_use)
+                trend = get_trend_from_coin_data(coin_rsi_data, timeframe=timeframe_to_use)
                 price = coin_rsi_data.get('price', 0)
                 
                 if not rsi or not price:

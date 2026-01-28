@@ -276,18 +276,29 @@ def calculate_ema(prices, period):
     
     return ema
 
-def analyze_trend_6h(symbol, exchange_obj=None, candles_data=None):
+def analyze_trend(symbol, exchange_obj=None, candles_data=None, timeframe=None):
     """
-    Анализирует тренд 6H на основе ПРОСТОГО АНАЛИЗА ЦЕНЫ (без EMA)
+    Анализирует тренд на основе ПРОСТОГО АНАЛИЗА ЦЕНЫ (без EMA)
     
     Логика:
-    - Берет последние N свечей 6h (из конфига: trend_analysis_period)
+    - Берет последние N свечей (из конфига: trend_analysis_period)
     - Сравниваем цену начала и конца периода
     - Считаем % изменения и количество растущих/падающих свечей
-    - Определяем тренд: UP / DOWN / NEUTRAL (по порогам из конфига)
+    - Определяет тренд: UP / DOWN / NEUTRAL (по порогам из конфига)
+    
+    Args:
+        symbol: Символ монеты
+        exchange_obj: Объект биржи (опционально)
+        candles_data: Данные свечей (опционально, если None - загружаются с биржи)
+        timeframe: Таймфрейм для анализа (если None - используется текущий таймфрейм)
     """
     try:
-        # Получаем свечи 6H для анализа тренда
+        # Получаем текущий таймфрейм
+        if timeframe is None:
+            from bot_engine.bot_config import get_current_timeframe
+            timeframe = get_current_timeframe()
+        
+        # Получаем свечи для анализа тренда
         from bots_modules.imports_and_globals import get_exchange, get_auto_bot_config
         exchange_to_use = exchange_obj if exchange_obj else get_exchange()
         if not exchange_to_use:
@@ -301,7 +312,8 @@ def analyze_trend_6h(symbol, exchange_obj=None, candles_data=None):
         candles_threshold = config.get('trend_candles_threshold', 70)  # Порог процента свечей (50-80%)
         
         if candles_data is None:
-            chart_response = exchange_to_use.get_chart_data(symbol, '6h', '30d')
+            # Определяем период для загрузки свечей (примерно 30 дней для большинства таймфреймов)
+            chart_response = exchange_to_use.get_chart_data(symbol, timeframe, '30d')
             if not chart_response or not chart_response.get('success'):
                 return None
             candles = chart_response['data']['candles']
@@ -348,12 +360,28 @@ def analyze_trend_6h(symbol, exchange_obj=None, candles_data=None):
             'current_close': current_close,
             'start_price': start_price,
             'period': period,
+            'timeframe': timeframe,
             'method': 'simple_price_analysis'  # Метод анализа
         }
         
     except Exception as e:
         logger.error(f"Ошибка анализа тренда для {symbol}: {e}")
         return None
+
+# Обратная совместимость: оставляем старую функцию для существующего кода
+def analyze_trend_6h(symbol, exchange_obj=None, candles_data=None):
+    """
+    Устаревшая функция для обратной совместимости.
+    Использует analyze_trend с таймфреймом '6h'.
+    """
+    # Получаем текущий таймфрейм динамически
+    try:
+        from bot_engine.bot_config import get_current_timeframe
+        current_timeframe = get_current_timeframe()
+    except:
+        current_timeframe = '6h'  # Fallback
+    
+    return analyze_trend(symbol, exchange_obj, candles_data, timeframe=current_timeframe)
 
 def perform_enhanced_rsi_analysis(candles, current_rsi, symbol):
     """Выполняет улучшенный анализ RSI для монеты"""

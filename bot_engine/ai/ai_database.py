@@ -3981,8 +3981,10 @@ class AIDatabase:
                 
                 # Получаем текущий RSI/тренд из cache
                 coin_rsi_data = coins_rsi_data.get(symbol, {})
-                current_rsi = coin_rsi_data.get('rsi6h')
-                current_trend = coin_rsi_data.get('trend6h', 'NEUTRAL')
+                # Получаем RSI и тренд с учетом текущего таймфрейма
+                from bot_engine.bot_config import get_rsi_from_coin_data, get_trend_from_coin_data
+                current_rsi = get_rsi_from_coin_data(coin_rsi_data)
+                current_trend = get_trend_from_coin_data(coin_rsi_data)
                 current_price = coin_rsi_data.get('price')
                 
                 # Получаем данные входа из бота
