@@ -1969,11 +1969,14 @@ chart_render_lock = threading.Lock()
 
 @app.route('/get_symbol_chart/<symbol>')
 def get_symbol_chart(symbol):
-    """Получение миниграфика RSI 6ч для символа (использует кэш из bots.py)"""
+    """Получение миниграфика RSI для символа (использует кэш из bots.py, таймфрейм из конфига)"""
     chart_logger = logging.getLogger('app')
     try:
         theme = request.args.get('theme', 'dark')
-        chart_logger.info(f"[CHART] Getting RSI 6h chart for {symbol} with theme {theme}")
+        # Получаем текущий таймфрейм для логирования
+        from bot_engine.bot_config import get_current_timeframe
+        current_timeframe = get_current_timeframe()
+        chart_logger.info(f"[CHART] Getting RSI {current_timeframe} chart for {symbol} with theme {theme}")
         
         # ✅ ИСПОЛЬЗУЕМ КЭШ ИЗ BOTS.PY вместо запроса к бирже
         # Запрашиваем историю RSI через API bots.py (использует кэш свечей)
@@ -1993,15 +1996,28 @@ def get_symbol_chart(symbol):
         
         num_rsi_values = len(rsi_values)
         
+        # ✅ КРИТИЧНО: Используем уже полученный current_timeframe для правильного расчета временных меток
+        # Определяем интервал свечи в миллисекундах в зависимости от таймфрейма
+        timeframe_ms = {
+            '1m': 60 * 1000, '3m': 3 * 60 * 1000, '5m': 5 * 60 * 1000,
+            '15m': 15 * 60 * 1000, '30m': 30 * 60 * 1000,
+            '1h': 60 * 60 * 1000, '2h': 2 * 60 * 60 * 1000,
+            '4h': 4 * 60 * 60 * 1000, '6h': 6 * 60 * 60 * 1000,
+            '8h': 8 * 60 * 60 * 1000, '12h': 12 * 60 * 60 * 1000,
+            '1d': 24 * 60 * 60 * 1000, '3d': 3 * 24 * 60 * 60 * 1000,
+            '1w': 7 * 24 * 60 * 60 * 1000, '1M': 30 * 24 * 60 * 60 * 1000
+        }
+        candle_interval_ms = timeframe_ms.get(current_timeframe, 6 * 60 * 60 * 1000)  # По умолчанию 6h
+        
         # Создаем временные метки на основе количества значений RSI
-        # Каждое значение RSI соответствует одной 6-часовой свече
+        # Каждое значение RSI соответствует одной свече текущего таймфрейма
         # Начинаем с текущего времени и идем назад
         current_timestamp = int(time.time() * 1000)
         times = []
         for i in range(num_rsi_values):
-            # Каждое значение RSI отстоит на 6 часов (21600000 мс) от предыдущего
+            # Каждое значение RSI отстоит на интервал свечи текущего таймфрейма от предыдущего
             # Последнее значение RSI - самое свежее (текущее время)
-            ts = current_timestamp - (num_rsi_values - 1 - i) * 21600000
+            ts = current_timestamp - (num_rsi_values - 1 - i) * candle_interval_ms
             times.append(datetime.fromtimestamp(ts / 1000))
             
         with chart_render_lock:
@@ -2064,7 +2080,7 @@ def get_symbol_chart(symbol):
         # Получаем текущее значение RSI из ответа API (уже рассчитано в bots.py)
         current_rsi = rsi_response.get('current_rsi')
         
-        chart_logger.info(f"[CHART] Successfully generated RSI 6h chart for {symbol} (from cache)")
+        chart_logger.info(f"[CHART] Successfully generated RSI {current_timeframe} chart for {symbol} (from cache)")
         return jsonify({
             'success': True,
             'chart': chart_data,
@@ -2155,10 +2171,22 @@ def get_rsi_6h(symbol):
             else:
                 last_timestamp = int(time.time() * 1000)
             
-            # Создаем временные метки с шагом 6 часов (21600000 мс)
+            # ✅ КРИТИЧНО: Используем интервал свечи текущего таймфрейма вместо жестко зашитых 6 часов
+            timeframe_ms = {
+                '1m': 60 * 1000, '3m': 3 * 60 * 1000, '5m': 5 * 60 * 1000,
+                '15m': 15 * 60 * 1000, '30m': 30 * 60 * 1000,
+                '1h': 60 * 60 * 1000, '2h': 2 * 60 * 60 * 1000,
+                '4h': 4 * 60 * 60 * 1000, '6h': 6 * 60 * 60 * 1000,
+                '8h': 8 * 60 * 60 * 1000, '12h': 12 * 60 * 60 * 1000,
+                '1d': 24 * 60 * 60 * 1000, '3d': 3 * 24 * 60 * 60 * 1000,
+                '1w': 7 * 24 * 60 * 60 * 1000, '1M': 30 * 24 * 60 * 60 * 1000
+            }
+            candle_interval_ms = timeframe_ms.get(current_timeframe, 6 * 60 * 60 * 1000)  # По умолчанию 6h
+            
+            # Создаем временные метки с шагом интервала свечи текущего таймфрейма
             timestamps = []
             for i in range(len(rsi_history)):
-                ts = last_timestamp - (len(rsi_history) - 1 - i) * 21600000
+                ts = last_timestamp - (len(rsi_history) - 1 - i) * candle_interval_ms
                 timestamps.append(ts)
         
         # Берем только последние 56 значений
