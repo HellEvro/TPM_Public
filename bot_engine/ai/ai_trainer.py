@@ -4128,6 +4128,12 @@ class AITrainer:
                     if len(closes) < 100:
                         continue
                     
+                    # Вычисляем RSI до приоритетов 1–4: нужен для _generate_adaptive_params (приоритет 4) и симуляции
+                    rsi_history = calculate_rsi_history_func(candles, period=RSI_PERIOD)
+                    if not rsi_history or len(rsi_history) < 50:
+                        logger.debug(f"   ⚠️ {symbol}: недостаточно данных для RSI ({len(rsi_history) if rsi_history else 0}), пропуск")
+                        continue
+                    
                     # Готовим индивидуальную базу конфигурации (общий конфиг + индивидуальные настройки монеты)
                     # ВАЖНО: Используем сохраненные настройки как базовые для симуляций
                     from bot_engine.bot_config import AIConfig
@@ -4371,13 +4377,7 @@ class AITrainer:
                         )
 
                     
-                    # Вычисляем RSI для КАЖДОЙ свечи
-                    rsi_history = calculate_rsi_history_func(candles, period=RSI_PERIOD)
-                    
-                    if not rsi_history or len(rsi_history) < 50:
-                        logger.debug(f"   ⚠️ Недостаточно данных для расчета RSI ({len(rsi_history) if rsi_history else 0})")
-                        continue
-                    
+                    # RSI уже вычислен выше (до приоритетов 1–4)
                     # УЛУЧШЕНИЕ: Адаптируем диапазоны параметров на основе статистики RSI монеты
                     # Это увеличивает вероятность генерации сделок
                     rsi_values = [r for r in rsi_history if r is not None and 0 <= r <= 100]
