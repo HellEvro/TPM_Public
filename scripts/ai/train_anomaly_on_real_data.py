@@ -1,7 +1,7 @@
 """
 Обучение Anomaly Detector на реальных исторических данных
 
-Использует собранные данные из data/ai/historical/ для обучения модели.
+Использует собранные данные из БД ai_data.db (таблица candles_history) для обучения модели.
 """
 
 import sys
@@ -12,7 +12,6 @@ os.environ['AI_DEV_MODE'] = '1'
 
 from bot_engine.ai.anomaly_detector import AnomalyDetector
 from bot_engine.bot_config import AIConfig
-import pandas as pd
 from pathlib import Path
 import logging
 
@@ -23,67 +22,73 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def load_historical_data(data_dir='data/ai/historical', window_size=50, step=25):
+def _build_training_windows(candles, window_size: int, step: int):
+    """Преобразует список свечей в набор скользящих окон для обучения."""
+    if not candles or len(candles) < window_size:
+        return []
+    windows = []
+    for i in range(0, len(candles) - window_size + 1, step):
+        windows.append(candles[i:i + window_size])
+    return windows
+
+
+def load_historical_data(timeframe: str = '6h', window_size: int = 50, step: int = 25, max_symbols: int = 50, max_candles_per_symbol: int = 3000):
     """
-    Загружает все исторические данные из CSV файлов
-    
-    Создает скользящие окна из свечей для увеличения количества примеров.
+    Загружает исторические данные из БД (ai_data.db) и создаёт скользящие окна.
     
     Args:
-        data_dir: Директория с CSV файлами
+        timeframe: Таймфрейм свечей
         window_size: Размер окна (количество свечей)
         step: Шаг окна (сколько свечей пропускать)
+        max_symbols: Максимум символов для выборки (защита от переполнения памяти)
+        max_candles_per_symbol: Максимум свечей на символ
     
     Returns:
         Список списков свечей (каждый список = window_size свечей)
     """
-    data_path = Path(data_dir)
-    
-    if not data_path.exists():
-        logger.error(f"Директория не найдена: {data_dir}")
-        logger.info("Сначала запустите: python scripts/ai/collect_historical_data.py")
+    try:
+        from bot_engine.ai.ai_database import get_ai_database
+        ai_db = get_ai_database()
+        if not ai_db:
+            logger.error("AI Database недоступна (get_ai_database вернул None)")
+            return []
+    except Exception as e:
+        logger.error(f"Ошибка инициализации AI Database: {e}")
         return []
-    
-    csv_files = list(data_path.glob('*_6h_historical.csv'))
-    
-    if not csv_files:
-        logger.error(f"CSV файлы не найдены в {data_dir}")
-        logger.info("Сначала запустите: python scripts/ai/collect_historical_data.py")
-        return []
-    
-    logger.info(f"Найдено {len(csv_files)} файлов с данными")
+
+    logger.info(f"Загружаем свечи из БД: timeframe={timeframe}, max_symbols={max_symbols}, max_candles_per_symbol={max_candles_per_symbol}")
     logger.info(f"Параметры окна: размер={window_size}, шаг={step}")
-    
+
+    candles_by_symbol = ai_db.get_all_candles_dict(
+        timeframe=timeframe,
+        max_symbols=max_symbols,
+        max_candles_per_symbol=max_candles_per_symbol
+    ) or {}
+
+    if not candles_by_symbol:
+        logger.error(f"В БД нет данных свечей для timeframe={timeframe}")
+        logger.info("Сначала запустите: python scripts/ai/collect_historical_data.py --limit 20")
+        return []
+
     training_data = []
-    
-    for csv_file in csv_files:
+    required_fields = ['close', 'high', 'low', 'volume']
+
+    for symbol, candles in candles_by_symbol.items():
         try:
-            symbol = csv_file.stem.replace('_6h_historical', '')
-            df = pd.read_csv(csv_file)
-            
-            # Преобразуем DataFrame в список словарей
-            candles = df.to_dict('records')
-            
-            # Убеждаемся что есть нужные поля
-            required_fields = ['close', 'high', 'low', 'volume']
+            if not candles:
+                continue
             if not all(field in candles[0] for field in required_fields):
                 logger.warning(f"  ⚠️ {symbol}: отсутствуют необходимые поля")
                 continue
-            
-            # Создаем скользящие окна
-            windows_count = 0
-            for i in range(0, len(candles) - window_size + 1, step):
-                window = candles[i:i+window_size]
-                training_data.append(window)
-                windows_count += 1
-            
-            logger.info(f"  ✅ {symbol}: {len(candles)} свечей → {windows_count} окон")
-        
+
+            windows = _build_training_windows(candles, window_size=window_size, step=step)
+            if windows:
+                training_data.extend(windows)
+            logger.info(f"  ✅ {symbol}: {len(candles)} свечей → {len(windows)} окон")
         except Exception as e:
-            logger.error(f"  ❌ Ошибка загрузки {csv_file.name}: {e}")
-    
+            logger.error(f"  ❌ Ошибка подготовки данных для {symbol}: {e}")
+
     logger.info(f"Всего создано {len(training_data)} тренировочных примеров")
-    
     return training_data
 
 
@@ -98,7 +103,7 @@ def train_on_real_data():
     # Загружаем данные
     print("Step 1/4: Loading historical data...")
     print("-" * 60)
-    training_data = load_historical_data()
+    training_data = load_historical_data(timeframe='6h')
     
     if not training_data:
         print("[ERROR] No training data found!")

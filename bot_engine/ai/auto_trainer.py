@@ -906,14 +906,76 @@ class AutoTrainer:
                     model_path = AIConfig.AI_ANOMALY_MODEL_PATH
                     scaler_path = AIConfig.AI_ANOMALY_SCALER_PATH
                     
-                    success = ai_manager.anomaly_detector.load_model(model_path, scaler_path)
+                    # Проверяем существование файлов перед загрузкой
+                    import os
+                    model_exists = os.path.exists(model_path) if model_path else False
+                    scaler_exists = os.path.exists(scaler_path) if scaler_path else False
                     
-                    if success:
-                        logger.info("[AutoTrainer] ✅ Anomaly Detector перезагружен (hot reload)")
+                    if not model_exists:
+                        logger.warning(f"[AutoTrainer] ⚠️ Файл модели Anomaly Detector не найден: {model_path}")
+                        logger.info("[AutoTrainer] 🧠 Модель отсутствует — создаём (обучаем) Anomaly Detector...")
+
+                        # 1) Убедимся, что в ai_data.db есть данные (свечи 6h). Если данных нет — соберём.
+                        try:
+                            from bot_engine.ai.ai_database import get_ai_database
+                            ai_db = get_ai_database()
+                            candles_count = ai_db.count_candles(timeframe='6h') if ai_db else 0
+                            symbols_count = ai_db.count_symbols_with_candles(timeframe='6h') if ai_db else 0
+                        except Exception as e:
+                            logger.debug(f"[AutoTrainer] Не удалось проверить свечи в AI БД: {e}")
+                            candles_count = 0
+                            symbols_count = 0
+
+                        if candles_count <= 0 or symbols_count <= 0:
+                            logger.info("[AutoTrainer] 📥 В AI БД нет свечей 6h — запускаем сбор исторических данных...")
+                            # По умолчанию collect_historical_data.py собирает limit=20, days=730
+                            collect_ok = self._train_model(
+                                self.collect_script,
+                                "Сбор исторических данных для Anomaly Detector",
+                                timeout=1800,
+                            )
+                            if not collect_ok:
+                                logger.error("[AutoTrainer] ❌ Не удалось собрать данные для Anomaly Detector — обучение модели невозможно")
+                                # Не прерываем reload остальных моделей
+                                model_exists = False
+                        else:
+                            logger.info(f"[AutoTrainer] ✅ В AI БД есть данные 6h: свечей={candles_count:,}, монет={symbols_count:,}")
+
+                        # 2) Обучаем Anomaly Detector (скрипт сам сохранит model/scaler в AIConfig пути)
+                        train_ok = self._train_model(
+                            self.train_anomaly_script,
+                            "Anomaly Detector",
+                            timeout=900,
+                        )
+                        if train_ok:
+                            model_exists = os.path.exists(model_path) if model_path else False
+                            scaler_exists = os.path.exists(scaler_path) if scaler_path else False
+                            if not model_exists:
+                                logger.error(f"[AutoTrainer] ❌ Обучение завершилось, но файл модели не появился: {model_path}")
+                            else:
+                                logger.info("[AutoTrainer] ✅ Модель Anomaly Detector создана, выполняем hot reload...")
+                                success = ai_manager.anomaly_detector.load_model(model_path, scaler_path)
+                                if success:
+                                    logger.info("[AutoTrainer] ✅ Anomaly Detector перезагружен (hot reload)")
+                                else:
+                                    logger.error("[AutoTrainer] ❌ Ошибка перезагрузки Anomaly Detector после обучения")
+                        else:
+                            logger.error("[AutoTrainer] ❌ Не удалось обучить Anomaly Detector (модель не создана)")
                     else:
-                        logger.error("[AutoTrainer] ❌ Ошибка перезагрузки Anomaly Detector")
+                        if not scaler_exists:
+                            logger.warning(f"[AutoTrainer] ⚠️ Файл scaler Anomaly Detector не найден: {scaler_path}")
+                            logger.debug("[AutoTrainer] Будет использован новый scaler")
+                        
+                        success = ai_manager.anomaly_detector.load_model(model_path, scaler_path)
+                        
+                        if success:
+                            logger.info("[AutoTrainer] ✅ Anomaly Detector перезагружен (hot reload)")
+                        else:
+                            logger.error(f"[AutoTrainer] ❌ Ошибка перезагрузки Anomaly Detector")
+                            logger.debug(f"[AutoTrainer] Путь модели: {model_path} (существует: {model_exists})")
+                            logger.debug(f"[AutoTrainer] Путь scaler: {scaler_path} (существует: {scaler_exists})")
                 except Exception as e:
-                    logger.error(f"[AutoTrainer] Ошибка hot reload Anomaly Detector: {e}")
+                    logger.error(f"[AutoTrainer] ❌ Ошибка hot reload Anomaly Detector: {e}", exc_info=True)
             
             # 2. Перезагружаем LSTM Predictor
             if ai_manager.lstm_predictor:
