@@ -122,15 +122,19 @@ class AIContinuousLearning:
             # Пробуем получить конфигурацию из bots_data
             from bots_modules.imports_and_globals import bots_data, bots_data_lock
             with bots_data_lock:
-                auto_config = bots_data.get('auto_bot_config', {})
+                auto_config = bots_data.get('auto_bot_config', {}) or {}
         except ImportError:
-            # Fallback: используем helper модуль
+            auto_config = {}
+        if not auto_config:
+            # Fallback при отдельном запуске ai.py: whitelist/blacklist/scope из БД
             try:
                 from bot_engine.ai.bots_data_helper import get_auto_bot_config
                 auto_config = get_auto_bot_config() or {}
             except Exception:
-                # Если не удалось загрузить конфигурацию, используем все монеты
-                return True
+                pass
+        if not auto_config:
+            # Не удалось загрузить конфигурацию — используем все монеты
+            return True
         
         scope = auto_config.get('scope', 'all')
         whitelist = auto_config.get('whitelist', []) or []

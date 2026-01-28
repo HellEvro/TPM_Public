@@ -111,19 +111,37 @@ def get_rsi_cache() -> Optional[Dict[str, Any]]:
 
 def get_auto_bot_config() -> Optional[Dict[str, Any]]:
     """
-    Получает конфигурацию Auto Bot из bots.py
+    Получает конфигурацию Auto Bot из bots.py.
+    При отдельном запуске ai.py (без bots) — fallback на whitelist/blacklist/scope из БД,
+    чтобы обучение ИИ учитывало белый список монет.
     
     Returns:
-        Словарь с конфигурацией или None
+        Словарь с конфигурацией (whitelist, blacklist, scope и др.) или None
     """
     try:
         from bots_modules.imports_and_globals import bots_data, bots_data_lock
         with bots_data_lock:
-            return bots_data.get('auto_bot_config', {})
+            cfg = bots_data.get('auto_bot_config')
+            if cfg is not None and isinstance(cfg, dict):
+                return cfg
     except ImportError:
         pass
     except Exception as e:
         logger.debug(f"   ⚠️ Ошибка получения конфигурации: {e}")
+    
+    # Fallback при отдельном запуске ai.py: загружаем whitelist/blacklist/scope из БД
+    try:
+        from bot_engine.bots_database import get_bots_database
+        db = get_bots_database()
+        filters = db.load_coin_filters()
+        if filters:
+            logger.debug(
+                f"📂 [AI] Конфиг фильтров из БД: whitelist={len(filters.get('whitelist', []))}, "
+                f"blacklist={len(filters.get('blacklist', []))}, scope={filters.get('scope', 'all')}"
+            )
+            return filters
+    except Exception as e:
+        logger.debug(f"   ⚠️ [AI] Не удалось загрузить фильтры из БД для обучения: {e}")
     
     return None
 
