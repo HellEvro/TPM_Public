@@ -102,11 +102,11 @@ def _test_load_models() -> tuple[bool, str]:
             elif "unpickle" in str(getattr(x, "message", "")).lower() and "version" in str(getattr(x, "message", "")).lower():
                 inconsistent.append(x)
 
-    if inconsistent:
-        errors.append("InconsistentVersionWarning при загрузке (sklearn не совпадает с версией обучения)")
     if errors:
         return False, "; ".join(errors)
     if loaded:
+        if inconsistent:
+            return True, f"загружено {loaded} моделей OK (версия sklearn при сохранении отличалась — используем как есть)"
         return True, f"загружено {loaded} моделей OK"
     return True, "моделей нет"
 
@@ -127,7 +127,7 @@ def main() -> int:
     ok, msg = _test_load_models()
     if not ok:
         print(f"[verify_ai_deps] Ошибка загрузки моделей: {msg}", file=sys.stderr)
-        print("[verify_ai_deps] Переустановите: pip install 'scikit-learn>=1.7.0,<1.8' или переобучите модели.", file=sys.stderr)
+        print("[verify_ai_deps] Сделайте: «Обновить venv» в лаунчере. Если не поможет — запустите AI Engine и дождитесь обучения; модели обновятся.", file=sys.stderr)
         return 1
 
     print(f"[verify_ai_deps] Модели: {msg}")

@@ -2401,7 +2401,7 @@ def _verify_ai_deps_for_venv(
     if run_verify():
         log_fn("[verify_ai_deps] OK после переустановки", channel=channel)
         return True
-    log_fn("[verify_ai_deps] Ошибка сохраняется — переобучите модели или проверьте зависимости.", channel=channel)
+    log_fn("[verify_ai_deps] Ошибка сохраняется. Нажмите «Обновить venv». Если не поможет — запустите AI Engine и дождитесь обучения; модели обновятся.", channel=channel)
     return False
 
 
