@@ -123,8 +123,7 @@ def upgrade_dependencies(venv_dir, project_root):
         print(f"[WARNING] Ошибка обновления pip: {e}")
     
     print(f"[INFO] Установка/обновление зависимостей из requirements.txt...")
-    print(f"[INFO] Примечание: TensorFlow не поддерживает Python 3.14+ и будет пропущен")
-    print(f"[INFO] Для TensorFlow используйте .venv_gpu с Python 3.12: python scripts/setup_python_gpu.py")
+    print(f"[INFO] TensorFlow не поддерживает Python 3.14+ и будет пропущен. PyTorch ставится в .venv.")
     
     try:
         # Устанавливаем зависимости, но игнорируем ошибки TensorFlow

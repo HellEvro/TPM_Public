@@ -26,7 +26,7 @@ def check_python_version():
             'supported': True,
             'gpu_supported': False,  # TensorFlow не поддерживает 3.14+
             'message': f'Python {major}.{minor} поддерживается, но TensorFlow требует Python 3.12 для GPU',
-            'recommended': 'Python 3.12 для .venv_gpu'
+            'recommended': 'PyTorch в .venv (TensorFlow не используется)'
         }
     
     # Версии ниже 3.14 не поддерживаются
@@ -121,8 +121,7 @@ def suggest_python_downgrade():
         return
     _gpu_warning_shown = True
     logger.warning("=" * 80)
-    logger.warning("InfoBot требует Python 3.12. Выполните: python scripts/setup_python_gpu.py")
-    logger.warning("Создаст .venv_gpu с Python 3.12. ai.py автоматически использует его.")
+    logger.warning("InfoBot требует Python 3.12+. Выполните: python scripts/setup_python_gpu.py (PyTorch в .venv)")
     logger.warning("=" * 80)
 
 def ensure_tensorflow_setup():
