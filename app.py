@@ -31,34 +31,53 @@ if os.name == 'nt':
         except:
             pass
 
-# Проверка наличия конфигурации
-if not os.path.exists('app/config.py'):
-    # Используем stderr для критических ошибок, так как logger еще не настроен
-    import sys
-    sys.stderr.write("\n" + "="*80 + "\n")
-    sys.stderr.write("❌ ОШИБКА: Файл конфигурации не найден!\n")
-    sys.stderr.write("="*80 + "\n")
-    sys.stderr.write("\n")
-    sys.stderr.write("📝 Для первого запуска выполните:\n")
-    sys.stderr.write("\n")
-    sys.stderr.write("   1. Скопируйте файл конфигурации:\n")
-    if os.name == 'nt':  # Windows
-        sys.stderr.write("      copy app\\config.example.py app\\config.py\n")
-    else:  # Linux/Mac
-        sys.stderr.write("      cp app/config.example.py app/config.py\n")
-    sys.stderr.write("\n")
-    sys.stderr.write("   2. Отредактируйте app/config.py:\n")
-    sys.stderr.write("      - Добавьте свои API ключи бирж\n")
-    sys.stderr.write("      - Настройте Telegram (опционально)\n")
-    sys.stderr.write("\n")
-    sys.stderr.write("   3. Запустите снова:\n")
-    sys.stderr.write("      python app.py\n")
-    sys.stderr.write("\n")
-    sys.stderr.write("   📖 Подробная инструкция: docs/INSTALL.md\n")
-    sys.stderr.write("\n")
-    sys.stderr.write("="*80 + "\n")
-    sys.stderr.write("\n")
-    sys.exit(1)
+# Проверка наличия конфигурации (через абсолютные пути, чтобы запуск работал из любой директории)
+_PROJECT_ROOT = Path(__file__).resolve().parent
+_CONFIG_PATH = _PROJECT_ROOT / "app" / "config.py"
+_CONFIG_EXAMPLE_PATH = _PROJECT_ROOT / "app" / "config.example.py"
+_KEYS_PATH = _PROJECT_ROOT / "app" / "keys.py"
+_KEYS_EXAMPLE_PATH = _PROJECT_ROOT / "app" / "keys.example.py"
+
+if not _CONFIG_PATH.exists():
+    # Используем stderr, так как logger еще не настроен
+    sys.stderr.write("\n" + "=" * 80 + "\n")
+    sys.stderr.write("⚠️  Файл конфигурации не найден: app/config.py\n")
+    sys.stderr.write("=" * 80 + "\n\n")
+
+    # Автосоздание keys.py (если нужно), чтобы config.example.py мог импортироваться
+    try:
+        if not _KEYS_PATH.exists() and _KEYS_EXAMPLE_PATH.exists():
+            _KEYS_PATH.parent.mkdir(parents=True, exist_ok=True)
+            import shutil
+            shutil.copyfile(_KEYS_EXAMPLE_PATH, _KEYS_PATH)
+            sys.stderr.write("✅ Создан файл app/keys.py из app/keys.example.py (заполните ключи)\n")
+    except Exception as e:
+        sys.stderr.write(f"⚠️ Не удалось создать app/keys.py автоматически: {e}\n")
+
+    # Автосоздание config.py из примера
+    try:
+        if _CONFIG_EXAMPLE_PATH.exists():
+            _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            import shutil
+            shutil.copyfile(_CONFIG_EXAMPLE_PATH, _CONFIG_PATH)
+            sys.stderr.write("✅ Создан файл app/config.py из app/config.example.py\n")
+            sys.stderr.write("   Отредактируйте app/keys.py и app/config.py под себя (Telegram/биржи).\n\n")
+        else:
+            raise FileNotFoundError("app/config.example.py отсутствует")
+    except Exception as e:
+        sys.stderr.write("\n" + "=" * 80 + "\n")
+        sys.stderr.write("❌ ОШИБКА: не удалось создать конфигурацию автоматически!\n")
+        sys.stderr.write(f"Причина: {e}\n")
+        sys.stderr.write("=" * 80 + "\n\n")
+        sys.stderr.write("📝 Для первого запуска выполните:\n\n")
+        if os.name == 'nt':
+            sys.stderr.write("   copy app\\config.example.py app\\config.py\n")
+            sys.stderr.write("   copy app\\keys.example.py app\\keys.py\n")
+        else:
+            sys.stderr.write("   cp app/config.example.py app/config.py\n")
+            sys.stderr.write("   cp app/keys.example.py app/keys.py\n")
+        sys.stderr.write("\n📖 Подробная инструкция: docs/INSTALL.md\n\n")
+        sys.exit(1)
 
 from app.config import *
 
@@ -130,6 +149,31 @@ def check_api_keys():
         return True
     except:
         return False
+
+# DEMO режим: если ключи не настроены, приложение работает в UI-режиме без торговли
+class DemoExchange:
+    def get_positions(self):
+        return [], []
+
+    def get_wallet_balance(self):
+        return {
+            'total_balance': 0,
+            'available_balance': 0,
+            'realized_pnl': 0
+        }
+
+    def get_closed_pnl(self, *args, **kwargs):
+        return []
+
+    def get_ticker(self, symbol):
+        return {
+            'symbol': symbol,
+            'price': None,
+            'demo': True
+        }
+
+    def close_position(self, *args, **kwargs):
+        return {'success': False, 'message': 'DEMO режим: торговля отключена'}
 
 # Предупреждение если ключи не настроены
 if not check_api_keys():
@@ -1270,12 +1314,17 @@ def switch_exchange():
 # Используем logger вместо print для правильной фильтрации
 app_logger = logging.getLogger('app')
 app_logger.info(f"[INIT] Инициализация биржи {ACTIVE_EXCHANGE}...")
-current_exchange = init_exchange()
-if not current_exchange:
-    app_logger.error("[INIT] ❌ Не удалось инициализировать биржу")
-    sys.exit(1)
+DEMO_MODE = not check_api_keys()
+if DEMO_MODE:
+    app_logger.warning("[INIT] ⚠️ DEMO режим: API ключи не настроены, торговля отключена")
+    current_exchange = DemoExchange()
 else:
-    app_logger.info(f"[INIT] ✅ Биржа {ACTIVE_EXCHANGE} успешно инициализирована")
+    current_exchange = init_exchange()
+    if not current_exchange:
+        app_logger.error("[INIT] ❌ Не удалось инициализировать биржу")
+        sys.exit(1)
+    else:
+        app_logger.info(f"[INIT] ✅ Биржа {ACTIVE_EXCHANGE} успешно инициализирована")
 
 # Убираем инициализацию менеджера ботов - теперь он в отдельном сервисе
 # bot_manager = BotManager(exchange)
@@ -2254,65 +2303,53 @@ if __name__ == '__main__':
     
     # Открываем браузер с задержкой
     Timer(1.5, open_browser).start()
-    
-    # ✅ ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ positions_data при запуске
-    app_logger.info("[APP] 🔄 Принудительное обновление positions_data при запуске...")
-    try:
-        positions, rapid_growth = current_exchange.get_positions()
-        if positions:
-            # Обновляем positions_data с актуальными данными
-            positions_data['total_trades'] = len(positions)
-            positions_data['rapid_growth'] = rapid_growth
-            
-            high_profitable = []
-            profitable = []
-            losing = []
-            
-            for position in positions:
-                pnl = position['pnl']
-                if pnl > 0:
-                    if pnl >= 100:  # Используем стандартный порог
-                        high_profitable.append(position)
-                    else:
-                        profitable.append(position)
-                elif pnl < 0:
-                    losing.append(position)
-            
-            positions_data.update({
-                'high_profitable': high_profitable,
-                'profitable': profitable,
-                'losing': losing,
-                'stats': {
-                    'total_trades': len(positions),
-                    'high_profitable_count': len(high_profitable),
-                    'profitable_count': len(profitable),
-                    'losing_count': len(losing)
-                }
-            })
-            # Сохраняем в БД
-            save_positions_data(positions_data)
-            app_logger.info(f"[APP] ✅ positions_data обновлен и сохранен в БД: {len(positions)} позиций")
-        else:
-            # Очищаем positions_data если позиций нет
-            positions_data.update({
-                'high_profitable': [],
-                'profitable': [],
-                'losing': [],
-                'total_trades': 0,
-                'rapid_growth': [],
-                'stats': {
-                    'total_trades': 0,
-                    'high_profitable_count': 0,
-                    'profitable_count': 0,
-                    'losing_count': 0
-                }
-            })
-            # Сохраняем в БД
-            save_positions_data(positions_data)
-            app_logger.info("[APP] ✅ positions_data очищен и сохранен в БД (нет позиций)")
-    except Exception as e:
-        app_logger.error(f"[APP] ❌ Ошибка принудительного обновления positions_data: {e}")
-    
+
+    # ✅ ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ positions_data в фоне — не блокирует старт при проблемах с биржей
+    def _do_initial_positions_refresh():
+        try:
+            app_logger.info("[APP] 🔄 Принудительное обновление positions_data при запуске...")
+            positions, rapid_growth = current_exchange.get_positions()
+            if positions:
+                positions_data['total_trades'] = len(positions)
+                positions_data['rapid_growth'] = rapid_growth
+                high_profitable = []
+                profitable = []
+                losing = []
+                for position in positions:
+                    pnl = position['pnl']
+                    if pnl > 0:
+                        if pnl >= 100:
+                            high_profitable.append(position)
+                        else:
+                            profitable.append(position)
+                    elif pnl < 0:
+                        losing.append(position)
+                positions_data.update({
+                    'high_profitable': high_profitable,
+                    'profitable': profitable,
+                    'losing': losing,
+                    'stats': {
+                        'total_trades': len(positions),
+                        'high_profitable_count': len(high_profitable),
+                        'profitable_count': len(profitable),
+                        'losing_count': len(losing)
+                    }
+                })
+                save_positions_data(positions_data)
+                app_logger.info(f"[APP] ✅ positions_data обновлен и сохранен в БД: {len(positions)} позиций")
+            else:
+                positions_data.update({
+                    'high_profitable': [], 'profitable': [], 'losing': [],
+                    'total_trades': 0, 'rapid_growth': [],
+                    'stats': {'total_trades': 0, 'high_profitable_count': 0, 'profitable_count': 0, 'losing_count': 0}
+                })
+                save_positions_data(positions_data)
+                app_logger.info("[APP] ✅ positions_data очищен и сохранен в БД (нет позиций)")
+        except Exception as e:
+            app_logger.error(f"[APP] ❌ Ошибка принудительного обновления positions_data: {e}")
+
+    threading.Thread(target=_do_initial_positions_refresh, daemon=True, name="InitialPositionsRefresh").start()
+
     # Запускаем фоновые процессы (теперь всегда, так как reloader отключен)
     update_thread = threading.Thread(target=background_update)
     update_thread.daemon = True

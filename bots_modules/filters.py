@@ -2468,9 +2468,11 @@ def get_effective_signal(coin):
     rsi_short_threshold = auto_config.get('rsi_short_threshold', 71)
         
     # Получаем данные монеты с учетом текущего таймфрейма
-    from bot_engine.bot_config import get_rsi_from_coin_data, get_trend_from_coin_data
-    rsi = get_rsi_from_coin_data(coin) or 50
-    trend = get_trend_from_coin_data(coin)
+    from bot_engine.bot_config import get_rsi_from_coin_data, get_trend_from_coin_data, get_current_timeframe
+    current_timeframe = get_current_timeframe()
+    # ✅ КРИТИЧНО: Явно передаём текущий ТФ, чтобы не было fallback на rsi6h/trend6h
+    rsi = get_rsi_from_coin_data(coin, timeframe=current_timeframe) or 50
+    trend = get_trend_from_coin_data(coin, timeframe=current_timeframe)
     
     # ✅ КРИТИЧНО: Проверяем зрелость монеты ПЕРВЫМ ДЕЛОМ
     # Незрелые монеты НЕ МОГУТ иметь активных ботов и НЕ ДОЛЖНЫ показываться в LONG/SHORT фильтрах!
@@ -2588,11 +2590,13 @@ def process_auto_bot_signals(exchange_obj=None):
         
         # Получаем монеты с сигналами
         # ⚡ БЕЗ БЛОКИРОВКИ: чтение словаря - атомарная операция
-        from bot_engine.bot_config import get_rsi_from_coin_data, get_trend_from_coin_data
+        from bot_engine.bot_config import get_rsi_from_coin_data, get_trend_from_coin_data, get_current_timeframe
+        current_timeframe = get_current_timeframe()
         potential_coins = []
         for symbol, coin_data in coins_rsi_data['coins'].items():
-            rsi = get_rsi_from_coin_data(coin_data)
-            trend = get_trend_from_coin_data(coin_data)
+            # ✅ КРИТИЧНО: Явно передаём текущий ТФ, чтобы не было fallback на rsi6h/trend6h
+            rsi = get_rsi_from_coin_data(coin_data, timeframe=current_timeframe)
+            trend = get_trend_from_coin_data(coin_data, timeframe=current_timeframe)
             
             if rsi is None:
                 continue
@@ -2820,7 +2824,9 @@ def process_trading_signals_for_all_bots(exchange_obj=None):
 
                 rsi_key = get_rsi_key(timeframe_to_use)
                 trend_key = get_trend_key(timeframe_to_use)
-                external_trend = rsi_data.get(trend_key) or rsi_data.get('trend6h')
+                # ✅ КРИТИЧНО: Используем только trend по ТФ бота, БЕЗ fallback на trend6h
+                # Иначе бот на 1m может получить trend6h и работать "как на 6ч"
+                external_trend = rsi_data.get(trend_key) or current_trend
                 # ✅ Сигнал выхода по RSI — по выбранному ТФ бота (не системному)
                 position_side = bot_data.get('position_side') or (bot_data.get('position') or {}).get('side')
                 entry_trend = bot_data.get('entry_trend')

@@ -138,12 +138,15 @@ def get_rsi_from_coin_data(coin_data, timeframe=None):
     
     # Пробуем получить RSI по ключу текущего таймфрейма
     rsi = coin_data.get(rsi_key)
-    
-    # Обратная совместимость: пробуем старые ключи
-    if rsi is None:
+
+    # ⚠️ ВАЖНО: НЕ подмешиваем 6h RSI в другие ТФ.
+    # Иначе при работе системы на 1m/5m/15m бот может брать rsi6h и входить "как на 6ч".
+    # Обратную совместимость с rsi6h используем ТОЛЬКО когда реально работаем на 6h или timeframe не задан.
+    if rsi is None and (timeframe is None or timeframe == '6h'):
         rsi = coin_data.get('rsi6h')  # Старый ключ для 6h
-    if rsi is None:
-        rsi = coin_data.get('rsi')  # Общий ключ
+    # Общий ключ 'rsi' используем только как самый общий fallback, когда таймфрейм не задан
+    if rsi is None and timeframe is None:
+        rsi = coin_data.get('rsi')
     
     return rsi
 
@@ -166,11 +169,11 @@ def get_trend_from_coin_data(coin_data, timeframe=None):
     
     # Пробуем получить тренд по ключу текущего таймфрейма
     trend = coin_data.get(trend_key)
-    
-    # Обратная совместимость: пробуем старые ключи
-    if trend is None:
+
+    # ⚠️ ВАЖНО: НЕ подмешиваем 6h trend в другие ТФ (аналогично RSI).
+    if trend is None and (timeframe is None or timeframe == '6h'):
         trend = coin_data.get('trend6h')  # Старый ключ для 6h
-    if trend is None:
+    if trend is None and timeframe is None:
         trend = coin_data.get('trend')  # Общий ключ
     
     # Возвращаем NEUTRAL по умолчанию, если тренд не найден
@@ -214,7 +217,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'default_position_size': 5,          # Базовый размер позиции (в единицах согласно default_position_mode)
     'default_position_mode': 'percent', # Режим расчета: usdt | percent
     'leverage': 10,                       # ✅ Кредитное плечо (1-125x)
-    'check_interval': 180,      # Интервал проверки в секундах (3 мин = 180 сек)
+    'check_interval': 30, # Интервал проверки в секундах (3 мин = 180 сек)
     'monitoring_interval': 10,  # Интервал мониторинга активных ботов в секундах
     # Торговые настройки
     'trading_enabled': True,    # Включить реальную торговлю
@@ -255,14 +258,58 @@ DEFAULT_AUTO_BOT_CONFIG = {
     # ExitScam фильтр (защита от резких движений цены)
     'exit_scam_enabled': True,          # Включить проверку на ExitScam
     'exit_scam_candles': 8,            # Количество свечей для проверки (10 = 60 часов на 6H)
-    'exit_scam_single_candle_percent': 15,  # Максимальный % изменения одной свечи (15% = блокировка)
+    'exit_scam_single_candle_percent': 25, # Максимальный % изменения одной свечи (15% = блокировка)
     'exit_scam_multi_candle_count': 4,        # Количество свечей для суммарного анализа
     'exit_scam_multi_candle_percent': 50,   # Максимальный суммарный % за N свечей (50% = блокировка)
     # 🤖 ИИ настройки (премиум функции)
     'ai_optimal_entry_enabled': False,  # ИИ определение оптимальной точки входа (выкл. по умолчанию)
     'ai_enabled': True, # Включить подтверждение сигналов AI
     'ai_min_confidence': 0.7,          # Минимальная уверенность AI (0.0-1.0)
-    'ai_override_original': True,      # AI может блокировать решения скрипта
+    'ai_override_original': True,      # AI может блокировать решения скрипта,
+    'anomaly_block_threshold': 0.7,
+    'anomaly_detection_enabled': True,
+    'anomaly_log_enabled': True,
+    'auto_refresh_ui': True,
+    'auto_retrain': True,
+    'auto_save_interval': 30,
+    'auto_train_enabled': True,
+    'auto_update_data': True,
+    'data_update_interval': 86400,
+    'debug_mode': False,
+    'enhanced_rsi_enabled': True,
+    'enhanced_rsi_require_divergence_confirmation': True,
+    'enhanced_rsi_require_volume_confirmation': True,
+    'enhanced_rsi_use_stoch_rsi': True,
+    'inactive_bot_cleanup_interval': 600,
+    'inactive_bot_timeout': 60,
+    'log_anomalies': True,
+    'log_patterns': True,
+    'log_predictions': True,
+    'loss_reentry_candles': 3,
+    'loss_reentry_count': 1,
+    'loss_reentry_protection': True,
+    'lstm_enabled': True,
+    'lstm_min_confidence': 0.6,
+    'lstm_weight': 1.5,
+    'min_volatility_threshold': 0.05,
+    'pattern_enabled': True,
+    'pattern_min_confidence': 0.6,
+    'pattern_weight': 1.2,
+    'position_sync_interval': 10,
+    'refresh_interval': 2,
+    'retrain_hour': 3,
+    'retrain_interval': 604800,
+    'risk_management_enabled': True,
+    'risk_update_interval': 300,
+    'rsi_divergence_lookback': 10,
+    'rsi_extreme_overbought': 80,
+    'rsi_extreme_oversold': 20,
+    'rsi_extreme_zone_timeout': 3,
+    'rsi_update_interval': 60,
+    'rsi_volume_confirmation_multiplier': 1.2,
+    'self_learning_enabled': False,
+    'stop_loss_setup_interval': 10,
+    'system_timeframe': '1m',
 }
 
 # Настройки по умолчанию для отдельного бота
@@ -278,15 +325,15 @@ DEFAULT_BOT_CONFIG = {
 # Системные настройки
 class SystemConfig:
     # Интервалы обновления (в секундах)
-    RSI_UPDATE_INTERVAL = 300 # 30 минут (рекомендуется для 6H RSI)
+    RSI_UPDATE_INTERVAL = 60 # 30 минут (рекомендуется для 6H RSI)
     ACCOUNT_UPDATE_INTERVAL = 5  # 5 секунд
-    UI_REFRESH_INTERVAL = 3  # 3 секунды
+    UI_REFRESH_INTERVAL = 2 # 3 секунды
     AUTO_SAVE_INTERVAL = 30  # 30 секунд
     BOT_STATUS_UPDATE_INTERVAL = 1  # 1 секунда - интервал обновления детальной информации о состоянии ботов (цена входа, SL, TP, ликвидация, PnL)
     INACTIVE_BOT_CLEANUP_INTERVAL = 600  # 10 минут - интервал проверки и удаления неактивных ботов
-    INACTIVE_BOT_TIMEOUT = 600  # 10 минут - время ожидания перед удалением бота без реальных позиций на бирже
-    STOP_LOSS_SETUP_INTERVAL = 300  # 5 минут - интервал установки недостающих стоп-лоссов
-    POSITION_SYNC_INTERVAL = 30  # 30 секунд - интервал синхронизации позиций с биржей
+    INACTIVE_BOT_TIMEOUT = 60 # 10 минут - время ожидания перед удалением бота без реальных позиций на бирже
+    STOP_LOSS_SETUP_INTERVAL = 10 # 5 минут - интервал установки недостающих стоп-лоссов
+    POSITION_SYNC_INTERVAL = 10 # 30 секунд - интервал синхронизации позиций с биржей
     
     # Умное обновление RSI
     SMART_RSI_UPDATE = True  # Учитывать время до закрытия свечи
@@ -428,6 +475,21 @@ class SystemConfig:
     #   - Пробелы вокруг запятых игнорируются
     # ========================================================================
     CONSOLE_LOG_LEVELS = []  # По умолчанию все уровни разрешены
+
+    # ========================================================================
+    # ОГРАНИЧЕНИЕ ОЗУ ДЛЯ AI (ai.py)
+    # ========================================================================
+    # 0 = выключено. Иначе ai.py ограничивает потребление памяти (на Linux/macOS — setrlimit,
+    # на Windows — только снижение нагрузки: меньше потоков/свечей).
+    # По умолчанию: не более 30% ОЗУ и не более 4 ГБ (итог = min(30% ОЗУ, 4096 MB)).
+    AI_MEMORY_PCT = 30       # Доля от общей ОЗУ системы, % (0 = не использовать)
+    AI_MEMORY_LIMIT_MB = 4096  # Верхняя граница в MB, 4 ГБ (0 = без границы)
+
+    # Ограничение загрузки CPU и GPU для ai.py (0 = выключено).
+    # CPU: только Windows 8+, Job Object — жёсткий лимит % времени CPU.
+    # GPU: доля VRAM процесса (0.0–1.0); «загрузка GPU в %» жёстко не лимитируется, только объём памяти.
+    AI_CPU_PCT = 30          # Не более 30% CPU (только Windows).
+    AI_GPU_MEMORY_FRACTION = 0.3  # Не более 30% видеопамяти процесса (0 = не ограничивать).
     
     # ⚡ ТРЕЙСИНГ: Включить детальное логирование КАЖДОЙ строки кода (для отладки зависаний)
     ENABLE_CODE_TRACING = False  # ⚠️ ВНИМАНИЕ: Сильно замедляет работу! Включать только для отладки!
@@ -457,6 +519,24 @@ class SystemConfig:
     TRACE_WRITE_TO_FILE = True
     TRACE_LOG_FILE = 'logs/trace.log'
     TRACE_MAX_LINE_LENGTH = 200
+
+
+# Патч обратной совместимости: при подтягивании обновлений (git pull) или при старой копии
+# конфига — если в SystemConfig нет новых полей, добавляем их при загрузке модуля
+# (значения по умолчанию: 30% ОЗУ, макс 4 ГБ, 30% CPU, 30% VRAM).
+def _patch_system_config_ai_memory():
+    if not hasattr(SystemConfig, 'AI_MEMORY_PCT'):
+        SystemConfig.AI_MEMORY_PCT = 30
+    if not hasattr(SystemConfig, 'AI_MEMORY_LIMIT_MB'):
+        SystemConfig.AI_MEMORY_LIMIT_MB = 4096
+    if not hasattr(SystemConfig, 'AI_CPU_PCT'):
+        SystemConfig.AI_CPU_PCT = 30
+    if not hasattr(SystemConfig, 'AI_GPU_MEMORY_FRACTION'):
+        SystemConfig.AI_GPU_MEMORY_FRACTION = 0.3
+
+
+_patch_system_config_ai_memory()
+
 
 # Настройки риск-менеджмента
 class RiskConfig:

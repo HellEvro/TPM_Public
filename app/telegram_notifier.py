@@ -402,24 +402,28 @@ class TelegramNotifier:
             self.logger.info(f"Not time for daily report (current: {current_time}, scheduled: {TELEGRAM_NOTIFY['DAILY_REPORT_TIME']})")
             return
 
+        # Защита от неполной статистики (например, при первом запуске или сбое сбора данных)
+        top_profitable_list = (stats or {}).get('top_profitable') or []
+        top_losing_list = (stats or {}).get('top_losing') or []
+
         top_profitable = '\n'.join([
-            f"• {pos['symbol']}: {pos['pnl']:.2f} USDT"
-            for pos in stats['top_profitable'][:3]
+            f"• {pos.get('symbol', '?')}: {float(pos.get('pnl', 0)):.2f} USDT"
+            for pos in top_profitable_list[:3]
         ])
         
         top_losing = '\n'.join([
-            f"• {pos['symbol']}: {pos['pnl']:.2f} USDT"
-            for pos in stats['top_losing'][:3]
+            f"• {pos.get('symbol', '?')}: {float(pos.get('pnl', 0)):.2f} USDT"
+            for pos in top_losing_list[:3]
         ])
 
         message = get_telegram_message('daily_report', self.language).format(
             date=datetime.now().strftime('%Y-%m-%d'),
-            total_pnl=f"{stats['total_pnl']:.2f}",
-            total_profit=f"{stats['total_profit']:.2f}",
-            total_loss=f"{stats['total_loss']:.2f}",
-            total_trades=stats['total_trades'],
-            profitable_count=stats['profitable_count'],
-            losing_count=stats['losing_count'],
+            total_pnl=f"{float((stats or {}).get('total_pnl', 0)):.2f}",
+            total_profit=f"{float((stats or {}).get('total_profit', 0)):.2f}",
+            total_loss=f"{float((stats or {}).get('total_loss', 0)):.2f}",
+            total_trades=int((stats or {}).get('total_trades', 0) or 0),
+            profitable_count=int((stats or {}).get('profitable_count', 0) or 0),
+            losing_count=int((stats or {}).get('losing_count', 0) or 0),
             top_profitable=top_profitable,
             top_losing=top_losing
         )
@@ -432,24 +436,28 @@ class TelegramNotifier:
             if not TELEGRAM_NOTIFY.get('STATISTICS', False):
                 return
 
+            # Защита от неполной статистики (в т.ч. KeyError: 'top_profitable')
+            top_profitable_list = (stats or {}).get('top_profitable') or []
+            top_losing_list = (stats or {}).get('top_losing') or []
+
             top_profitable = '\n'.join([
-                f"• {pos['symbol']}: {pos['pnl']:.2f} USDT"
-                for pos in stats['top_profitable'][:3]
+                f"• {pos.get('symbol', '?')}: {float(pos.get('pnl', 0)):.2f} USDT"
+                for pos in top_profitable_list[:3]
             ])
             
             top_losing = '\n'.join([
-                f"• {pos['symbol']}: {pos['pnl']:.2f} USDT"
-                for pos in stats['top_losing'][:3]
+                f"• {pos.get('symbol', '?')}: {float(pos.get('pnl', 0)):.2f} USDT"
+                for pos in top_losing_list[:3]
             ])
 
             message = get_telegram_message('statistics', self.language).format(
                 time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                total_pnl=f"{stats['total_pnl']:.2f}",
-                total_profit=f"{stats['total_profit']:.2f}",
-                total_loss=f"{stats['total_loss']:.2f}",
-                total_trades=stats['total_trades'],
-                profitable_count=stats['profitable_count'],
-                losing_count=stats['losing_count'],
+                total_pnl=f"{float((stats or {}).get('total_pnl', 0)):.2f}",
+                total_profit=f"{float((stats or {}).get('total_profit', 0)):.2f}",
+                total_loss=f"{float((stats or {}).get('total_loss', 0)):.2f}",
+                total_trades=int((stats or {}).get('total_trades', 0) or 0),
+                profitable_count=int((stats or {}).get('profitable_count', 0) or 0),
+                losing_count=int((stats or {}).get('losing_count', 0) or 0),
                 top_profitable=top_profitable,
                 top_losing=top_losing
             )
