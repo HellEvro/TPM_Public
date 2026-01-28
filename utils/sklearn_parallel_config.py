@@ -33,7 +33,9 @@ backend='sequential'. Все задачи выполняются в одном �
 from __future__ import annotations
 
 import os
+import re
 import sys
+import warnings
 
 # Исключаем воркеры loky — не создаём дочерние процессы (предупреждение идёт из воркеров).
 # По умолчанию ВСЕГДА 1 воркер, чтобы полностью убрать спам UserWarning про delayed/Parallel.
@@ -77,5 +79,15 @@ else:
 
 setattr(joblib, "Parallel", Parallel)
 setattr(joblib, "delayed", delayed)
+
+# Надёжное подавление UserWarning: в части сценариев (launcher, дочерние процессы, и т.д.)
+# backend=sequential не применяется, и предупреждение всё равно возникает. Фильтр убирает его.
+warnings.filterwarnings(
+    "ignore",
+    message=re.escape("`sklearn.utils.parallel.delayed` should be used with ")
+    + r".*",
+    category=UserWarning,
+    module=r"sklearn\.utils\.parallel",
+)
 
 __all__ = ["Parallel", "delayed"]
