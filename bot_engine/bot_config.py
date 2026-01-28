@@ -310,7 +310,6 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'self_learning_enabled': False,
     'stop_loss_setup_interval': 10,
     'system_timeframe': '1m',
-    'mini_chart_update_interval': 420,  # 7 минут - интервал обновления миниграфиков RSI (в секундах)
 }
 
 # Настройки по умолчанию для отдельного бота

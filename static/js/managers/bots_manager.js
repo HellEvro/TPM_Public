@@ -6411,12 +6411,13 @@ class BotsManager {
             console.error('[BotsManager] ❌ Элемент autoSaveInterval не найден!');
         }
         
+        // ✅ КРИТИЧНО: Интервал обновления миниграфиков загружается из SystemConfig (bot_config.py)
         const miniChartUpdateIntervalEl = document.getElementById('miniChartUpdateInterval');
         if (miniChartUpdateIntervalEl && systemConfig.mini_chart_update_interval !== undefined) {
             miniChartUpdateIntervalEl.value = systemConfig.mini_chart_update_interval;
-            console.log('[BotsManager] 📊 Интервал обновления миниграфиков установлен:', systemConfig.mini_chart_update_interval, 'сек (из API)');
+            console.log('[BotsManager] 📊 Интервал обновления миниграфиков установлен:', systemConfig.mini_chart_update_interval, 'сек (из SystemConfig)');
         } else if (miniChartUpdateIntervalEl) {
-            console.warn('[BotsManager] ⚠️ Интервал обновления миниграфиков не найден в API, оставляем поле пустым');
+            console.warn('[BotsManager] ⚠️ Интервал обновления миниграфиков не найден в SystemConfig, оставляем поле пустым');
         } else {
             console.error('[BotsManager] ❌ Элемент miniChartUpdateInterval не найден!');
         }

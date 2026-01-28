@@ -87,7 +87,7 @@ class PositionsManager {
     }
 
     async loadChartUpdateInterval() {
-        // Загружает интервал обновления миниграфиков из системного конфига
+        // Загружает интервал обновления миниграфиков из SystemConfig (bot_config.py)
         try {
             const response = await fetch('/api/bots/system-config');
             if (response.ok) {
@@ -97,7 +97,7 @@ class PositionsManager {
                     const newInterval = data.config.mini_chart_update_interval * 1000;
                     if (newInterval !== this.updateInterval) {
                         this.updateInterval = newInterval;
-                        console.log(`[PositionsManager] 📊 Интервал обновления миниграфиков установлен: ${data.config.mini_chart_update_interval} сек (${this.updateInterval} мс)`);
+                        console.log(`[PositionsManager] 📊 Интервал обновления миниграфиков установлен: ${data.config.mini_chart_update_interval} сек (${this.updateInterval} мс) из SystemConfig`);
                         
                         // Перезапускаем таймер с новым интервалом
                         if (this.updateIntervalTimer) {
@@ -107,10 +107,10 @@ class PositionsManager {
                         console.log(`[PositionsManager] 🔄 Таймер обновления перезапущен с интервалом: ${this.updateInterval / 1000} сек`);
                     }
                 } else {
-                    console.warn('[PositionsManager] ⚠️ mini_chart_update_interval не найден в конфиге, используем дефолт:', this.updateInterval / 1000, 'сек');
+                    console.warn('[PositionsManager] ⚠️ mini_chart_update_interval не найден в SystemConfig, используем дефолт:', this.updateInterval / 1000, 'сек');
                 }
             } else {
-                console.warn('[PositionsManager] ⚠️ Не удалось загрузить системный конфиг, используем дефолт:', this.updateInterval / 1000, 'сек');
+                console.warn('[PositionsManager] ⚠️ Не удалось загрузить SystemConfig, используем дефолт:', this.updateInterval / 1000, 'сек');
             }
         } catch (error) {
             console.error('[PositionsManager] ❌ Ошибка загрузки интервала обновления миниграфиков:', error);
