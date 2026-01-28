@@ -189,8 +189,9 @@ def _verify_and_fix_sklearn(venv_dir, project_root):
     if not script.exists():
         return
     cmd = [str(venv_python), str(script)]
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     try:
-        r = subprocess.run(cmd, cwd=project_root, capture_output=True, text=True, timeout=60)
+        r = subprocess.run(cmd, cwd=project_root, capture_output=True, text=True, timeout=60, encoding="utf-8", errors="replace", env=env)
         if r.returncode == 0:
             print("[OK] verify_ai_deps: версии и модели OK")
             return
@@ -206,11 +207,11 @@ def _verify_and_fix_sklearn(venv_dir, project_root):
             capture_output=True,
             text=True,
         )
-        r2 = subprocess.run(cmd, cwd=project_root, capture_output=True, text=True, timeout=60)
+        r2 = subprocess.run(cmd, cwd=project_root, capture_output=True, text=True, timeout=60, encoding="utf-8", errors="replace", env=env)
         if r2.returncode == 0:
             print("[OK] verify_ai_deps: OK после переустановки scikit-learn")
         else:
-            print("[WARNING] verify_ai_deps: ошибка сохраняется; переобучите модели или проверьте зависимости.")
+            print("[WARNING] verify_ai_deps: ошибка сохраняется. Сделайте «Обновить venv» в лаунчере. Если не поможет — запустите AI Engine и дождитесь обучения.")
     except Exception as e2:
         print(f"[WARNING] Не удалось переустановить scikit-learn: {e2}")
 

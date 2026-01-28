@@ -1,3 +1,4 @@
+import errno
 import os
 import sys
 # Корень проекта в path до импорта utils — иначе sklearn_parallel_config не найдётся при запуске из другой директории
@@ -2376,4 +2377,11 @@ if __name__ == '__main__':
     matplotlib_backends_logger.setLevel(logging.WARNING)
     
     # Запускаем Flask-сервер (отключаем reloader для стабильности Telegram уведомлений)
-    app.run(debug=False, host=APP_HOST, port=APP_PORT, use_reloader=False) 
+    try:
+        app.run(debug=False, host=APP_HOST, port=APP_PORT, use_reloader=False)
+    except OSError as e:
+        if getattr(e, "errno", None) in (errno.EADDRINUSE, 10048):
+            logging.getLogger("app").error(
+                f"Порт {APP_PORT} занят. Закройте другой процесс на этом порту или измените APP_PORT в app/config.py."
+            )
+        raise 

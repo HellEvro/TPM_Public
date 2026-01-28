@@ -4,6 +4,7 @@
 """
 
 # Базовые импорты
+import errno
 import os
 import sys
 # Корень проекта в path до импорта utils — иначе sklearn_parallel_config не найдётся при запуске из другой директории
@@ -614,6 +615,12 @@ def run_bots_service():
             sys.exit(0)
         else:
             raise
+    except OSError as e:
+        if getattr(e, "errno", None) in (errno.EADDRINUSE, 10048):
+            logger.error(
+                "Порт 5001 занят. Закройте другой процесс на этом порту или измените BOTS_SERVICE_PORT в bot_config."
+            )
+        raise
     except Exception as e:
         logger.error(f"Ошибка запуска Flask сервера: {e}")
         raise
