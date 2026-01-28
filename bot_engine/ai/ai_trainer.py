@@ -5080,22 +5080,37 @@ class AITrainer:
                             total_models_saved += 1
                             model_trained = True
                             
-                            # ВАЖНО: Сохраняем параметры в индивидуальные настройки ТОЛЬКО при win_rate >= 90%
-                            # Это позволяет AI сохранять только лучшие параметры для каждой монеты
+                            # Сохраняем параметры в индивидуальные настройки при:
+                            # 1) win_rate >= AI_SAVE_BEST_PARAMS_MIN_WIN_RATE (90%), или
+                            # 2) "save if better": win_rate > сохранённого по монете И >= 60% И сделок >= 5
                             from bot_engine.bot_config import AIConfig
-                            min_win_rate_for_save = AIConfig.AI_SAVE_BEST_PARAMS_MIN_WIN_RATE * 100  # Конвертируем в проценты
-                            
-                            save_params = symbol_win_rate >= min_win_rate_for_save
+                            min_win_rate_for_save = AIConfig.AI_SAVE_BEST_PARAMS_MIN_WIN_RATE * 100
+                            min_wr_better = getattr(AIConfig, 'AI_SAVE_IF_BETTER_MIN_WIN_RATE', 0.60) * 100
+                            min_trades_better = getattr(AIConfig, 'AI_SAVE_IF_BETTER_MIN_TRADES', 5)
+                            existing_wr = float((existing_coin_settings or {}).get('ai_win_rate') or 0)
+                            save_because_90 = symbol_win_rate >= min_win_rate_for_save
+                            save_because_better = (
+                                symbol_win_rate > existing_wr
+                                and symbol_win_rate >= min_wr_better
+                                and trades_for_symbol >= min_trades_better
+                            )
+                            save_params = save_because_90 or save_because_better
                             if save_params:
-                                logger.info(
-                                    f"   🎯 {symbol}: Win Rate {symbol_win_rate:.1f}% >= минимум {min_win_rate_for_save:.1f}% "
-                                    "- сохраняем ЛУЧШИЕ параметры в индивидуальные настройки ✅"
-                                )
-                                self._register_win_rate_success(symbol, symbol_win_rate)
+                                if save_because_90:
+                                    logger.info(
+                                        f"   🎯 {symbol}: Win Rate {symbol_win_rate:.1f}% >= {min_win_rate_for_save:.1f}% "
+                                        "- сохраняем ЛУЧШИЕ параметры в индивидуальные настройки ✅"
+                                    )
+                                    self._register_win_rate_success(symbol, symbol_win_rate)
+                                else:
+                                    logger.info(
+                                        f"   📈 {symbol}: Win Rate {symbol_win_rate:.1f}% > сохранённый {existing_wr:.1f}% "
+                                        f"(порог {min_wr_better:.0f}%, сделок {trades_for_symbol}) - сохраняем улучшенные параметры ✅"
+                                    )
                             else:
                                 logger.info(
-                                    f"   ⏭️ {symbol}: Win Rate {symbol_win_rate:.1f}% < минимум {min_win_rate_for_save:.1f}% "
-                                    "- параметры НЕ сохраняются (недостаточно хорошие)"
+                                    f"   ⏭️ {symbol}: Win Rate {symbol_win_rate:.1f}% < {min_win_rate_for_save:.1f}% "
+                                    f"и не лучше сохранённого ({existing_wr:.1f}%) - параметры НЕ сохраняются"
                                 )
                             
                             if save_params:
@@ -5221,12 +5236,7 @@ class AITrainer:
                                     logger.error(f"   ❌ {symbol}: ошибка сохранения индивидуальных настроек: {save_params_error}")
                                     import traceback
                                     logger.error(traceback.format_exc())
-                            else:
-                                # Если модель не обучена, параметры не сохраняем
-                                logger.debug(
-                                    f"   ⏳ {symbol}: модель не обучена (сделок: {trades_for_symbol}) "
-                                    "- параметры НЕ сохраняются в индивидуальные настройки"
-                                )
+                            # при save_params=False причина уже залогирована выше (Win Rate / "не лучше")
                         
                             # Детальные метрики только для DEBUG
                             if signal_score is not None and profit_mse is not None:

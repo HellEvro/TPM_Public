@@ -505,4 +505,6 @@ class AIConfig:
     AI_USE_SIMULATIONS_WHEN_REAL_LOW = True  # Автоматически использовать симуляции когда реальных сделок < минимума
     AI_SIMULATIONS_PER_COIN = 20  # Количество симуляций с разными параметрами для каждой монеты (для поиска лучших)
     AI_SAVE_BEST_PARAMS_MIN_WIN_RATE = 0.90  # Минимальный win_rate для сохранения параметров в индивидуальные настройки (0.90 = 90%)
+    AI_SAVE_IF_BETTER_MIN_WIN_RATE = 0.60   # При "save if better": минимальный win_rate (0.60 = 60%)
+    AI_SAVE_IF_BETTER_MIN_TRADES = 5        # При "save if better": минимум симулированных сделок для сохранения
     AI_USE_SAVED_SETTINGS_AS_BASE = True  # Использовать сохраненные индивидуальные настройки как базовые для симуляций
