@@ -115,8 +115,7 @@ SYSTEM_CONFIG_FIELD_MAP = {
     'trend_min_confirmations': 'TREND_MIN_CONFIRMATIONS',
     'trend_require_slope': 'TREND_REQUIRE_SLOPE',
     'trend_require_price': 'TREND_REQUIRE_PRICE',
-    'trend_require_candles': 'TREND_REQUIRE_CANDLES',
-    'system_timeframe': 'SYSTEM_TIMEFRAME'  # Таймфрейм системы
+    'trend_require_candles': 'TREND_REQUIRE_CANDLES'
 }
 
 
@@ -665,16 +664,6 @@ def save_system_config(config_data):
 def load_system_config():
     """Перезагружает SystemConfig из bot_config.py и применяет значения в память."""
     try:
-        # ✅ КРИТИЧНО: Сохраняем текущий таймфрейм из БД перед перезагрузкой модуля
-        # чтобы не потерять его при reload (приоритет БД над конфигом)
-        saved_timeframe_from_db = None
-        try:
-            from bot_engine.bots_database import get_bots_database
-            db = get_bots_database()
-            saved_timeframe_from_db = db.load_timeframe()
-        except:
-            pass
-        
         bot_config_module = importlib.import_module('bot_engine.bot_config')
         importlib.reload(bot_config_module)
         file_system_config = bot_config_module.SystemConfig
@@ -682,23 +671,6 @@ def load_system_config():
         for attr in SYSTEM_CONFIG_FIELD_MAP.values():
             if hasattr(file_system_config, attr):
                 setattr(SystemConfig, attr, getattr(file_system_config, attr))
-
-        # ✅ КРИТИЧНО: Восстанавливаем таймфрейм после перезагрузки модуля
-        # Приоритет: БД > SystemConfig.SYSTEM_TIMEFRAME из файла
-        try:
-            from bot_engine.bot_config import set_current_timeframe, get_current_timeframe
-            if saved_timeframe_from_db:
-                # Если есть таймфрейм в БД - используем его (пользователь переключал через UI)
-                set_current_timeframe(saved_timeframe_from_db)
-                logger.debug(f"[SYSTEM_CONFIG] ✅ Таймфрейм восстановлен из БД после перезагрузки: {saved_timeframe_from_db}")
-            else:
-                # Если нет в БД - используем из конфига
-                config_timeframe = getattr(file_system_config, 'SYSTEM_TIMEFRAME', None)
-                if config_timeframe:
-                    set_current_timeframe(config_timeframe)
-                    logger.debug(f"[SYSTEM_CONFIG] ✅ Таймфрейм установлен из конфига после перезагрузки: {config_timeframe}")
-        except Exception as tf_err:
-            logger.warning(f"[SYSTEM_CONFIG] ⚠️ Ошибка восстановления таймфрейма: {tf_err}")
 
         logger.info("[SYSTEM_CONFIG] ✅ Конфигурация перезагружена из bot_engine/bot_config.py")
         return True
@@ -830,45 +802,13 @@ def save_auto_bot_config(changed_data=None):
             else:
                 logger.error(f"[SAVE_CONFIG] ❌ НЕКОТОРЫЕ RSI exit пороги отсутствуют в конфигурации!")
             
-            # ✅ КРИТИЧНО: Если сохранялся system_timeframe, сохраняем его в БД ПЕРЕД перезагрузкой модуля
-            if 'system_timeframe' in config_data:
-                try:
-                    from bot_engine.bots_database import get_bots_database
-                    from bot_engine.bot_config import set_current_timeframe
-                    db = get_bots_database()
-                    new_timeframe = config_data['system_timeframe']
-                    db.save_timeframe(new_timeframe)
-                    set_current_timeframe(new_timeframe)
-                    logger.info(f"[SAVE_CONFIG] ✅ Таймфрейм сохранен в БД перед перезагрузкой модуля: {new_timeframe}")
-                except Exception as tf_save_err:
-                    logger.warning(f"[SAVE_CONFIG] ⚠️ Не удалось сохранить таймфрейм в БД: {tf_save_err}")
-            
             # ✅ Перезагружаем модуль bot_config и обновляем конфигурацию из него
             try:
                 if 'bot_engine.bot_config' in sys.modules:
                     logger.debug(f"[SAVE_CONFIG] 🔄 Перезагружаем модуль bot_config...")
-                    
-                    # ✅ КРИТИЧНО: Сохраняем таймфрейм из БД перед перезагрузкой
-                    saved_timeframe_from_db = None
-                    try:
-                        from bot_engine.bots_database import get_bots_database
-                        db = get_bots_database()
-                        saved_timeframe_from_db = db.load_timeframe()
-                    except:
-                        pass
-                    
                     import bot_engine.bot_config
                     importlib.reload(bot_engine.bot_config)
                     logger.debug(f"[SAVE_CONFIG] ✅ Модуль перезагружен")
-                    
-                    # ✅ КРИТИЧНО: Восстанавливаем таймфрейм из БД после перезагрузки
-                    if saved_timeframe_from_db:
-                        try:
-                            from bot_engine.bot_config import set_current_timeframe
-                            set_current_timeframe(saved_timeframe_from_db)
-                            logger.info(f"[SAVE_CONFIG] ✅ Таймфрейм восстановлен из БД после перезагрузки: {saved_timeframe_from_db}")
-                        except Exception as tf_restore_err:
-                            logger.warning(f"[SAVE_CONFIG] ⚠️ Не удалось восстановить таймфрейм: {tf_restore_err}")
                     
                     # ✅ КРИТИЧЕСКИ ВАЖНО: Перезагружаем конфигурацию из обновленного bot_config.py
                     # Это нужно, чтобы значения сразу брались из файла, а не из старой памяти
@@ -936,12 +876,19 @@ def load_bots_state():
                         
                         bot_status = bot_data.get('status', 'UNKNOWN')
                         
-                        # ✅ КРИТИЧНО: НЕ загружаем ботов со статусом in_position_* при старте из БД!
-                        # Эти боты будут проверены sync_bots_with_exchange() - если позиция есть на бирже,
-                        # бот будет создан заново. Если позиции нет - бот не будет загружен вообще.
-                        # Это предотвращает загрузку несуществующих ботов с закрытыми позициями.
+                        # ВАЖНО: Раньше боты со статусом in_position_* пропускались на старте и ожидали
+                        # восстановления через sync_bots_with_exchange(). На практике это приводило к тому,
+                        # что "боты из ручных позиций" исчезали после перезапуска (позиция снова выглядела ручной),
+                        # если синхронизация не успевала/не выполнялась сразу.
+                        #
+                        # Решение: загружаем таких ботов из БД, но помечаем их флагом needs_exchange_sync.
+                        # Дальше sync_bots_with_exchange() всё равно приведёт состояние к реальным позициям на бирже
+                        # (и удалит бота, если позиции уже нет).
                         if bot_status in ['in_position_long', 'in_position_short']:
-                            logger.debug(f" ⏭️ Пропускаем бота {symbol} со статусом {bot_status} - будет проверен sync_bots_with_exchange() на реальные позиции")
+                            bot_data['needs_exchange_sync'] = True
+                            bots_data['bots'][symbol] = bot_data
+                            restored_bots += 1
+                            logger.info(f" 🤖 Восстановлен бот {symbol}: статус={bot_status} (ожидает sync)")
                             continue
                         
                         # ✅ КРИТИЧНО: НЕ загружаем ботов в статусе IDLE - они не имеют позиций!

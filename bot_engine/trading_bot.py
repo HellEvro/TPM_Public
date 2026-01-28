@@ -650,10 +650,9 @@ class TradingBot:
                             coin_data = coins_rsi_data.get('coins', {}).get(self.symbol)
                             if coin_data:
                                 if current_rsi is None:
-                                    from bot_engine.bot_config import get_rsi_from_coin_data, get_trend_from_coin_data
-                                    current_rsi = get_rsi_from_coin_data(coin_data)
+                                    current_rsi = coin_data.get('rsi6h')
                                 if current_trend is None:
-                                    current_trend = get_trend_from_coin_data(coin_data)
+                                    current_trend = coin_data.get('trend6h', 'NEUTRAL')
                     except Exception:
                         pass
                 

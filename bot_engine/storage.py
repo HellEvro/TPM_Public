@@ -276,6 +276,7 @@ def save_mature_coins(storage):
     
     try:
         if db.save_mature_coins(storage):
+            logger.debug(f"💾 Зрелые монеты сохранены в БД ({len(storage)} монет)")
             return True
         return False
     except Exception as e:
@@ -430,6 +431,7 @@ def save_delisted_coins(delisted: list) -> bool:
     
     try:
         if db.save_delisted_coins(delisted):
+            logger.debug(f"💾 Делистированные монеты сохранены в БД ({len(delisted)} монет)")
             return True
         return False
     except Exception as e:

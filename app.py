@@ -1606,14 +1606,7 @@ def background_cache_cleanup():
         time.sleep(60)  # Проверяем каждую минуту
 
 # Прокси для API endpoints ботов (перенаправляем на внешний сервис)
-def get_candles_from_file(symbol, timeframe=None, period_days=None):
-    """
-    Получает свечи из файла/кэша для символа.
-    Если timeframe не указан, используется текущий таймфрейм из конфига.
-    """
-    from bot_engine.bot_config import get_current_timeframe
-    if timeframe is None:
-        timeframe = get_current_timeframe()
+def get_candles_from_file(symbol, timeframe='6h', period_days=None):
     """Читает свечи напрямую из БД (не требует запущенного bots.py)"""
     try:
         from bot_engine.storage import get_candles_for_symbol
@@ -1668,19 +1661,11 @@ def get_candles_from_file(symbol, timeframe=None, period_days=None):
                 daily_candles.append(current_candle)
             
             candles = daily_candles
-        # Получаем текущий таймфрейм из конфига
-        from bot_engine.bot_config import get_current_timeframe
-        current_timeframe = get_current_timeframe()
-        
-        if timeframe == current_timeframe:
-            # Используем свечи текущего таймфрейма как есть
-            candles = candles_6h
-        elif timeframe == '1d':
-            # Конвертируем свечи текущего таймфрейма в дневные (если нужно)
-            # Пока возвращаем свечи текущего таймфрейма
+        elif timeframe == '6h':
+            # Используем 6h свечи как есть
             candles = candles_6h
         else:
-            # Для других таймфреймов возвращаем свечи текущего таймфрейма
+            # Для других таймфреймов возвращаем 6h
             candles = candles_6h
         
         # Ограничиваем количество свечей по периоду (если указан)
@@ -2029,9 +2014,8 @@ def get_symbol_chart(symbol):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/rsi_6h/<symbol>')
-@app.route('/api/rsi/<symbol>')  # Новый универсальный endpoint
 def get_rsi_6h(symbol):
-    """Получение RSI данных для текущего таймфрейма за 56 свечей (неделя)"""
+    """Получение RSI 6ч данных за 56 свечей (неделя)"""
     rsi_logger = logging.getLogger('app')
     try:
         rsi_logger.info(f"[RSI 6h] Getting RSI 6h data for {symbol}")
@@ -2045,16 +2029,8 @@ def get_rsi_6h(symbol):
         from bot_engine.utils.rsi_utils import calculate_rsi_history
         
         # ✅ ЧИТАЕМ НАПРЯМУЮ ИЗ ФАЙЛА (не требует запущенного bots.py)
-        # Получаем текущий таймфрейм
-        from bot_engine.bot_config import get_current_timeframe
-        current_timeframe = get_current_timeframe()
-        # Определяем период в днях в зависимости от таймфрейма
-        # 56 свечей для разных таймфреймов = разное количество дней
-        timeframe_hours = {'1m': 1/60, '3m': 3/60, '5m': 5/60, '15m': 15/60, '30m': 30/60, 
-                          '1h': 1, '2h': 2, '4h': 4, '6h': 6, '8h': 8, '12h': 12, '1d': 24}
-        hours_per_candle = timeframe_hours.get(current_timeframe, 6)
-        period_days = max(1, int((56 * hours_per_candle) / 24))  # Минимум 1 день
-        data = get_candles_from_file(symbol, timeframe=current_timeframe, period_days=period_days)
+        # 56 свечей * 6 часов = 336 часов = 14 дней
+        data = get_candles_from_file(symbol, timeframe='6h', period_days=14)
         if not data or not data.get('success'):
             rsi_logger.error(f"[RSI 6h] Failed to get chart data from file for {symbol}")
             return jsonify({'error': 'Failed to get chart data from file'}), 500
@@ -2124,7 +2100,7 @@ def get_rsi_6h(symbol):
             'symbol': symbol,
             'rsi_values': rsi_history,
             'timestamps': timestamps,
-            'period': current_timeframe,
+            'period': '6h',
             'candles_count': len(rsi_history)
         })
         

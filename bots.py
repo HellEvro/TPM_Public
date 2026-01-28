@@ -266,6 +266,9 @@ if __name__ == '__main__':
 from utils.color_logger import setup_color_logging
 
 # Импортируем все модули
+# Логгер еще не настроен, используем stderr для важных сообщений
+import sys
+sys.stderr.write("Загрузка модулей...\n")
 from bots_modules.imports_and_globals import *
 from bots_modules.calculations import *
 from bots_modules.maturity import *
@@ -362,6 +365,8 @@ except Exception as e:
 
 # Теперь импортируем API endpoints (после установки bot_history_manager)
 from bots_modules.api_endpoints import *
+
+logger.info("✅ Все модули загружены")
 
 # Файловый логгер уже настроен в setup_color_logging() выше, не нужно дублировать
 
@@ -630,9 +635,7 @@ if __name__ == '__main__':
     try:
         from bots_modules.workers import auto_save_worker, auto_bot_worker, positions_monitor_worker
         
-        logger.info("📋 Загрузка конфигурации Auto Bot...")
         load_auto_bot_config()
-        logger.info("✅ Конфигурация Auto Bot загружена")
         
         # Инициализируем ботов в отдельном потоке, чтобы не блокировать запуск сервера
         def init_bots_async():

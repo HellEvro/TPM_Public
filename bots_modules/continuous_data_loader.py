@@ -79,14 +79,6 @@ class ContinuousDataLoader:
         # except Exception as e:
         #     logger.warning(f"⚠️ [CONTINUOUS] Не удалось включить трейсинг: {e}")
         
-        # Получаем текущий таймфрейм при старте цикла
-        try:
-            from bot_engine.bot_config import get_current_timeframe
-            startup_timeframe = get_current_timeframe()
-            logger.info(f"⏱️ [CONTINUOUS] Таймфрейм при старте загрузчика: {startup_timeframe}")
-        except Exception as tf_err:
-            logger.warning(f"⚠️ [CONTINUOUS] Не удалось получить таймфрейм при старте: {tf_err}")
-        
         # Небольшая задержка перед первым обновлением (даем системе запуститься)
         time.sleep(5)
         
@@ -103,17 +95,9 @@ class ContinuousDataLoader:
                 coins_rsi_data['processing_cycle'] = True  # Только флаг обработки
                 logger.info("Начинаем обработку данных (неблокирующий режим)")
                 
-                # Получаем текущий таймфрейм для логирования
-                try:
-                    from bot_engine.bot_config import get_current_timeframe
-                    current_timeframe = get_current_timeframe()
-                except:
-                    current_timeframe = '6h'  # Fallback
-                
                 logger.info("=" * 80)
                 logger.info(f"РАУНД #{self.update_count} НАЧАТ")
                 logger.info(f"🕐 Время: {datetime.now().strftime('%H:%M:%S')}")
-                logger.info(f"⏱️ Таймфрейм: {current_timeframe}")
                 logger.info("=" * 80)
                 
                 # ✅ Этап 1: Загружаем свечи всех монет (15-20 сек) - БЛОКИРУЮЩИЙ
@@ -212,31 +196,20 @@ class ContinuousDataLoader:
             logger.info("📦 Этап 1/6: Загружаем свечи (неблокирующий)...")
             start = time.time()
             
-            # Проверяем, есть ли уже свечи в кэше с ПРАВИЛЬНЫМ таймфреймом
+            # Проверяем, есть ли уже свечи в кэше
             from bots_modules.imports_and_globals import coins_rsi_data
-            from bot_engine.bot_config import get_current_timeframe
-            current_timeframe = get_current_timeframe()
-            
             if 'candles_cache' in coins_rsi_data and coins_rsi_data['candles_cache']:
-                # Проверяем таймфрейм первой монеты в кэше
-                cache_sample = next(iter(coins_rsi_data['candles_cache'].values()), None)
-                if cache_sample and cache_sample.get('timeframe') == current_timeframe:
-                    last_update = coins_rsi_data.get('last_candles_update', '')
-                    if last_update:
-                        from datetime import datetime, timedelta
-                        try:
-                            last_update_time = datetime.fromisoformat(last_update.replace('Z', '+00:00'))
-                            time_diff = datetime.now() - last_update_time.replace(tzinfo=None)
-                            if time_diff.total_seconds() < 300:  # Если свечи обновлялись менее 5 минут назад
-                                logger.info(f"✅ Используем свежие свечи из кэша (таймфрейм: {current_timeframe})")
-                                return True
-                        except:
-                            pass
-                else:
-                    # Таймфрейм не совпадает - очищаем кэш
-                    logger.info(f"🗑️ Таймфрейм кэша не совпадает (кэш: {cache_sample.get('timeframe') if cache_sample else 'нет'}, текущий: {current_timeframe}), очищаем кэш")
-                    coins_rsi_data['candles_cache'] = {}
-                    coins_rsi_data['last_candles_update'] = None
+                last_update = coins_rsi_data.get('last_candles_update', '')
+                if last_update:
+                    from datetime import datetime, timedelta
+                    try:
+                        last_update_time = datetime.fromisoformat(last_update.replace('Z', '+00:00'))
+                        time_diff = datetime.now() - last_update_time.replace(tzinfo=None)
+                        if time_diff.total_seconds() < 300:  # Если свечи обновлялись менее 5 минут назад
+                            logger.info("✅ Используем свежие свечи из кэша")
+                            return True
+                    except:
+                        pass
             
             # Запускаем загрузку в отдельном потоке
             import threading

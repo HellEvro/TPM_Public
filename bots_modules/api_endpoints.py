@@ -130,7 +130,7 @@ try:
     from bots_modules.filters import (
         get_effective_signal, check_auto_bot_filters,
         process_auto_bot_signals, test_exit_scam_filter, test_rsi_time_filter,
-        process_trading_signals_for_all_bots, get_coin_rsi_data
+        process_trading_signals_for_all_bots
     )
     # Для clear_mature_coins_storage может быть в разных модулях
     try:
@@ -610,19 +610,10 @@ def get_coins_with_rsi():
                 cleaned_coin = {}
                 
                 # Копируем только необходимые базовые поля
-                # Получаем ключи для текущего таймфрейма
-                from bot_engine.bot_config import get_current_timeframe, get_rsi_key, get_trend_key
-                current_timeframe = get_current_timeframe()
-                rsi_key = get_rsi_key(current_timeframe)
-                trend_key = get_trend_key(current_timeframe)
-                
-                essential_fields = ['symbol', rsi_key, trend_key, 'rsi_zone', 'signal', 'price', 
+                essential_fields = ['symbol', 'rsi6h', 'trend6h', 'rsi_zone', 'signal', 'price', 
                                   'change24h', 'last_update', 'blocked_by_scope', 'has_existing_position',
                                   'is_mature', 'blocked_by_exit_scam', 'blocked_by_rsi_time', 'blocked_by_loss_reentry',
                                   'trading_status', 'is_delisting']
-                # Также добавляем старые ключи для обратной совместимости
-                essential_fields.extend(['rsi6h', 'trend6h', 'rsi', 'trend'])
-                
                 for field in essential_fields:
                     if field in coin_data:
                         cleaned_coin[field] = coin_data[field]
@@ -1597,120 +1588,6 @@ def log_config_change(key, old_value, new_value, description=""):
         return True
     return False
 
-@bots_app.route('/api/bots/timeframe', methods=['GET', 'POST'])
-def timeframe_config():
-    """Получить или установить текущий таймфрейм системы"""
-    try:
-        from bot_engine.bot_config import get_current_timeframe, set_current_timeframe, reset_timeframe_to_config
-        
-        if request.method == 'GET':
-            current_tf = get_current_timeframe()
-            return jsonify({
-                'success': True,
-                'timeframe': current_tf,
-                'supported_timeframes': ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M']
-            })
-        
-        elif request.method == 'POST':
-            data = request.get_json()
-            if not data or 'timeframe' not in data:
-                return jsonify({'success': False, 'error': 'timeframe parameter is required'}), 400
-            
-            new_timeframe = data['timeframe']
-            old_timeframe = get_current_timeframe()
-            
-            # Устанавливаем новый таймфрейм
-            success = set_current_timeframe(new_timeframe)
-            if not success:
-                return jsonify({
-                    'success': False,
-                    'error': f'Unsupported timeframe: {new_timeframe}'
-                }), 400
-            
-            # Сохраняем таймфрейм в БД для сохранения между перезапусками
-            try:
-                from bot_engine.bots_database import get_bots_database
-                db = get_bots_database()
-                db.save_timeframe(new_timeframe)
-                logger.info(f"✅ Таймфрейм сохранен в БД: {new_timeframe}")
-            except Exception as save_db_err:
-                logger.warning(f"⚠️ Не удалось сохранить таймфрейм в БД: {save_db_err}")
-            
-            # Сохраняем таймфрейм в конфиг файл (bot_config.py)
-            # ⚠️ ВАЖНО: НЕ вызываем load_system_config() после сохранения, чтобы не сбросить таймфрейм
-            try:
-                from bots_modules.config_writer import save_system_config_to_py
-                from bot_engine.bot_config import SystemConfig
-                # Обновляем SystemConfig в памяти
-                SystemConfig.SYSTEM_TIMEFRAME = new_timeframe
-                # Сохраняем напрямую в файл БЕЗ перезагрузки модуля
-                save_system_config_to_py({'SYSTEM_TIMEFRAME': new_timeframe})
-                logger.info(f"✅ Таймфрейм сохранен в конфиг файл: {new_timeframe} (без перезагрузки модуля)")
-            except Exception as save_config_err:
-                logger.warning(f"⚠️ Не удалось сохранить таймфрейм в конфиг файл: {save_config_err}")
-            
-            logger.info(f"🔄 Таймфрейм изменен: {old_timeframe} → {new_timeframe}")
-            
-            # Сохраняем текущие данные перед переключением
-            try:
-                from bots_modules.sync_and_cache import save_rsi_cache
-                from bots_modules.imports_and_globals import coins_rsi_data, rsi_data_lock
-                with rsi_data_lock:
-                    if coins_rsi_data.get('coins'):
-                        # Сохраняем текущий кэш
-                        save_rsi_cache()
-            except Exception as save_err:
-                logger.warning(f"⚠️ Не удалось сохранить RSI кэш при переключении таймфрейма: {save_err}")
-            
-            # Очищаем кэш свечей для перезагрузки с новым таймфреймом
-            try:
-                from bots_modules.imports_and_globals import coins_rsi_data, rsi_data_lock
-                with rsi_data_lock:
-                    # Полностью очищаем кэш свечей
-                    coins_rsi_data['candles_cache'] = {}
-                    coins_rsi_data['last_candles_update'] = None
-                    coins_rsi_data['last_update'] = None
-                    # Очищаем данные монет, чтобы они перезагрузились с новым таймфреймом
-                    coins_rsi_data['coins'] = {}
-                    logger.info("🗑️ Кэш свечей и RSI данных очищен для перезагрузки с новым таймфреймом")
-            except Exception as clear_err:
-                logger.warning(f"⚠️ Не удалось очистить кэш свечей: {clear_err}")
-            
-            # Триггерим перезагрузку RSI данных в фоновом режиме
-            try:
-                from bots_modules.filters import load_all_coins_rsi
-                import threading
-                def reload_rsi():
-                    try:
-                        logger.info(f"🔄 Запуск перезагрузки RSI данных для таймфрейма {new_timeframe}...")
-                        load_all_coins_rsi()
-                        logger.info(f"✅ RSI данные перезагружены для таймфрейма {new_timeframe}")
-                    except Exception as reload_err:
-                        logger.error(f"❌ Ошибка перезагрузки RSI данных: {reload_err}")
-                
-                # Запускаем в отдельном потоке, чтобы не блокировать ответ
-                reload_thread = threading.Thread(target=reload_rsi, daemon=True)
-                reload_thread.start()
-                logger.info("🔄 Запущен поток перезагрузки RSI данных")
-            except Exception as trigger_err:
-                logger.warning(f"⚠️ Не удалось запустить перезагрузку RSI данных: {trigger_err}")
-            
-            return jsonify({
-                'success': True,
-                'message': f'Таймфрейм изменен с {old_timeframe} на {new_timeframe}. Данные сохраняются, начинается перезагрузка RSI...',
-                'old_timeframe': old_timeframe,
-                'new_timeframe': new_timeframe
-            })
-    
-    except Exception as e:
-        logger.error(f"❌ Ошибка работы с таймфреймом: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
 @bots_app.route('/api/bots/system-config', methods=['GET', 'POST'])
 def system_config():
     """Получить или обновить системные настройки"""
@@ -1721,15 +1598,9 @@ def system_config():
                 load_system_config()
             except Exception as load_err:
                 logger.warning(f" ⚠️ Не удалось перезагрузить системную конфигурацию перед GET: {load_err}")
-            
-            # Добавляем текущий таймфрейм в системные настройки
-            config = get_system_config_snapshot()
-            from bot_engine.bot_config import get_current_timeframe
-            config['timeframe'] = get_current_timeframe()
-            
             return jsonify({
                 'success': True,
-                'config': config
+                'config': get_system_config_snapshot()
             })
 
         elif request.method == 'POST':
@@ -1921,7 +1792,6 @@ def system_config():
         else:
             logger.info("ℹ️  System config: изменений не обнаружено")
         
-        # ⚠️ ВАЖНО: При перезагрузке конфига таймфрейм восстанавливается из БД (приоритет БД над файлом)
         if saved_to_file and (changes_count > 0 or system_changes_count > 0):
             load_system_config()
 
@@ -2250,23 +2120,11 @@ def get_rsi_history_for_chart(symbol):
         from bots_modules.calculations import calculate_rsi_history
         
         # ✅ СНАЧАЛА ПРОВЕРЯЕМ КЭШ В ПАМЯТИ, ПОТОМ БД
-        # ✅ ОПТИМИЗАЦИЯ: Поддержка новой структуры кэша (несколько таймфреймов)
         candles = None
         candles_cache = coins_rsi_data.get('candles_cache', {})
-        from bot_engine.bot_config import get_current_timeframe
-        current_timeframe = get_current_timeframe()
-        
         if symbol in candles_cache:
-            symbol_cache = candles_cache[symbol]
-            # Новая структура: {timeframe: {candles: [...], ...}}
-            if isinstance(symbol_cache, dict) and current_timeframe in symbol_cache:
-                cached_data = symbol_cache[current_timeframe]
-                candles = cached_data.get('candles')
-            # Старая структура (обратная совместимость)
-            elif isinstance(symbol_cache, dict) and 'candles' in symbol_cache:
-                cached_timeframe = symbol_cache.get('timeframe')
-                if cached_timeframe == current_timeframe:
-                    candles = symbol_cache.get('candles')
+            cached_data = candles_cache[symbol]
+            candles = cached_data.get('candles')
         
         # Если нет в памяти, читаем из БД
         if not candles:
@@ -2322,9 +2180,7 @@ def get_candles_from_cache(symbol):
     """Получить свечи из кэша или файла (без запроса к бирже)"""
     try:
         # Получаем параметры запроса
-        # Получаем текущий таймфрейм из конфига
-        from bot_engine.bot_config import get_current_timeframe
-        timeframe = request.args.get('timeframe', get_current_timeframe())  # По умолчанию текущий таймфрейм
+        timeframe = request.args.get('timeframe', '6h')  # По умолчанию 6h
         period_days = request.args.get('period', None)  # Опционально, для совместимости
         
         # ✅ СНАЧАЛА ПРОВЕРЯЕМ КЭШ В ПАМЯТИ, ПОТОМ БД
@@ -2389,19 +2245,11 @@ def get_candles_from_cache(symbol):
                 daily_candles.append(current_candle)
             
             candles = daily_candles
-        # Получаем текущий таймфрейм из конфига
-        from bot_engine.bot_config import get_current_timeframe
-        current_timeframe = get_current_timeframe()
-        
-        if timeframe == current_timeframe:
-            # Используем свечи текущего таймфрейма как есть
-            candles = candles_6h
-        elif timeframe == '1d':
-            # Конвертируем свечи текущего таймфрейма в дневные (если нужно)
-            # Пока возвращаем свечи текущего таймфрейма
+        elif timeframe == '6h':
+            # Используем 6h свечи как есть
             candles = candles_6h
         else:
-            # Для других таймфреймов возвращаем свечи текущего таймфрейма
+            # Для других таймфреймов возвращаем 6h (можно расширить логику)
             candles = candles_6h
         
         # Ограничиваем количество свечей по периоду (если указан)

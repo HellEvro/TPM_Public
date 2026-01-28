@@ -156,9 +156,8 @@ class AIBacktester:
                     return market_data
                 
                 # Ограничиваем загрузку для экономии памяти
-                from bot_engine.bot_config import get_current_timeframe
                 candles_data = ai_db.get_all_candles_dict(
-                    timeframe=get_current_timeframe(),
+                    timeframe='6h',
                     max_symbols=30,
                     max_candles_per_symbol=1000
                 )
@@ -191,7 +190,7 @@ class AIBacktester:
                     if candles:
                         market_data['latest']['candles'][symbol] = {
                             'candles': candles,
-                            'timeframe': get_current_timeframe(),
+                            'timeframe': '6h',
                             'last_update': datetime.now().isoformat(),
                             'count': len(candles),
                             'source': 'ai_data.db'
@@ -213,13 +212,10 @@ class AIBacktester:
                         coins_data = data.get('coins', {})
                         logger.info(f"✅ Загружено индикаторов для {len(coins_data)} монет через API")
                         
-                        # Получаем RSI и тренд с учетом текущего таймфрейма
-                        from bot_engine.bot_config import get_rsi_from_coin_data, get_trend_from_coin_data
-                        
                         for symbol, coin_data in coins_data.items():
                             market_data['latest']['indicators'][symbol] = {
-                                'rsi': get_rsi_from_coin_data(coin_data),
-                                'trend': get_trend_from_coin_data(coin_data),
+                                'rsi': coin_data.get('rsi6h'),
+                                'trend': coin_data.get('trend6h'),
                                 'price': coin_data.get('price'),
                                 'signal': coin_data.get('signal'),
                                 'volume': coin_data.get('volume')

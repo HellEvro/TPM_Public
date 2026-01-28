@@ -44,12 +44,8 @@ class BotsManager {
         this.isProgrammaticChange = false;
         
         // URL сервиса ботов - используем тот же хост что и у приложения
-        // Fallback на 127.0.0.1 если hostname пустой или localhost
-        const hostname = window.location.hostname || '127.0.0.1';
-        const protocol = window.location.protocol || 'http:';
-        this.BOTS_SERVICE_URL = `${protocol}//${hostname}:5001`;
-        this.apiUrl = `${protocol}//${hostname}:5001/api/bots`; // Для совместимости
-        console.log('[BotsManager] 🔗 BOTS_SERVICE_URL:', this.BOTS_SERVICE_URL);
+        this.BOTS_SERVICE_URL = `${window.location.protocol}//${window.location.hostname}:5001`;
+        this.apiUrl = `${window.location.protocol}//${window.location.hostname}:5001/api/bots`; // Для совместимости
         
         // Уровень логирования: 'error' - только ошибки, 'info' - важные события, 'debug' - все
         this.logLevel = 'error'; // ✅ ОТКЛЮЧЕНЫ СПАМ-ЛОГИ - только ошибки
@@ -58,9 +54,6 @@ class BotsManager {
         this.historyInitialized = false;
         this.currentHistoryTab = 'actions';
         this.historyBotSymbols = [];
-        
-        // Текущий таймфрейм системы (загружается из API)
-        this.currentTimeframe = '6h'; // Дефолтное значение, будет обновлено при загрузке
         
         // Инициализация при создании
         this.init();
@@ -103,9 +96,6 @@ class BotsManager {
             console.log('[BotsManager] 🤖 Инициализация обработчика Auto Bot переключателя...');
             this.initializeGlobalAutoBotToggle();
             this.initializeMobileAutoBotToggle();
-            
-            // Инициализируем управление таймфреймом
-            this.initTimeframeControls();
             
             // Проверяем статус сервиса ботов
             await this.checkBotsService();
@@ -553,11 +543,7 @@ class BotsManager {
                 item.classList.remove('buy-zone', 'sell-zone', 'enter-long', 'enter-short');
                 
                 // Добавляем новые классы на основе обновленных порогов
-                // Получаем RSI с учетом текущего таймфрейма
-                const currentTimeframe = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
-                const rsiKey = `rsi${currentTimeframe}`;
-                const rsiValue = coinData[rsiKey] || coinData.rsi6h || coinData.rsi || 50;
-                const rsiClass = this.getRsiZoneClass(rsiValue);
+                const rsiClass = this.getRsiZoneClass(coinData.rsi6h);
                 if (rsiClass) {
                     item.classList.add(rsiClass);
                 }
@@ -612,25 +598,15 @@ class BotsManager {
 
     async checkBotsService() {
         console.log('[BotsManager] 🔍 Проверка сервиса ботов...');
-        console.log('[BotsManager] 🔗 URL:', `${this.BOTS_SERVICE_URL}/api/status`);
         
         try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000);
-            
             const response = await fetch(`${this.BOTS_SERVICE_URL}/api/status`, {
                 method: 'GET',
-                signal: controller.signal,
-                headers: {
-                    'Accept': 'application/json'
-                }
+                timeout: 5000
             });
-            
-            clearTimeout(timeoutId);
             
             if (response.ok) {
                 const data = await response.json();
-                console.log('[BotsManager] 📊 Ответ сервиса:', data);
                 this.serviceOnline = data.status === 'online';
                 
                 if (this.serviceOnline) {
@@ -638,26 +614,15 @@ class BotsManager {
                     this.updateServiceStatus('online', 'Сервис ботов онлайн');
                     await this.loadCoinsRsiData();
                 } else {
-                    console.warn('[BotsManager] ⚠️ Сервис ботов недоступен (статус не online)');
-                    this.updateServiceStatus('offline', window.languageUtils?.translate?.('bot_service_unavailable') || 'Сервис ботов недоступен');
+                    console.warn('[BotsManager] ⚠️ Сервис ботов недоступен');
+                    this.updateServiceStatus('offline', window.languageUtils.translate('bot_service_unavailable'));
                 }
             } else {
-                console.error('[BotsManager] ❌ HTTP ошибка:', response.status, response.statusText);
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                throw new Error(`HTTP ${response.status}`);
             }
             
         } catch (error) {
-            if (error.name === 'AbortError') {
-                console.error('[BotsManager] ❌ Таймаут при проверке сервиса ботов (5 секунд)');
-            } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-                console.error('[BotsManager] ❌ Ошибка сети при проверке сервиса ботов. Проверьте:');
-                console.error('[BotsManager]   1. Запущен ли bots.py?');
-                console.error('[BotsManager]   2. Доступен ли порт 5001?');
-                console.error('[BotsManager]   3. Нет ли блокировки CORS?');
-                console.error('[BotsManager]   URL:', `${this.BOTS_SERVICE_URL}/api/status`);
-            } else {
-                console.error('[BotsManager] ❌ Ошибка при проверке сервиса ботов:', error);
-            }
+            console.error('[BotsManager] ❌ Сервис ботов недоступен:', error);
             this.serviceOnline = false;
             this.updateServiceStatus('offline', 'Сервис ботов недоступен');
             this.showServiceUnavailable();
@@ -706,9 +671,7 @@ class BotsManager {
             return;
         }
 
-        // Получаем текущий таймфрейм для логирования
-        const currentTimeframe = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
-        this.logDebug(`[BotsManager] 📊 Загрузка данных RSI ${currentTimeframe.toUpperCase()}...`);
+        this.logDebug('[BotsManager] 📊 Загрузка данных RSI 6H...');
         
         // Сохраняем текущее состояние поиска
         const searchInput = document.getElementById('coinSearchInput');
@@ -854,16 +817,9 @@ class BotsManager {
             return;
         }
         
-        // Получаем текущий таймфрейм для отображения данных
-        const currentTimeframe = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
-        const rsiKey = `rsi${currentTimeframe}`;
-        const trendKey = `trend${currentTimeframe}`;
-        
         const coinsHtml = this.coinsRsiData.map(coin => {
-            const rsiValue = coin[rsiKey] || coin.rsi6h || coin.rsi || 50;
-            const trendValue = coin[trendKey] || coin.trend6h || coin.trend || 'NEUTRAL';
-            const rsiClass = this.getRsiZoneClass(rsiValue);
-            const trendClass = trendValue ? `trend-${trendValue.toLowerCase()}` : 'trend-none';
+            const rsiClass = this.getRsiZoneClass(coin.rsi6h);
+            const trendClass = coin.trend6h ? `trend-${coin.trend6h.toLowerCase()}` : 'trend-none';
             
             // Используем универсальную функцию для определения сигнала
             const effectiveSignal = this.getEffectiveSignal(coin);
@@ -901,12 +857,7 @@ class BotsManager {
                                 ${isDelisting ? '<span class="delisting-indicator" title="Монета на делистинге">⚠️</span>' : ''}
                                 ${isNewCoin ? '<span class="new-coin-indicator" title="Новая монета (включение в листинг)">🆕</span>' : ''}
                                 ${this.generateWarningIndicator(coin)}
-                                ${(() => {
-                                    const currentTimeframe = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
-                                    const rsiKey = `rsi${currentTimeframe}`;
-                                    const rsiValue = coin[rsiKey] || coin.rsi6h || coin.rsi || 50;
-                                    return `<span class="coin-rsi ${this.getRsiZoneClass(rsiValue)}">${rsiValue}</span>`;
-                                })()}
+                                <span class="coin-rsi ${this.getRsiZoneClass(coin.rsi6h)}">${coin.rsi6h}</span>
                                 <a href="${this.createTickerLink(coin.symbol)}" 
                                target="_blank" 
                                class="external-link" 
@@ -921,12 +872,7 @@ class BotsManager {
                         </div>
                         </div>
                         <div class="coin-details">
-                            ${(() => {
-                                const currentTimeframe = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
-                                const trendKey = `trend${currentTimeframe}`;
-                                const trendValue = coin[trendKey] || coin.trend6h || coin.trend || 'NEUTRAL';
-                                return `<span class="coin-trend ${trendValue}">${trendValue}</span>`;
-                            })()}
+                            <span class="coin-trend ${coin.trend6h}">${coin.trend6h || 'NEUTRAL'}</span>
                             <span class="coin-price">$${coin.price?.toFixed(6) || '0'}</span>
                         </div>
                         <div class="coin-signal">
@@ -1308,12 +1254,8 @@ class BotsManager {
         const autoConfig = this.cachedAutoBotConfig || {};
         const avoidDownTrend = autoConfig.avoid_down_trend === true;
         const avoidUpTrend = autoConfig.avoid_up_trend === true;
-        // Получаем RSI и тренд с учетом текущего таймфрейма
-        const currentTimeframe = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
-        const rsiKey = `rsi${currentTimeframe}`;
-        const trendKey = `trend${currentTimeframe}`;
-        const rsi = coin[rsiKey] || coin.rsi6h || coin.rsi || 50;
-        const trend = coin[trendKey] || coin.trend6h || coin.trend || 'NEUTRAL';
+        const rsi = coin.rsi6h || 50;
+        const trend = coin.trend6h || 'NEUTRAL';
         const rsiLongThreshold = autoConfig.rsi_long_threshold || 29;
         const rsiShortThreshold = autoConfig.rsi_short_threshold || 71;
         
@@ -1339,27 +1281,10 @@ class BotsManager {
         const allCount = this.coinsRsiData.length;
         const longCount = this.coinsRsiData.filter(coin => this.getEffectiveSignal(coin) === 'ENTER_LONG').length;
         const shortCount = this.coinsRsiData.filter(coin => this.getEffectiveSignal(coin) === 'ENTER_SHORT').length;
-        // Получаем текущий таймфрейм для подсчета
-        const currentTimeframe = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
-        const rsiKey = `rsi${currentTimeframe}`;
-        const buyZoneCount = this.coinsRsiData.filter(coin => {
-            const rsi = coin[rsiKey] || coin.rsi6h || coin.rsi;
-            return rsi && rsi <= this.rsiLongThreshold;
-        }).length;
-        const sellZoneCount = this.coinsRsiData.filter(coin => {
-            const rsi = coin[rsiKey] || coin.rsi6h || coin.rsi;
-            return rsi && rsi >= this.rsiShortThreshold;
-        }).length;
-        // Используем тот же currentTimeframe для подсчета трендов
-        const trendKey = `trend${currentTimeframe}`;
-        const trendUpCount = this.coinsRsiData.filter(coin => {
-            const trend = coin[trendKey] || coin.trend6h || coin.trend;
-            return trend === 'UP';
-        }).length;
-        const trendDownCount = this.coinsRsiData.filter(coin => {
-            const trend = coin[trendKey] || coin.trend6h || coin.trend;
-            return trend === 'DOWN';
-        }).length;
+        const buyZoneCount = this.coinsRsiData.filter(coin => coin.rsi6h && coin.rsi6h <= this.rsiLongThreshold).length;
+        const sellZoneCount = this.coinsRsiData.filter(coin => coin.rsi6h && coin.rsi6h >= this.rsiShortThreshold).length;
+        const trendUpCount = this.coinsRsiData.filter(coin => coin.trend6h === 'UP').length;
+        const trendDownCount = this.coinsRsiData.filter(coin => coin.trend6h === 'DOWN').length;
         const manualPositionCount = this.coinsRsiData.filter(coin => coin.manual_position === true).length;
         const unavailableCount = this.coinsRsiData.filter(coin => this.getEffectiveSignal(coin) === 'UNAVAILABLE').length;
         
@@ -1538,11 +1463,6 @@ class BotsManager {
         // Обновляем основную информацию
         const symbolElement = document.getElementById('selectedCoinSymbol');
         const priceElement = document.getElementById('selectedCoinPrice');
-        // Получаем текущий таймфрейм для отображения
-        const currentTimeframe = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
-        const rsiKey = `rsi${currentTimeframe}`;
-        const trendKey = `trend${currentTimeframe}`;
-        
         const rsiElement = document.getElementById('selectedCoinRSI');
         const trendElement = document.getElementById('selectedCoinTrend');
         const zoneElement = document.getElementById('selectedCoinZone');
@@ -1584,17 +1504,14 @@ class BotsManager {
         }
         
         if (rsiElement) {
-            const currentTimeframe = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
-            const rsiKey = `rsi${currentTimeframe}`;
-            const enhancedRsiKey = `rsi_${currentTimeframe.replace('h', 'H')}`;
-            const rsi = coin.enhanced_rsi?.[enhancedRsiKey] || coin[rsiKey] || coin.rsi6h || coin.rsi || '-';
+            const rsi = coin.enhanced_rsi?.rsi_6h || coin.rsi6h || '-';
             rsiElement.textContent = rsi;
             rsiElement.className = `value rsi-indicator ${this.getRsiZoneClass(rsi)}`;
             console.log('[BotsManager] ✅ RSI обновлен:', rsi);
         }
         
         if (trendElement) {
-            const trend = coin[trendKey] || coin.trend6h || coin.trend || 'NEUTRAL';
+            const trend = coin.trend6h || 'NEUTRAL';
             trendElement.textContent = trend;
             trendElement.className = `value trend-indicator ${trend}`;
             console.log('[BotsManager] ✅ Тренд обновлен:', trend);
@@ -1617,16 +1534,10 @@ class BotsManager {
                     trendHintElement.textContent = '(UP тренд не блокирует SHORT)';
                     trendHintElement.style.color = 'var(--text-muted)';
                 } else {
-                    // Оба фильтра включены - показываем период анализа с учетом текущего таймфрейма
+                    // Оба фильтра включены - показываем период анализа
                     const period = this.cachedAutoBotConfig?.trend_analysis_period || 30;
-                    // Пересчитываем дни для текущего таймфрейма
-                    const timeframeHours = {
-                        '1m': 1/60, '3m': 3/60, '5m': 5/60, '15m': 15/60, '30m': 30/60,
-                        '1h': 1, '2h': 2, '4h': 4, '6h': 6, '8h': 8, '12h': 12, '1d': 24
-                    };
-                    const hoursPerCandle = timeframeHours[currentTimeframe] || 6;
-                    const days = (period * hoursPerCandle / 24).toFixed(1);
-                    trendHintElement.textContent = `(анализ за ${days} дней на ${currentTimeframe.toUpperCase()})`;
+                    const days = (period * 6 / 24).toFixed(1);
+                    trendHintElement.textContent = `(анализ за ${days} дней)`;
                     trendHintElement.style.color = 'var(--text-muted)';
                 }
             }
@@ -1998,11 +1909,8 @@ class BotsManager {
             const blockReasons = [];
             const autoConfig = this.cachedAutoBotConfig || {};
             const baseSignal = coin.signal || 'WAIT';
-            // Получаем RSI с учетом текущего таймфрейма
-            const currentTimeframe = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
-            const rsiKey = `rsi${currentTimeframe}`;
-            const rsi = coin[rsiKey] || coin.rsi6h || coin.rsi || 50;
-            const trend = coin[trendKey] || coin.trend6h || coin.trend || 'NEUTRAL';
+            const rsi = coin.rsi6h || 50;
+            const trend = coin.trend6h || 'NEUTRAL';
             const rsiLongThreshold = autoConfig.rsi_long_threshold || 29;
             const rsiShortThreshold = autoConfig.rsi_short_threshold || 71;
             
@@ -2113,10 +2021,7 @@ class BotsManager {
             // Базовый сигнал уже WAIT - проверяем ВСЕ фильтры
             const filterCheck = checkAllBlockingFilters(coin);
             const autoConfig = this.cachedAutoBotConfig || {};
-            // Получаем RSI с учетом текущего таймфрейма
-            const currentTimeframe = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
-            const rsiKey = `rsi${currentTimeframe}`;
-            const rsi = coin[rsiKey] || coin.rsi6h || coin.rsi || 50;
+            const rsi = coin.rsi6h || 50;
             const rsiLongThreshold = autoConfig.rsi_long_threshold || 29;
             const rsiShortThreshold = autoConfig.rsi_short_threshold || 71;
             
@@ -2839,10 +2744,7 @@ class BotsManager {
         }
         
         console.log(`[BotsManager] 🤖 Создание бота для ${this.selectedCoin.symbol}`);
-        const currentTimeframe = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
-        const rsiKey = `rsi${currentTimeframe}`;
-        const rsiValue = this.selectedCoin[rsiKey] || this.selectedCoin.rsi6h || this.selectedCoin.rsi || 'неизвестно';
-        console.log(`[BotsManager] 📊 RSI текущий (${currentTimeframe}): ${rsiValue}`);
+        console.log(`[BotsManager] 📊 RSI текущий: ${this.selectedCoin.rsi6h || 'неизвестно'}`);
         
         // Показываем уведомление о начале процесса
         this.showNotification(`🔄 ${this.translate('creating_bot_for')} ${this.selectedCoin.symbol}...`, 'info');
@@ -3925,31 +3827,6 @@ class BotsManager {
             });
         }
         
-        // Обработчики для кнопок ручного запуска в секции настроек
-        const manualLaunchLongBtn = document.getElementById('manualLaunchLongBtn');
-        if (manualLaunchLongBtn) {
-            manualLaunchLongBtn.addEventListener('click', async () => {
-                if (!this.selectedCoin) {
-                    this.showNotification('⚠️ Выберите монету для запуска', 'warning');
-                    return;
-                }
-                
-                await this.quickLaunchBot('LONG');
-            });
-        }
-        
-        const manualLaunchShortBtn = document.getElementById('manualLaunchShortBtn');
-        if (manualLaunchShortBtn) {
-            manualLaunchShortBtn.addEventListener('click', async () => {
-                if (!this.selectedCoin) {
-                    this.showNotification('⚠️ Выберите монету для запуска', 'warning');
-                    return;
-                }
-                
-                await this.quickLaunchBot('SHORT');
-            });
-        }
-        
         console.log('[BotsManager] ✅ Кнопки быстрого запуска инициализированы');
     }
 
@@ -4369,71 +4246,41 @@ class BotsManager {
         const quickStartShortBtn = document.getElementById('quickStartShortBtn');
         const quickStopBtn = document.getElementById('quickStopBtn');
         
-        // Кнопки ручного запуска в секции настроек
-        const manualLaunchLongBtn = document.getElementById('manualLaunchLongBtn');
-        const manualLaunchShortBtn = document.getElementById('manualLaunchShortBtn');
-        
         // Проверяем есть ли бот для выбранной монеты
         const selectedBot = this.selectedCoin && this.activeBots ? 
                            this.activeBots.find(bot => bot.symbol === this.selectedCoin.symbol) : null;
         
-        // Проверяем, есть ли активная позиция
-        const hasActivePosition = selectedBot && (
-            selectedBot.status === 'in_position_long' || 
-            selectedBot.status === 'in_position_short' ||
-            selectedBot.status === 'running'
-        );
-        
         console.log(`[BotsManager] 🔍 Выбранная монета: ${this.selectedCoin?.symbol}`);
         console.log(`[BotsManager] 🤖 Найден бот:`, selectedBot);
-        console.log(`[BotsManager] 📊 Есть активная позиция:`, hasActivePosition);
         
         if (selectedBot) {
             // Есть бот для выбранной монеты
             const isRunning = selectedBot.status === 'running';
             const isStopped = selectedBot.status === 'idle' || selectedBot.status === 'stopped' || selectedBot.status === 'paused';
-            const inPosition = selectedBot.status === 'in_position_long' || selectedBot.status === 'in_position_short';
             
             if (createBtn) createBtn.style.display = 'none';
             
-            if (inPosition) {
-                // Бот в позиции - показываем только Стоп и Закрыть
+            if (isRunning) {
+                // Бот работает - показываем только Стоп
                 if (startBtn) startBtn.style.display = 'none';
                 if (stopBtn) stopBtn.style.display = 'inline-block';
                 if (pauseBtn) pauseBtn.style.display = 'none';
                 if (resumeBtn) resumeBtn.style.display = 'none';
                 
-                // Кнопки запуска скрыты
+                // Кнопки быстрого запуска скрыты, показываем только быструю остановку
                 if (quickStartLongBtn) quickStartLongBtn.style.display = 'none';
                 if (quickStartShortBtn) quickStartShortBtn.style.display = 'none';
-                if (manualLaunchLongBtn) manualLaunchLongBtn.style.display = 'none';
-                if (manualLaunchShortBtn) manualLaunchShortBtn.style.display = 'none';
-                if (quickStopBtn) quickStopBtn.style.display = 'none';
-            } else if (isRunning) {
-                // Бот работает, но не в позиции - показываем Стоп и кнопки запуска
-                if (startBtn) startBtn.style.display = 'none';
-                if (stopBtn) stopBtn.style.display = 'inline-block';
-                if (pauseBtn) pauseBtn.style.display = 'none';
-                if (resumeBtn) resumeBtn.style.display = 'none';
-                
-                // Показываем кнопки быстрого запуска LONG/SHORT
-                if (quickStartLongBtn) quickStartLongBtn.style.display = 'inline-block';
-                if (quickStartShortBtn) quickStartShortBtn.style.display = 'inline-block';
-                if (manualLaunchLongBtn) manualLaunchLongBtn.style.display = 'inline-block';
-                if (manualLaunchShortBtn) manualLaunchShortBtn.style.display = 'inline-block';
-                if (quickStopBtn) quickStopBtn.style.display = 'none';
+                if (quickStopBtn) quickStopBtn.style.display = 'inline-block';
             } else if (isStopped) {
-                // Бот остановлен - показываем Старт и кнопки запуска
+                // Бот остановлен - показываем Старт
                 if (startBtn) startBtn.style.display = 'inline-block';
                 if (stopBtn) stopBtn.style.display = 'none';
                 if (pauseBtn) pauseBtn.style.display = 'none';
                 if (resumeBtn) resumeBtn.style.display = 'none';
                 
-                // Показываем кнопки быстрого запуска LONG/SHORT
-                if (quickStartLongBtn) quickStartLongBtn.style.display = 'inline-block';
-                if (quickStartShortBtn) quickStartShortBtn.style.display = 'inline-block';
-                if (manualLaunchLongBtn) manualLaunchLongBtn.style.display = 'inline-block';
-                if (manualLaunchShortBtn) manualLaunchShortBtn.style.display = 'inline-block';
+                // Кнопки быстрого запуска скрыты, показываем только быструю остановку
+                if (quickStartLongBtn) quickStartLongBtn.style.display = 'none';
+                if (quickStartShortBtn) quickStartShortBtn.style.display = 'none';
                 if (quickStopBtn) quickStopBtn.style.display = 'none';
             }
             
@@ -4446,14 +4293,12 @@ class BotsManager {
             if (pauseBtn) pauseBtn.style.display = 'none';
             if (resumeBtn) resumeBtn.style.display = 'none';
             
-            // Показываем кнопки быстрого запуска LONG/SHORT
+            // Показываем кнопки быстрого запуска
             if (quickStartLongBtn) quickStartLongBtn.style.display = 'inline-block';
             if (quickStartShortBtn) quickStartShortBtn.style.display = 'inline-block';
-            if (manualLaunchLongBtn) manualLaunchLongBtn.style.display = 'inline-block';
-            if (manualLaunchShortBtn) manualLaunchShortBtn.style.display = 'inline-block';
             if (quickStopBtn) quickStopBtn.style.display = 'none';
             
-            console.log(`[BotsManager] 🆕 Нет бота, показаны кнопки создания и быстрого запуска LONG/SHORT`);
+            console.log(`[BotsManager] 🆕 Нет бота, показаны кнопки создания и быстрого запуска`);
         }
     }
 
@@ -6026,13 +5871,6 @@ class BotsManager {
                     system: systemData.config
                 };
                 
-                // Загружаем таймфрейм отдельно
-                const timeframeData = await this.loadTimeframe();
-                if (timeframeData) {
-                    config.system = config.system || {};
-                    config.system.timeframe = timeframeData;
-                }
-                
                 console.log('[BotsManager] 📋 Заполнение формы данными...');
                 console.log('[BotsManager] 🚀 ВЫЗОВ populateConfigurationForm с config:', config);
                 this.populateConfigurationForm(config);
@@ -6042,11 +5880,6 @@ class BotsManager {
                 console.log('[BotsManager] 🤖 Инициализация глобального переключателя Auto Bot...');
                 this.initializeGlobalAutoBotToggle();
             this.initializeMobileAutoBotToggle();
-                
-                // Обновляем интерфейс с текущим таймфреймом
-                if (config.system && config.system.timeframe) {
-                    this.updateTimeframeInUI(config.system.timeframe);
-                }
                 
                 console.log('[BotsManager] ✅ Конфигурация загружена и применена');
                 return config;
@@ -6377,17 +6210,6 @@ class BotsManager {
         // СИСТЕМНЫЕ НАСТРОЙКИ
         // ==========================================
         const systemConfig = config.system || {};
-        
-        // Загружаем таймфрейм в select
-        const timeframeSelect = document.getElementById('systemTimeframe');
-        if (timeframeSelect && systemConfig.timeframe) {
-            timeframeSelect.value = systemConfig.timeframe;
-            const applyBtn = document.getElementById('applyTimeframeBtn');
-            if (applyBtn) {
-                applyBtn.dataset.currentTimeframe = systemConfig.timeframe;
-            }
-            console.log('[BotsManager] ⏱️ Таймфрейм загружен:', systemConfig.timeframe);
-        }
         
         // Интервалы обновления - ТОЛЬКО из API, без значений по умолчанию
         const rsiUpdateIntervalEl = document.getElementById('rsiUpdateInterval');
@@ -9078,10 +8900,7 @@ class BotsManager {
         if (!takeProfit && bot.entry_price) {
             const rsiExitLong = bot.rsi_exit_long || 55;
             const rsiExitShort = bot.rsi_exit_short || 45;
-            // Получаем RSI с учетом текущего таймфрейма
-            const currentTimeframe = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
-            const rsiKey = `rsi${currentTimeframe}`;
-            const currentRsi = bot.rsi_data?.[rsiKey] || bot.rsi_data?.rsi6h || bot.rsi_data?.rsi || 50;
+            const currentRsi = bot.rsi_data?.rsi6h || 50;
             
             if (bot.position_side === 'LONG' && currentRsi < rsiExitLong) {
                 const takeProfitPercent = (rsiExitLong - currentRsi) * 0.5;
@@ -9105,12 +8924,8 @@ class BotsManager {
         
         // Добавляем RSI данные если есть
         if (bot.rsi_data) {
-            // Получаем RSI и тренд с учетом текущего таймфрейма
-            const currentTimeframe = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
-            const rsiKey = `rsi${currentTimeframe}`;
-            const trendKey = `trend${currentTimeframe}`;
-            const rsi = bot.rsi_data[rsiKey] || bot.rsi_data.rsi6h || bot.rsi_data.rsi || 50;
-            const trend = bot.rsi_data[trendKey] || bot.rsi_data.trend6h || bot.rsi_data.trend || 'NEUTRAL';
+            const rsi = bot.rsi_data.rsi6h;
+            const trend = bot.rsi_data.trend6h;
             
             if (rsi) {
                 let rsiColor = 'var(--text-muted)';
@@ -9316,12 +9131,7 @@ class BotsManager {
                 volumeMode: 'USDT',
                 startTime: bot.created_at,
                 rsi: currentRsi,
-                // Получаем тренд с учетом текущего таймфрейма
-                trend: (() => {
-                    const currentTimeframe = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
-                    const trendKey = `trend${currentTimeframe}`;
-                    return bot[trendKey] || bot.trend6h || bot.trend || 'NEUTRAL';
-                })(),
+                trend: bot.trend6h || 'NEUTRAL',
                 workTime: bot.work_time || '0м',
                 lastUpdate: bot.last_update || 'Неизвестно'
             });
@@ -9375,12 +9185,7 @@ class BotsManager {
                 volumeMode: 'USDT',
                 startTime: bot.created_at,
                 rsi: currentRsi,
-                // Получаем тренд с учетом текущего таймфрейма
-                trend: (() => {
-                    const currentTimeframe = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
-                    const trendKey = `trend${currentTimeframe}`;
-                    return bot[trendKey] || bot.trend6h || bot.trend || 'NEUTRAL';
-                })(),
+                trend: bot.trend6h || 'NEUTRAL',
                 workTime: bot.work_time || '0м',
                 lastUpdate: bot.last_update || 'Неизвестно'
             });
@@ -11433,323 +11238,6 @@ class BotsManager {
             // ✅ Сбрасываем флаг в случае ошибки
             this.isProgrammaticChange = false;
         }
-    }
-    
-    // ==========================================
-    // УПРАВЛЕНИЕ ТАЙМФРЕЙМОМ СИСТЕМЫ
-    // ==========================================
-    
-    /**
-     * Загружает текущий таймфрейм системы
-     */
-    async loadTimeframe() {
-        try {
-            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/timeframe`);
-            const data = await response.json();
-            
-            if (data.success) {
-                // Сохраняем таймфрейм в переменную класса
-                this.currentTimeframe = data.timeframe;
-                
-                const timeframeSelect = document.getElementById('systemTimeframe');
-                if (timeframeSelect) {
-                    timeframeSelect.value = data.timeframe;
-                    console.log('[BotsManager] ✅ Текущий таймфрейм загружен:', data.timeframe);
-                }
-                return data.timeframe;
-            } else {
-                console.error('[BotsManager] ❌ Ошибка загрузки таймфрейма:', data.error);
-                this.currentTimeframe = '6h'; // Дефолтное значение
-                return '6h';
-            }
-        } catch (error) {
-            console.error('[BotsManager] ❌ Ошибка запроса таймфрейма:', error);
-            this.currentTimeframe = '6h'; // Дефолтное значение
-            return '6h';
-        }
-    }
-    
-    /**
-     * Применяет новый таймфрейм системы
-     */
-    async applyTimeframe() {
-        const timeframeSelect = document.getElementById('systemTimeframe');
-        const applyBtn = document.getElementById('applyTimeframeBtn');
-        const statusDiv = document.getElementById('timeframeStatus');
-        
-        if (!timeframeSelect || !applyBtn) {
-            console.error('[BotsManager] ❌ Элементы управления таймфреймом не найдены');
-            return;
-        }
-        
-        const newTimeframe = timeframeSelect.value;
-        const oldTimeframe = applyBtn.dataset.currentTimeframe || '6h';
-        
-        if (newTimeframe === oldTimeframe) {
-            this.showNotification('ℹ️ Таймфрейм не изменился', 'info');
-            return;
-        }
-        
-        // Показываем статус
-        if (statusDiv) {
-            statusDiv.style.display = 'block';
-            statusDiv.innerHTML = '<div style="color: #ffa500;">⏳ Переключение таймфрейма... Сохранение данных...</div>';
-        }
-        
-        applyBtn.disabled = true;
-        applyBtn.innerHTML = '<span>⏳ Применение...</span>';
-        
-        try {
-            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/timeframe`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ timeframe: newTimeframe })
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                // Обновляем текущий таймфрейм в переменной класса
-                this.currentTimeframe = newTimeframe;
-                
-                // Обновляем текущий таймфрейм
-                applyBtn.dataset.currentTimeframe = newTimeframe;
-                
-                // Показываем успешный статус
-                if (statusDiv) {
-                    statusDiv.innerHTML = `<div style="color: #4CAF50;">✅ Таймфрейм изменен: ${oldTimeframe} → ${newTimeframe}</div>`;
-                }
-                
-                this.showNotification(`✅ Таймфрейм изменен: ${oldTimeframe} → ${newTimeframe}. Данные сохранены, начинается перезагрузка RSI...`, 'success');
-                
-                // Обновляем все упоминания таймфрейма в интерфейсе
-                this.updateTimeframeInUI(newTimeframe);
-                
-                // Перезагружаем RSI данные через небольшую задержку
-                setTimeout(async () => {
-                    if (statusDiv) {
-                        statusDiv.innerHTML += '<div style="color: #2196F3; margin-top: 5px;">🔄 Перезагрузка RSI данных...</div>';
-                    }
-                    
-                    // Триггерим обновление RSI данных с принудительной перезагрузкой
-                    // Очищаем кэш и перезагружаем данные
-                    this.coinsRsiData = [];
-                    
-                    // Запрашиваем принудительное обновление RSI на сервере
-                    try {
-                        const refreshResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/refresh-rsi/all`, {
-                            method: 'POST'
-                        });
-                        if (refreshResponse.ok) {
-                            console.log('[BotsManager] ✅ Запрошено принудительное обновление RSI на сервере');
-                        }
-                    } catch (refreshError) {
-                        console.warn('[BotsManager] ⚠️ Не удалось запросить обновление RSI:', refreshError);
-                    }
-                    
-                    // Перезагружаем данные через небольшую задержку
-                    setTimeout(() => {
-                        this.loadCoinsRsiData(true);
-                    }, 2000);
-                    
-                    // Через еще немного времени скрываем статус
-                    setTimeout(() => {
-                        if (statusDiv) {
-                            statusDiv.style.display = 'none';
-                        }
-                    }, 5000);
-                }, 500);
-                
-                console.log('[BotsManager] ✅ Таймфрейм успешно изменен:', data);
-            } else {
-                throw new Error(data.error || 'Неизвестная ошибка');
-            }
-        } catch (error) {
-            console.error('[BotsManager] ❌ Ошибка изменения таймфрейма:', error);
-            this.showNotification('❌ Ошибка изменения таймфрейма: ' + error.message, 'error');
-            
-            if (statusDiv) {
-                statusDiv.innerHTML = `<div style="color: #f44336;">❌ Ошибка: ${error.message}</div>`;
-            }
-        } finally {
-            applyBtn.disabled = false;
-            applyBtn.innerHTML = '<span>✅ Применить таймфрейм</span>';
-        }
-    }
-    
-    /**
-     * Обновляет все упоминания таймфрейма в интерфейсе
-     */
-    updateTimeframeInUI(timeframe) {
-        // Обновляем отображение текущего таймфрейма в заголовке списка монет
-        const timeframeDisplay = document.getElementById('currentTimeframeDisplay');
-        if (timeframeDisplay) {
-            timeframeDisplay.textContent = timeframe.toUpperCase();
-        }
-        
-        // ✅ КРИТИЧНО: Обновляем весь заголовок "Монеты (RSI XH)" с учетом перевода
-        const coinsHeader = document.querySelector('h3[data-translate="coins_rsi_6h"]');
-        if (coinsHeader) {
-            const currentLang = document.documentElement.lang || 'ru';
-            const translationKey = 'coins_rsi_6h';
-            if (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS[currentLang] && TRANSLATIONS[currentLang][translationKey]) {
-                // Используем перевод, но заменяем таймфрейм
-                let translatedText = TRANSLATIONS[currentLang][translationKey];
-                // Заменяем 6H на текущий таймфрейм в переводе
-                translatedText = translatedText.replace(/6[hH]/gi, timeframe.toUpperCase());
-                // Обновляем заголовок, сохраняя структуру с span
-                const timeframeSpan = coinsHeader.querySelector('#currentTimeframeDisplay');
-                if (timeframeSpan) {
-                    // Обновляем только текст до и после span
-                    const parts = translatedText.split(/6[hH]/i);
-                    if (parts.length >= 2) {
-                        coinsHeader.innerHTML = `${parts[0]}<span id="currentTimeframeDisplay">${timeframe.toUpperCase()}</span>${parts.slice(1).join('')}`;
-                    } else {
-                        // Если формат не совпадает, просто обновляем span
-                        timeframeSpan.textContent = timeframe.toUpperCase();
-                    }
-                } else {
-                    // Если span нет, обновляем весь текст
-                    coinsHeader.textContent = translatedText.replace(/6[hH]/gi, timeframe.toUpperCase());
-                }
-            } else {
-                // Если переводов нет, просто обновляем span
-                if (timeframeDisplay) {
-                    timeframeDisplay.textContent = timeframe.toUpperCase();
-                }
-            }
-        }
-        
-        // Обновляем отображение таймфрейма в деталях монеты
-        const selectedCoinTimeframeDisplay = document.getElementById('selectedCoinTimeframeDisplay');
-        if (selectedCoinTimeframeDisplay) {
-            selectedCoinTimeframeDisplay.textContent = timeframe.toUpperCase();
-        }
-        
-        // Обновляем select с таймфреймом
-        const timeframeSelect = document.getElementById('systemTimeframe');
-        if (timeframeSelect) {
-            timeframeSelect.value = timeframe;
-        }
-        
-        // Обновляем кнопку применения
-        const applyBtn = document.getElementById('applyTimeframeBtn');
-        if (applyBtn) {
-            applyBtn.dataset.currentTimeframe = timeframe;
-        }
-        
-        // Если есть выбранная монета, обновляем её информацию
-        if (this.selectedCoin) {
-            this.updateCoinInfo(this.selectedCoin);
-        }
-        
-        // Обновляем заголовки и описания с упоминанием таймфрейма
-        const timeframeElements = document.querySelectorAll('[data-timeframe-placeholder]');
-        timeframeElements.forEach(el => {
-            const placeholder = el.getAttribute('data-timeframe-placeholder');
-            if (placeholder === '6h' || placeholder === '6H') {
-                // Обновляем только текст, не трогая структуру HTML
-                const textNodes = this.getTextNodes(el);
-                textNodes.forEach(node => {
-                    if (node.textContent.includes('6H') || node.textContent.includes('6h')) {
-                        node.textContent = node.textContent.replace(/6[hH]/g, timeframe.toUpperCase());
-                    }
-                });
-            }
-        });
-        
-        // Обновляем заголовки с RSI (дополнительная проверка)
-        const rsiHeaders = document.querySelectorAll('h3');
-        rsiHeaders.forEach(header => {
-            // Пропускаем заголовок, который уже обновлен выше
-            if (header === coinsHeader) return;
-            
-            if (header.textContent.includes('RSI 6H') || header.textContent.includes('RSI 6h')) {
-                header.textContent = header.textContent.replace(/RSI 6[hH]/g, `RSI ${timeframe.toUpperCase()}`);
-            }
-        });
-        
-        // Обновляем описания в help текстах
-        const helpTexts = document.querySelectorAll('.config-help, small');
-        helpTexts.forEach(el => {
-            if (el.textContent.includes('6H') || el.textContent.includes('6h')) {
-                // Заменяем только в контексте таймфрейма, не везде
-                el.textContent = el.textContent.replace(/(\d+)\s*(свечей|свечи|свеча)\s*=\s*(\d+)\s*(часов|дней|дня|день)\s*на\s*6[hH]/g, 
-                    (match, candles, candlesWord, hours, hoursWord) => {
-                        // Пересчитываем для нового таймфрейма
-                        const timeframeHours = {
-                            '1m': 1/60, '3m': 3/60, '5m': 5/60, '15m': 15/60, '30m': 30/60,
-                            '1h': 1, '2h': 2, '4h': 4, '6h': 6, '8h': 8, '12h': 12, '1d': 24
-                        };
-                        const hoursPerCandle = timeframeHours[timeframe] || 6;
-                        const totalHours = parseInt(candles) * hoursPerCandle;
-                        const days = Math.floor(totalHours / 24);
-                        
-                        if (days > 0) {
-                            return `${candles} ${candlesWord} = ${days} ${days === 1 ? 'день' : days < 5 ? 'дня' : 'дней'} на ${timeframe.toUpperCase()}`;
-                        } else {
-                            return `${candles} ${candlesWord} = ${totalHours} ${totalHours === 1 ? 'час' : totalHours < 5 ? 'часа' : 'часов'} на ${timeframe.toUpperCase()}`;
-                        }
-                    });
-                
-                // Обновляем упоминания таймфрейма в тексте
-                el.textContent = el.textContent.replace(/на\s+6[hH]\s+таймфрейме/g, `на ${timeframe.toUpperCase()} таймфрейме`);
-                el.textContent = el.textContent.replace(/\(6H\)/g, `(${timeframe.toUpperCase()})`);
-            }
-        });
-        
-        // Обновляем метки в таблицах и списках
-        document.querySelectorAll('.label, .label-text').forEach(el => {
-            if (el.textContent.includes('6H') || el.textContent.includes('6h')) {
-                el.textContent = el.textContent.replace(/6[hH]/g, timeframe.toUpperCase());
-            }
-        });
-        
-        console.log('[BotsManager] ✅ Интерфейс обновлен для таймфрейма:', timeframe);
-    }
-    
-    /**
-     * Получает все текстовые узлы из элемента (рекурсивно)
-     */
-    getTextNodes(element) {
-        const textNodes = [];
-        const walker = document.createTreeWalker(
-            element,
-            NodeFilter.SHOW_TEXT,
-            null,
-            false
-        );
-        
-        let node;
-        while (node = walker.nextNode()) {
-            textNodes.push(node);
-        }
-        
-        return textNodes;
-    }
-    
-    /**
-     * Инициализирует обработчики для управления таймфреймом
-     */
-    initTimeframeControls() {
-        const applyBtn = document.getElementById('applyTimeframeBtn');
-        if (applyBtn) {
-            applyBtn.addEventListener('click', () => {
-                this.applyTimeframe();
-            });
-            console.log('[BotsManager] ✅ Обработчик кнопки применения таймфрейма установлен');
-        }
-        
-        // Загружаем текущий таймфрейм при инициализации
-        this.loadTimeframe().then(timeframe => {
-            // currentTimeframe уже установлен в loadTimeframe()
-            if (applyBtn) {
-                applyBtn.dataset.currentTimeframe = timeframe;
-            }
-            this.updateTimeframeInUI(timeframe);
-        });
     }
 }
 
