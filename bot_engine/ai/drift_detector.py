@@ -12,13 +12,14 @@ Data Drift Detection - обнаружение дрифта данных и де�
 """
 
 import logging
-import numpy as np
-from typing import Dict, List, Optional, Tuple, Any
-from datetime import datetime, timedelta
-from dataclasses import dataclass, field
+import re
+import warnings
 from collections import deque
-import json
-import os
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
 
 logger = logging.getLogger('DriftDetector')
 
@@ -161,9 +162,18 @@ class DataDriftDetector:
             ref_feature = ref_data[:, i]
             new_feature = new_data[:, i]
             
-            # Kolmogorov-Smirnov тест
+            # Kolmogorov-Smirnov тест (method='asymp' + подавление RuntimeWarning на части окружений)
             if SCIPY_AVAILABLE:
-                statistic, p_value = stats.ks_2samp(ref_feature, new_feature)
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        category=RuntimeWarning,
+                        message=re.escape("ks_2samp: Exact calculation unsuccessful.")
+                        + r".*",
+                    )
+                    statistic, p_value = stats.ks_2samp(
+                        ref_feature, new_feature, method="asymp"
+                    )
             else:
                 # Упрощенная версия без scipy
                 statistic, p_value = self._simple_ks_test(ref_feature, new_feature)

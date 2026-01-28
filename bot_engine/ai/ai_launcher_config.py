@@ -131,6 +131,10 @@ class AILauncherConfig:
     TRAINING_LOOP_DELAY_SECONDS = 1      # Доп. пауза в training worker (если нужно)
     DATA_COLLECTION_INTERVAL_SECONDS = 60  # Уже используется, но можно перенастроить здесь
 
+    # Ожидание готовности данных (data_service_status.ready). Используется лаунчером, если поддерживается.
+    # При таймауте лаунчер пишет «Не удалось дождаться готовности данных» и продолжает обучение.
+    DATA_READY_WAIT_TIMEOUT_SECONDS = 120
+
 
 class AITrainingStrategyConfig:
     """

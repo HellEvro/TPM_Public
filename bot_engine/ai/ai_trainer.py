@@ -849,6 +849,16 @@ class AITrainer:
                 real_count = len(db_trades) - simulated_count
                 logger.info(f"📊 Загружено для обучения: {len(db_trades)} сделок (реальных: {real_count}, симуляций: {simulated_count})")
                 if db_trades:
+                    # Помечаем данные готовыми, чтобы лаунчер не выдавал «Не удалось дождаться готовности данных»
+                    try:
+                        from bot_engine.ai.data_service_status_helper import update_data_service_status_in_db
+                        update_data_service_status_in_db(
+                            ready=True,
+                            last_collection=datetime.now().isoformat(),
+                            trades=len(db_trades),
+                        )
+                    except Exception as _e:
+                        logger.debug(f"   ⚠️ Не удалось обновить data_service ready: {_e}")
                     # Конвертируем формат БД в формат для обучения
                     for trade in db_trades:
                         # Получаем RSI и Trend данные (приоритет: entry_rsi/entry_trend > rsi/trend)
@@ -5363,8 +5373,14 @@ class AITrainer:
                         logger.info("   ✅ ML модель обучена! Теперь AI будет генерировать оптимальные параметры")
                         logger.info(f"   📊 R² score: {ml_training_metrics.get('r2_score', 0):.3f}")
                         logger.info(f"   📊 Образцов: {ml_training_metrics.get('samples_count', 0)}")
-                        logger.info(f"   📊 Успешных: {ml_training_metrics.get('successful_samples', 0)}")
-                        logger.info(f"   📊 Заблокированных: {ml_training_metrics.get('blocked_samples', 0)}")
+                        succ = ml_training_metrics.get('successful_samples', 0)
+                        blk = ml_training_metrics.get('blocked_samples', 0)
+                        logger.info(f"   📊 С сделками: {succ} | Без сделок: {blk}")
+                        if succ == 0 and blk > 0:
+                            logger.info(
+                                "   💡 Все образцы без сделок — симуляции не открывали позиций. "
+                                "Проверьте RSI-зоны и фильтры (попадания в LONG/SHORT)."
+                            )
                         
                         # Логируем в историю успешное обучение ML модели
                         self._record_training_event(
