@@ -244,7 +244,12 @@ class AITrainer:
             self.param_tracker = None
 
         self._perf_monitor = None
-        if getattr(AIConfig, 'AI_PERFORMANCE_MONITORING_ENABLED', True):
+        try:
+            from bot_engine.bot_config import AIConfig
+            perf_monitoring_enabled = getattr(AIConfig, 'AI_PERFORMANCE_MONITORING_ENABLED', True)
+        except ImportError:
+            perf_monitoring_enabled = True
+        if perf_monitoring_enabled:
             try:
                 from bot_engine.ai.monitoring import AIPerformanceMonitor
                 self._perf_monitor = AIPerformanceMonitor(max_records=5000)

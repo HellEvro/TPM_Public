@@ -41,6 +41,7 @@ except ImportError as exc:  # pragma: no cover - tkinter should be available on 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 VENV_DIR = PROJECT_ROOT / ".venv"
+# Управляем только .venv. .venv_gpu не создаём и не используем (PyTorch ставится в .venv).
 DEFAULT_REMOTE_URL = "https://github.com/HellEvro/TPM_Public.git"
 STATE_FILE = PROJECT_ROOT / "launcher" / ".infobot_manager_state.json"
 DEFAULT_GEOMETRY = "850x874"
@@ -1479,6 +1480,9 @@ class InfoBotManager(tk.Tk):
                 except subprocess.CalledProcessError as exc:
                     self.log(f"[{title}] Ошибка установки ({exc.returncode})", channel="system")
                     return False
+
+            # Обязательно устанавливаем cryptography (нужен для ai_manager / license_checker)
+            self._ensure_cryptography_installed(pip_cmd, python_exec, channel="system")
             PYTHON_EXECUTABLE = _detect_python_executable()
             return True
         finally:
