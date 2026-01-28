@@ -5,14 +5,20 @@
 """
 
 import sys
-sys.path.append('.')
+from pathlib import Path
+
+# Добавляем корневую директорию проекта в путь (устойчиво к запуску из любого cwd)
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
 
 import os
 os.environ['AI_DEV_MODE'] = '1'
 
+# ВАЖНО: до любых импортов sklearn — подавляет UserWarning delayed/Parallel и фиксирует joblib
+import utils.sklearn_parallel_config  # noqa: F401
+
 from bot_engine.ai.anomaly_detector import AnomalyDetector
 from bot_engine.bot_config import AIConfig
-from pathlib import Path
 import logging
 
 logging.basicConfig(
