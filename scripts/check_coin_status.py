@@ -42,9 +42,20 @@ def check_coin_status(symbol):
             print(f"❌ Биржа не инициализирована")
             return
     
+    # ✅ КРИТИЧНО: Получаем текущий таймфрейм из конфига
+    try:
+        from bot_engine.bot_config import get_current_timeframe, get_rsi_key, get_trend_key
+        current_timeframe = get_current_timeframe()
+        rsi_key = get_rsi_key(current_timeframe)
+        trend_key = get_trend_key(current_timeframe)
+    except Exception:
+        current_timeframe = '6h'
+        rsi_key = 'rsi6h'
+        trend_key = 'trend6h'
+    
     # Основные данные
-    rsi = coin_data.get('rsi6h', 0)
-    trend = coin_data.get('trend', coin_data.get('trend6h', 'UNKNOWN'))
+    rsi = coin_data.get(rsi_key, coin_data.get('rsi6h', 0))
+    trend = coin_data.get(trend_key, coin_data.get('trend', coin_data.get('trend6h', 'UNKNOWN')))
     base_signal = coin_data.get('signal', 'WAIT')
     price = coin_data.get('price', 0)
     is_mature = coin_data.get('is_mature', False)
@@ -54,9 +65,9 @@ def check_coin_status(symbol):
     enhanced_signal = enhanced_rsi.get('enhanced_signal') if enhanced_rsi else None
     enhanced_enabled = enhanced_rsi.get('enabled', False) if enhanced_rsi else False
     
-    print(f"📊 ОСНОВНЫЕ ДАННЫЕ:")
-    print(f"   RSI 6H: {rsi:.2f}")
-    print(f"   Тренд 6H: {trend}")
+    print(f"📊 ОСНОВНЫЕ ДАННЫЕ (ТФ: {current_timeframe}):")
+    print(f"   RSI {current_timeframe.upper()}: {rsi:.2f}")
+    print(f"   Тренд {current_timeframe.upper()}: {trend}")
     print(f"   Базовый сигнал: {base_signal}")
     print(f"   Цена: ${price:.6f}")
     print(f"   Зрелость: {'✅ Зрелая' if is_mature else '❌ Незрелая'}")

@@ -1149,10 +1149,13 @@ class BotsDatabase:
                     if hasattr(SystemConfig, 'SYSTEM_TIMEFRAME') and SystemConfig.SYSTEM_TIMEFRAME:
                         current_timeframe = SystemConfig.SYSTEM_TIMEFRAME
                     else:
-                        current_timeframe = '6h'  # Fallback
+                        # ✅ КРИТИЧНО: Используем TIMEFRAME из конфига вместо хардкода '6h'
+                        from bot_engine.bot_config import TIMEFRAME
+                        current_timeframe = TIMEFRAME
             except:
-                # Если что-то пошло не так, используем fallback
-                current_timeframe = '6h'
+                # Если что-то пошло не так, используем fallback из конфига
+                from bot_engine.bot_config import TIMEFRAME
+                current_timeframe = TIMEFRAME
             
             # Получаем ключи для RSI и тренда
             from bot_engine.bot_config import get_rsi_key, get_trend_key

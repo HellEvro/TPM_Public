@@ -3622,7 +3622,9 @@ def test_exit_scam_filter(symbol):
             from bot_engine.bot_config import get_current_timeframe
             current_timeframe = get_current_timeframe()
         except:
-            current_timeframe = '6h'  # Fallback
+            # ✅ КРИТИЧНО: Используем TIMEFRAME из конфига вместо хардкода '6h'
+            from bot_engine.bot_config import TIMEFRAME
+            current_timeframe = TIMEFRAME
         
         chart_response = exch.get_chart_data(symbol, current_timeframe, '30d')
         if not chart_response or not chart_response.get('success'):

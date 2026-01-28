@@ -1,14 +1,14 @@
 """
 Умный менеджер обновления RSI
-Обновляет RSI регулярно, но торговые сигналы только при закрытии свечи 6H
+Обновляет RSI регулярно, но торговые сигналы только при закрытии свечи текущего таймфрейма
 """
 
 import time
 import threading
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional, Callable
-from bot_engine.bot_config import SystemConfig
+from bot_engine.bot_config import SystemConfig, get_current_timeframe
 
 logger = logging.getLogger('SmartRSIManager')
 
@@ -34,56 +34,119 @@ class SmartRSIManager:
         
         self.processed_candles = set()  # Уже обработанные свечи (по timestamp)
         
+        # ✅ КРИТИЧНО: Получаем текущий таймфрейм из конфига
+        try:
+            self.current_timeframe = get_current_timeframe()
+        except Exception:
+            self.current_timeframe = '6h'  # Fallback только если не удалось получить
+        
         logger.info(f"[SMART_RSI] 🧠 Умный менеджер RSI инициализирован")
         logger.info(f"[SMART_RSI] 📊 Плановое обновление: каждые {self.monitoring_interval//60} минут")
-        logger.info(f"[SMART_RSI] 🎯 Торговые сигналы: только при обновлении после закрытия свечи 6H")
+        logger.info(f"[SMART_RSI] 🎯 Торговые сигналы: только при обновлении после закрытия свечи {self.current_timeframe}")
         logger.info(f"[SMART_RSI] ⚡ Оптимизация: нет частых проверок API, только плановые обновления")
     
-    def get_next_6h_candle_close(self) -> int:
-        """Возвращает timestamp следующего закрытия свечи 6H"""
+    def _get_timeframe_seconds(self, timeframe: str) -> int:
+        """Возвращает количество секунд в таймфрейме"""
+        timeframe_map = {
+            '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800,
+            '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600,
+            '8h': 28800, '12h': 43200, '1d': 86400, '3d': 259200,
+            '1w': 604800, '1M': 2592000  # ~30 дней
+        }
+        return timeframe_map.get(timeframe, 21600)  # По умолчанию 6h
+    
+    def get_next_candle_close(self) -> int:
+        """Возвращает timestamp следующего закрытия свечи для текущего таймфрейма"""
         current_time = int(time.time())
-        
-        # Свечи 6H закрываются в: 00:00, 06:00, 12:00, 18:00 UTC
         current_dt = datetime.fromtimestamp(current_time, tz=timezone.utc)
-        current_hour = current_dt.hour
+        timeframe_seconds = self._get_timeframe_seconds(self.current_timeframe)
         
-        # Определяем следующее время закрытия свечи
-        next_closes = [0, 6, 12, 18]
-        next_close_hour = None
+        # Для минутных таймфреймов (1m, 3m, 5m, 15m, 30m)
+        if self.current_timeframe.endswith('m'):
+            minutes = int(self.current_timeframe[:-1])
+            # Округляем до следующей минуты, кратной интервалу
+            current_minute = current_dt.minute
+            next_minute = ((current_minute // minutes) + 1) * minutes
+            if next_minute >= 60:
+                next_dt = current_dt.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+            else:
+                next_dt = current_dt.replace(minute=next_minute, second=0, microsecond=0)
+            return int(next_dt.timestamp())
         
-        for close_hour in next_closes:
-            if close_hour > current_hour:
-                next_close_hour = close_hour
-                break
+        # Для часовых таймфреймов (1h, 2h, 4h, 6h, 8h, 12h)
+        elif self.current_timeframe.endswith('h'):
+            hours = int(self.current_timeframe[:-1])
+            current_hour = current_dt.hour
+            # Определяем следующие часы закрытия
+            next_closes = list(range(0, 24, hours))
+            next_close_hour = None
+            
+            for close_hour in next_closes:
+                if close_hour > current_hour or (close_hour == current_hour and current_dt.minute > 0):
+                    next_close_hour = close_hour
+                    break
+            
+            if next_close_hour is None:
+                # Если все времена закрытия в текущем дне прошли, берем 00:00 следующего дня
+                next_close_hour = 24
+            
+            next_dt = current_dt.replace(
+                hour=next_close_hour % 24,
+                minute=0,
+                second=0,
+                microsecond=0
+            )
+            
+            if next_close_hour == 24:
+                next_dt = next_dt + timedelta(days=1)
+            
+            return int(next_dt.timestamp())
         
-        if next_close_hour is None:
-            # Если все времена закрытия в текущем дне прошли, берем 00:00 следующего дня
-            next_close_hour = 24
+        # Для дневных таймфреймов (1d, 3d)
+        elif self.current_timeframe.endswith('d'):
+            days = int(self.current_timeframe[:-1])
+            # Закрывается в полночь UTC
+            next_dt = current_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            if current_dt.hour > 0 or current_dt.minute > 0 or current_dt.second > 0:
+                next_dt = next_dt + timedelta(days=days)
+            return int(next_dt.timestamp())
         
-        # Создаем datetime для следующего закрытия
-        next_close_dt = current_dt.replace(
-            hour=next_close_hour % 24, 
-            minute=0, 
-            second=0, 
-            microsecond=0
-        )
+        # Для недельных таймфреймов (1w)
+        elif self.current_timeframe.endswith('w'):
+            # Закрывается в понедельник в 00:00 UTC
+            days_until_monday = (7 - current_dt.weekday()) % 7
+            if days_until_monday == 0 and (current_dt.hour > 0 or current_dt.minute > 0):
+                days_until_monday = 7
+            next_dt = current_dt.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=days_until_monday)
+            return int(next_dt.timestamp())
         
-        if next_close_hour == 24:
-            next_close_dt = next_close_dt.replace(day=next_close_dt.day + 1, hour=0)
+        # Для месячных таймфреймов (1M)
+        elif self.current_timeframe.endswith('M'):
+            # Закрывается в первый день месяца в 00:00 UTC
+            next_dt = current_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            if current_dt.day > 1 or current_dt.hour > 0:
+                # Переходим на следующий месяц
+                if current_dt.month == 12:
+                    next_dt = next_dt.replace(year=current_dt.year + 1, month=1)
+                else:
+                    next_dt = next_dt.replace(month=current_dt.month + 1)
+            return int(next_dt.timestamp())
         
-        return int(next_close_dt.timestamp())
+        # Fallback для неизвестных таймфреймов - используем интервал в секундах
+        return current_time + timeframe_seconds
     
     def get_time_to_candle_close(self) -> int:
-        """Возвращает время в секундах до закрытия текущей свечи 6H"""
-        next_close = self.get_next_6h_candle_close()
+        """Возвращает время в секундах до закрытия текущей свечи"""
+        next_close = self.get_next_candle_close()
         current_time = int(time.time())
         return max(0, next_close - current_time)
     
-    def get_last_6h_candle_close(self) -> int:
-        """Возвращает timestamp последнего закрытия свечи 6H"""
+    def get_last_candle_close(self) -> int:
+        """Возвращает timestamp последнего закрытия свечи"""
         current_time = int(time.time())
-        next_close = self.get_next_6h_candle_close()
-        return next_close - (6 * 3600)  # Предыдущая свеча 6H назад
+        timeframe_seconds = self._get_timeframe_seconds(self.current_timeframe)
+        next_close = self.get_next_candle_close()
+        return next_close - timeframe_seconds
     
 
     
@@ -110,7 +173,7 @@ class SmartRSIManager:
         ВСЕГДА обрабатываем сигналы - убираем глупое условие закрытия свечи!
         """
         current_time = int(time.time())
-        last_candle_close = self.get_last_6h_candle_close()
+        last_candle_close = self.get_last_candle_close()
         
         # ВСЕГДА обрабатываем торговые сигналы!
         # Убираем глупое условие ожидания закрытия свечи
@@ -154,13 +217,13 @@ class SmartRSIManager:
             else:
                 time_str = f"{minutes}м"
                 
-            logger.info(f"[SMART_RSI] ✅ RSI данные обновлены | До закрытия свечи 6H: {time_str}")
+            logger.info(f"[SMART_RSI] ✅ RSI данные обновлены | До закрытия свечи {self.current_timeframe}: {time_str}")
             
             # Проверяем, нужно ли активировать торговые сигналы
             should_trade, trade_reason, candle_timestamp = self.should_process_trading_signals_after_update()
             if should_trade:
                 logger.info("=" * 80)
-                logger.info(f"[SMART_RSI] 🎯 ОБНАРУЖЕНО ЗАКРЫТИЕ СВЕЧИ 6H! ({trade_reason})")
+                logger.info(f"[SMART_RSI] 🎯 ОБНАРУЖЕНО ЗАКРЫТИЕ СВЕЧИ {self.current_timeframe}! ({trade_reason})")
                 logger.info(f"[SMART_RSI] 🚨 АКТИВАЦИЯ ТОРГОВЫХ СИГНАЛОВ - ПРОВЕРКА УСЛОВИЙ ВХОДА/ВЫХОДА")
                 logger.info("=" * 80)
                 
@@ -200,7 +263,7 @@ class SmartRSIManager:
         logger.info("=" * 80)
         logger.info("[SMART_RSI] 🚀 ЗАПУСК ОПТИМИЗИРОВАННОЙ СИСТЕМЫ RSI")
         logger.info("[SMART_RSI] 📊 Режим: Плановое обновление каждые 60 минут")
-        logger.info("[SMART_RSI] 🎯 Торговые сигналы: автоматически при обновлении после закрытия свечи 6H")
+        logger.info(f"[SMART_RSI] 🎯 Торговые сигналы: автоматически при обновлении после закрытия свечи {self.current_timeframe}")
         logger.info("[SMART_RSI] ⚡ Нет частых проверок API - только эффективные плановые обновления")
         logger.info("=" * 80)
         
@@ -256,10 +319,11 @@ class SmartRSIManager:
         current_time = int(time.time())
         time_to_close = self.get_time_to_candle_close()
         next_update = self.get_next_update_time()
-        last_candle_close = self.get_last_6h_candle_close()
+        last_candle_close = self.get_last_candle_close()
         
         return {
             'monitoring_interval': self.monitoring_interval,
+            'current_timeframe': self.current_timeframe,
             'time_to_candle_close': time_to_close,
             'time_to_candle_close_formatted': f"{time_to_close//3600}ч {(time_to_close%3600)//60}м {time_to_close%60}с",
             'last_rsi_update': self.last_update_time,

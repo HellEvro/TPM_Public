@@ -92,10 +92,21 @@ try:
         # Получаем данные бота для этой позиции
         bot_data = bots_data.get(symbol, {})
         
+        # ✅ КРИТИЧНО: Получаем текущий таймфрейм из конфига
+        try:
+            from bot_engine.bot_config import get_current_timeframe, get_rsi_key, get_trend_key
+            current_timeframe = get_current_timeframe()
+            rsi_key = get_rsi_key(current_timeframe)
+            trend_key = get_trend_key(current_timeframe)
+        except Exception:
+            current_timeframe = '6h'
+            rsi_key = 'rsi6h'
+            trend_key = 'trend6h'
+        
         # Получаем текущий RSI/тренд из cache
         coin_rsi_data = coins_rsi_data.get(symbol, {})
-        current_rsi = coin_rsi_data.get('rsi6h')
-        current_trend = coin_rsi_data.get('trend6h', 'NEUTRAL')
+        current_rsi = coin_rsi_data.get(rsi_key, coin_rsi_data.get('rsi6h'))
+        current_trend = coin_rsi_data.get(trend_key, coin_rsi_data.get('trend6h', 'NEUTRAL'))
         
         # Получаем данные входа из бота
         entry_price = bot_data.get('entry_price')
