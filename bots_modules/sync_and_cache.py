@@ -2647,20 +2647,25 @@ def check_startup_position_conflicts():
         bots_paused = 0
         
         with bots_data_lock:
-            for symbol, bot_data in bots_data['bots'].items():
+            for bot_key, bot_data in bots_data['bots'].items():
                 try:
                     bot_status = bot_data.get('status')
-                    
+                    # Чистый символ для API (бот может быть ключом symbol или symbol_side, например BTCUSDT_LONG)
+                    api_symbol = bot_data.get('symbol') or (bot_key.rsplit('_', 1)[0] if ('_LONG' in bot_key or '_SHORT' in bot_key) else bot_key)
+                    symbol = api_symbol  # для логов и target_symbol ниже
+
                     # Проверяем только активные боты (не idle/paused)
                     if bot_status in [BOT_STATUS['IDLE'], BOT_STATUS['PAUSED']]:
                         continue
-                    
+                    # Символ для Bybit: если уже с USDT — как есть, иначе добавить USDT
+                    symbol_for_api = api_symbol if (api_symbol and 'USDT' in api_symbol) else f"{api_symbol}USDT"
+
                     # Проверяем позицию на бирже
                     from bots_modules.imports_and_globals import get_exchange
                     current_exchange = get_exchange() or exchange
                     positions_response = current_exchange.client.get_positions(
                         category="linear",
-                        symbol=f"{symbol}USDT"
+                        symbol=symbol_for_api
                     )
                     
                     if positions_response.get('retCode') == 0:
@@ -2668,7 +2673,7 @@ def check_startup_position_conflicts():
                         has_position = False
                         
                         # Фильтруем позиции только для нужного символа
-                        target_symbol = f"{symbol}USDT"
+                        target_symbol = symbol_for_api
                         for pos in positions:
                             pos_symbol = pos.get('symbol', '')
                             if pos_symbol == target_symbol:  # Проверяем только нужный символ
@@ -2705,8 +2710,8 @@ def check_startup_position_conflicts():
                                 
                                 # ✅ КРИТИЧНО: УДАЛЯЕМ бота, а не переводим в IDLE - позиции нет на бирже!
                                 with bots_data_lock:
-                                    if symbol in bots_data['bots']:
-                                        del bots_data['bots'][symbol]
+                                    if bot_key in bots_data['bots']:
+                                        del bots_data['bots'][bot_key]
                                 
                                 conflicts_found += 1
                                 
@@ -2721,6 +2726,58 @@ def check_startup_position_conflicts():
             logger.warning(f" 🚨 Найдено {conflicts_found} конфликтов, остановлено {bots_paused} ботов")
             # Сохраняем обновленное состояние
             save_bots_state()
+
+            # ✅ ДОПОЛНИТЕЛЬНО: синхронизируем реестр позиций ботов (bot_positions_registry)
+            # Ключ реестра = SYMBOL_SIDE (например BTCUSDT_LONG), чтобы по одному символу могли быть лонг и шорт.
+            try:
+                from bots_modules.imports_and_globals import save_bot_positions_registry
+
+                registry = {}
+                positions_list = get_exchange_positions() or []
+                # Словарь позиций с биржи: ключ (symbol, side) для поддержки лонг+шорт по одному символу
+                exchange_by_symbol_side = {}
+                for pos in (positions_list if isinstance(positions_list, list) else []):
+                    sym = (pos.get('symbol') or '').upper()
+                    if sym and 'USDT' not in sym:
+                        sym = sym + 'USDT'
+                    side_raw = pos.get('side', '') or pos.get('position_side', '')
+                    side = 'LONG' if side_raw in ['Buy', 'LONG', 'Long'] else 'SHORT'
+                    if sym:
+                        exchange_by_symbol_side[(sym, side)] = pos
+
+                for bot_key, bot_data in list(bots_data.get('bots', {}).items()):
+                    try:
+                        status = bot_data.get('status')
+                        if status not in [BOT_STATUS.get('IN_POSITION_LONG'), BOT_STATUS.get('IN_POSITION_SHORT'), 'in_position_long', 'in_position_short']:
+                            continue
+                        sym_clean = bot_data.get('symbol') or (bot_key.rsplit('_', 1)[0] if ('_LONG' in bot_key or '_SHORT' in bot_key) else bot_key)
+                        sym_clean = str(sym_clean).upper()
+                        if sym_clean and 'USDT' not in sym_clean:
+                            sym_clean = sym_clean + 'USDT'
+                        side = (bot_data.get('position') or {}).get('side') or ('LONG' if 'long' in str(bot_data.get('status', '')) else 'SHORT')
+                        side = str(side).upper() if side in ('LONG', 'SHORT') else 'LONG'
+                        pos = exchange_by_symbol_side.get((sym_clean, side))
+                        if not pos:
+                            continue
+                        entry_price = float(pos.get('avgPrice') or pos.get('entry_price') or bot_data.get('entry_price') or 0) or 0.0
+                        quantity = float(pos.get('size') or bot_data.get('position_size_coins') or 0) or 0.0
+                        if entry_price <= 0 or quantity <= 0:
+                            continue
+                        registry_key = f"{sym_clean}_{side}"
+                        registry[registry_key] = {
+                            'symbol': sym_clean,
+                            'side': side,
+                            'entry_price': entry_price,
+                            'quantity': quantity,
+                            'opened_at': bot_data.get('position_start_time') or bot_data.get('entry_time') or datetime.now().isoformat(),
+                            'managed_by_bot': True,
+                        }
+                    except Exception as _e:
+                        logger.debug(f" Реестр позиций: пропуск бота {bot_key}: {_e}")
+
+                save_bot_positions_registry(registry)
+            except Exception as reg_err:
+                logger.warning(f"[SYNC_EXCHANGE] ⚠️ Не удалось синхронизировать реестр позиций ботов: {reg_err}")
         else:
             logger.info(" ✅ Конфликтов позиций не найдено")
         

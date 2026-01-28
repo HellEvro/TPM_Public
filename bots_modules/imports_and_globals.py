@@ -1059,14 +1059,21 @@ def register_bot_position(symbol, order_id, side, entry_price, quantity):
     try:
         registry = load_bot_positions_registry()
         
-        # Ключ — order_id, значение — информация о позиции
-        registry[order_id] = {
-            'symbol': symbol,
-            'side': side,
+        # ВАЖНО:
+        # Таблица bot_positions_registry в БД хранится как {bot_id -> position_data} и bot_id UNIQUE.
+        # Ключ реестра = SYMBOL_SIDE (например BTCUSDT_LONG, BTCUSDT_SHORT), чтобы по одному символу
+        # могли быть два бота одновременно — лонг и шорт.
+        # order_id сохраняем как поле.
+        side_norm = (side or 'LONG').upper()
+        registry_key = f"{str(symbol).upper()}_{side_norm}"
+        registry[registry_key] = {
+            'symbol': str(symbol).upper(),
+            'side': side_norm,
             'entry_price': entry_price,
             'quantity': quantity,
             'opened_at': datetime.now().isoformat(),
-            'managed_by_bot': True
+            'managed_by_bot': True,
+            'order_id': order_id,
         }
         
         save_bot_positions_registry(registry)
@@ -1078,18 +1085,46 @@ def register_bot_position(symbol, order_id, side, entry_price, quantity):
 
 
 def unregister_bot_position(order_id):
-    """Удаляет позицию из реестра (когда позиция закрыта)"""
+    """Удаляет позицию из реестра (когда позиция закрыта).
+
+    Параметр исторически назывался order_id, но фактически может быть:
+    - order_id (если известен) — ищем запись по полю order_id;
+    - bot_id (symbol_side, например BTCUSDT_LONG) — удаляем одну позицию;
+    - symbol (например BTCUSDT) — удаляем обе позиции по символу (LONG и SHORT).
+    """
     try:
         registry = load_bot_positions_registry()
-        
-        if order_id in registry:
-            position_info = registry.pop(order_id)
+
+        key = str(order_id).upper() if order_id is not None else None
+
+        # 1) Прямое удаление по ключу (bot_id = symbol_side, например BTCUSDT_LONG)
+        if key and key in registry:
+            position_info = registry.pop(key)
             save_bot_positions_registry(registry)
-            logger.info(f" ✅ Удалена позиция из реестра: {position_info.get('symbol')} (order_id={order_id})")
+            logger.info(f" ✅ Удалена позиция из реестра: {position_info.get('symbol')} (key={key})")
             return True
-        else:
-            logger.debug(f" ⚠️ Позиция с order_id={order_id} не найдена в реестре")
-            return False
+
+        # 2) Удаление по symbol: убрать все записи по символу (BTCUSDT -> BTCUSDT_LONG, BTCUSDT_SHORT)
+        if key and not (key.endswith('_LONG') or key.endswith('_SHORT')):
+            to_remove = [k for k in registry if k == f"{key}_LONG" or k == f"{key}_SHORT"]
+            if to_remove:
+                for k in to_remove:
+                    registry.pop(k, None)
+                save_bot_positions_registry(registry)
+                logger.info(f" ✅ Удалены позиции из реестра по символу: {base} (keys={to_remove})")
+                return True
+
+        # 3) Поиск по order_id внутри записей
+        if order_id is not None:
+            for bot_id, info in list(registry.items()):
+                if isinstance(info, dict) and info.get('order_id') == order_id:
+                    registry.pop(bot_id, None)
+                    save_bot_positions_registry(registry)
+                    logger.info(f" ✅ Удалена позиция из реестра: {info.get('symbol')} (order_id={order_id})")
+                    return True
+
+        logger.debug(f" ⚠️ Позиция {order_id} не найдена в реестре")
+        return False
     except Exception as e:
         logger.error(f" ❌ Ошибка удаления позиции из реестра: {e}")
         return False
@@ -1099,7 +1134,12 @@ def is_bot_position(order_id):
     """Проверяет, является ли позиция с данным order_id позицией бота"""
     try:
         registry = load_bot_positions_registry()
-        return order_id in registry
+        key = str(order_id).upper() if order_id is not None else None
+        if key and key in registry:
+            return True
+        if order_id is None:
+            return False
+        return any(isinstance(v, dict) and v.get('order_id') == order_id for v in registry.values())
     except Exception as e:
         logger.error(f" ❌ Ошибка проверки позиции: {e}")
         return False
@@ -1109,7 +1149,15 @@ def get_bot_position_info(order_id):
     """Получает информацию о позиции бота из реестра"""
     try:
         registry = load_bot_positions_registry()
-        return registry.get(order_id)
+        key = str(order_id).upper() if order_id is not None else None
+        if key and key in registry:
+            return registry.get(key)
+        if order_id is None:
+            return None
+        for v in registry.values():
+            if isinstance(v, dict) and v.get('order_id') == order_id:
+                return v
+        return None
     except Exception as e:
         logger.error(f" ❌ Ошибка получения информации о позиции: {e}")
         return None
@@ -1134,52 +1182,67 @@ def restore_lost_bots():
             logger.warning(" ⚠️ Не удалось получить позиции с биржи")
             return []
         
-        # Преобразуем в словарь для быстрого поиска
+        # Преобразуем в словарь для быстрого поиска: ключ = (symbol, side), чтобы по одному символу
+        # могли быть лонг и шорт одновременно
         if isinstance(exchange_positions, tuple):
             positions_list = exchange_positions[0] if exchange_positions else []
         else:
             positions_list = exchange_positions if exchange_positions else []
         
-        exchange_positions_dict = {pos.get('symbol'): pos for pos in positions_list if abs(float(pos.get('size', 0))) > 0}
+        def _pos_key(pos):
+            sym = (pos.get('symbol') or '').upper()
+            if sym and 'USDT' not in sym:
+                sym = sym + 'USDT'
+            side_raw = pos.get('side', '') or pos.get('position_side', '')
+            side_n = (side_raw.upper() if side_raw else 'LONG')
+            if side_n not in ('LONG', 'SHORT'):
+                side_n = 'LONG' if str(side_raw).lower() in ('buy', 'long') else 'SHORT'
+            return (sym, side_n)
+        
+        exchange_positions_dict = {
+            _pos_key(pos): pos for pos in positions_list
+            if abs(float(pos.get('size', 0))) > 0
+        }
         
         restored_bots = []
         
         with bots_data_lock:
-            # Проверяем каждую позицию в реестре
-            for order_id, position_info in registry.items():
-                symbol = position_info.get('symbol')
+            # Проверяем каждую позицию в реестре (bot_id = symbol_side, например BTCUSDT_LONG)
+            for bot_id, position_info in registry.items():
+                symbol = (position_info.get('symbol') if isinstance(position_info, dict) else None) or bot_id
+                # Из bot_id вида BTCUSDT_LONG извлекаем чистый symbol
+                if symbol and ('_LONG' in symbol or '_SHORT' in symbol):
+                    symbol = symbol.rsplit('_', 1)[0]
                 if not symbol:
                     continue
                 
-                # Проверяем, есть ли уже бот для этой монеты
-                if symbol in bots_data['bots']:
+                registry_side = (position_info.get('side', 'UNKNOWN') if isinstance(position_info, dict) else 'UNKNOWN').upper()
+                if registry_side not in ('LONG', 'SHORT'):
+                    registry_side = 'LONG'
+                
+                # Проверяем, есть ли уже бот для этой пары (symbol + side)
+                if bot_id in bots_data['bots']:
                     continue
                 
-                # Проверяем, есть ли позиция на бирже
-                if symbol not in exchange_positions_dict:
-                    logger.info(f" 🗑️ Позиция {symbol} (order_id={order_id}) не найдена на бирже - удаляем из реестра")
-                    # ✅ УДАЛЯЕМ ПОЗИЦИЮ ИЗ РЕЕСТРА, если она не найдена на бирже
+                pos_lookup = (symbol, registry_side)
+                if pos_lookup not in exchange_positions_dict:
+                    logger.info(f" 🗑️ Позиция {symbol} {registry_side} не найдена на бирже - удаляем из реестра")
                     try:
-                        unregister_bot_position(order_id)
-                        logger.info(f" ✅ Позиция {symbol} (order_id={order_id}) удалена из реестра")
+                        unregister_bot_position(bot_id)
+                        logger.info(f" ✅ Позиция {bot_id} удалена из реестра")
                     except Exception as unreg_error:
-                        logger.error(f" ❌ Ошибка удаления позиции {symbol} из реестра: {unreg_error}")
+                        logger.error(f" ❌ Ошибка удаления позиции {bot_id} из реестра: {unreg_error}")
                     continue
                 
-                exchange_position = exchange_positions_dict[symbol]
-                exchange_side = exchange_position.get('side', 'UNKNOWN')
-                registry_side = position_info.get('side', 'UNKNOWN')
+                exchange_position = exchange_positions_dict[pos_lookup]
+                exchange_side = (exchange_position.get('side') or 'UNKNOWN').upper()
+                if exchange_side not in ('LONG', 'SHORT'):
+                    exchange_side = 'LONG' if str(exchange_position.get('side', '')).lower() in ('buy', 'long') else 'SHORT'
                 
-                # ✅ Нормализуем стороны для сравнения (LONG/Long -> LONG, SHORT/Short -> SHORT)
-                exchange_side_normalized = exchange_side.upper() if exchange_side else 'UNKNOWN'
-                registry_side_normalized = registry_side.upper() if registry_side else 'UNKNOWN'
-                
-                # Проверяем совпадение стороны
-                if exchange_side_normalized != registry_side_normalized:
+                if exchange_side != registry_side:
                     logger.warning(f" ⚠️ Несовпадение стороны для {symbol}: реестр={registry_side}, биржа={exchange_side}")
                     continue
                 
-                # Создаём восстановленного бота
                 restored_bot = {
                     'symbol': symbol,
                     'status': 'in_position_long' if registry_side == 'LONG' else 'in_position_short',
@@ -1187,19 +1250,19 @@ def restore_lost_bots():
                         'side': registry_side,
                         'quantity': float(exchange_position.get('size', 0)),
                         'entry_price': position_info.get('entry_price', 0),
-                        'order_id': order_id
+                        'order_id': position_info.get('order_id')
                     },
                     'entry_price': position_info.get('entry_price', 0),
                     'entry_time': position_info.get('opened_at', datetime.now().isoformat()),
                     'created_time': datetime.now().isoformat(),
                     'restored_from_registry': True,
-                    'restoration_order_id': order_id
+                    'restoration_order_id': position_info.get('order_id')
                 }
                 
-                bots_data['bots'][symbol] = restored_bot
-                restored_bots.append(symbol)
+                bots_data['bots'][bot_id] = restored_bot
+                restored_bots.append(bot_id)
                 
-                logger.info(f" ✅ Восстановлен бот {symbol} (order_id={order_id}) из реестра")
+                logger.info(f" ✅ Восстановлен бот {symbol} {registry_side} из реестра (bot_id={bot_id})")
         
         if restored_bots:
             logger.info(f" 🎯 Восстановлено {len(restored_bots)} ботов: {restored_bots}")
