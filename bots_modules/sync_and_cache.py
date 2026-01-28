@@ -1364,7 +1364,11 @@ def update_bots_cache_data():
                         # Получаем volume_value из bot_data (это USDT)
                         if exchange_size > 0:
                             # Сохраняем volume_value как position_size (в USDT)
-                            volume_value = bot_data.get('volume_value', 0)
+                            volume_value_raw = bot_data.get('volume_value', 0)
+                            try:
+                                volume_value = float(volume_value_raw) if volume_value_raw is not None else 0.0
+                            except (TypeError, ValueError):
+                                volume_value = 0.0
                             if volume_value > 0:
                                 bot_data['position_size'] = volume_value  # USDT
                                 bot_data['position_size_coins'] = exchange_size  # Монеты для справки

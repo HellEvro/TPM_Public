@@ -169,7 +169,9 @@ def init_bot_service():
                     default_volume_mode = auto_bot_config.get('default_position_mode', 'usdt')
                     bot_config = {
                         'volume_mode': bot_data.get('volume_mode', default_volume_mode),
-                        'volume_value': bot_data.get('volume_value', auto_bot_config['default_position_size']),  # Fallback из конфига для старых ботов
+                        # ВАЖНО: если в БД volume_value=None, dict.get вернёт None и сломает логику сравнений (None > 0).
+                        # Поэтому используем default_position_size как fallback не только при отсутствии ключа, но и при None.
+                        'volume_value': (bot_data.get('volume_value') if bot_data.get('volume_value') is not None else auto_bot_config['default_position_size']),
                         'status': bot_data.get('status', 'paused'),
                         'leverage': bot_data.get('leverage', auto_bot_config.get('leverage', 1))  # ✅ Добавляем leverage
                     }
