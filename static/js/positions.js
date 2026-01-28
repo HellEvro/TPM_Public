@@ -11,11 +11,13 @@ class PositionsManager {
         this.initializeSorting();
         this.chartCache = new Map();  // Кэш для миниграфиков
         this.rsiCache = new Map();  // Кэш для значений RSI
-        this.chartUpdateInterval = 5 * 60 * 1000;  // 5 минут
-        this.updateInterval = 7 * 60 * 1000;  // 7 минут для всех обновлений
+        this.chartUpdateInterval = 5 * 60 * 1000;  // 5 минут (не используется)
+        // ✅ КРИТИЧНО: Загружаем интервал обновления из конфига (в секундах, конвертируем в мс)
+        this.updateInterval = 7 * 60 * 1000;  // Дефолт: 7 минут (420 секунд) - будет перезаписано из конфига
+        this.updateIntervalTimer = null;  // Таймер обновления
         this.currentTheme = document.body.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
         this.initializeThemeListener();
-        this.initializeDataUpdater();
+        this.initializeDataUpdater();  // Загрузит интервал из конфига и запустит обновление
         this.previousRoi = new Map();  // Добавляем хранилище для предыдущих значений ROI
         this.reduceLoad = storageUtils.get('reduceLoad', false);
         this.initializeLoadSettings();
@@ -84,8 +86,45 @@ class PositionsManager {
         });
     }
 
+    async loadChartUpdateInterval() {
+        // Загружает интервал обновления миниграфиков из системного конфига
+        try {
+            const response = await fetch('/api/bots/system-config');
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.config && data.config.mini_chart_update_interval !== undefined) {
+                    // Конвертируем секунды в миллисекунды
+                    const newInterval = data.config.mini_chart_update_interval * 1000;
+                    if (newInterval !== this.updateInterval) {
+                        this.updateInterval = newInterval;
+                        console.log(`[PositionsManager] 📊 Интервал обновления миниграфиков установлен: ${data.config.mini_chart_update_interval} сек (${this.updateInterval} мс)`);
+                        
+                        // Перезапускаем таймер с новым интервалом
+                        if (this.updateIntervalTimer) {
+                            clearInterval(this.updateIntervalTimer);
+                        }
+                        this.updateIntervalTimer = setInterval(() => this.updateAllData(), this.updateInterval);
+                        console.log(`[PositionsManager] 🔄 Таймер обновления перезапущен с интервалом: ${this.updateInterval / 1000} сек`);
+                    }
+                } else {
+                    console.warn('[PositionsManager] ⚠️ mini_chart_update_interval не найден в конфиге, используем дефолт:', this.updateInterval / 1000, 'сек');
+                }
+            } else {
+                console.warn('[PositionsManager] ⚠️ Не удалось загрузить системный конфиг, используем дефолт:', this.updateInterval / 1000, 'сек');
+            }
+        } catch (error) {
+            console.error('[PositionsManager] ❌ Ошибка загрузки интервала обновления миниграфиков:', error);
+            console.warn('[PositionsManager] ⚠️ Используем дефолт:', this.updateInterval / 1000, 'сек');
+        }
+    }
+
     initializeDataUpdater() {
-        setInterval(() => this.updateAllData(), this.updateInterval);
+        // Запускаем обновление с дефолтным интервалом сразу
+        this.updateIntervalTimer = setInterval(() => this.updateAllData(), this.updateInterval);
+        console.log(`[PositionsManager] 🔄 Обновление миниграфиков запущено с дефолтным интервалом: ${this.updateInterval / 1000} сек`);
+        
+        // Загружаем интервал из конфига асинхронно (обновит таймер если значение отличается)
+        this.loadChartUpdateInterval();
     }
 
     initializeLoadSettings() {

@@ -1569,6 +1569,7 @@ CONFIG_NAMES = {
     'debug_mode': 'Режим отладки',
     'auto_refresh_ui': 'Автообновление UI',
     'refresh_interval': 'Интервал обновления UI (сек)',
+    'mini_chart_update_interval': 'Интервал обновления миниграфиков RSI (сек)',
     'position_sync_interval': 'Интервал синхронизации позиций (сек)',
     'inactive_bot_cleanup_interval': 'Интервал очистки неактивных ботов (сек)',
     'inactive_bot_timeout': 'Таймаут неактивного бота (сек)',
@@ -1795,6 +1796,13 @@ def system_config():
                 new_value = int(data['refresh_interval'])
                 if log_config_change('refresh_interval', old_value, new_value):
                     SystemConfig.UI_REFRESH_INTERVAL = new_value
+                    changes_count += 1
+            
+            if 'mini_chart_update_interval' in data:
+                old_value = SystemConfig.MINI_CHART_UPDATE_INTERVAL
+                new_value = int(data['mini_chart_update_interval'])
+                if log_config_change('mini_chart_update_interval', old_value, new_value):
+                    SystemConfig.MINI_CHART_UPDATE_INTERVAL = new_value
                     changes_count += 1
             
             # Интервалы синхронизации и очистки

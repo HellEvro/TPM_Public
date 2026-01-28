@@ -98,6 +98,7 @@ SYSTEM_CONFIG_FIELD_MAP = {
     'debug_mode': 'DEBUG_MODE',
     'auto_refresh_ui': 'AUTO_REFRESH_UI',
     'refresh_interval': 'UI_REFRESH_INTERVAL',
+    'mini_chart_update_interval': 'MINI_CHART_UPDATE_INTERVAL',
     'position_sync_interval': 'POSITION_SYNC_INTERVAL',
     'inactive_bot_cleanup_interval': 'INACTIVE_BOT_CLEANUP_INTERVAL',
     'inactive_bot_timeout': 'INACTIVE_BOT_TIMEOUT',

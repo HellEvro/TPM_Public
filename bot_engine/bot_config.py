@@ -305,11 +305,12 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'rsi_extreme_overbought': 80,
     'rsi_extreme_oversold': 20,
     'rsi_extreme_zone_timeout': 3,
-    'rsi_update_interval': 60,
+    'rsi_update_interval': 30,
     'rsi_volume_confirmation_multiplier': 1.2,
     'self_learning_enabled': False,
     'stop_loss_setup_interval': 10,
     'system_timeframe': '1m',
+    'mini_chart_update_interval': 420,  # 7 минут - интервал обновления миниграфиков RSI (в секундах)
 }
 
 # Настройки по умолчанию для отдельного бота
@@ -325,7 +326,7 @@ DEFAULT_BOT_CONFIG = {
 # Системные настройки
 class SystemConfig:
     # Интервалы обновления (в секундах)
-    RSI_UPDATE_INTERVAL = 60 # 30 минут (рекомендуется для 6H RSI)
+    RSI_UPDATE_INTERVAL = 30 # 30 минут (рекомендуется для 6H RSI)
     ACCOUNT_UPDATE_INTERVAL = 5  # 5 секунд
     UI_REFRESH_INTERVAL = 2 # 3 секунды
     AUTO_SAVE_INTERVAL = 30  # 30 секунд
@@ -334,6 +335,7 @@ class SystemConfig:
     INACTIVE_BOT_TIMEOUT = 60 # 10 минут - время ожидания перед удалением бота без реальных позиций на бирже
     STOP_LOSS_SETUP_INTERVAL = 10 # 5 минут - интервал установки недостающих стоп-лоссов
     POSITION_SYNC_INTERVAL = 10 # 30 секунд - интервал синхронизации позиций с биржей
+    MINI_CHART_UPDATE_INTERVAL = 420  # 7 минут - интервал обновления миниграфиков RSI (в секундах)
     
     # Умное обновление RSI
     SMART_RSI_UPDATE = True  # Учитывать время до закрытия свечи

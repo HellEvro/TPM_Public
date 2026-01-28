@@ -1202,6 +1202,20 @@
                         
                         <div class="config-item">
                             <label class="config-label">
+                                <span class="label-icon">📊</span>
+                                <span class="label-text" data-translate="mini_chart_update_interval_label">Обновление миниграфиков:</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="miniChartUpdateInterval" class="config-input" 
+                                       min="30" max="3600" step="30" 
+                                       placeholder="420">
+                                <span class="input-unit" data-translate="seconds_unit">сек</span>
+                            </div>
+                            <small class="config-help" data-translate="mini_chart_interval_help">Рекомендуется: 420 сек (7 мин). Минимум: 30 сек</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
                                 <span class="label-icon">💾</span>
                                 <span class="label-text" data-translate="auto_save_interval_label">Автосохранение:</span>
                             </label>

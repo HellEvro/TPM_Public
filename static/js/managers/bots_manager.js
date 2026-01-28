@@ -6411,6 +6411,16 @@ class BotsManager {
             console.error('[BotsManager] ❌ Элемент autoSaveInterval не найден!');
         }
         
+        const miniChartUpdateIntervalEl = document.getElementById('miniChartUpdateInterval');
+        if (miniChartUpdateIntervalEl && systemConfig.mini_chart_update_interval !== undefined) {
+            miniChartUpdateIntervalEl.value = systemConfig.mini_chart_update_interval;
+            console.log('[BotsManager] 📊 Интервал обновления миниграфиков установлен:', systemConfig.mini_chart_update_interval, 'сек (из API)');
+        } else if (miniChartUpdateIntervalEl) {
+            console.warn('[BotsManager] ⚠️ Интервал обновления миниграфиков не найден в API, оставляем поле пустым');
+        } else {
+            console.error('[BotsManager] ❌ Элемент miniChartUpdateInterval не найден!');
+        }
+        
         // Режим отладки
         const debugModeEl = document.getElementById('debugMode');
         if (debugModeEl) {
@@ -6927,6 +6937,7 @@ class BotsManager {
             'optimalEntryEnabled': 'ai_optimal_entry_enabled',
             'rsiUpdateInterval': 'rsi_update_interval',
             'autoSaveInterval': 'auto_save_interval',
+            'miniChartUpdateInterval': 'mini_chart_update_interval',
             'debugMode': 'debug_mode',
             'autoRefreshUI': 'auto_refresh_ui',
             'refreshInterval': 'refresh_interval',
@@ -7048,6 +7059,7 @@ class BotsManager {
             'rsi_divergence_lookback',
             'rsi_update_interval',
             'auto_save_interval',
+            'mini_chart_update_interval',
             'debug_mode',
             'auto_refresh_ui',
             'refresh_interval',
@@ -8928,6 +8940,7 @@ class BotsManager {
             // Системные настройки
             'rsi_update_interval': window.languageUtils?.getCurrentLanguage() === 'en' ? 'RSI update interval' : 'Интервал обновления RSI',
             'auto_save_interval': window.languageUtils?.getCurrentLanguage() === 'en' ? 'Auto-save interval' : 'Интервал автосохранения',
+            'mini_chart_update_interval': window.languageUtils?.getCurrentLanguage() === 'en' ? 'Mini charts update interval' : 'Интервал обновления миниграфиков',
             'debug_mode': window.languageUtils?.getCurrentLanguage() === 'en' ? 'Debug mode' : 'Режим отладки',
             'auto_refresh_ui': window.languageUtils?.getCurrentLanguage() === 'en' ? 'Auto-refresh UI' : 'Автообновление UI'
         };
