@@ -1809,11 +1809,9 @@ def get_required_timeframes():
                 if status in [BOT_STATUS.get('IN_POSITION_LONG'), BOT_STATUS.get('IN_POSITION_SHORT')]:
                     entry_tf = bot_data.get('entry_timeframe') or default_tf
                     timeframes.add(entry_tf)
-    except Exception as e:
-        logger.debug(f"⚠️ Ошибка сбора таймфреймов из ботов: {e}")
+    except Exception:
+        pass
     result = sorted(list(timeframes))
-    if result:
-        logger.debug(f"📊 Требуемые таймфреймы (свечи): {result}")
     return result
 
 
@@ -1841,11 +1839,9 @@ def get_required_timeframes_for_rsi():
                 if status in [BOT_STATUS.get('IN_POSITION_LONG'), BOT_STATUS.get('IN_POSITION_SHORT')]:
                     entry_tf = bot_data.get('entry_timeframe') or default_tf
                     timeframes.add(entry_tf)
-    except Exception as e:
-        logger.debug(f"⚠️ Ошибка сбора таймфреймов из ботов: {e}")
+    except Exception:
+        pass
     result = sorted(list(timeframes))
-    if result:
-        logger.debug(f"📊 Требуемые таймфреймы (RSI): {result}")
     return result
 
 
@@ -2045,7 +2041,6 @@ def load_all_coins_candles_fast():
             # Если это точно bots.py - НЕ проверяем дальше и игнорируем переменную окружения
             if is_bots_process:
                 is_ai_process = False
-                logger.debug(f"🔍 Обнаружен процесс bots.py - сохраняем свечи в bots_data.db (script_name={script_name}, main_file={main_file})")
             else:
                 # Проверяем, что это ai.py (переменная окружения учитывается ТОЛЬКО если это не bots.py)
                 env_flag = os.environ.get('INFOBOT_AI_PROCESS', '').lower() == 'true'
@@ -2184,7 +2179,6 @@ def load_all_coins_rsi():
 
         # Проверяем кэш свечей перед началом (оставляем для будущих оптимизаций)
         candles_cache_size = len(coins_rsi_data.get("candles_cache", {}))
-        logger.debug(f"📊 Текущий размер кэша свечей: {candles_cache_size}")
 
         # Получаем актуальную ссылку на биржу
         try:

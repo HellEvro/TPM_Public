@@ -233,14 +233,12 @@ class NewTradingBot:
                                     existing_source = existing_trade.get('decision_source', '')
                                     if existing_source in ('SCRIPT', 'AI'):
                                         position_already_logged_by_bot = True
-                                        logger.debug(f"[NEW_BOT_{self.symbol}] ⏭️ Позиция уже залогирована ботом ({existing_source}), пропускаем")
                                         break
                                     # Если это EXCHANGE_IMPORT - это нормально, бот должен залогировать свою версию
                                     elif existing_source == 'EXCHANGE_IMPORT':
-                                        logger.debug(f"[NEW_BOT_{self.symbol}] ℹ️ Позиция есть с EXCHANGE_IMPORT, бот залогирует свою версию с SCRIPT")
                                         break
-                except Exception as check_error:
-                    logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка проверки истории: {check_error}")
+                except Exception:
+                    pass
             
             # Логируем только если:
             # 1. Это переход в позицию (не был в позиции)
@@ -262,10 +260,8 @@ class NewTradingBot:
                         logger.info(f"[NEW_BOT_{self.symbol}] ✅ Позиция успешно записана в bot_history.json")
                     except Exception as log_error:
                         logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось записать историю при update_status: {log_error}")
-                        import traceback
-                        logger.debug(traceback.format_exc())
                 else:
-                    logger.debug(f"[NEW_BOT_{self.symbol}] ⏭️ Позиция уже была залогирована, пропускаем")
+                    pass
             else:
                 if not was_in_position:
                     reason = []
@@ -275,7 +271,6 @@ class NewTradingBot:
                         reason.append("нет entry_price")
                     if not has_position_size:
                         reason.append("нет position_size")
-                    logger.debug(f"[NEW_BOT_{self.symbol}] ⏭️ Пропуск логирования: {', '.join(reason) if reason else 'was_in_position=True'}")
             
             self.position_start_time = datetime.now()
             self.max_profit_achieved = 0.0
@@ -350,8 +345,8 @@ class NewTradingBot:
                             rsi_value = get_rsi_from_coin_data(rsi_info)
                         if trend_value is None:
                             trend_value = get_trend_from_coin_data(rsi_info)
-                except Exception as e:
-                    logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось получить RSI/тренд из глобальных данных: {e}")
+                except Exception:
+                    pass
             
             # Если все еще нет данных, пытаемся из rsi_data бота
             if rsi_value is None or trend_value is None:
@@ -364,8 +359,8 @@ class NewTradingBot:
                             rsi_value = get_rsi_from_coin_data(rsi_data)
                         if trend_value is None:
                             trend_value = get_trend_from_coin_data(rsi_data)
-                except Exception as e:
-                    logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось получить RSI/тренд из данных бота: {e}")
+                except Exception:
+                    pass
             
             logger.info(f"[NEW_BOT_{self.symbol}] 📊 Логируем открытие позиции: RSI={rsi_value}, Trend={trend_value}, Price={price}")
             
@@ -538,24 +533,21 @@ class NewTradingBot:
                 except ImportError:
                     # AI модуль недоступен - продолжаем без него
                     pass
-                except Exception as ai_error:
-                    logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка проверки AI: {ai_error}")
+                except Exception:
+                    pass
             
             # 1. Проверка RSI
             if rsi > rsi_long_threshold:
-                logger.debug(f"[NEW_BOT_{self.symbol}] ❌ RSI {rsi:.1f} > {rsi_long_threshold} - не открываем LONG")
                 return False
             
             # 2. Проверка тренда
             if avoid_down_trend and trend == 'DOWN':
-                logger.debug(f"[NEW_BOT_{self.symbol}] ❌ DOWN тренд - не открываем LONG")
                 return False
             
             # 3. RSI временной фильтр
             if rsi_time_filter_enabled:
                 time_filter_result = self.check_rsi_time_filter_for_long(candles, rsi, rsi_time_filter_candles, rsi_time_filter_lower)
                 if not time_filter_result['allowed']:
-                    logger.debug(f"[NEW_BOT_{self.symbol}] ❌ RSI Time Filter блокирует LONG: {time_filter_result['reason']}")
                     return False
             
             # ✅ КРИТИЧНО: Проверка наличия открытой позиции - если позиция уже открыта, фильтр НЕ применяется
@@ -573,7 +565,7 @@ class NewTradingBot:
                     logger.error(f"[NEW_BOT_{self.symbol}] 🚫🚫🚫 ЗАЩИТА ОТ ПОВТОРНЫХ ВХОДОВ БЛОКИРУЕТ LONG! 🚫🚫🚫 Причина: {loss_reentry_result.get('reason', 'Unknown')}")
                     return False
             else:
-                logger.debug(f"[NEW_BOT_{self.symbol}] ⏭️ Пропуск фильтра защиты от повторных входов: позиция уже открыта (status={self.status}, position_side={self.position_side})")
+                pass
             
             logger.info(f"[NEW_BOT_{self.symbol}] ✅ Открываем LONG (RSI: {rsi:.1f})")
             self._remember_entry_context(rsi, trend)
@@ -645,24 +637,21 @@ class NewTradingBot:
                 except ImportError:
                     # AI модуль недоступен - продолжаем без него
                     pass
-                except Exception as ai_error:
-                    logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка проверки AI: {ai_error}")
+                except Exception:
+                    pass
             
             # 1. Проверка RSI
             if rsi < rsi_short_threshold:
-                logger.debug(f"[NEW_BOT_{self.symbol}] ❌ RSI {rsi:.1f} < {rsi_short_threshold} - не открываем SHORT")
                 return False
             
             # 2. Проверка тренда
             if avoid_up_trend and trend == 'UP':
-                logger.debug(f"[NEW_BOT_{self.symbol}] ❌ UP тренд - не открываем SHORT")
                 return False
             
             # 3. RSI временной фильтр
             if rsi_time_filter_enabled:
                 time_filter_result = self.check_rsi_time_filter_for_short(candles, rsi, rsi_time_filter_candles, rsi_time_filter_upper)
                 if not time_filter_result['allowed']:
-                    logger.debug(f"[NEW_BOT_{self.symbol}] ❌ RSI Time Filter блокирует SHORT: {time_filter_result['reason']}")
                     return False
             
             # ✅ КРИТИЧНО: Проверка наличия открытой позиции - если позиция уже открыта, фильтр НЕ применяется
@@ -680,7 +669,7 @@ class NewTradingBot:
                     logger.error(f"[NEW_BOT_{self.symbol}] 🚫🚫🚫 ЗАЩИТА ОТ ПОВТОРНЫХ ВХОДОВ БЛОКИРУЕТ SHORT! 🚫🚫🚫 Причина: {loss_reentry_result.get('reason', 'Unknown')}")
                     return False
             else:
-                logger.debug(f"[NEW_BOT_{self.symbol}] ⏭️ Пропуск фильтра защиты от повторных входов: позиция уже открыта (status={self.status}, position_side={self.position_side})")
+                pass
             
             logger.info(f"[NEW_BOT_{self.symbol}] ✅ Открываем SHORT (RSI: {rsi:.1f})")
             self._remember_entry_context(rsi, trend)
@@ -728,8 +717,6 @@ class NewTradingBot:
             dict: {'allowed': bool, 'reason': str}
         """
         try:
-            logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 check_loss_reentry_protection ВЫЗВАН!")
-            
             # Убеждаемся, что bots_data_lock доступен
             try:
                 from bots_modules.imports_and_globals import bots_data, bots_data_lock
@@ -744,7 +731,6 @@ class NewTradingBot:
             # Это нужно, чтобы история успела подгрузиться в БД после закрытия
             # Работает НЕЗАВИСИМО от настройки loss_reentry_protection (как просил пользователь)
             last_close_timestamp = self.config.get('last_position_close_timestamp')
-            logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 last_close_timestamp из config: {last_close_timestamp}")
             
             # Также проверяем глобальный словарь (для случаев когда бот был удален после закрытия)
             if not last_close_timestamp:
@@ -753,12 +739,10 @@ class NewTradingBot:
                     with bots_data_lock:
                         last_close_timestamps = bots_data.get('last_close_timestamps', {})
                         last_close_timestamp = last_close_timestamps.get(self.symbol)
-                        logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 last_close_timestamp из глобального словаря: {last_close_timestamp}, все timestamps: {list(last_close_timestamps.keys())}")
                 except Exception as e:
                     logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка чтения глобального словаря: {e}")
             
             if last_close_timestamp:
-                logger.debug(f"[NEW_BOT_{self.symbol}] ✅ НАЙДЕН timestamp последнего закрытия: {last_close_timestamp}")
                 try:
                     from datetime import datetime
                     current_timestamp = datetime.now().timestamp()
@@ -795,8 +779,6 @@ class NewTradingBot:
                 from bot_engine.bots_database import get_bots_database
                 bots_db = get_bots_database()
                 
-                logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 Проверяем закрытые сделки в БД для символа {self.symbol}, нужны последние {loss_reentry_count} сделок")
-                
                 # ✅ КРИТИЧНО: Получаем последние N закрытых сделок по текущей монете
                 # Сначала пробуем из bot_trades_history (сделки ботов)
                 closed_trades = bots_db.get_bot_trades_history(
@@ -808,12 +790,10 @@ class NewTradingBot:
                     offset=0
                 )
                 
-                logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 Из bot_trades_history получено {len(closed_trades) if closed_trades else 0} закрытых сделок")
                 if closed_trades:
                     for i, trade in enumerate(closed_trades):
                         pnl = trade.get('pnl')
                         exit_timestamp = trade.get('exit_timestamp')
-                        logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 Сделка #{i+1}: pnl={pnl}, exit_timestamp={exit_timestamp}")
                 
                 # ✅ КРИТИЧНО: Если нет сделок в bot_trades_history или недостаточно, дополняем из closed_pnl_history (UI сделки)
                 if not closed_trades or len(closed_trades) < loss_reentry_count:
@@ -831,8 +811,6 @@ class NewTradingBot:
                             if not closed_trades:
                                 closed_trades = []
                             
-                            logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 Из closed_pnl_history найдено {len(symbol_closed_pnl)} сделок для символа {self.symbol}")
-                            
                             # Дополняем до нужного количества
                             needed_count = loss_reentry_count - len(closed_trades)
                             for pnl_trade in symbol_closed_pnl[:needed_count]:
@@ -844,13 +822,11 @@ class NewTradingBot:
                                     'is_simulated': False
                                 }
                                 closed_trades.append(trade)
-                                logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 Добавлена сделка из closed_pnl_history: pnl={trade['pnl']}, exit_timestamp={trade['exit_timestamp']}")
                             
                             # Сортируем объединенный список по exit_timestamp DESC
                             closed_trades.sort(key=lambda x: x.get('exit_timestamp') or 0, reverse=True)
                             # Берем только последние N
                             closed_trades = closed_trades[:loss_reentry_count]
-                            logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 После объединения и сортировки: {len(closed_trades)} сделок")
                     except Exception as app_db_error:
                         logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка загрузки из closed_pnl_history: {app_db_error}")
                         import traceback
@@ -861,9 +837,6 @@ class NewTradingBot:
                 if not closed_trades or len(closed_trades) < loss_reentry_count:
                     logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Защита от повторных входов: недостаточно закрытых сделок ({len(closed_trades) if closed_trades else 0} < {loss_reentry_count}) - РАЗРЕШАЕМ вход")
                     return {'allowed': True, 'reason': f'Not enough closed trades ({len(closed_trades) if closed_trades else 0} < {loss_reentry_count})'}
-                
-                # ✅ КРИТИЧНО: Логируем что получили из БД для диагностики
-                logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 ЗАЩИТА ОТ ПОВТОРНЫХ ВХОДОВ: Получено {len(closed_trades)} закрытых сделок из БД")
                 
                 # ✅ ИСПРАВЛЕНО: Проверяем, все ли последние N сделок были с отрицательным результатом (pnl < 0)
                 # Важно: проверяем именно ПОСЛЕДНИЕ N сделок по времени закрытия (уже отсортированы DESC)
@@ -880,12 +853,10 @@ class NewTradingBot:
                     try:
                         pnl_float = float(pnl) if pnl is not None else 0.0
                         pnl_details.append(f"#{idx+1}: PnL={pnl_float:.4f} USDT, exit_time={exit_time}, simulated={is_simulated}")
-                        logger.debug(f"[NEW_BOT_{self.symbol}] 🔍 Сделка #{idx+1}: PnL={pnl_float:.4f}, exit_timestamp={exit_timestamp}, close_reason={close_reason}, is_simulated={is_simulated}")
                         
                         # Если хотя бы одна сделка >= 0 (прибыльная или безубыточная) - не все в минус
                         if pnl_float >= 0:
                             all_losses = False
-                            logger.debug(f"[NEW_BOT_{self.symbol}] 🚫 Сделка #{idx+1} имеет PnL={pnl_float:.4f} >= 0 - фильтр НЕ блокирует! РАЗРЕШАЕМ вход!")
                             break
                     except (ValueError, TypeError) as e:
                         # Если не удалось преобразовать PnL - считаем что не убыточная
@@ -1014,10 +985,6 @@ class NewTradingBot:
                     )
                 
                 # ✅ Прошло X свечей или больше - РАЗРЕШАЕМ вход
-                logger.debug(
-                    f"[NEW_BOT_{self.symbol}] ✅ ФИЛЬТР РАЗРЕШИЛ ВХОД: "
-                    f"прошло {candles_passed} свечей (требуется {loss_reentry_candles_int}), вход разрешен"
-                )
                 return {
                     'allowed': True,  # ⬅️ РАЗРЕШАЕМ вход
                     'reason': f'{candles_passed} candles passed since last loss (required: {loss_reentry_candles_int})'
@@ -1030,8 +997,6 @@ class NewTradingBot:
                 
         except Exception as e:
             logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка проверки защиты от повторных входов: {e}")
-            import traceback
-            logger.debug(traceback.format_exc())
             # При ошибке разрешаем вход (безопаснее)
             return {'allowed': True, 'reason': f'Exception: {str(e)}'}
     
@@ -1219,7 +1184,6 @@ class NewTradingBot:
             elif self.status in [BOT_STATUS['IN_POSITION_LONG'], BOT_STATUS['IN_POSITION_SHORT']]:
                 return self._handle_position_state(current_rsi, current_trend, candles, current_price)
             else:
-                logger.debug(f"[NEW_BOT_{self.symbol}] ⏳ Статус {self.status} - ждем")
                 return {'success': True, 'status': self.status}
                 
         except Exception as e:
@@ -1251,8 +1215,8 @@ class NewTradingBot:
                     continue
                 if value > 0:
                     return value
-        except Exception as e:
-            logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось получить цену с биржи: {e}")
+        except Exception:
+            pass
         return fallback_price
 
     def _open_position_on_exchange(self, direction: str, price: Optional[float] = None) -> bool:
@@ -1270,7 +1234,6 @@ class NewTradingBot:
             with bots_data_lock:
                 auto_bot_enabled = bots_data['auto_bot_config']['enabled']
             if not auto_bot_enabled:
-                logger.debug(f"[NEW_BOT_{self.symbol}] ⏹️ Автобот выключен - не открываем позицию")
                 return {'success': True, 'status': self.status}
             # Направление и момент входа — только по настройкам конфига (should_open_long / should_open_short)
             if self.should_open_long(rsi, trend, candles):
@@ -1287,7 +1250,6 @@ class NewTradingBot:
                     return {'success': True, 'action': 'OPEN_SHORT', 'status': self.status}
                 logger.error(f"[NEW_BOT_{self.symbol}] ❌ Не удалось открыть SHORT позицию")
                 return {'success': False, 'error': 'Failed to open SHORT position'}
-            logger.debug(f"[NEW_BOT_{self.symbol}] ⏳ Ждём условия конфига (RSI: {rsi:.1f}, пороги из конфига)")
             return {'success': True, 'status': self.status}
         except Exception as e:
             logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка в idle состоянии: {e}")
@@ -1296,9 +1258,6 @@ class NewTradingBot:
     def _handle_position_state(self, rsi, trend, candles, price):
         """Обрабатывает состояние в позиции"""
         try:
-            # Логируем начало проверки позиции
-            logger.debug(f"[NEW_BOT_{self.symbol}] 📊 Проверка позиции {self.position_side}: RSI={rsi:.2f}, Цена={price}")
-            
             if not self.entry_price:
                 logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Нет цены входа - обновляем из биржи")
                 self._sync_position_with_exchange()
@@ -1334,9 +1293,8 @@ class NewTradingBot:
                         logger.error(f"[NEW_BOT_{self.symbol}] ❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось закрыть {self.position_side} позицию на бирже!")
                         return {'success': False, 'error': 'Failed to close position on exchange', 'action': f'CLOSE_{self.position_side}_FAILED', 'reason': reason}
                 else:
-                    logger.debug(f"[NEW_BOT_{self.symbol}] ⏳ Продолжаем держать {self.position_side} позицию (RSI не достиг порога)")
+                    pass
             
-            logger.debug(f"[NEW_BOT_{self.symbol}] 📊 В позиции {self.position_side} (RSI: {rsi:.1f}, Цена: {price})")
             return {'success': True, 'status': self.status, 'position_side': self.position_side}
             
         except Exception as e:
@@ -1421,14 +1379,6 @@ class NewTradingBot:
         # ВАЖНО: Умножаем на 2.5 (BREAK_EVEN_FEE_MULTIPLIER) - это обязательно!
         protected_profit_usdt = fee_usdt * self.BREAK_EVEN_FEE_MULTIPLIER
         
-        # ✅ ОТЛАДКА: Логируем расчет для диагностики
-        logger.debug(
-            f"[NEW_BOT_{self.symbol}] 🔍 Break-even расчет: "
-            f"realized_pnl={realized_pnl_usdt:.6f}, abs={fee_usdt:.6f}, "
-            f"multiplier={self.BREAK_EVEN_FEE_MULTIPLIER}, "
-            f"protected_profit_usdt={protected_profit_usdt:.6f}, quantity={quantity:.6f}"
-        )
-        
         # Преобразуем защищаемую прибыль (USDT) в цену на монету
         protected_profit_per_coin = protected_profit_usdt / quantity if quantity > 0 else 0.0
 
@@ -1461,14 +1411,6 @@ class NewTradingBot:
             # Максимально стоп не выше уровня входа (базовая защита для SHORT)
             stop_price = min(stop_price, entry_price)
             
-            # ✅ ОТЛАДКА: Логируем финальный расчет для SHORT
-            price_str = f"{price:.6f}" if price is not None else "None"
-            logger.debug(
-                f"[NEW_BOT_{self.symbol}] 🔍 Break-even SHORT: "
-                f"entry={entry_price:.6f}, protected_per_coin={protected_profit_per_coin:.6f}, "
-                f"stop_price={stop_price:.6f}, current_price={price_str}"
-            )
-
         return stop_price
 
     def _ensure_break_even_stop(self, current_price: Optional[float], force: bool = False) -> None:
@@ -1524,10 +1466,6 @@ class NewTradingBot:
                                 # Флаг True - бот должен был установить стоп
                                 if stop_is_close:
                                     # Стоп есть на бирже и близок к нашему - это наш стоп, пропускаем
-                                    logger.debug(
-                                        f"[NEW_BOT_{self.symbol}] 🛡️ Защитный стоп уже установлен на бирже (наш): "
-                                        f"exchange_stop={existing_stop:.6f}, calculated={stop_price:.6f}"
-                                    )
                                     return
                                 else:
                                     # Флаг True, но стоп на бирже отличается - возможно, был изменен вручную
@@ -1560,18 +1498,13 @@ class NewTradingBot:
                         # Устанавливаем стоп (флаг уже False или был сброшен)
                 else:
                     # Не удалось получить позицию - устанавливаем стоп на всякий случай
-                    logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось получить позицию с биржи, устанавливаем break-even стоп")
-            except Exception as check_err:
+                    pass
+            except Exception:
                 # Ошибка при проверке - устанавливаем стоп на всякий случай
-                logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка проверки стопа на бирже: {check_err}, устанавливаем break-even стоп")
+                pass
 
         try:
             previous_stop = self.break_even_stop_price
-            logger.debug(
-                f"[NEW_BOT_{self.symbol}] 🔧 Пытаюсь установить break-even стоп: "
-                f"stop_price={stop_price:.6f}, previous_stop={previous_stop}, "
-                f"break_even_stop_set={self.break_even_stop_set}, force={force}"
-            )
             result = self.exchange.update_stop_loss(self.symbol, stop_price, self.position_side)
             if result and result.get('success'):
                 is_update = previous_stop is not None
@@ -1594,11 +1527,11 @@ class NewTradingBot:
                         is_update=is_update,
                         previous_price=previous_stop
                     )
-                except Exception as log_err:
-                    logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка логирования стоп-лосса: {log_err}")
+                except Exception:
+                    pass
             else:
                 if (result or {}).get('zero_position'):
-                    logger.debug(f"[NEW_BOT_{self.symbol}] Позиция уже закрыта на бирже (zero position), пропуск break-even стопа")
+                    pass
                 else:
                     logger.warning(
                         f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось установить break-even стоп: "
@@ -1686,15 +1619,6 @@ class NewTradingBot:
                 0.0
             ) or 0.0
             
-            # ✅ ОТЛАДКА: Логируем расчеты для диагностики
-            if break_even_enabled and break_even_trigger > 0:
-                logger.debug(
-                    f"[NEW_BOT_{self.symbol}] 🔍 Break-even проверка: "
-                    f"profit={profit_percent:.2f}%, trigger={break_even_trigger:.2f}%, "
-                    f"activated={self.break_even_activated}, "
-                    f"position_size={position_size_coins:.6f}, position_value={position_value:.2f}, profit_usdt={profit_usdt:.4f}"
-                )
-            
             if break_even_enabled and break_even_trigger > 0:
                 # ✅ ИСПРАВЛЕНО: Если прибыль достигла триггера, активируем защиту
                 # Проверяем, нужно ли активировать защиту (даже если она уже была активирована ранее)
@@ -1771,12 +1695,6 @@ class NewTradingBot:
         # Это аналогично break-even защите - триггер активации должен быть процентом от стоимости сделки
         if activation > 0 and profit_percent < activation and not self.trailing_active:
             self.trailing_reference_price = self._safe_float(self.trailing_reference_price, entry_price)
-            # ✅ ОТЛАДКА: Логируем проверку активации
-            logger.debug(
-                f"[NEW_BOT_{self.symbol}] 🔍 Trailing проверка активации: "
-                f"profit={profit_percent:.2f}%, activation={activation:.2f}%, "
-                f"trailing_active={self.trailing_active}"
-            )
             return result
 
         # ✅ ИСПРАВЛЕНО: Активируем trailing, если profit_percent >= activation
@@ -1790,11 +1708,6 @@ class NewTradingBot:
                     f"(прибыль {profit_percent:.2f}% >= триггер {activation:.2f}%)"
                 )
             else:
-                # ✅ ОТЛАДКА: Логируем, почему trailing не активирован
-                logger.debug(
-                    f"[NEW_BOT_{self.symbol}] 🔍 Trailing не активирован: "
-                    f"profit={profit_percent:.2f}%, activation={activation:.2f}%"
-                )
                 return result
         else:
             reference = self._safe_float(self.trailing_reference_price, entry_price)
@@ -2243,8 +2156,6 @@ class NewTradingBot:
                 
                 # ROI в процентах
                 pnl_pct = roi_percent * 100
-                
-                logger.debug(f"[NEW_BOT_{self.symbol}] 📊 PnL рассчитан из цен: entry={self.entry_price}, exit={exit_price}, side={self.position_side}, size={position_size}, roi={roi_percent:.4f}, pnl={pnl:.2f}")
             else:
                 # Fallback: используем значения из close_result или unrealized_pnl
                 pnl = close_result.get('realized_pnl', self.unrealized_pnl) if close_result else self.unrealized_pnl

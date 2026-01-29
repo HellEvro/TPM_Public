@@ -700,7 +700,7 @@ class BotHistoryManager:
                 
                 trade_id = bots_db.save_bot_trade_history(trade_data)
                 if trade_id:
-                    logger.debug(f"[BOT_HISTORY] ✅ История открытия позиции {symbol} сохранена в bots_data.db (ID: {trade_id})")
+                    pass
             except Exception as bots_db_error:
                 logger.debug(f"[BOT_HISTORY] ⚠️ Ошибка сохранения истории открытия в bots_data.db: {bots_db_error}")
         
@@ -929,7 +929,7 @@ class BotHistoryManager:
             roi = recalculated_roi
         elif already_closed:
             # Позиция уже была закрыта - используем переданные значения без пересчета
-            logger.debug(f"[BOT_HISTORY] ⏭️ Позиция {symbol} уже была закрыта ранее, пропускаем пересчет PnL")
+            pass
         
         entry = {
             'id': f"close_{bot_id}_{datetime.now().timestamp()}",

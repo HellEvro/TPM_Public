@@ -417,7 +417,7 @@ class ContinuousDataLoader:
             filtered_coins = process_long_short_coins_with_filters()
             
             duration = time.time() - start
-            logger.debug(f"✅ Фильтры обработаны за {duration:.1f}с ({len(filtered_coins)} монет)")
+            pass
             return filtered_coins
             
         except Exception as e:

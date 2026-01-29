@@ -523,11 +523,8 @@ class OkxExchange(BaseExchange):
                         'message': 'Invalid limit price calculated'
                     }
                 order_params['px'] = str(round(limit_price, 6))
-                logger.debug(f"[OKX] Calculated limit price: {limit_price}")
             
-            logger.debug(f"[OKX] Sending order with params: {order_params}")
             response = self.client.private_post_trade_order(order_params)
-            logger.debug(f"[OKX] Order response: {response}")
             
             if response and response.get('code') == '0':
                 order_id = response['data'][0]['ordId']
@@ -1138,7 +1135,6 @@ class OkxExchange(BaseExchange):
             
             # Если плечо уже установлено на нужное значение, пропускаем
             if current_leverage and int(current_leverage) == leverage:
-                logger.debug(f"[OKX] ✅ {symbol}: Плечо уже установлено на {leverage}x")
                 return {
                     'success': True,
                     'message': f'Плечо уже установлено на {leverage}x'

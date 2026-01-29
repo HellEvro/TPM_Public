@@ -423,21 +423,17 @@ def should_open_position_with_ai(
                 if direction == 'LONG':
                     if smc_signal['signal'] == 'LONG' and smc_signal['score'] >= smc_threshold:
                         result['reason'] = f"SMC подтверждает LONG (score: {smc_signal['score']})"
-                        logger.debug(f"[SMC] {symbol}: LONG подтвержден, score={smc_signal['score']}")
                     elif smc_signal['signal'] == 'SHORT' and smc_signal['score'] <= -smc_threshold:
                         result['should_open'] = False
                         result['reason'] = f"SMC против LONG (score: {smc_signal['score']})"
-                        logger.debug(f"[SMC] {symbol}: LONG заблокирован, score={smc_signal['score']}")
                         return result
                         
                 elif direction == 'SHORT':
                     if smc_signal['signal'] == 'SHORT' and smc_signal['score'] <= -smc_threshold:
                         result['reason'] = f"SMC подтверждает SHORT (score: {smc_signal['score']})"
-                        logger.debug(f"[SMC] {symbol}: SHORT подтвержден, score={smc_signal['score']}")
                     elif smc_signal['signal'] == 'LONG' and smc_signal['score'] >= smc_threshold:
                         result['should_open'] = False
                         result['reason'] = f"SMC против SHORT (score: {smc_signal['score']})"
-                        logger.debug(f"[SMC] {symbol}: SHORT заблокирован, score={smc_signal['score']}")
                         return result
         
         # === AI СИСТЕМА (классические ML модели) ===
@@ -502,7 +498,6 @@ def should_open_position_with_ai(
             if ai_agrees and smc_agrees:
                 should_open = True
                 result['reason'] = f"AI + SMC подтверждают {direction}"
-                logger.debug(f"[AI+SMC] {symbol}: {direction} подтвержден обеими системами")
             elif smc_agrees and not ai_agrees:
                 # SMC согласен, AI нет - используем SMC (приоритет SMC)
                 if abs(smc_signal['score']) >= 50:

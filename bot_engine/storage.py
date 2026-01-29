@@ -29,7 +29,6 @@ def _get_bots_database():
             try:
                 from bot_engine.bots_database import get_bots_database
                 _bots_db = get_bots_database()
-                logger.debug("✅ Bots Database подключена для storage")
             except Exception as e:
                 logger.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось инициализировать Bots Database: {e}")
                 logger.error("❌ БД обязательна для работы! Проверьте конфигурацию.")
@@ -122,8 +121,6 @@ def load_json_file(filepath, default=None, description="данные"):
             
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            
-            logger.debug(f" {description} загружены из {filepath}")
             return data
             
         except Exception as e:
@@ -138,7 +135,6 @@ def save_rsi_cache(coins_data, stats):
     
     try:
         if db.save_rsi_cache(coins_data, stats):
-            logger.debug("💾 RSI кэш сохранен в БД")
             return True
         return False
     except Exception as e:
@@ -152,8 +148,6 @@ def load_rsi_cache():
     
     try:
         cache_data = db.load_rsi_cache(max_age_hours=6.0)
-        if cache_data:
-            logger.debug(f"✅ RSI кэш загружен из БД")
         return cache_data
     except Exception as e:
         logger.error(f"❌ Ошибка загрузки RSI кэша из БД: {e}")
@@ -204,8 +198,6 @@ def load_bots_state():
     
     try:
         state_data = db.load_bots_state()
-        if state_data:
-            logger.debug("✅ Состояние ботов загружено из БД")
         return state_data if state_data else {}
     except Exception as e:
         logger.error(f"❌ Ошибка загрузки состояния ботов из БД: {e}")
@@ -218,7 +210,6 @@ def save_auto_bot_config(config):
     
     Настройки хранятся только в bot_engine/bot_config.py
     """
-    logger.debug(" Пропуск сохранения конфигурации автобота (используется bot_config.py)")
     return True
 
 
@@ -227,7 +218,6 @@ def load_auto_bot_config():
     
     Настройки читаются напрямую из bot_engine/bot_config.py
     """
-    logger.debug(" Пропуск загрузки конфигурации автобота из JSON (используется bot_config.py)")
     return {}
 
 
@@ -329,8 +319,6 @@ def load_process_state():
     
     try:
         process_state_data = db.load_process_state()
-        if process_state_data:
-            logger.debug("✅ Состояние процессов загружено из БД")
         return process_state_data if process_state_data else {}
     except Exception as e:
         logger.error(f"❌ Ошибка загрузки состояния процессов из БД: {e}")
@@ -372,7 +360,6 @@ def save_bot_positions_registry(registry):
     
     try:
         if db.save_bot_positions_registry(registry):
-            logger.debug(f"💾 Реестр позиций сохранен в БД ({len(registry)} записей)")
             return True
         return False
     except Exception as e:
@@ -386,8 +373,6 @@ def load_bot_positions_registry():
     
     try:
         registry = db.load_bot_positions_registry()
-        if registry:
-            logger.debug(f"✅ Реестр позиций загружен из БД ({len(registry)} записей)")
         return registry if registry else {}
     except Exception as e:
         logger.error(f"❌ Ошибка загрузки реестра позиций из БД: {e}")
@@ -401,7 +386,6 @@ def save_maturity_check_cache(coins_count: int, config_hash: str = None) -> bool
     
     try:
         if db.save_maturity_check_cache(coins_count, config_hash):
-            logger.debug("💾 Кэш проверки зрелости сохранен в БД")
             return True
         return False
     except Exception as e:
@@ -415,8 +399,6 @@ def load_maturity_check_cache() -> dict:
     
     try:
         cache_data = db.load_maturity_check_cache()
-        if cache_data:
-            logger.debug("✅ Кэш проверки зрелости загружен из БД")
         return cache_data if cache_data else {'coins_count': 0, 'config_hash': None}
     except Exception as e:
         logger.error(f"❌ Ошибка загрузки кэша проверки зрелости из БД: {e}")
@@ -443,8 +425,6 @@ def load_delisted_coins() -> list:
     
     try:
         delisted = db.load_delisted_coins()
-        if delisted:
-            logger.debug(f"✅ Делистированные монеты загружены из БД ({len(delisted)} монет)")
         return delisted if delisted else []
     except Exception as e:
         logger.error(f"❌ Ошибка загрузки делистированных монет из БД: {e}")
@@ -515,7 +495,6 @@ def save_candles_cache(candles_cache: Dict) -> bool:
     
     try:
         if db.save_candles_cache(candles_cache):
-            logger.debug(f"💾 Кэш свечей сохранен в БД ({len(candles_cache)} символов)")
             return True
         return False
     except Exception as e:
@@ -529,8 +508,6 @@ def load_candles_cache(symbol: Optional[str] = None) -> Dict:
     
     try:
         cache = db.load_candles_cache(symbol=symbol)
-        if cache:
-            logger.debug(f"✅ Кэш свечей загружен из БД ({len(cache)} символов)")
         return cache if cache else {}
     except Exception as e:
         logger.error(f"❌ Ошибка загрузки кэша свечей из БД: {e}")

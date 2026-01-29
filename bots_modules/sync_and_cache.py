@@ -204,7 +204,6 @@ def _check_if_trade_already_closed(bot_id, symbol, entry_price, entry_time_str):
             
             # Если совпадает цена и timestamp, и это MANUAL_CLOSE - это дубликат
             if price_match and timestamp_match and existing_close_reason == 'MANUAL_CLOSE':
-                logger.debug(f"[SYNC_EXCHANGE] ⏭️ Позиция {symbol} уже была закрыта ранее (entry={entry_price:.6f})")
                 return True
         
         return False
@@ -691,13 +690,11 @@ def load_system_config():
             if saved_timeframe_from_db:
                 # Если есть таймфрейм в БД - используем его (пользователь переключал через UI)
                 set_current_timeframe(saved_timeframe_from_db)
-                logger.debug(f"[SYSTEM_CONFIG] ✅ Таймфрейм восстановлен из БД после перезагрузки: {saved_timeframe_from_db}")
             else:
                 # Если нет в БД - используем из конфига
                 config_timeframe = getattr(file_system_config, 'SYSTEM_TIMEFRAME', None)
                 if config_timeframe:
                     set_current_timeframe(config_timeframe)
-                    logger.debug(f"[SYSTEM_CONFIG] ✅ Таймфрейм установлен из конфига после перезагрузки: {config_timeframe}")
         except Exception as tf_err:
             logger.warning(f"[SYSTEM_CONFIG] ⚠️ Ошибка восстановления таймфрейма: {tf_err}")
 
@@ -1142,7 +1139,6 @@ def scan_all_coins_for_delisting():
                             # Проверяем, есть ли следующая страница
                             next_page_cursor = result.get('nextPageCursor')
                             if not next_page_cursor or next_page_cursor == '':
-                                logger.debug(f"📊 Страница {page}: это последняя страница")
                                 break
                             
                             cursor = next_page_cursor

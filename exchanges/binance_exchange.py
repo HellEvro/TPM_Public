@@ -537,11 +537,8 @@ class BinanceExchange(BaseExchange):
                         limit_price = ticker['ask'] * price_multiplier if close_side == "BUY" else ticker['bid'] * price_multiplier
                         order_params['price'] = str(round(limit_price, 4))
                         order_params['timeInForce'] = 'GTC'  # Обязательный параметр для лимитных ордеров
-                        logger.debug(f"[BINANCE] Calculated limit price: {limit_price}")
                     
-                    logger.debug(f"[BINANCE] Sending order with params: {order_params}")
                     response = self.client.futures_create_order(**order_params)
-                    logger.debug(f"[BINANCE] Order response: {response}")
                     
                     if response and response.get('orderId'):
                         close_price = float(order_params.get('price', ticker['last']))
@@ -1107,7 +1104,6 @@ class BinanceExchange(BaseExchange):
             
             # Если плечо уже установлено на нужное значение, пропускаем
             if current_leverage and int(current_leverage) == leverage:
-                logger.debug(f"[BINANCE] ✅ {symbol}: Плечо уже установлено на {leverage}x")
                 return {
                     'success': True,
                     'message': f'Плечо уже установлено на {leverage}x'

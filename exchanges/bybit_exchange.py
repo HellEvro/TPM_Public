@@ -833,7 +833,6 @@ class BybitExchange(BaseExchange):
                         max_leverage = tier_leverage
                 
                 if max_leverage > 0:
-                    logger.debug(f"[BYBIT_BOT] 📊 {symbol}: Максимальное кредитное плечо: {max_leverage}x")
                     return max_leverage
                 else:
                     logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Не удалось определить максимальное кредитное плечо из risk limit")
@@ -871,11 +870,6 @@ class BybitExchange(BaseExchange):
                 positions = response['result']['list']
                 active_position = None
                 
-                # ✅ КРИТИЧНО: Логируем все позиции для отладки
-                logger.debug(f"[BYBIT] DEBUG: Получено позиций: {len(positions)}")
-                for pos in positions:
-                    logger.debug(f"[BYBIT] DEBUG: Позиция: symbol={pos.get('symbol')}, side={pos.get('side')}, size={pos.get('size')}")
-                
                 # Ищем позицию с нужной стороной
                 # ✅ Нормализуем side (принимаем и 'Long', и 'LONG')
                 normalized_side = side if side in ['Long', 'Short'] else ('Long' if side.upper() == 'LONG' else 'Short' if side.upper() == 'SHORT' else side)
@@ -883,11 +877,8 @@ class BybitExchange(BaseExchange):
                 for pos in positions:
                     pos_side = 'Long' if pos['side'] == 'Buy' else 'Short'
                     pos_size = abs(float(pos['size']))
-                    logger.debug(f"[BYBIT] DEBUG: Проверка: pos_side={pos_side}, normalized_side={normalized_side}, pos_size={pos_size}")
-                    
                     if pos_size > 0 and pos_side == normalized_side:
                         active_position = pos
-                        logger.debug(f"[BYBIT] DEBUG: ✅ Найдена позиция: {active_position.get('symbol')}, size={active_position.get('size')}")
                         break
                 
                 if not active_position:
@@ -901,7 +892,6 @@ class BybitExchange(BaseExchange):
                             'order_id': None,
                             'close_price': None
                         }
-                    logger.debug(f"[BYBIT] DEBUG: ❌ Позиция не найдена! Искали: side={normalized_side} (было {side}), symbol={symbol}USDT")
                     return {
                         'success': False,
                         'message': f'Нет активной {side} позиции для {symbol}'
@@ -967,11 +957,9 @@ class BybitExchange(BaseExchange):
             position_mode = self._get_position_mode(symbol)
             if position_mode == 'One-Way':
                 position_idx = 0
-                logger.debug(f"[BYBIT] {symbol}: One-Way mode, используем position_idx=0 для закрытия")
             else:
                 # Hedge mode
                 position_idx = 1 if side == "Long" or side.upper() == "LONG" else 2
-                logger.debug(f"[BYBIT] {symbol}: Hedge mode, используем position_idx={position_idx} для закрытия {side}")
             
             # Базовые параметры ордера
             order_params = {
@@ -993,9 +981,7 @@ class BybitExchange(BaseExchange):
                 # round(0.005, 2) = 0.00 ❌ → round(0.005, 6) = 0.005 ✅
                 order_params["price"] = str(round(limit_price, 6))
                 order_params["timeInForce"] = "GTC"
-                logger.debug(f"[BYBIT] Calculated limit price: {limit_price} → rounded: {round(limit_price, 6)}")
             
-            logger.debug(f"[BYBIT] Sending order with params: {order_params}")
             try:
                 response = self.client.place_order(**order_params)
             except Exception as order_err:
@@ -1030,8 +1016,6 @@ class BybitExchange(BaseExchange):
                                 'message': f"Закрытие не удалось (110017): объём {qty_str} не соответствует правилам контракта {symbol}. Закройте позицию вручную в интерфейсе Bybit."
                             }
                 raise order_err
-            
-            logger.debug(f"[BYBIT] Order response: {response}")
             
             if response['retCode'] == 0:
                 close_price = float(order_params.get('price', ticker['last']))
@@ -2046,7 +2030,6 @@ class BybitExchange(BaseExchange):
                         # Сохраняем в кэш
                         self._position_mode_cache = mode
                         self._position_mode_cache_time = current_time
-                        logger.debug(f"[BYBIT_BOT] Режим позиции для {symbol} (через API): {mode}")
                         return mode
             except Exception as e:
                 logger.debug(f"[BYBIT_BOT] Метод get_position_mode недоступен или вернул ошибку: {e}")
@@ -2150,7 +2133,7 @@ class BybitExchange(BaseExchange):
                 if ticker.get('retCode') == 0 and ticker.get('result', {}).get('list'):
                     current_price = float(ticker['result']['list'][0].get('lastPrice', 0))
                     if current_price and current_price > 0:
-                        logger.debug(f"[BYBIT_BOT] 📊 Текущая цена {symbol}: {current_price}")
+                        pass
                     else:
                         raise ValueError("Получена некорректная цена (0 или отрицательная)")
                 else:
@@ -2219,14 +2202,12 @@ class BybitExchange(BaseExchange):
             position_mode = self._get_position_mode(symbol)
             if position_mode == 'One-Way':
                 position_idx = 0
-                logger.debug(f"[BYBIT_BOT] {symbol}: One-Way mode, используем position_idx=0")
             else:
                 # Hedge mode
                 if position_side == 'LONG':
                     position_idx = 1
                 else:  # SHORT
                     position_idx = 2
-                logger.debug(f"[BYBIT_BOT] {symbol}: Hedge mode, используем position_idx={position_idx} для {position_side}")
             
             # ⚡ Для LINEAR фьючерсов используем marketUnit='quoteCoin' для указания суммы в USDT
             # ✅ marketUnit='quoteCoin' работает ТОЛЬКО для MARKET ордеров, НО Bybit проверяет кратность монет!
@@ -2251,7 +2232,6 @@ class BybitExchange(BaseExchange):
                     if min_order_qty:
                         min_order_qty = float(min_order_qty)
                         
-                    logger.debug(f"[BYBIT_BOT] 📊 {symbol}: minNotionalValue={min_notional_value} USDT, minOrderQty={min_order_qty}, qtyStep={qty_step}")
             except Exception as e:
                 logger.warning(f"[BYBIT_BOT] ⚠️ Не удалось получить информацию об инструменте: {e}")
             
@@ -2272,7 +2252,6 @@ class BybitExchange(BaseExchange):
                         pos_list = pos_response['result']['list']
                         if pos_list:
                             current_leverage = float(pos_list[0].get('leverage', 10))
-                            logger.debug(f"[BYBIT_BOT] 📊 {symbol}: Плечо с биржи: {current_leverage}x")
                 except Exception as e:
                     logger.warning(f"[BYBIT_BOT] ⚠️ Не удалось получить текущее плечо: {e}")
                 
@@ -2285,11 +2264,9 @@ class BybitExchange(BaseExchange):
             requested_qty_usdt = None
             if quantity_is_usdt:
                 requested_qty_usdt = float(quantity)
-                logger.debug(f"[BYBIT_BOT] 🎯 {symbol}: Запрошенная сумма из конфига: {requested_qty_usdt} USDT")
             else:
                 qty_in_coins = float(quantity)
                 requested_qty_usdt = qty_in_coins * current_price
-                logger.debug(f"[BYBIT_BOT] 🎯 {symbol}: Запрошено {qty_in_coins} монет (~{requested_qty_usdt:.4f} USDT)")
             
             # Рассчитываем количество МОНЕТ с учетом кратности qtyStep и minOrderQty
             # Затем передаем монеты в Bybit - он САМ применит плечо!
@@ -2300,14 +2277,10 @@ class BybitExchange(BaseExchange):
                 # Это важно: чем ниже лимитная цена, тем БОЛЬШЕ монет нужно купить на те же 5 USDT!
                 price_for_calculation = price if (order_type.lower() == 'limit' and price) else current_price
                 if order_type.lower() == 'limit' and price:
-                    logger.debug(f"[BYBIT_BOT] 💡 {symbol}: ЛИМИТНЫЙ ордер - расчет по ЛИМИТНОЙ цене {price_for_calculation:.6f} (текущая: {current_price:.6f})")
-                    logger.debug(f"[BYBIT_BOT] 💡 {symbol}: На {requested_qty_usdt} USDT по цене {price_for_calculation:.6f} нужно БОЛЬШЕ монет, чем по текущей {current_price:.6f}")
+                    pass
                 requested_coins = requested_qty_usdt / price_for_calculation if quantity_is_usdt else qty_in_coins
-                logger.debug(f"[BYBIT_BOT] 🔍 {symbol}: Исходное количество монет: {requested_coins:.2f} (рассчитано по цене {price_for_calculation:.6f}, запрошено {requested_qty_usdt} USDT)")
-                
                 # ✅ ШАГ 2: Округляем монеты вверх до qtyStep
                 rounded_coins = math.ceil(requested_coins / qty_step) * qty_step
-                logger.debug(f"[BYBIT_BOT] 🔍 {symbol}: Округлили {requested_coins:.2f} до {rounded_coins} монет (кратно {qty_step})")
                 
                 # ✅ ШАГ 3: Проверяем minOrderQty - если меньше, берем minOrderQty
                 min_coins_for_qty = math.ceil(min_order_qty / qty_step) * qty_step
@@ -2340,12 +2313,10 @@ class BybitExchange(BaseExchange):
                         logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Меньше minNotionalValue={min_usdt_from_notional}, увеличили до {rounded_coins} монет")
                 
                 qty_in_coins = rounded_coins
-                logger.debug(f"[BYBIT_BOT] 💰 {symbol}: ФИНАЛЬНО: {qty_in_coins} монет @ {current_price:.8f} (кратно {qty_step})")
             else:
                 # Fallback если нет данных об инструменте
                 # Просто пересчитываем USDT в монеты
                 qty_in_coins = requested_qty_usdt / current_price if current_price else 0
-                logger.debug(f"[BYBIT_BOT] 💰 {symbol}: Fallback: {qty_in_coins:.2f} монет")
             
             # ✅ Передаем количество МОНЕТ без marketUnit='quoteCoin'!
             # Bybit САМ применит плечо при размещении ордера!
@@ -2360,9 +2331,6 @@ class BybitExchange(BaseExchange):
                 "qty": qty_coins_str,  # ✅ Количество в МОНЕТАХ!
                 "positionIdx": position_idx
             }
-            
-            logger.debug(f"[BYBIT_BOT] 🎯 {symbol}: order_params={order_params}")
-            logger.debug(f"[BYBIT_BOT] 🔍 {symbol}: ДЕТАЛИ: qty='{qty_coins_str}' монет, orderType='{order_type.title()}'")
             
             # ⚠️ НЕ добавляем leverage в order_params - Bybit не поддерживает это при размещении ордера!
             # Плечо должно быть установлено ВРУЧНУЮ в настройках аккаунта на бирже
@@ -2384,22 +2352,15 @@ class BybitExchange(BaseExchange):
             if take_profit is not None and take_profit > 0:
                 # Bybit API: takeProfit принимает абсолютную цену (НЕ процент!)
                 order_params["takeProfit"] = str(round(take_profit, 6))
-                logger.debug(f"[BYBIT_BOT] 🎯 Take Profit установлен: {take_profit:.6f} (цена)")
             
             # 🛑 Добавляем Stop Loss если указан
             if stop_loss is not None and stop_loss > 0:
                 # Bybit API: stopLoss принимает абсолютную цену (НЕ процент!)
                 order_params["stopLoss"] = str(round(stop_loss, 6))
-                logger.debug(f"[BYBIT_BOT] 🛑 Stop Loss установлен: {stop_loss:.6f} (цена)")
-            
-            logger.debug(f"[BYBIT_BOT] Параметры ордера: {order_params}")
             
             # Размещаем ордер
-            logger.debug(f"[BYBIT_BOT] 🔍 {symbol}: ОТПРАВЛЯЕМ ЗАПРОС в Bybit API...")
             try:
                 response = self.client.place_order(**order_params)
-                logger.debug(f"[BYBIT_BOT] ✅ {symbol}: ПОЛУЧЕН ОТВЕТ от Bybit API: retCode={response.get('retCode')}, retMsg={response.get('retMsg')}")
-                logger.debug(f"[BYBIT_BOT] 📊 {symbol}: Полный ответ: {response}")
             except Exception as api_error:
                 # Pybit бросает исключение при retCode != 0, но ответ может быть в ошибке!
                 logger.error(f"[BYBIT_BOT] ❌ {symbol}: Pybit exception: {api_error}")
@@ -2407,9 +2368,6 @@ class BybitExchange(BaseExchange):
                 error_str = str(api_error)
                 import re
                 # Извлекаем retCode и retMsg из строки ошибки
-                if "retCode" in error_str and "retMsg" in error_str:
-                    logger.debug(f"[BYBIT_BOT] 📊 {symbol}: Ошибка содержит информацию об ответе: {error_str}")
-                
                 # ✅ Обрабатываем ошибку превышения максимального кредитного плеча (110013)
                 if '110013' in error_str or 'maxLeverage' in error_str.lower():
                     logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Обнаружена ошибка превышения максимального кредитного плеча (110013)")
@@ -2427,7 +2385,6 @@ class BybitExchange(BaseExchange):
                             # Повторяем попытку размещения ордера
                             try:
                                 response = self.client.place_order(**order_params)
-                                logger.debug(f"[BYBIT_BOT] ✅ {symbol}: ПОЛУЧЕН ОТВЕТ от Bybit API после корректировки: retCode={response.get('retCode')}, retMsg={response.get('retMsg')}")
                             except Exception as retry_error:
                                 logger.error(f"[BYBIT_BOT] ❌ {symbol}: Ошибка при повторной попытке размещения ордера: {retry_error}")
                                 raise retry_error
@@ -2594,7 +2551,6 @@ class BybitExchange(BaseExchange):
             position_mode = self._get_position_mode(symbol)
             if position_mode == 'One-Way':
                 position_idx = 0
-                logger.debug(f"[BYBIT_BOT] {symbol}: One-Way mode, используем position_idx=0 для TP")
             else:
                 # Hedge mode
                 if position_side:
@@ -2603,7 +2559,6 @@ class BybitExchange(BaseExchange):
                     # Если side не указан, пытаемся определить из позиции
                     position_idx = 0  # Fallback
                     logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Hedge mode, но side не указан, используем position_idx=0")
-                logger.debug(f"[BYBIT_BOT] {symbol}: Hedge mode, используем position_idx={position_idx} для TP")
             
             # Параметры для обновления TP (используем Trading Stop API)
             tp_params = {
@@ -2618,8 +2573,6 @@ class BybitExchange(BaseExchange):
             # Обновляем TP через API - используем метод set_trading_stop
             try:
                 response = self.client.set_trading_stop(**tp_params)
-                logger.debug(f"[BYBIT_BOT] Ответ API TP: {response}")
-                
                 if response['retCode'] == 0:
                     return {
                         'success': True,
@@ -2714,7 +2667,6 @@ class BybitExchange(BaseExchange):
             position_mode = self._get_position_mode(symbol)
             if position_mode == 'One-Way':
                 position_idx = 0
-                logger.debug(f"[BYBIT_BOT] {symbol}: One-Way mode, используем position_idx=0 для SL")
             else:
                 # Hedge mode
                 if position_side:
@@ -2723,7 +2675,6 @@ class BybitExchange(BaseExchange):
                     # Если side не указан, пытаемся определить из позиции
                     position_idx = 0  # Fallback
                     logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Hedge mode, но side не указан, используем position_idx=0")
-                logger.debug(f"[BYBIT_BOT] {symbol}: Hedge mode, используем position_idx={position_idx} для SL")
             
             # Параметры для обновления SL (используем Trading Stop API)
             sl_params = {
@@ -2738,8 +2689,6 @@ class BybitExchange(BaseExchange):
             # Обновляем SL через API - используем метод set_trading_stop
             try:
                 response = self.client.set_trading_stop(**sl_params)
-                logger.debug(f"[BYBIT_BOT] Ответ API SL: {response}")
-                
                 if response['retCode'] == 0:
                     return {
                         'success': True,
@@ -2763,7 +2712,6 @@ class BybitExchange(BaseExchange):
                     }
                 # 10001 (zero position) — позиция уже закрыта на бирже, стоп выставлять нечего
                 if "10001" in error_str or "zero position" in error_str.lower():
-                    logger.debug(f"[BYBIT_BOT] {symbol}: Позиция уже закрыта (zero position), пропуск установки SL")
                     return {
                         'success': False,
                         'message': 'Позиция уже закрыта на бирже (zero position)',
@@ -2815,7 +2763,6 @@ class BybitExchange(BaseExchange):
             position_mode = self._get_position_mode(symbol)
             if position_mode == 'One-Way':
                 position_idx = 0
-                logger.debug(f"[BYBIT_BOT] {symbol}: One-Way mode, используем position_idx=0 для SL по ROI")
             else:
                 # Hedge mode
                 if position_side:
@@ -2824,7 +2771,6 @@ class BybitExchange(BaseExchange):
                     # Если side не указан, пытаемся определить из позиции
                     position_idx = 0  # Fallback
                     logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Hedge mode, но side не указан, используем position_idx=0")
-                logger.debug(f"[BYBIT_BOT] {symbol}: Hedge mode, используем position_idx={position_idx} для SL по ROI")
             
             # Параметры для установки SL по ROI
             # Bybit API: slSize - размер стопа в % (отрицательный для стоп-лосса)
@@ -2841,8 +2787,6 @@ class BybitExchange(BaseExchange):
             # Устанавливаем SL через API - используем метод set_trading_stop
             try:
                 response = self.client.set_trading_stop(**sl_params)
-                logger.debug(f"[BYBIT_BOT] Ответ API SL по ROI: {response}")
-                
                 if response['retCode'] == 0:
                     return {
                         'success': True,
@@ -2979,7 +2923,6 @@ class BybitExchange(BaseExchange):
             
             # Если плечо уже установлено на нужное значение, пропускаем
             if current_leverage and int(current_leverage) == leverage:
-                logger.debug(f"[BYBIT_BOT] ✅ {symbol}: Плечо уже установлено на {leverage}x")
                 result = {
                     'success': True,
                     'message': f'Плечо уже установлено на {leverage}x'

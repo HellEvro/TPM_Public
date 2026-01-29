@@ -182,39 +182,31 @@ class BotsDatabase:
         if not os.path.exists(self.db_path):
             return True, None  # Нет БД - это нормально, будет создана
         
-        logger.debug("   [1/4] Проверка существования БД...")
-        
         try:
             # Сначала проверяем, не заблокирована ли БД другим процессом
             # Пытаемся простое подключение с коротким таймаутом
-            logger.debug("   [2/4] Проверка блокировки БД...")
             try:
                 test_conn = sqlite3.connect(self.db_path, timeout=1.0)
                 test_conn.close()
-                logger.debug("   [2/4] ✅ БД не заблокирована")
             except sqlite3.OperationalError as e:
                 if "locked" in str(e).lower():
                     # БД заблокирована - пропускаем проверку, чтобы не блокировать запуск
-                    logger.debug("   [2/4] ⚠️ БД заблокирована другим процессом, пропускаем проверку целостности")
                     return True, None
                 raise
             
             # ⚡ ИСПРАВЛЕНО: Создаем новое соединение для каждой операции
             # Это гарантирует, что все операции выполняются в том же потоке
-            logger.debug("   [3/4] Подключение к БД и проверка режима журнала...")
             try:
                 # Получаем размер БД перед проверкой
                 try:
                     db_size_mb = os.path.getsize(self.db_path) / (1024 * 1024)  # MB
                     db_size_gb = db_size_mb / 1024  # GB
-                    logger.debug(f"   [3/4] Размер БД: {db_size_mb:.2f} MB ({db_size_gb:.2f} GB)")
-                    
                     # Пропускаем проверку целостности для очень больших БД (>1 GB)
                     if db_size_mb > 1024:  # Больше 1 GB
                         logger.info(f"   [3/4] ⚠️ БД очень большая ({db_size_gb:.2f} GB), пропускаем проверку целостности для ускорения запуска")
                         return True, None
                 except Exception as e:
-                    logger.debug(f"   [3/4] ⚠️ Не удалось получить размер БД: {e}")
+                    pass
                 
                 # Создаем новое соединение для проверки режима журнала
                 conn1 = sqlite3.connect(self.db_path, timeout=5.0)
@@ -239,7 +231,6 @@ class BotsDatabase:
                 conn1.close()
                 
                 # Создаем новое соединение для проверки целостности
-                logger.debug("   [4/4] Подготовка к проверке целостности...")
                 conn2 = sqlite3.connect(self.db_path, timeout=5.0)
                 cursor2 = conn2.cursor()
                 
@@ -247,18 +238,13 @@ class BotsDatabase:
                 try:
                     cursor2.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
                     table_count = cursor2.fetchone()[0]
-                    logger.debug(f"   [4/4] Количество таблиц в БД: {table_count}")
                 except Exception as e:
-                    logger.debug(f"   [4/4] ⚠️ Не удалось получить количество таблиц: {e}")
+                    pass
                 
                 # Устанавливаем таймаут для операции
-                logger.debug("   [4/4] Установка PRAGMA busy_timeout = 2000...")
                 cursor2.execute("PRAGMA busy_timeout = 2000")  # 2 секунды
-                logger.debug("   [4/4] ✅ busy_timeout установлен")
-                
                 # ⚡ ИСПРАВЛЕНО: Выполняем проверку целостности в том же потоке
                 import time
-                logger.debug("   [4/4] ⏳ Начинаю выполнение PRAGMA quick_check...")
                 start_time = time.time()
                 
                 try:
@@ -272,19 +258,13 @@ class BotsDatabase:
                     conn2.close()
                     return True, None  # Считаем БД валидной при ошибке
                 
-                logger.debug(f"   [4/4] ⏱️ PRAGMA quick_check выполнен за {elapsed:.2f} секунд")
-                logger.debug(f"   [4/4] 📊 Результат проверки получен: {result[:100] if len(str(result)) > 100 else result}")
-                
                 if result == "ok":
-                    logger.debug(f"   [4/4] ✅ Проверка целостности пройдена успешно (заняло {elapsed:.2f}s)")
+                    pass
                 else:
                     logger.warning(f"   [4/4] ⚠️ Обнаружены проблемы в БД: {result[:200]}")
                 
                 conn2.close()
-                logger.debug("   [4/4] ✅ Соединение с БД закрыто")
-                
                 if result == "ok":
-                    logger.debug("   ✅ Проверка целостности БД завершена успешно")
                     return True, None
                 else:
                     # Есть проблемы - но не делаем полную проверку (она может быть очень долгой)
@@ -302,7 +282,6 @@ class BotsDatabase:
                 return True, None
                 
         except Exception as e:
-            logger.debug(f"ℹ️ Ошибка проверки целостности БД: {e}, продолжаем работу...")
             err_str = str(e).lower()
             if ("disk i/o" in err_str or "i/o error" in err_str) and self._is_unc_path():
                 logger.info(self._unc_hint)
@@ -918,7 +897,7 @@ class BotsDatabase:
                     logger.error("❌ Не удалось автоматически исправить БД")
                     logger.error("⚠️ Попробуйте восстановить из резервной копии: db.restore_from_backup()")
             else:
-                logger.debug("✅ БД проверена, целостность в порядке")
+                pass
         else:
             logger.info(f"📁 Создается новая база данных: {self.db_path}")
         
@@ -1424,7 +1403,7 @@ class BotsDatabase:
                 """, (now, now))
                 logger.info("✅ Все таблицы и индексы созданы в новой базе данных")
             else:
-                logger.debug("✅ Все таблицы и индексы проверены")
+                pass
             
             conn.commit()
     
@@ -1827,7 +1806,7 @@ class BotsDatabase:
                         
             except sqlite3.OperationalError:
                 # Таблица bots_state не существует - это нормально, значит уже удалена или не создавалась
-                logger.debug("ℹ️ Таблица bots_state не существует (уже удалена или не создавалась)")
+                pass
             except Exception as e:
                 logger.warning(f"⚠️ Ошибка миграции bots_state: {e}")
             
@@ -1977,7 +1956,7 @@ class BotsDatabase:
                         
             except sqlite3.OperationalError:
                 # Колонка candles_json не существует - значит уже мигрировано или новая структура
-                logger.debug("ℹ️ candles_cache уже в нормализованном формате")
+                pass
             except Exception as e:
                 logger.warning(f"⚠️ Ошибка миграции candles_cache: {e}")
             
@@ -2399,7 +2378,7 @@ class BotsDatabase:
             try:
                 cursor.execute("SELECT process_name FROM process_state LIMIT 1")
                 # Столбец process_name существует - таблица уже в новой структуре
-                logger.debug("ℹ️ Таблица process_state уже в нормализованной структуре")
+                pass
             except sqlite3.OperationalError:
                 # Столбца process_name нет - нужно проверить старую структуру или создать новую
                 try:
@@ -3625,7 +3604,7 @@ class BotsDatabase:
                     
                     conn.commit()
             
-            logger.debug(f"💾 Реестр позиций сохранен в БД ({len(registry)} записей)")
+            pass
             return True
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения реестра позиций: {e}")
@@ -4739,7 +4718,6 @@ class BotsDatabase:
                     existing = cursor.fetchone()
                     created_at = existing[0] if existing else now
                     
-                    logger.debug("🗑️ Удаляем таблицу maturity_check_cache для полной очистки (DROP TABLE)...")
                     cursor.execute("DROP TABLE IF EXISTS maturity_check_cache")
                     
                     # Создаем таблицу заново
@@ -4770,7 +4748,6 @@ class BotsDatabase:
                     
                     conn.commit()
             
-            logger.debug("💾 Кэш проверки зрелости сохранен в нормализованные столбцы БД")
             return True
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения кэша проверки зрелости: {e}")
@@ -5314,7 +5291,6 @@ class BotsDatabase:
                     # ⚠️ КРИТИЧНО: Используем DROP TABLE + CREATE TABLE вместо DELETE для гарантированной очистки
                     # DELETE может не удалить все записи из-за блокировок, WAL режима или других проблем
                     # DROP TABLE гарантирует полное удаление всех данных и освобождение места
-                    logger.debug(f"🗑️ Удаляем таблицу candles_cache_data для полной очистки (DROP TABLE)...")
                     cursor.execute("DROP TABLE IF EXISTS candles_cache_data")
                     
                     # Создаем таблицу заново с UNIQUE constraint
@@ -5348,7 +5324,7 @@ class BotsDatabase:
                         raise Exception(f"DROP TABLE не работает! В таблице {count_after_delete:,} записей после пересоздания!")
                     
                     if old_total_count > 0:
-                        logger.debug(f"🗑️ Удалено {deleted_total_count:,} старых свечей из кэша (DROP TABLE), проверка: таблица пуста ✅")
+                        pass
                     
                     # Теперь вставляем новые свечи для всех символов
                     all_candles_to_insert = []
@@ -5472,7 +5448,6 @@ class BotsDatabase:
                             symbol_name = symbol_row[0] if symbol_row else f"cache_id={cache_id}"
                             logger.error(f"   ❌ {symbol_name}: {cnt:,} свечей (лимит: 1000)")
             
-            logger.debug(f"💾 Кэш свечей сохранен в БД ({len(candles_cache)} символов)")
             return True
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения кэша свечей: {e}")
@@ -5906,19 +5881,16 @@ class BotsDatabase:
                     if row:
                         migration_completed = row['value'] == '1'
                         if migration_completed:
-                            logger.debug("ℹ️ Миграция из JSON уже выполнена (флаг в БД)")
                             return False
                         else:
-                            logger.debug("ℹ️ Миграция из JSON еще не выполнена (флаг = 0)")
                             return True
                     else:
                         # Флага нет - значит БД новая, миграция нужна
-                        logger.debug("ℹ️ Флаг миграции отсутствует - миграция нужна")
                         return True
                 except sqlite3.OperationalError:
                     # Таблица db_metadata не существует - это старая БД без метаданных
                     # Проверяем наличие данных в основных таблицах как fallback
-                    logger.debug("ℹ️ Таблица db_metadata не найдена, проверяем наличие данных...")
+                    pass
                     check_tables = [
                         'bots_state', 'bot_positions_registry', 'individual_coin_settings', 
                         'mature_coins', 'rsi_cache', 'process_state'
@@ -5930,7 +5902,6 @@ class BotsDatabase:
                             count = cursor.fetchone()[0]
                             if count > 0:
                                 # Есть данные - считаем что миграция уже выполнена
-                                logger.debug(f"ℹ️ В таблице {table} есть {count} записей - миграция не требуется")
                                 return False
                         except sqlite3.OperationalError:
                             continue
@@ -5938,7 +5909,6 @@ class BotsDatabase:
                     # БД пуста - миграция нужна
                     return True
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка проверки необходимости миграции: {e}")
             # В случае ошибки - выполняем миграцию на всякий случай
             return True
     
@@ -6026,12 +5996,6 @@ class BotsDatabase:
                     row = cursor.fetchone()
                     if row:
                         timeframe = row[0]
-                        # Логируем не чаще раза в 60 с на таймфрейм (убирает спам при массовой загрузке свечей)
-                        now = time.time()
-                        if (timeframe not in _load_timeframe_last_log or
-                                now - _load_timeframe_last_log[timeframe] >= _load_timeframe_log_interval):
-                            _load_timeframe_last_log[timeframe] = now
-                            logger.debug(f"✅ Таймфрейм загружен из БД: {timeframe}")
                         return timeframe
                     return None
         except Exception as e:
@@ -6113,7 +6077,6 @@ class BotsDatabase:
         """
         # Проверяем, нужна ли миграция
         if not self._is_migration_needed():
-            logger.debug("ℹ️ Миграция не требуется - данные уже есть в БД")
             return {}
         
         migration_stats = {}
@@ -6485,12 +6448,8 @@ def get_bots_database(db_path: str = None) -> BotsDatabase:
                 migration_stats = _bots_database_instance.migrate_json_to_database()
                 if migration_stats:
                     logger.info(f"✅ Автоматическая миграция выполнена: {migration_stats}")
-                else:
-                    logger.debug("ℹ️ Миграция не требуется (нет данных в JSON или уже мигрировано)")
             except Exception as e:
                 logger.warning(f"⚠️ Ошибка автоматической миграции: {e}")
-                import traceback
-                logger.debug(f"⚠️ Трассировка ошибки миграции:\n{traceback.format_exc()}")
                 # Продолжаем работу, даже если миграция не удалась
         
         return _bots_database_instance

@@ -635,8 +635,10 @@ def setup_color_logging(console_log_levels=None, enable_file_logging=True, log_f
                 logger.removeHandler(handler)
     
     # Если обработчик уже есть и фильтр обновлён, не пересоздаём обработчик
+    # КРИТИЧНО: Всё равно обновляем monkey patch callHandlers с текущим console_log_levels,
+    # иначе патч остаётся от первого вызова (например из imports_and_globals с None) и INFO показывается
     if has_our_handler:
-        # Но все равно нужно удалить обработчики без фильтра из других логгеров
+        # Удаляем обработчики без фильтра из других логгеров
         for existing_logger_name in logging.Logger.manager.loggerDict:
             existing_logger = logging.getLogger(existing_logger_name)
             for handler in existing_logger.handlers[:]:
@@ -646,6 +648,14 @@ def setup_color_logging(console_log_levels=None, enable_file_logging=True, log_f
                         existing_logger.removeHandler(handler)
             existing_logger.propagate = True
             existing_logger.setLevel(logging.DEBUG)
+        # Обновляем патч callHandlers, чтобы использовались текущие console_log_levels
+        def _patched_callHandlers_existing(self, record):
+            level_filter = LogLevelFilter(console_log_levels)
+            if not level_filter.filter(record):
+                return
+            return logging.Logger._original_callHandlers(self, record)
+        if hasattr(logging.Logger, '_original_callHandlers'):
+            logging.Logger.callHandlers = _patched_callHandlers_existing
         return logger
     
     # КРИТИЧНО: Удаляем ВСЕ консольные обработчики БЕЗ нашего фильтра из ВСЕХ логгеров

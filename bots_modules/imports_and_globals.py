@@ -1104,7 +1104,7 @@ def save_bot_positions_registry(registry):
         from bot_engine.storage import save_bot_positions_registry as storage_save_positions
         success = storage_save_positions(registry)
         if success:
-            logger.debug(f" ✅ Реестр позиций сохранён: {len(registry)} записей")
+            pass
         return success
     except Exception as e:
         logger.error(f" ❌ Ошибка сохранения реестра: {e}")

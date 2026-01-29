@@ -81,7 +81,6 @@ def save_maturity_check_cache():
             last_maturity_check.get('coins_count', 0),
             last_maturity_check.get('config_hash')
         )
-        logger.debug(f" 💾 Кэш сохранен: {last_maturity_check['coins_count']} монет")
     except Exception as e:
         logger.error(f" ❌ Ошибка сохранения кэша: {e}")
 

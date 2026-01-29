@@ -9,12 +9,12 @@ RSI_OVERBOUGHT = 71
 
 # ✅ RSI зоны для выходов - РАЗДЕЛЬНО для сделок ПО ТРЕНДУ и ПРОТИВ ТРЕНДА
 # По тренду - можно ждать большего движения
-RSI_EXIT_LONG_WITH_TREND = 65  # Выход из лонга при RSI >= 65 (вход был по UP тренду)
-RSI_EXIT_SHORT_WITH_TREND = 35  # Выход из шорта при RSI <= 35 (вход был по DOWN тренду)
+RSI_EXIT_LONG_WITH_TREND = 60  # Выход из лонга при RSI >= 65 (вход был по UP тренду)
+RSI_EXIT_SHORT_WITH_TREND = 40  # Выход из шорта при RSI <= 35 (вход был по DOWN тренду)
 
 # Против тренда - выходим раньше, безопаснее
-RSI_EXIT_LONG_AGAINST_TREND = 60  # Выход из лонга при RSI >= 60 (вход был против DOWN тренда)
-RSI_EXIT_SHORT_AGAINST_TREND = 40  # Выход из шорта при RSI <= 40 (вход был против UP тренда)
+RSI_EXIT_LONG_AGAINST_TREND = 55  # Выход из лонга при RSI >= 60 (вход был против DOWN тренда)
+RSI_EXIT_SHORT_AGAINST_TREND = 45  # Выход из шорта при RSI <= 40 (вход был против UP тренда)
 
 # ❌ СТАРЫЕ RSI_EXIT_LONG и RSI_EXIT_SHORT УДАЛЕНЫ - используйте новые WITH_TREND и AGAINST_TREND
 
@@ -325,20 +325,20 @@ DEFAULT_BOT_CONFIG = {
 # Системные настройки
 class SystemConfig:
     # Интервалы обновления (в секундах)
-    RSI_UPDATE_INTERVAL = 30 # 30 минут (рекомендуется для 6H RSI)
-    ACCOUNT_UPDATE_INTERVAL = 5  # 5 секунд
-    UI_REFRESH_INTERVAL = 2 # 3 секунды
-    AUTO_SAVE_INTERVAL = 30  # 30 секунд
+    RSI_UPDATE_INTERVAL = 60 # 30 минут (рекомендуется для 6H RSI)
+    ACCOUNT_UPDATE_INTERVAL = 3  # 5 секунд
+    UI_REFRESH_INTERVAL = 1 # 3 секунды
+    AUTO_SAVE_INTERVAL = 300  # 30 секунд
     BOT_STATUS_UPDATE_INTERVAL = 1  # 1 секунда - интервал обновления детальной информации о состоянии ботов (цена входа, SL, TP, ликвидация, PnL)
     INACTIVE_BOT_CLEANUP_INTERVAL = 600  # 10 минут - интервал проверки и удаления неактивных ботов
-    INACTIVE_BOT_TIMEOUT = 60 # 10 минут - время ожидания перед удалением бота без реальных позиций на бирже
-    STOP_LOSS_SETUP_INTERVAL = 10 # 5 минут - интервал установки недостающих стоп-лоссов
-    POSITION_SYNC_INTERVAL = 10 # 30 секунд - интервал синхронизации позиций с биржей
-    MINI_CHART_UPDATE_INTERVAL = 420  # 7 минут - интервал обновления миниграфиков RSI (в секундах)
+    INACTIVE_BOT_TIMEOUT = 600 # 10 минут - время ожидания перед удалением бота без реальных позиций на бирже
+    STOP_LOSS_SETUP_INTERVAL = 60 # 5 минут - интервал установки недостающих стоп-лоссов
+    POSITION_SYNC_INTERVAL = 1 # 30 секунд - интервал синхронизации позиций с биржей
+    MINI_CHART_UPDATE_INTERVAL = 60  # 7 минут - интервал обновления миниграфиков RSI (в секундах)
     
     # Умное обновление RSI
     SMART_RSI_UPDATE = True  # Учитывать время до закрытия свечи
-    RSI_CANDLE_CHECK_INTERVAL = 300  # 5 минут для проверки изменений текущей свечи
+    RSI_CANDLE_CHECK_INTERVAL = 20  # 5 минут для проверки изменений текущей свечи
     
     # Улучшенная система RSI
     ENHANCED_RSI_ENABLED = True # Включить улучшенную систему RSI для сильных трендов (ОТКЛЮЧЕНО для тестирования)
@@ -359,12 +359,12 @@ class SystemConfig:
     
     # ✅ RSI зоны для выходов - РАЗДЕЛЬНО для сделок ПО ТРЕНДУ и ПРОТИВ ТРЕНДА
     # По тренду - можно ждать большего движения
-    RSI_EXIT_LONG_WITH_TREND = 65  # Выход из лонга при RSI >= 65 (вход был по UP тренду)
-    RSI_EXIT_SHORT_WITH_TREND = 35  # Выход из шорта при RSI <= 35 (вход был по DOWN тренду)
+    RSI_EXIT_LONG_WITH_TREND = 60  # Выход из лонга при RSI >= 65 (вход был по UP тренду)
+    RSI_EXIT_SHORT_WITH_TREND = 40  # Выход из шорта при RSI <= 35 (вход был по DOWN тренду)
     
     # Против тренда - выходим раньше, безопаснее
-    RSI_EXIT_LONG_AGAINST_TREND = 60  # Выход из лонга при RSI >= 60 (вход был против DOWN тренда)
-    RSI_EXIT_SHORT_AGAINST_TREND = 40  # Выход из шорта при RSI <= 40 (вход был против UP тренда)
+    RSI_EXIT_LONG_AGAINST_TREND = 55  # Выход из лонга при RSI >= 60 (вход был против DOWN тренда)
+    RSI_EXIT_SHORT_AGAINST_TREND = 45  # Выход из шорта при RSI <= 40 (вход был против UP тренда)
     
     # ❌ СТАРЫЕ RSI_EXIT_LONG и RSI_EXIT_SHORT УДАЛЕНЫ - используйте новые WITH_TREND и AGAINST_TREND
     
@@ -475,7 +475,7 @@ class SystemConfig:
     #   - Регистр не важен: '+error' = '+ERROR' = '+Error'
     #   - Пробелы вокруг запятых игнорируются
     # ========================================================================
-    CONSOLE_LOG_LEVELS = []  # По умолчанию все уровни разрешены
+    CONSOLE_LOG_LEVELS = ['+ERROR', '+WARNING', '+CRITICAL', '+DEBUG']  # По умолчанию все уровни разрешены
 
     # ========================================================================
     # ОГРАНИЧЕНИЕ ОЗУ ДЛЯ AI (ai.py)

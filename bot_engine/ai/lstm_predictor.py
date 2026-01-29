@@ -47,10 +47,6 @@ try:
     def configure_gpu():
         """Настраивает PyTorch для использования GPU NVIDIA (если доступен)"""
         try:
-            # Выводим информацию о версии PyTorch
-            torch_version = torch.__version__
-            logger.debug(f"PyTorch версия: {torch_version}")
-            
             # Проверяем доступность CUDA
             if torch.cuda.is_available():
                 gpu_count = torch.cuda.device_count()
