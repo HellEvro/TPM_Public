@@ -19,7 +19,7 @@ sys.path.insert(0, str(project_root))
 
 from bot_engine.ai.lstm_predictor import LSTMPredictor, PYTORCH_AVAILABLE
 from utils.rsi_calculator import calculate_rsi
-from utils.memory_utils import force_collect
+from utils.memory_utils import force_collect_full
 
 
 def calculate_ema(prices: np.ndarray, period: int) -> np.ndarray:
@@ -293,7 +293,7 @@ def load_all_historical_data(
                     
                     # Очищаем память после обработки каждого символа
                     del candles, training_data
-                    force_collect()
+                    force_collect_full()
                 
                 print("\n" + "=" * 60)
                 print(f"[OK] Successfully processed: {successful} coins")

@@ -22,7 +22,7 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from bot_engine.ai.pattern_detector import PatternDetector
-from utils.memory_utils import force_collect
+from utils.memory_utils import force_collect_full
 
 
 def extract_pattern_features(candles_df: pd.DataFrame, window_size: int = 50) -> np.ndarray:
@@ -322,7 +322,7 @@ def load_all_historical_data(
                     
                     # Очищаем память после обработки каждого символа
                     del candles, training_data
-                    force_collect()
+                    force_collect_full()
                 
                 print("\n" + "=" * 60)
                 print(f"[OK] Successfully processed: {successful} coins")

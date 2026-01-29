@@ -1597,13 +1597,18 @@ def get_ticker_analysis(symbol):
         }), 500
 
 def background_cache_cleanup():
-    """Фоновая очистка кэша"""
+    """Фоновая очистка кэша и памяти (GC + PyTorch/CUDA при наличии)."""
     while True:
         try:
             clear_old_cache()
         except Exception as e:
             app_logger = logging.getLogger('app')
             app_logger.error(f"Error in cache cleanup: {str(e)}")
+        try:
+            from utils.memory_utils import force_collect_full
+            force_collect_full()
+        except Exception:
+            pass
         time.sleep(60)  # Проверяем каждую минуту
 
 # Кэш для хранения данных свечей
@@ -1649,10 +1654,15 @@ def clear_old_cache():
         del candles_cache[symbol]
 
 def background_cache_cleanup():
-    """Фоновая очистка кэша"""
+    """Фоновая очистка кэша и памяти (GC + PyTorch/CUDA при наличии)."""
     while True:
         try:
             clear_old_cache()
+        except Exception:
+            pass
+        try:
+            from utils.memory_utils import force_collect_full
+            force_collect_full()
         except Exception:
             pass
         time.sleep(60)  # Проверяем каждую минуту
@@ -2420,7 +2430,12 @@ if __name__ == '__main__':
         app_logger.error(f"[APP] ❌ Ошибка первичной загрузки closed_pnl: {e}")
         import traceback
         pass
-    
+    try:
+        from utils.memory_utils import force_collect_full
+        force_collect_full()
+    except Exception:
+        pass
+
     # Запускаем поток для отправки дневного отчета
     if TELEGRAM_NOTIFY['DAILY_REPORT']:
         daily_report_thread = threading.Thread(target=send_daily_report)

@@ -528,8 +528,8 @@ def cleanup_bot_service():
         logger.info("Сохранение хранилища зрелых монет...")
         save_mature_coins_storage()
 
-        from utils.memory_utils import force_collect
-        force_collect()
+        from utils.memory_utils import force_collect_full
+        force_collect_full()
         logger.info("Система остановлена")
         logger.info("=" * 80)
     except Exception as e:
@@ -583,8 +583,8 @@ def run_bots_service():
                     time.sleep(0.1)
                     _gc_ticks += 1
                     if _gc_ticks >= 600:
-                        from utils.memory_utils import force_collect
-                        force_collect()
+                        from utils.memory_utils import force_collect_full
+                        force_collect_full()
                         _gc_ticks = 0
             except KeyboardInterrupt:
                 logger.info("\n🛑 Получен KeyboardInterrupt, останавливаем сервер...")

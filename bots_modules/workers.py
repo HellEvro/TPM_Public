@@ -35,9 +35,9 @@ except ImportError as e:
 from bot_engine.bot_config import SystemConfig
 
 try:
-    from utils.memory_utils import force_collect
+    from utils.memory_utils import force_collect_full
 except ImportError:
-    def force_collect():
+    def force_collect_full():
         pass
 
 # Импорт функций из других модулей
@@ -149,7 +149,7 @@ def auto_save_worker():
                     'last_error': None if save_result else 'Save failed'
                 })
 
-                force_collect()
+                force_collect_full()
 
         except Exception as e:
             logger.error(f" ❌ Ошибка автосохранения: {e}")
@@ -200,7 +200,7 @@ def auto_bot_worker():
 
             # Сборка мусора раз в ~60 сек (цикл ~1 сек)
             if cycle_count % 60 == 0:
-                force_collect()
+                force_collect_full()
 
             # Ждем только 1 секунду для обновления позиций
             if shutdown_flag.wait(1):
@@ -466,7 +466,7 @@ def positions_monitor_worker():
 
             _gc_ticks += 1
             if _gc_ticks >= 60:
-                force_collect()
+                force_collect_full()
                 _gc_ticks = 0
 
             # Ждем 1 секунду перед следующей проверкой - КАЖДУЮ СЕКУНДУ!

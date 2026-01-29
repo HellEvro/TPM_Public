@@ -359,8 +359,8 @@ class AutoTrainer:
                     self._check_real_trades_retrain()
                 
                 try:
-                    from utils.memory_utils import force_collect
-                    force_collect()
+                    from utils.memory_utils import force_collect_full
+                    force_collect_full()
                 except Exception:
                     pass
                 time.sleep(600)
