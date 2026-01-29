@@ -223,7 +223,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'trading_enabled': True,    # Включить реальную торговлю
     'use_test_server': False,   # Использовать тестовый сервер
     # Защитные механизмы
-    'max_loss_percent': 15,   # Максимальный убыток в % от входа (стоп-лосс)
+    'max_loss_percent': 5, # Максимальный убыток в % от входа (стоп-лосс)
     'take_profit_percent': 70, # Защитный Take Profit в % от входа (рассчитывается как стоп-лосс)
     'trailing_stop_activation': 10, # Процент прибыли, после которого активируется трейлинг
     'trailing_stop_distance': 5,      # Дистанция трейлинга от максимальной цены, %
