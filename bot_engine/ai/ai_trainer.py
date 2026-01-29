@@ -5243,8 +5243,8 @@ class AITrainer:
                             del simulated_trades_symbol
                     except (NameError, UnboundLocalError):
                         pass
-                    from utils.memory_utils import force_collect
-                    force_collect()
+                    from utils.memory_utils import force_collect_full
+                    force_collect_full()
                     
                     # Логируем прогресс каждые 50 монет
                     if total_trained_coins % progress_interval == 0:

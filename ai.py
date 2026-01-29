@@ -90,11 +90,19 @@ def _apply_memory_limit_if_configured():
     """
     Ограничение потребления ОЗУ процессом ai.py (AI_MEMORY_LIMIT_MB или AI_MEMORY_PCT).
     На Linux/macOS: resource.setrlimit(RLIMIT_AS).
-    На Windows: лимит на процесс недоступен — используются только ограничения нагрузки из AILauncherConfig.
-    Сообщения выводятся только в главном процессе, чтобы не дублировать в дочерних (data-service, scheduler, train).
+    На Windows: лимит задаётся через Job Object в _apply_windows_job_limits() (один Job на CPU+ОЗУ).
+    Сообщения выводятся только в главном процессе.
     """
     computed, kind, total_mb, pct = _compute_memory_limit_mb()
     if computed is None:
+        try:
+            import multiprocessing
+            if multiprocessing.current_process().name == 'MainProcess':
+                sys.stderr.write(
+                    "[AI] Лимит ОЗУ не задан: задайте AI_MEMORY_PCT или AI_MEMORY_LIMIT_MB в bot_config.SystemConfig или в env.\n"
+                )
+        except Exception:
+            pass
         return
     limit_mb = computed
     try:
@@ -107,12 +115,8 @@ def _apply_memory_limit_if_configured():
             sys.stderr.write(f"[AI] Лимит ОЗУ: {limit_mb} MB ({pct:.0f}% от {total_mb} MB)\n")
         elif kind == 'mb':
             sys.stderr.write(f"[AI] Лимит ОЗУ: {limit_mb} MB (AI_MEMORY_LIMIT_MB)\n")
-        if sys.platform == 'win32':
-            sys.stderr.write(
-                "[AI] На Windows жёсткий лимит процесса недоступен. "
-                "Ограничения нагрузки (AILauncherConfig): меньше потоков/символов/свечей/батч — целевой ориентир, фактическое потребление может быть выше (модели, несколько процессов).\n"
-            )
     if sys.platform == 'win32':
+        # На Windows лимит применится в _apply_windows_job_limits() вместе с CPU
         return
     try:
         import resource
@@ -127,29 +131,17 @@ def _apply_memory_limit_if_configured():
 
 _apply_memory_limit_if_configured()
 
+# Храним handle Job Object на Windows, чтобы лимиты CPU/ОЗУ не снимались (не закрывать handle)
+_win_job_handle = []
 
-def _apply_cpu_limit_if_configured():
+
+def _apply_windows_job_limits():
     """
-    Ограничение загрузки CPU в % (только Windows 8+, Job Object).
-    Читает AI_CPU_PCT из bot_config.SystemConfig или env AI_CPU_PCT (1–100).
+    Windows: один Job Object для лимита ОЗУ (ProcessMemoryLimit) и/или CPU (%).
+    Читает AI_MEMORY_LIMIT_MB из env (уже установлен _apply_memory_limit_if_configured),
+    AI_CPU_PCT из bot_config или env. Ручку Job не закрываем — иначе лимиты перестают действовать.
     """
     if sys.platform != 'win32':
-        return
-    pct = 0
-    try:
-        from bot_engine.bot_config import SystemConfig
-        pct = getattr(SystemConfig, 'AI_CPU_PCT', 0) or 0
-    except Exception:
-        pass
-    if not pct:
-        pct_str = os.environ.get('AI_CPU_PCT', '').strip()
-        if pct_str:
-            try:
-                pct = int(float(pct_str.replace(',', '.')))
-                pct = max(1, min(100, pct))
-            except ValueError:
-                return
-    if pct <= 0:
         return
     try:
         import multiprocessing
@@ -157,20 +149,33 @@ def _apply_cpu_limit_if_configured():
             return
     except Exception:
         pass
+    memory_mb = 0
+    try:
+        limit_str = os.environ.get('AI_MEMORY_LIMIT_MB', '').strip()
+        if limit_str:
+            memory_mb = int(limit_str)
+    except ValueError:
+        pass
+    cpu_pct = 0
+    try:
+        from bot_engine.bot_config import SystemConfig
+        cpu_pct = getattr(SystemConfig, 'AI_CPU_PCT', 0) or 0
+    except Exception:
+        pass
+    if not cpu_pct:
+        pct_str = os.environ.get('AI_CPU_PCT', '').strip()
+        if pct_str:
+            try:
+                cpu_pct = int(float(pct_str.replace(',', '.')))
+                cpu_pct = max(1, min(100, cpu_pct))
+            except ValueError:
+                pass
+    if not memory_mb and not cpu_pct:
+        return
     try:
         import ctypes
         from ctypes import wintypes
         kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
-        JOB_OBJECT_CPU_RATE_CONTROL_ENABLE = 0x1
-        JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP = 0x4
-        JobObjectCpuRateControlInformation = 15
-        # CpuRate = процент × 100 (20% → 2000)
-        cpu_rate = pct * 100
-        class JOBOBJECT_CPU_RATE_CONTROL_INFORMATION(ctypes.Structure):
-            _fields_ = [
-                ('ControlFlags', wintypes.DWORD),
-                ('CpuRate', wintypes.DWORD),
-            ]
         CreateJobObjectW = kernel32.CreateJobObjectW
         CreateJobObjectW.argtypes = [wintypes.LPVOID, wintypes.LPCWSTR]
         CreateJobObjectW.restype = wintypes.HANDLE
@@ -186,15 +191,89 @@ def _apply_cpu_limit_if_configured():
         if not AssignProcessToJobObject(job, kernel32.GetCurrentProcess()):
             kernel32.CloseHandle(job)
             return
-        info = JOBOBJECT_CPU_RATE_CONTROL_INFORMATION(
-            ControlFlags=JOB_OBJECT_CPU_RATE_CONTROL_ENABLE | JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP,
-            CpuRate=cpu_rate,
-        )
-        if SetInformationJobObject(job, JobObjectCpuRateControlInformation, ctypes.byref(info)):
-            sys.stderr.write(f"[AI] Лимит CPU: {pct}%\n")
-        kernel32.CloseHandle(job)
+        applied = []
+        if memory_mb and memory_mb > 0:
+            JOB_OBJECT_LIMIT_PROCESS_MEMORY = 0x100
+            JobObjectExtendedLimitInformation = 9
+            limit_bytes = memory_mb * 1024 * 1024
+
+            class IO_COUNTERS(ctypes.Structure):
+                _fields_ = [
+                    ('ReadOperationCount', ctypes.c_ulonglong),
+                    ('WriteOperationCount', ctypes.c_ulonglong),
+                    ('OtherOperationCount', ctypes.c_ulonglong),
+                    ('ReadTransferCount', ctypes.c_ulonglong),
+                    ('WriteTransferCount', ctypes.c_ulonglong),
+                    ('OtherTransferCount', ctypes.c_ulonglong),
+                ]
+
+            class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+                _fields_ = [
+                    ('PerProcessUserTimeLimit', ctypes.c_ulonglong),
+                    ('PerJobUserTimeLimit', ctypes.c_ulonglong),
+                    ('LimitFlags', wintypes.DWORD),
+                    ('MinimumWorkingSetSize', ctypes.c_size_t),
+                    ('MaximumWorkingSetSize', ctypes.c_size_t),
+                    ('ActiveProcessLimit', wintypes.DWORD),
+                    ('Affinity', ctypes.c_size_t),
+                    ('PriorityClass', wintypes.DWORD),
+                    ('SchedulingClass', wintypes.DWORD),
+                ]
+
+            class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+                _fields_ = [
+                    ('BasicLimitInformation', JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                    ('IoInfo', IO_COUNTERS),
+                    ('ProcessMemoryLimit', ctypes.c_size_t),
+                    ('JobMemoryLimit', ctypes.c_size_t),
+                    ('PeakProcessMemoryUsed', ctypes.c_size_t),
+                    ('PeakJobMemoryUsed', ctypes.c_size_t),
+                ]
+
+            basic = JOBOBJECT_BASIC_LIMIT_INFORMATION()
+            basic.LimitFlags = JOB_OBJECT_LIMIT_PROCESS_MEMORY
+            ext = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+            ext.BasicLimitInformation = basic
+            ext.ProcessMemoryLimit = limit_bytes
+            if SetInformationJobObject(job, JobObjectExtendedLimitInformation, ctypes.byref(ext)):
+                applied.append(f"ОЗУ {memory_mb} MB")
+        if cpu_pct and cpu_pct > 0:
+            JOB_OBJECT_CPU_RATE_CONTROL_ENABLE = 0x1
+            JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP = 0x4
+            JobObjectCpuRateControlInformation = 15
+            cpu_rate = cpu_pct * 100
+
+            class JOBOBJECT_CPU_RATE_CONTROL_INFORMATION(ctypes.Structure):
+                _fields_ = [
+                    ('ControlFlags', wintypes.DWORD),
+                    ('CpuRate', wintypes.DWORD),
+                ]
+
+            info = JOBOBJECT_CPU_RATE_CONTROL_INFORMATION(
+                ControlFlags=JOB_OBJECT_CPU_RATE_CONTROL_ENABLE | JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP,
+                CpuRate=cpu_rate,
+            )
+            if SetInformationJobObject(job, JobObjectCpuRateControlInformation, ctypes.byref(info)):
+                applied.append(f"CPU {cpu_pct}%")
+        if applied:
+            sys.stderr.write(f"[AI] Windows Job Object: {', '.join(applied)}\n")
+            _win_job_handle.append(job)
+        else:
+            kernel32.CloseHandle(job)
     except Exception:
         pass
+
+
+def _apply_cpu_limit_if_configured():
+    """
+    Ограничение загрузки CPU в % (только Windows 8+, Job Object).
+    На Windows лимиты CPU и ОЗУ применяются вместе в _apply_windows_job_limits().
+    """
+    if sys.platform == 'win32':
+        _apply_windows_job_limits()
+        return
+    # На не-Windows CPU не ограничиваем (только ОЗУ через setrlimit)
+    pass
 
 
 def _set_gpu_memory_fraction_env():
@@ -335,8 +414,8 @@ def _run_rebuild_bot_history_from_exchange():
 _run_rebuild_bot_history_from_exchange()
 
 try:
-    from utils.memory_utils import force_collect
-    force_collect()
+    from utils.memory_utils import force_collect_full
+    force_collect_full()
 except Exception:
     pass
 
@@ -357,8 +436,8 @@ def _init_timeframe_from_bots_db():
 _init_timeframe_from_bots_db()
 
 try:
-    from utils.memory_utils import force_collect
-    force_collect()
+    from utils.memory_utils import force_collect_full
+    force_collect_full()
 except Exception:
     pass
 
@@ -435,8 +514,8 @@ for _key, _value in _protected_module.__dict__.items():
 del _globals, _skip, _key, _value
 
 try:
-    from utils.memory_utils import force_collect
-    force_collect()
+    from utils.memory_utils import force_collect_full
+    force_collect_full()
 except Exception:
     pass
 

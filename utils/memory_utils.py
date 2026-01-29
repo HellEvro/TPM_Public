@@ -5,6 +5,7 @@
 Использует встроенный модуль gc Python (reference counting + cyclic GC).
 Рекомендуется вызывать force_collect() после тяжёлых операций (обучение моделей,
 обработка больших датасетов, циклы по множеству символов и т.д.).
+Для AI-пайплайна используйте force_collect_full() — GC + очистка кэша PyTorch/CUDA.
 """
 
 import gc as _gc
@@ -24,6 +25,29 @@ def force_collect(generation: int = GENERATION_FULL) -> int:
     :return: количество собранных объектов (для логирования при необходимости)
     """
     return _gc.collect(generation)
+
+
+def _empty_torch_cuda_cache() -> None:
+    """Очищает кэш CUDA PyTorch, если torch доступен и CUDA используется."""
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
+
+
+def force_collect_full(generation: int = GENERATION_FULL) -> int:
+    """
+    Полная очистка памяти: GC + освобождение кэша PyTorch/CUDA (если есть).
+    Рекомендуется вызывать после тяжёлых AI-операций (обучение, инференс по батчам).
+
+    :param generation: поколение GC (по умолчанию 2 — полная сборка)
+    :return: количество собранных объектов gc
+    """
+    n = _gc.collect(generation)
+    _empty_torch_cuda_cache()
+    return n
 
 
 def collect_if_enabled(generation: int = GENERATION_FULL) -> Optional[int]:
