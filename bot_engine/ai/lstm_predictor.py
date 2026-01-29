@@ -469,7 +469,7 @@ class LSTMPredictor:
             Массив признаков для модели
         """
         if len(candles) < self.config['sequence_length']:
-            logger.debug(f"Недостаточно свечей: {len(candles)} < {self.config['sequence_length']}")
+            pass
             return None
         
         df = pd.DataFrame(candles)
@@ -537,7 +537,7 @@ class LSTMPredictor:
             
             # Логируем использование GPU для предсказания
             if GPU_AVAILABLE and DEVICE and features_tensor.device.type == 'cuda':
-                logger.debug(f"🚀 Предсказание выполняется на GPU: {DEVICE}")
+                pass
             
             # Предсказание
             self.model.eval()
@@ -703,7 +703,7 @@ class LSTMPredictor:
                     # Логируем использование GPU каждые 10 батчей (только для первых 3 эпох)
                     if GPU_AVAILABLE and DEVICE and epoch < 3 and batch_idx % 10 == 0:
                         memory_used = torch.cuda.memory_allocated(0) / 1024**2
-                        logger.debug(f"📊 Эпоха {epoch+1}/{epochs}, Батч {batch_idx}: GPU память = {memory_used:.2f} MB, Loss = {loss.item():.6f}")
+                        pass
                 
                 # Средний loss по эпохе (считаем до использования в логах)
                 avg_train_loss = epoch_loss / len(train_loader) if train_loader else 0.0
@@ -914,6 +914,6 @@ class LSTMPredictor:
             if weights is not None:
                 return weights.cpu().numpy()
         except Exception as e:
-            logger.debug(f"Не удалось получить attention weights: {e}")
+            pass
         
         return None

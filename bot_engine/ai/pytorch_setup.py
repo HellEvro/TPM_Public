@@ -20,7 +20,7 @@ def check_python_version():
     """Проверяет версию Python. PyTorch поддерживает Python 3.8+."""
     version = sys.version_info
     major, minor = version.major, version.minor
-    
+
     if major == 3 and minor >= 8:
         return {
             'supported': True,
@@ -28,7 +28,7 @@ def check_python_version():
             'message': f'Python {major}.{minor} поддерживается PyTorch',
             'recommended': f'Python {major}.{minor}'
         }
-    
+
     # Версии ниже 3.8 не поддерживаются
     return {
         'supported': False,
@@ -55,16 +55,16 @@ def check_pytorch_installation():
     try:
         logger.info("Импорт PyTorch...")
         import torch
-        
+
         logger.info("Получение информации о PyTorch...")
         version = torch.__version__
-        
+
         logger.info("Проверка поддержки CUDA...")
         cuda_available = torch.cuda.is_available()
         cuda_version = None
         if cuda_available:
             cuda_version = torch.version.cuda
-        
+
         logger.info("Поиск GPU устройств...")
         gpus_found = 0
         gpu_devices = []
@@ -73,7 +73,7 @@ def check_pytorch_installation():
             for i in range(gpus_found):
                 gpu_name = torch.cuda.get_device_name(i)
                 gpu_devices.append(f"GPU {i}: {gpu_name}")
-        
+
         return {
             'installed': True,
             'version': version,
@@ -127,29 +127,29 @@ def ensure_pytorch_setup():
     Вызывается автоматически при импорте модуля
     """
     global _pytorch_checked
-    
+
     # Проверяем только один раз во всей программе
     if _pytorch_checked:
-        logger.debug("PyTorch уже проверен, пропускаем повторную проверку")
+
         return True
-    
+
     # Проверяем, что мы в главном процессе (для предотвращения дублирования в дочерних процессах)
     try:
         import multiprocessing
         is_main_process = multiprocessing.current_process().name == 'MainProcess'
         if not is_main_process:
-            logger.debug("Дочерний процесс - пропускаем проверку PyTorch")
+
             return True
     except:
         # Если multiprocessing недоступен, продолжаем
         pass
-    
+
     _pytorch_checked = True
-    
+
     try:
         # Проверяем версию Python
         python_info = check_python_version()
-        
+
         # Проверяем наличие GPU
         logger.info("Проверка наличия GPU в системе...")
         has_gpu = check_gpu_available()
@@ -157,11 +157,11 @@ def ensure_pytorch_setup():
             logger.info("✅ NVIDIA GPU обнаружен в системе")
         else:
             logger.info("ℹ️ NVIDIA GPU не обнаружен, будет использоваться CPU")
-        
+
         # Проверяем установку PyTorch
         logger.info("Проверка установки PyTorch...")
         torch_info = check_pytorch_installation()
-        
+
         if not torch_info['installed']:
             # PyTorch должен устанавливаться через requirements.txt
             logger.warning("⚠️ PyTorch не установлен")
@@ -169,11 +169,11 @@ def ensure_pytorch_setup():
             if has_gpu:
                 logger.info("💡 Для GPU поддержки: pip install torch --index-url https://download.pytorch.org/whl/cu121")
             logger.info("ℹ️ AI система будет работать без PyTorch (LSTM и некоторые функции будут недоступны).")
-        
+
         # Выводим информацию о PyTorch
         if torch_info['installed']:
             logger.info(f"PyTorch версия: {torch_info['version']}")
-            
+
             if torch_info['cuda_available']:
                 logger.info(f"✅ PyTorch с поддержкой CUDA {torch_info['cuda_version']}")
                 if torch_info['gpus_found'] > 0:
@@ -197,7 +197,7 @@ def ensure_pytorch_setup():
         logger.warning(f"Ошибка при проверке PyTorch: {e}")
         logger.info("Продолжаем работу...")
         return True
-    
+
     return True
 
 # НЕ вызываем автоматически при импорте - только по явному запросу

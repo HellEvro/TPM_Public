@@ -213,20 +213,20 @@ class BotsDatabase:
                 cursor1 = conn1.cursor()
                 
                 # Проверяем режим журнала
-                logger.debug("   [3/4] Проверка режима журнала...")
+                pass
                 cursor1.execute("PRAGMA journal_mode")
                 journal_mode = cursor1.fetchone()[0]
-                logger.debug(f"   [3/4] Режим журнала: {journal_mode}")
+                pass
                 
                 # Если WAL режим - делаем checkpoint для синхронизации
                 if journal_mode.upper() == 'WAL':
-                    logger.debug("   [3/4] WAL режим обнаружен, выполнение checkpoint...")
+                    pass
                     try:
                         cursor1.execute("PRAGMA wal_checkpoint(PASSIVE)")
                         conn1.commit()
-                        logger.debug("   [3/4] ✅ Checkpoint выполнен")
+                        pass
                     except Exception as e:
-                        logger.debug(f"   [3/4] ⚠️ Ошибка checkpoint (игнорируем): {e}")
+                        pass
                 
                 conn1.close()
                 
@@ -274,7 +274,7 @@ class BotsDatabase:
             except sqlite3.OperationalError as e:
                 error_str = str(e).lower()
                 if "locked" in error_str:
-                    logger.debug("   [3/4] ⚠️ БД заблокирована, пропускаем проверку целостности")
+                    pass
                     return True, None
                 logger.warning(f"⚠️ Ошибка проверки целостности БД: {e}, продолжаем работу...")
                 if ("disk i/o" in error_str or "i/o error" in error_str) and self._is_unc_path():
@@ -309,7 +309,7 @@ class BotsDatabase:
         for attempt in range(max_retries):
             try:
                 if attempt > 0:
-                    logger.debug(f"🔄 Попытка создания резервной копии {attempt + 1}/{max_retries}...")
+                    pass
                     time.sleep(1.0 * attempt)
                 
                 shutil.copy2(self.db_path, backup_path)
@@ -326,7 +326,7 @@ class BotsDatabase:
             except PermissionError as e:
                 # Файл заблокирован другим процессом (в т.ч. WinError 32/33 на UNC)
                 if attempt < max_retries - 1:
-                    logger.debug(f"⚠️ Файл БД заблокирован, повторяем попытку через {1.0 * (attempt + 1)}s...")
+                    pass
                     continue
                 else:
                     logger.error(f"❌ Не удалось создать резервную копию БД после {max_retries} попыток: {e}")
@@ -337,7 +337,7 @@ class BotsDatabase:
                 # Другие ошибки (в т.ч. WinError 32/33 при копировании по сети)
                 err_str = str(e).lower()
                 if attempt < max_retries - 1:
-                    logger.debug(f"⚠️ Ошибка создания резервной копии (попытка {attempt + 1}/{max_retries}): {e}")
+                    pass
                     time.sleep(1.0 * attempt)
                     continue
                 else:
@@ -386,7 +386,7 @@ class BotsDatabase:
             conn.close()
             return False
         except Exception as e:
-            logger.debug(f"⚠️ Не удалось проверить данные в БД: {e}")
+            pass
             return False
     
     def _recreate_database(self):
@@ -606,7 +606,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка исправления БД: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
     
     @contextmanager
@@ -663,10 +663,10 @@ class BotsDatabase:
                                 if os.path.exists(wal_path):
                                     try:
                                         os.remove(wal_path)
-                                        logger.debug(f"🗑️ Удален старый WAL файл: {wal_path}")
+                                        pass
                                     except (OSError, PermissionError) as wal_error:
                                         # Не критично - файл будет пересоздан
-                                        logger.debug(f"⚠️ Не удалось удалить {wal_path}: {wal_error}")
+                                        pass
                     except Exception:
                         pass  # Игнорируем ошибки проверки размера
                 
@@ -805,7 +805,7 @@ class BotsDatabase:
                     last_error = e
                     if retry_on_locked and attempt < max_retries - 1:
                         wait_time = (attempt + 1) * 0.5
-                        logger.debug(f"⚠️ БД заблокирована при подключении (попытка {attempt + 1}/{max_retries}), ждем {wait_time:.1f}s...")
+                        pass
                         time.sleep(wait_time)
                         continue
                     else:
@@ -1152,14 +1152,14 @@ class BotsDatabase:
                     cursor.execute(f"ALTER TABLE rsi_cache_coins ADD COLUMN {rsi_key} REAL")
                     logger.info(f"✅ Добавлена колонка {rsi_key} в таблицу rsi_cache_coins")
                 except Exception as e:
-                    logger.debug(f"Колонка {rsi_key} уже существует или ошибка: {e}")
+                    pass
             
             if trend_key not in column_names and current_timeframe != '6h':
                 try:
                     cursor.execute(f"ALTER TABLE rsi_cache_coins ADD COLUMN {trend_key} TEXT")
                     logger.info(f"✅ Добавлена колонка {trend_key} в таблицу rsi_cache_coins")
                 except Exception as e:
-                    logger.debug(f"Колонка {trend_key} уже существует или ошибка: {e}")
+                    pass
             
             # Индексы для rsi_cache_coins
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_rsi_cache_coins_cache_id ON rsi_cache_coins(cache_id)")
@@ -1170,7 +1170,7 @@ class BotsDatabase:
                 try:
                     cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_rsi_cache_coins_{rsi_key} ON rsi_cache_coins({rsi_key})")
                 except Exception as e:
-                    logger.debug(f"Не удалось создать индекс для {rsi_key}: {e}")
+                    pass
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_rsi_cache_coins_signal ON rsi_cache_coins(signal)")
             
             # ==================== ТАБЛИЦА: СОСТОЯНИЕ ПРОЦЕССОВ (НОРМАЛИЗОВАННАЯ) ====================
@@ -1551,7 +1551,7 @@ class BotsDatabase:
                         cursor.execute("ALTER TABLE bots ADD COLUMN break_even_stop_set INTEGER DEFAULT 0")
                         conn.commit()
                     except sqlite3.OperationalError as e:
-                        logger.debug(f"⚠️ Ошибка миграции схемы: {e}")
+                        pass
             
             # ==================== МИГРАЦИЯ: Добавляем поля защиты от повторных входов в individual_coin_settings ====================
             if self._table_exists(cursor, 'individual_coin_settings'):
@@ -1566,7 +1566,7 @@ class BotsDatabase:
                         conn.commit()
                         logger.info("✅ Миграция: поля защиты от повторных входов добавлены в individual_coin_settings")
                     except sqlite3.OperationalError as e:
-                        logger.debug(f"⚠️ Ошибка миграции схемы: {e}")
+                        pass
             
             # ==================== МИГРАЦИЯ: Добавляем entry_timeframe в таблицу bots ====================
             try:
@@ -1793,7 +1793,7 @@ class BotsDatabase:
                         except Exception:
                             pass  # Игнорируем ошибки - возможно таблица уже удалена
                     else:
-                        logger.debug("ℹ️ Данные bots уже мигрированы")
+                        pass
                         
                         # ВСЕГДА удаляем старую таблицу bots_state - данные уже в нормализованных таблицах
                         try:
@@ -1802,7 +1802,7 @@ class BotsDatabase:
                                 cursor.execute("DROP TABLE IF EXISTS bots_state")
                                 logger.info("🗑️ Старая таблица bots_state удалена (данные мигрированы в таблицы bots и auto_bot_config)")
                         except Exception as cleanup_error:
-                            logger.debug(f"⚠️ Ошибка очистки старой таблицы bots_state: {cleanup_error}")
+                            pass
                         
             except sqlite3.OperationalError:
                 # Таблица bots_state не существует - это нормально, значит уже удалена или не создавалась
@@ -1883,7 +1883,7 @@ class BotsDatabase:
                                 if len(candles) > MAX_CANDLES_PER_SYMBOL:
                                     candles_sorted = sorted(candles, key=lambda x: x.get('time', 0))
                                     candles = candles_sorted[-MAX_CANDLES_PER_SYMBOL:]
-                                    logger.debug(f"   📊 {symbol}: Ограничено до {MAX_CANDLES_PER_SYMBOL} свечей (было {len(candles_sorted)})")
+                                    pass
                                 
                                 # Удаляем старые свечи для этого cache_id
                                 cursor.execute("DELETE FROM candles_cache_data WHERE cache_id = ?", (cache_id,))
@@ -2898,9 +2898,9 @@ class BotsDatabase:
                     else:
                         # SQL-скрипт не найден или утилиты недоступны, используем встроенный код
                         if not migration_sql_path.exists():
-                            logger.debug("ℹ️ SQL-скрипт миграции не найден, используем встроенный код")
+                            pass
                         else:
-                            logger.debug("ℹ️ Утилиты database_utils недоступны, используем встроенный код")
+                            pass
                         raise Exception("Используем встроенный код миграции")
                     
                     # Если дошли сюда - миграция выполнена через SQL-скрипт
@@ -3178,13 +3178,13 @@ class BotsDatabase:
             except Exception as e:
                 logger.warning(f"⚠️ Ошибка миграции данных из других БД: {e}")
                 import traceback
-                logger.debug(traceback.format_exc())
+                pass
             
             conn.commit()
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка миграции схемы: {e}")
+            pass
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             # Не прерываем выполнение - миграция схемы не критична
     
     # ==================== МЕТОДЫ ДЛЯ СОСТОЯНИЯ БОТОВ ====================
@@ -3215,7 +3215,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка проверки/создания таблицы {table_name}: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
     
     def save_bots_state(self, bots_data: Dict, auto_bot_config: Dict) -> bool:
@@ -3385,13 +3385,13 @@ class BotsDatabase:
                         cursor.execute(f"DELETE FROM bots WHERE symbol NOT IN ({placeholders})", list(symbols_to_keep))
                         deleted_count = cursor.rowcount
                         if deleted_count > 0:
-                            logger.debug(f"🗑️ Удалено {deleted_count} ботов из БД (не в bots_data)")
+                            pass  # удалено ботов из БД (не в bots_data)
                     else:
                         # Если bots_data пустой - удаляем всех ботов
                         cursor.execute("DELETE FROM bots")
                         deleted_count = cursor.rowcount
                         if deleted_count > 0:
-                            logger.debug(f"🗑️ Удалены все боты из БД (bots_data пустой)")
+                            pass  # удалены все боты из БД (bots_data пустой)
                     
                     # ✅ УБРАНО: auto_bot_config больше НЕ сохраняется в БД
                     # Настройки хранятся ТОЛЬКО в bot_engine/bot_config.py
@@ -3405,7 +3405,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения состояния ботов: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
     
     def load_bots_state(self) -> Dict:
@@ -3547,7 +3547,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки состояния ботов: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return {}
     
     # ==================== МЕТОДЫ ДЛЯ РЕЕСТРА ПОЗИЦИЙ ====================
@@ -3609,7 +3609,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения реестра позиций: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
     
     def load_bot_positions_registry(self) -> Dict:
@@ -3647,7 +3647,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки реестра позиций: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return {}
     
     # ==================== МЕТОДЫ ДЛЯ RSI КЭША ====================
@@ -3688,7 +3688,7 @@ class BotsDatabase:
                     
                     # ⚠️ КРИТИЧНО: Используем DROP TABLE + CREATE TABLE вместо DELETE для гарантированной очистки
                     # DELETE может не удалить все записи из-за блокировок, WAL режима или других проблем
-                    logger.debug("🗑️ Удаляем таблицы RSI кэша для полной очистки (DROP TABLE)...")
+                    pass
                     cursor.execute("DROP TABLE IF EXISTS rsi_cache_coins")
                     cursor.execute("DROP TABLE IF EXISTS rsi_cache")
                     
@@ -3870,12 +3870,12 @@ class BotsDatabase:
                     
                     conn.commit()
             
-            logger.debug("💾 RSI кэш сохранен в нормализованные таблицы БД")
+            pass
             return True
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения RSI кэша: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
     
     def load_rsi_cache(self, max_age_hours: float = 6.0) -> Optional[Dict]:
@@ -3909,7 +3909,7 @@ class BotsDatabase:
                 age_hours = (datetime.now() - cache_time).total_seconds() / 3600
                 
                 if age_hours > max_age_hours:
-                    logger.debug(f"⚠️ RSI кэш устарел ({age_hours:.1f} часов)")
+                    pass
                     return None
                 
                 # Получаем текущий таймфрейм для загрузки правильных колонок
@@ -4038,7 +4038,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки RSI кэша: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return None
     
     def clear_rsi_cache(self) -> bool:
@@ -4048,7 +4048,7 @@ class BotsDatabase:
                 with self._get_connection() as conn:
                     cursor = conn.cursor()
                     # ⚠️ КРИТИЧНО: Используем DROP TABLE + CREATE TABLE вместо DELETE для гарантированной очистки
-                    logger.debug("🗑️ Удаляем таблицы RSI кэша для полной очистки (DROP TABLE)...")
+                    pass
                     cursor.execute("DROP TABLE IF EXISTS rsi_cache_coins")
                     cursor.execute("DROP TABLE IF EXISTS rsi_cache")
                     
@@ -4194,7 +4194,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения состояния процессов: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
     
     def load_process_state(self) -> Dict:
@@ -4253,7 +4253,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки состояния процессов: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return {}
     
     # ==================== МЕТОДЫ ДЛЯ ИНДИВИДУАЛЬНЫХ НАСТРОЕК ====================
@@ -4376,12 +4376,12 @@ class BotsDatabase:
                     
                     conn.commit()
             
-            logger.debug(f"💾 Индивидуальные настройки сохранены в нормализованные столбцы БД ({len(settings)} монет)")
+            pass
             return True
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения индивидуальных настроек: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
     
     def load_individual_coin_settings(self) -> Dict:
@@ -4495,7 +4495,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки индивидуальных настроек: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return {}
     
     def remove_all_individual_coin_settings(self) -> bool:
@@ -4596,7 +4596,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения зрелых монет: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
     
     def load_mature_coins(self) -> Dict:
@@ -4658,7 +4658,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки зрелых монет: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return {}
     
     # ==================== МЕТОДЫ ДЛЯ КЭША ПРОВЕРКИ ЗРЕЛОСТИ ====================
@@ -4752,7 +4752,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения кэша проверки зрелости: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
     
     def load_maturity_check_cache(self) -> Dict:
@@ -4819,7 +4819,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки кэша проверки зрелости: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return {'coins_count': 0, 'config_hash': None}
     
     # ==================== МЕТОДЫ ДЛЯ ДЕЛИСТИРОВАННЫХ МОНЕТ ====================
@@ -4914,7 +4914,7 @@ class BotsDatabase:
                                     INSERT INTO coin_filters_whitelist (symbol, added_at, updated_at)
                                     VALUES (?, ?, ?)
                                 """, (symbol_upper, now, now))
-                        logger.debug(f"💾 Whitelist сохранен: {len(whitelist)} монет")
+                        pass
                     
                     # Сохраняем blacklist
                     if blacklist is not None:
@@ -4928,7 +4928,7 @@ class BotsDatabase:
                                     INSERT INTO coin_filters_blacklist (symbol, added_at, updated_at)
                                     VALUES (?, ?, ?)
                                 """, (symbol_upper, now, now))
-                        logger.debug(f"💾 Blacklist сохранен: {len(blacklist)} монет")
+                        pass
                     
                     # Сохраняем scope в auto_bot_config
                     if scope is not None:
@@ -4936,7 +4936,7 @@ class BotsDatabase:
                             INSERT OR REPLACE INTO auto_bot_config (key, value, updated_at, created_at)
                             VALUES (?, ?, ?, COALESCE((SELECT created_at FROM auto_bot_config WHERE key = ?), ?))
                         """, ('scope', scope, now, 'scope', now))
-                        logger.debug(f"💾 Scope сохранен: {scope}")
+                        pass
                     
                     conn.commit()
                     
@@ -4950,7 +4950,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения фильтров монет: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
     
     def load_coin_filters(self) -> Dict[str, Any]:
@@ -5016,14 +5016,14 @@ class BotsDatabase:
                     old_whitelist_len != new_whitelist_len or 
                     old_blacklist_len != new_blacklist_len or 
                     old_scope != new_scope):
-                    logger.debug(f"📂 Фильтры загружены из БД: whitelist={new_whitelist_len}, blacklist={new_blacklist_len}, scope={new_scope}")
+                    pass  # фильтры загружены из БД
             
             return result
                     
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки фильтров монет: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass  # traceback при ошибке загрузки фильтров
             return {'whitelist': [], 'blacklist': [], 'scope': 'all'}
     
     def load_delisted_coins_old(self) -> list:
@@ -5266,7 +5266,7 @@ class BotsDatabase:
                             rows_to_insert = rows_sorted[-MAX_CANDLES_PER_SYMBOL:]
                             
                             if len(rows_sorted) > MAX_CANDLES_PER_SYMBOL:
-                                logger.debug(f"   📊 Миграция: Ограничено до {MAX_CANDLES_PER_SYMBOL} свечей для cache_id={cache_id} (было {len(rows_sorted)})")
+                                pass
                             
                             for row in rows_to_insert:
                                 cursor.execute("""
@@ -5376,7 +5376,7 @@ class BotsDatabase:
                             candles_to_save = candles_sorted[-MAX_CANDLES_PER_SYMBOL:]
                             
                             if len(candles_sorted) > MAX_CANDLES_PER_SYMBOL:
-                                logger.debug(f"   📊 {symbol}: Ограничено до {MAX_CANDLES_PER_SYMBOL} свечей (было {len(candles_sorted)})")
+                                pass
                             
                             # Добавляем свечи в общий список для пакетной вставки
                             for candle in candles_to_save:
@@ -5421,7 +5421,7 @@ class BotsDatabase:
                                 logger.error(f"❌ Обнаружены дубликаты! Примеры: {duplicates[:5]}")
                         
                         if count_after_insert == inserted_total_count:
-                            logger.debug(f"💾 Вставлено {inserted_total_count:,} новых свечей в кэш ({len(candles_cache)} символов), проверка: в БД {count_after_insert:,} записей ✅")
+                            pass
                         else:
                             logger.warning(f"💾 Вставлено {inserted_total_count:,} новых свечей, но в БД {count_after_insert:,} записей (разница: {count_after_insert - inserted_total_count:,}) ⚠️")
                     
@@ -5452,7 +5452,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения кэша свечей: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
         finally:
             # Снимаем флаг блокировки
@@ -5555,7 +5555,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки кэша свечей: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return {}
     
     def get_candles_for_symbol(self, symbol: str) -> Optional[Dict]:
@@ -5712,7 +5712,7 @@ class BotsDatabase:
                         """, (one_year_ago_ts,))
                         deleted_count = cursor.rowcount
                         if deleted_count > 0:
-                            logger.debug(f"🗑️ Очистка bot_trades_history: удалено {deleted_count} старых закрытых сделок (старше 1 года)")
+                            pass
                         
                         # Также ограничиваем общее количество записей (максимум 100,000)
                         cursor.execute("SELECT COUNT(*) FROM bot_trades_history")
@@ -5740,7 +5740,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения истории сделки: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return None
     
     def get_bot_trades_history(self, 
@@ -5852,7 +5852,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки истории сделок: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return []
     
     # ==================== МЕТОДЫ МИГРАЦИИ ====================
@@ -5948,7 +5948,7 @@ class BotsDatabase:
                             COALESCE((SELECT created_at FROM db_metadata WHERE key = ?), ?))
                 """, (key, value, now, key, now))
                 conn.commit()
-                logger.debug(f"✅ Флаг метаданных установлен: {key} = {value}")
+                pass
         except Exception as e:
             logger.warning(f"⚠️ Ошибка установки флага метаданных {key}: {e}")
     
@@ -6034,7 +6034,7 @@ class BotsDatabase:
                     return row['value']
                 return default
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка получения флага метаданных {key}: {e}")
+            pass
             return default
     
     def _is_migration_flag_set(self, flag_key: str) -> bool:
@@ -6095,7 +6095,7 @@ class BotsDatabase:
                                 migration_stats['bots_state'] = 1
                                 logger.info("📦 Мигрирован bots_state.json в БД")
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка миграции bots_state.json: {e}")
+                    pass
             
             # Миграция bot_positions_registry.json
             positions_file = 'data/bot_positions_registry.json'
@@ -6108,7 +6108,7 @@ class BotsDatabase:
                                 migration_stats['bot_positions_registry'] = len(registry)
                                 logger.info(f"📦 Мигрирован bot_positions_registry.json в БД ({len(registry)} записей)")
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка миграции bot_positions_registry.json: {e}")
+                    pass
             
             # Миграция rsi_cache.json
             rsi_cache_file = 'data/rsi_cache.json'
@@ -6123,7 +6123,7 @@ class BotsDatabase:
                                 migration_stats['rsi_cache'] = 1
                                 logger.info("📦 Мигрирован rsi_cache.json в БД")
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка миграции rsi_cache.json: {e}")
+                    pass
             
             # Миграция process_state.json
             process_state_file = 'data/process_state.json'
@@ -6137,7 +6137,7 @@ class BotsDatabase:
                                 migration_stats['process_state'] = 1
                                 logger.info("📦 Мигрирован process_state.json в БД")
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка миграции process_state.json: {e}")
+                    pass
             
             # Миграция individual_coin_settings.json
             settings_file = 'data/individual_coin_settings.json'
@@ -6150,7 +6150,7 @@ class BotsDatabase:
                                 migration_stats['individual_coin_settings'] = len(settings)
                                 logger.info(f"📦 Мигрирован individual_coin_settings.json в БД ({len(settings)} записей)")
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка миграции individual_coin_settings.json: {e}")
+                    pass
             
             # Миграция mature_coins.json
             mature_coins_file = 'data/mature_coins.json'
@@ -6163,7 +6163,7 @@ class BotsDatabase:
                                 migration_stats['mature_coins'] = len(mature_coins)
                                 logger.info(f"📦 Мигрирован mature_coins.json в БД ({len(mature_coins)} записей)")
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка миграции mature_coins.json: {e}")
+                    pass
             
             # Миграция maturity_check_cache.json
             maturity_cache_file = 'data/maturity_check_cache.json'
@@ -6178,7 +6178,7 @@ class BotsDatabase:
                                 migration_stats['maturity_check_cache'] = 1
                                 logger.info("📦 Мигрирован maturity_check_cache.json в БД")
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка миграции maturity_check_cache.json: {e}")
+                    pass
             
             # Миграция delisted.json
             delisted_file = 'data/delisted.json'
@@ -6191,7 +6191,7 @@ class BotsDatabase:
                                 migration_stats['delisted'] = len(delisted)
                                 logger.info(f"📦 Мигрирован delisted.json в БД ({len(delisted)} записей)")
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка миграции delisted.json: {e}")
+                    pass
             
             # Миграция candles_cache.json
             candles_cache_file = 'data/candles_cache.json'
@@ -6204,7 +6204,7 @@ class BotsDatabase:
                                 migration_stats['candles_cache'] = len(candles_cache)
                                 logger.info(f"📦 Мигрирован candles_cache.json в БД ({len(candles_cache)} символов)")
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка миграции candles_cache.json: {e}")
+                    pass
             
             if migration_stats:
                 logger.info(f"✅ Миграция завершена: {sum(migration_stats.values())} записей мигрировано")
@@ -6259,7 +6259,7 @@ class BotsDatabase:
                         cursor.execute(f"SELECT COUNT(*) FROM {table}")
                         stats[f"{table}_count"] = cursor.fetchone()[0]
                     except sqlite3.Error as e:
-                        logger.debug(f"⚠️ Ошибка подсчета записей в {table}: {e}")
+                        pass
                         stats[f"{table}_count"] = 0
                 
                 # Размер базы данных (включая WAL файлы)
@@ -6317,7 +6317,7 @@ class BotsDatabase:
                         'timestamp': timestamp_str
                     })
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка обработки резервной копии {filename}: {e}")
+                    pass
             
             backups.sort(key=lambda x: x['created_at'], reverse=True)
             return backups
@@ -6384,17 +6384,17 @@ class BotsDatabase:
             try:
                 if os.path.exists(wal_backup):
                     shutil.copy2(wal_backup, wal_file)
-                    logger.debug("✅ Восстановлен WAL файл")
+                    pass
                 elif os.path.exists(wal_file):
                     os.remove(wal_file)
-                    logger.debug("🗑️ Удален старый WAL файл")
+                    pass
 
                 if os.path.exists(shm_backup):
                     shutil.copy2(shm_backup, shm_file)
-                    logger.debug("✅ Восстановлен SHM файл")
+                    pass
                 elif os.path.exists(shm_file):
                     os.remove(shm_file)
-                    logger.debug("🗑️ Удален старый SHM файл")
+                    pass
             except OSError as e:
                 if _file_in_use(e):
                     logger.error("❌ Файлы БД (-wal/-shm) заняты. Остановите bots.py и воркеры, затем повторите восстановление вручную.")
@@ -6413,7 +6413,7 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка восстановления БД из резервной копии: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
 
 

@@ -48,13 +48,13 @@ def _integrate_sentiment_onchain(symbol: str, signal: str, confidence: float) ->
         current = integrate_sentiment_signal(symbol, current)
         sentiment_used = current.get('sentiment_used', False)
     except Exception as e:
-        logger.debug(f"integrate_sentiment_signal: {e}")
+        pass
     try:
         from bot_engine.ai.onchain_analyzer import integrate_onchain_signal
         current = integrate_onchain_signal(symbol, current)
         onchain_used = current.get('onchain_used', False)
     except Exception as e:
-        logger.debug(f"integrate_onchain_signal: {e}")
+        pass
     score = current.get('score', _score_from_signal(signal, confidence))
     out_signal = _signal_from_score(score)
     out_conf = min(1.0, abs(score) / 100.0) if score else confidence
@@ -76,7 +76,7 @@ def _get_ai_data_storage():
         from bot_engine.ai.ai_data_storage import AIDataStorage
         _ai_data_storage = AIDataStorage()
     except Exception as exc:
-        logger.debug(f"AIDataStorage недоступен: {exc}")
+        pass
         _ai_data_storage = None
     return _ai_data_storage
 
@@ -91,7 +91,7 @@ def get_ai_system():
             from ai import get_ai_system as _get_ai_system
             _ai_system = _get_ai_system()
         except Exception as e:
-            logger.debug(f"AI система недоступна: {e}")
+            pass
             return None
     
     return _ai_system
@@ -107,7 +107,7 @@ def get_smc_features():
             _smc_features = SmartMoneyFeatures()
             logger.info("SmartMoneyFeatures инициализирован")
         except Exception as e:
-            logger.debug(f"SmartMoneyFeatures недоступен: {e}")
+            pass
             return None
     
     return _smc_features
@@ -142,7 +142,7 @@ def get_smc_signal(candles: List[Dict], current_price: float = None) -> Optional
             return None
         
         if len(df) < 10:
-            logger.debug("SMC: недостаточно данных (минимум 10 свечей)")
+            pass
             return None
         
         # Получаем комплексный сигнал
@@ -151,7 +151,7 @@ def get_smc_signal(candles: List[Dict], current_price: float = None) -> Optional
         return signal
         
     except Exception as e:
-        logger.debug(f"Ошибка получения SMC сигнала: {e}")
+        pass
         return None
 
 
@@ -197,7 +197,7 @@ def get_smc_analysis(candles: List[Dict]) -> Optional[Dict]:
         return analysis
         
     except Exception as e:
-        logger.debug(f"Ошибка получения SMC анализа: {e}")
+        pass
         return None
 
 
@@ -231,7 +231,7 @@ def should_use_ai_prediction(symbol: str, config: Dict = None) -> bool:
         return True
         
     except Exception as e:
-        logger.debug(f"Ошибка проверки использования AI: {e}")
+        pass
         return False
 
 
@@ -259,7 +259,7 @@ def get_ai_prediction(symbol: str, market_data: Dict) -> Optional[Dict]:
         return prediction
         
     except Exception as e:
-        logger.debug(f"Ошибка получения предсказания AI для {symbol}: {e}")
+        pass
         return None
 
 
@@ -360,7 +360,7 @@ def get_optimized_bot_config(symbol: str) -> Optional[Dict]:
         return optimized
         
     except Exception as e:
-        logger.debug(f"Ошибка получения оптимизированной конфигурации для {symbol}: {e}")
+        pass
         return None
 
 
@@ -445,7 +445,7 @@ def should_open_position_with_ai(
             return {'should_open': True, 'ai_used': False, 'smc_used': False, 'reason': 'AI system not available'}
         
         if not ai_system.trainer or not ai_system.trainer.signal_predictor:
-            logger.debug(f"AI модели не обучены для {symbol}")
+            pass
             if smc_signal:
                 return result  # Используем только SMC
             return {'should_open': True, 'ai_used': False, 'smc_used': result.get('smc_used', False), 'reason': 'AI models not trained yet'}
@@ -468,7 +468,7 @@ def should_open_position_with_ai(
         prediction = ai_system.predict_signal(symbol, market_data)
         
         if 'error' in prediction:
-            logger.debug(f"Ошибка предсказания AI для {symbol}: {prediction.get('error')}")
+            pass
             if smc_signal:
                 return result  # Используем только SMC
             return {'should_open': True, 'ai_used': False, 'smc_used': result.get('smc_used', False), 'reason': f"AI prediction error: {prediction.get('error')}"}
@@ -542,14 +542,14 @@ def should_open_position_with_ai(
                     symbol, direction, rsi, trend, price, signal, confidence, market_data
                 )
             except Exception as e:
-                logger.debug(f"Ошибка отслеживания решения AI: {e}")
+                pass
         
         return result
         
     except Exception as e:
         logger.error(f"Ошибка при получении AI/SMC предсказания для {symbol}: {e}")
         import traceback
-        logger.debug(traceback.format_exc())
+        pass
         return {'should_open': True, 'ai_used': False, 'smc_used': False, 'reason': f'AI/SMC error: {e}'}
 
 # Глобальная функция для отслеживания решений AI
@@ -584,7 +584,7 @@ def _track_ai_decision(symbol: str, direction: str, rsi: float, trend: str,
             try:
                 storage.save_ai_decision(decision_id, decision_payload)
             except Exception as storage_error:
-                logger.debug(f"⚠️ Не удалось сохранить решение AI в хранилище: {storage_error}")
+                pass
         
         return decision_id
     except:
@@ -613,7 +613,7 @@ def update_ai_decision_result(decision_id: str, pnl: float, roi: float, is_succe
                             decision_id, pnl, roi, is_successful, {'exit_data': 'from_bot_class'}
                         )
                 except Exception as save_error:
-                    logger.debug(f"⚠️ Ошибка сохранения решения AI: {save_error}")
+                    pass
 
                 # НОВОЕ: Отправляем сделку в систему самообучения
                 try:
@@ -625,9 +625,9 @@ def update_ai_decision_result(decision_id: str, pnl: float, roi: float, is_succe
                         'is_successful': is_successful
                     })
                     process_trade_for_self_learning(trade_result)
-                    logger.debug(f"🧠 Сделка {decision_id} отправлена в систему самообучения")
+                    pass
                 except Exception as self_learning_error:
-                    logger.debug(f"⚠️ Ошибка отправки в самообучение: {self_learning_error}")
+                    pass
 
         storage = _get_ai_data_storage()
         if storage:
@@ -640,7 +640,7 @@ def update_ai_decision_result(decision_id: str, pnl: float, roi: float, is_succe
                     'closed_at': datetime.now().isoformat()
                 })
             except Exception as storage_error:
-                logger.debug(f"⚠️ Ошибка обновления решения AI в хранилище: {storage_error}")
+                pass
     except Exception as e:
-        logger.debug(f"⚠️ Ошибка обновления результата решения AI: {e}")
+        pass
 

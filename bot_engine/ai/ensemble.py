@@ -118,7 +118,7 @@ class VotingEnsemble:
                     predictions[name] = pred
                     weights[name] = model_data['weight']
             except Exception as e:
-                logger.debug(f"Ошибка предсказания {name}: {e}")
+                pass
         
         if not predictions:
             return {'error': 'All models failed'}
@@ -301,7 +301,7 @@ if PYTORCH_AVAILABLE:
                     else:
                         all_preds.extend([0, 0, 0.5])
                 except Exception as e:
-                    logger.debug(f"Ошибка базовой модели {name}: {e}")
+                    pass
                     all_preds.extend([0, 0, 0.5])
             
             if not all_preds:
@@ -504,7 +504,7 @@ class EnsemblePredictor:
                 'smc_reasons': signal.get('reasons', [])
             }
         except Exception as e:
-            logger.debug(f"SMC predict error: {e}")
+            pass
             return None
     
     def predict(self, candles: List[Dict], current_price: float) -> Dict:

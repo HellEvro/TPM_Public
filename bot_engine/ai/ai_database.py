@@ -113,7 +113,7 @@ class AIDatabase:
         except Exception as e:
             # Если не можем прочитать файл, не считаем его поврежденным
             # Возможно, он заблокирован другим процессом или на удаленном диске
-            logger.debug(f"⚠️ Не удалось проверить файл БД: {e}")
+            pass
             return False
     
     def _backup_database(self, max_retries: int = 3) -> Optional[str]:
@@ -144,7 +144,7 @@ class AIDatabase:
             try:
                 if attempt > 0:
                     try:
-                        logger.debug(f"🔄 Попытка создания резервной копии {attempt + 1}/{max_retries}...")
+                        pass
                     except MemoryError:
                         pass
                     time.sleep(1.0 * attempt)
@@ -161,12 +161,12 @@ class AIDatabase:
                     try:
                         shutil.copy2(wal_file, backup_path + '-wal')
                     except Exception as e:
-                        logger.debug(f"⚠️ Не удалось скопировать WAL файл: {e}")
+                        pass
                 if os.path.exists(shm_file):
                     try:
                         shutil.copy2(shm_file, backup_path + '-shm')
                     except Exception as e:
-                        logger.debug(f"⚠️ Не удалось скопировать SHM файл: {e}")
+                        pass
                 
                 logger.warning(f"💾 Создана резервная копия БД: {backup_path}")
                 return backup_path
@@ -178,7 +178,7 @@ class AIDatabase:
                 # Файл заблокирован другим процессом
                 if attempt < max_retries - 1:
                     try:
-                        logger.debug(f"⚠️ Файл БД заблокирован, повторяем попытку через {1.0 * (attempt + 1)}s...")
+                        pass
                     except MemoryError:
                         pass
                     continue
@@ -193,7 +193,7 @@ class AIDatabase:
                 if "процесс не может получить доступ к файлу" in error_str or "file is locked" in error_str or "access" in error_str:
                     # Файл заблокирован
                     if attempt < max_retries - 1:
-                        logger.debug(f"⚠️ Файл БД заблокирован, повторяем попытку через {1.0 * (attempt + 1)}s...")
+                        pass
                         continue
                     else:
                         logger.error(f"❌ Не удалось создать резервную копию БД после {max_retries} попыток: {e}")
@@ -246,7 +246,7 @@ class AIDatabase:
             conn.close()
             return False
         except Exception as e:
-            logger.debug(f"⚠️ Не удалось проверить данные в БД: {e}")
+            pass
             return False
     
     def _recreate_database(self):
@@ -333,7 +333,7 @@ class AIDatabase:
                         last_error = e
                         if retry_on_locked and attempt < max_retries - 1:
                             wait_time = (attempt + 1) * 0.5  # Экспоненциальная задержка: 0.5s, 1s, 1.5s...
-                            logger.debug(f"⚠️ БД заблокирована (попытка {attempt + 1}/{max_retries}), ждем {wait_time:.1f}s...")
+                            pass
                             time.sleep(wait_time)
                             continue  # Повторяем попытку
                         else:
@@ -453,7 +453,7 @@ class AIDatabase:
                     last_error = e
                     if retry_on_locked and attempt < max_retries - 1:
                         wait_time = (attempt + 1) * 0.5
-                        logger.debug(f"⚠️ БД заблокирована при подключении (попытка {attempt + 1}/{max_retries}), ждем {wait_time:.1f}s...")
+                        pass
                         time.sleep(wait_time)
                         continue
                     else:
@@ -479,64 +479,64 @@ class AIDatabase:
         if not os.path.exists(self.db_path):
             return True, None  # Нет БД - это нормально, будет создана
         
-        logger.debug("   [1/4] Проверка существования БД...")
+        pass
         
         try:
             # Сначала проверяем, не заблокирована ли БД другим процессом
             # Пытаемся простое подключение с коротким таймаутом
-            logger.debug("   [2/4] Проверка блокировки БД...")
+            pass
             try:
                 test_conn = sqlite3.connect(self.db_path, timeout=1.0)
                 test_conn.close()
-                logger.debug("   [2/4] ✅ БД не заблокирована")
+                pass
             except sqlite3.OperationalError as e:
                 if "locked" in str(e).lower():
                     # БД заблокирована - пропускаем проверку, чтобы не блокировать запуск
-                    logger.debug("   [2/4] ⚠️ БД заблокирована другим процессом, пропускаем проверку целостности")
+                    pass
                     return True, None
                 raise
             
             # ⚡ ИСПРАВЛЕНО: Создаем новое соединение для каждой операции
             # Это гарантирует, что все операции выполняются в том же потоке
-            logger.debug("   [3/4] Подключение к БД и проверка режима журнала...")
+            pass
             try:
                 # Получаем размер БД перед проверкой
                 try:
                     db_size_mb = os.path.getsize(self.db_path) / (1024 * 1024)  # MB
                     db_size_gb = db_size_mb / 1024  # GB
-                    logger.debug(f"   [3/4] Размер БД: {db_size_mb:.2f} MB ({db_size_gb:.2f} GB)")
+                    pass
                     
                     # Пропускаем проверку целостности для очень больших БД (>1 GB)
                     if db_size_mb > 1024:  # Больше 1 GB
                         logger.info(f"   [3/4] ⚠️ БД очень большая ({db_size_gb:.2f} GB), пропускаем проверку целостности для ускорения запуска")
                         return True, None
                 except Exception as e:
-                    logger.debug(f"   [3/4] ⚠️ Не удалось получить размер БД: {e}")
+                    pass
                 
                 # Создаем новое соединение для проверки режима журнала
                 conn1 = sqlite3.connect(self.db_path, timeout=5.0)
                 cursor1 = conn1.cursor()
                 
                 # Проверяем режим журнала
-                logger.debug("   [3/4] Проверка режима журнала...")
+                pass
                 cursor1.execute("PRAGMA journal_mode")
                 journal_mode = cursor1.fetchone()[0]
-                logger.debug(f"   [3/4] Режим журнала: {journal_mode}")
+                pass
                 
                 # Если WAL режим - делаем checkpoint для синхронизации
                 if journal_mode.upper() == 'WAL':
-                    logger.debug("   [3/4] WAL режим обнаружен, выполнение checkpoint...")
+                    pass
                     try:
                         cursor1.execute("PRAGMA wal_checkpoint(PASSIVE)")
                         conn1.commit()
-                        logger.debug("   [3/4] ✅ Checkpoint выполнен")
+                        pass
                     except Exception as e:
-                        logger.debug(f"   [3/4] ⚠️ Ошибка checkpoint (игнорируем): {e}")
+                        pass
                 
                 conn1.close()
                 
                 # Создаем новое соединение для проверки целостности
-                logger.debug("   [4/4] Подготовка к проверке целостности...")
+                pass
                 conn2 = sqlite3.connect(self.db_path, timeout=5.0)
                 cursor2 = conn2.cursor()
                 
@@ -544,18 +544,18 @@ class AIDatabase:
                 try:
                     cursor2.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
                     table_count = cursor2.fetchone()[0]
-                    logger.debug(f"   [4/4] Количество таблиц в БД: {table_count}")
+                    pass
                 except Exception as e:
-                    logger.debug(f"   [4/4] ⚠️ Не удалось получить количество таблиц: {e}")
+                    pass
                 
                 # Устанавливаем таймаут для операции
-                logger.debug("   [4/4] Установка PRAGMA busy_timeout = 2000...")
+                pass
                 cursor2.execute("PRAGMA busy_timeout = 2000")  # 2 секунды
-                logger.debug("   [4/4] ✅ busy_timeout установлен")
+                pass
                 
                 # ⚡ ИСПРАВЛЕНО: Выполняем проверку целостности в том же потоке
                 import time
-                logger.debug("   [4/4] ⏳ Начинаю выполнение PRAGMA quick_check...")
+                pass
                 start_time = time.time()
                 
                 try:
@@ -569,19 +569,19 @@ class AIDatabase:
                     conn2.close()
                     return True, None  # Считаем БД валидной при ошибке
                 
-                logger.debug(f"   [4/4] ⏱️ PRAGMA quick_check выполнен за {elapsed:.2f} секунд")
-                logger.debug(f"   [4/4] 📊 Результат проверки получен: {result[:100] if len(str(result)) > 100 else result}")
+                pass
+                pass
                 
                 if result == "ok":
-                    logger.debug(f"   [4/4] ✅ Проверка целостности пройдена успешно (заняло {elapsed:.2f}s)")
+                    pass
                 else:
                     logger.warning(f"   [4/4] ⚠️ Обнаружены проблемы в БД: {result[:200]}")
                 
                 conn2.close()
-                logger.debug("   [4/4] ✅ Соединение с БД закрыто")
+                pass
                 
                 if result == "ok":
-                    logger.debug("   ✅ Проверка целостности БД завершена успешно")
+                    pass
                     return True, None
                 else:
                     # Есть проблемы - но не делаем полную проверку (она может быть очень долгой)
@@ -592,7 +592,7 @@ class AIDatabase:
                 error_str = str(e).lower()
                 if "locked" in error_str:
                     # БД заблокирована - пропускаем проверку
-                    logger.debug("   [3/4] ⚠️ БД заблокирована, пропускаем проверку целостности")
+                    pass
                     return True, None
                 # Другие ошибки - считаем БД валидной, чтобы не блокировать запуск
                 logger.warning(f"⚠️ Ошибка проверки целостности БД: {e}, продолжаем работу...")
@@ -600,7 +600,7 @@ class AIDatabase:
                 
         except Exception as e:
             # В случае ошибки считаем БД валидной, чтобы не блокировать запуск
-            logger.debug(f"ℹ️ Ошибка проверки целостности БД: {e}, продолжаем работу...")
+            pass
             return True, None  # Возвращаем True, чтобы не блокировать запуск
 
     def _migrate_corrupted_to_fresh(self) -> bool:
@@ -815,7 +815,7 @@ class AIDatabase:
                 print(f"❌ Ошибка исправления БД: {e}")
             try:
                 import traceback
-                logger.debug(traceback.format_exc())
+                pass
             except MemoryError:
                 pass
             return False
@@ -842,7 +842,7 @@ class AIDatabase:
                     logger.error("❌ Не удалось автоматически исправить БД")
                     logger.error("⚠️ Попробуйте восстановить из резервной копии: db.restore_from_backup()")
             else:
-                logger.debug("✅ БД проверена, целостность в порядке")
+                pass
         
         # SQLite автоматически создает файл БД при первом подключении
         # Не нужно создавать пустой файл через touch() - это создает невалидную БД
@@ -1531,7 +1531,7 @@ class AIDatabase:
             
             conn.commit()
             
-            logger.debug("✅ Все таблицы и индексы созданы")
+            pass
     
     def _migrate_schema(self, cursor, conn):
         """Миграция схемы БД: добавляет новые поля если их нет"""
@@ -1654,7 +1654,7 @@ class AIDatabase:
                     
             except sqlite3.OperationalError:
                 # Колонка status_json не существует - значит уже мигрировано или новая структура
-                logger.debug("ℹ️ data_service_status уже в нормализованном формате")
+                pass
             except Exception as e:
                 logger.warning(f"⚠️ Ошибка миграции data_service_status: {e}")
             
@@ -1669,7 +1669,7 @@ class AIDatabase:
                     cursor.execute("DROP TABLE IF EXISTS bots_data_snapshots")
                     logger.info("🗑️ Таблица bots_data_snapshots удалена (снапшоты больше не используются - данные в нормализованных таблицах)")
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка удаления bots_data_snapshots: {e}")
+                pass
             # Проверяем и добавляем entry_volatility и entry_volume_ratio в simulated_trades
             try:
                 cursor.execute("SELECT entry_volatility FROM simulated_trades LIMIT 1")
@@ -1791,13 +1791,13 @@ class AIDatabase:
                                 ))
                                 migrated_count += 1
                             except Exception as e:
-                                logger.debug(f"⚠️ Ошибка миграции записи simulated_trades {row[0]}: {e}")
+                                pass
                                 continue
                     
                     if migrated_count > 0:
                         logger.info(f"✅ Миграция simulated_trades завершена: {migrated_count} записей мигрировано из JSON в нормализованные столбцы")
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка миграции simulated_trades: {e}")
+                pass
             
             # Проверяем и добавляем параметры конфига в simulated_trades (оставляем для обратной совместимости)
             new_fields_sim = [
@@ -1945,13 +1945,13 @@ class AIDatabase:
                                 ))
                                 migrated_count += 1
                             except Exception as e:
-                                logger.debug(f"⚠️ Ошибка миграции записи bot_trades {row[0]}: {e}")
+                                pass
                                 continue
                         
                         if migrated_count > 0:
                             logger.info(f"✅ Миграция bot_trades завершена: {migrated_count} записей мигрировано из JSON в нормализованные столбцы")
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка миграции bot_trades: {e}")
+                pass
             
             # Проверяем и добавляем параметры конфига в bot_trades (оставляем для обратной совместимости)
             new_fields_bot = [
@@ -2088,13 +2088,13 @@ class AIDatabase:
                             ))
                                 migrated_count += 1
                             except Exception as e:
-                                logger.debug(f"⚠️ Ошибка миграции записи parameter_training_samples {row[0]}: {e}")
+                                pass
                                 continue
                     
                     if migrated_count > 0:
                         logger.info(f"✅ Миграция parameter_training_samples завершена: {migrated_count} записей мигрировано")
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка миграции parameter_training_samples: {e}")
+                pass
             
             # ==================== МИГРАЦИЯ: Нормализация JSON параметров в столбцы для used_training_parameters, best_params_per_symbol, blocked_params ====================
             rsi_fields_common = [
@@ -2170,13 +2170,13 @@ class AIDatabase:
                                     ))
                                     migrated_count += 1
                                 except Exception as e:
-                                    logger.debug(f"⚠️ Ошибка миграции записи {table_name} {row[0]}: {e}")
+                                    pass
                                     continue
                             
                             if migrated_count > 0:
                                 logger.info(f"✅ Миграция {table_name} завершена: {migrated_count} записей мигрировано")
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка миграции {table_name}: {e}")
+                    pass
             
             # Проверяем и добавляем поля в blocked_params
             new_fields_blocked = [
@@ -2332,13 +2332,13 @@ class AIDatabase:
                             if cursor.rowcount > 0:
                                 migrated_count += 1
                         except Exception as e:
-                            logger.debug(f"⚠️ Ошибка миграции записи optimized_params {row[0]}: {e}")
+                            pass
                             continue
                     
                     if migrated_count > 0:
                         logger.info(f"✅ Миграция optimized_params завершена: {migrated_count} записей мигрировано из JSON в нормализованные столбцы")
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка миграции optimized_params: {e}")
+                pass
             
             # ==================== МИГРАЦИЯ: Нормализация JSON параметров в столбцы для backtest_results ====================
             # Добавляем новые нормализованные столбцы если их нет
@@ -2429,13 +2429,13 @@ class AIDatabase:
                             if cursor.rowcount > 0:
                                 migrated_count += 1
                         except Exception as e:
-                            logger.debug(f"⚠️ Ошибка миграции записи backtest_results {row[0]}: {e}")
+                            pass
                             continue
                     
                     if migrated_count > 0:
                         logger.info(f"✅ Миграция backtest_results завершена: {migrated_count} записей мигрировано из JSON в нормализованные столбцы")
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка миграции backtest_results: {e}")
+                pass
             
             # ==================== МИГРАЦИЯ: Нормализация JSON параметров в столбцы для ai_decisions ====================
             # Добавляем новые нормализованные столбцы если их нет
@@ -2541,13 +2541,13 @@ class AIDatabase:
                             if cursor.rowcount > 0:
                                 migrated_count += 1
                         except Exception as e:
-                            logger.debug(f"⚠️ Ошибка миграции записи ai_decisions {row[0]}: {e}")
+                            pass
                             continue
                     
                     if migrated_count > 0:
                         logger.info(f"✅ Миграция ai_decisions завершена: {migrated_count} записей мигрировано из JSON в нормализованные столбцы")
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка миграции ai_decisions: {e}")
+                pass
             
             # ==================== МИГРАЦИЯ: Нормализация JSON параметров в столбцы для bot_configs ====================
             # Добавляем новые нормализованные столбцы если их нет
@@ -2688,17 +2688,17 @@ class AIDatabase:
                             if cursor.rowcount > 0:
                                 migrated_count += 1
                         except Exception as e:
-                            logger.debug(f"⚠️ Ошибка миграции записи bot_configs {row[0]}: {e}")
+                            pass
                             continue
                     
                     if migrated_count > 0:
                         logger.info(f"✅ Миграция bot_configs завершена: {migrated_count} записей мигрировано из JSON в нормализованные столбцы")
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка миграции bot_configs: {e}")
+                pass
             
             conn.commit()
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка миграции схемы: {e}")
+            pass
     
     # ==================== МЕТОДЫ ДЛЯ СИМУЛЯЦИЙ ====================
     
@@ -2857,13 +2857,13 @@ class AIDatabase:
                         if cursor.rowcount > 0:
                             saved_count += 1
                     except Exception as e:
-                        logger.debug(f"⚠️ Ошибка сохранения симуляции: {e}")
+                        pass
                         continue
                 
                 conn.commit()
         
         if saved_count > 0:
-            logger.debug(f"💾 Сохранено {saved_count} симулированных сделок в БД")
+            pass
         
         return saved_count
     
@@ -3383,7 +3383,7 @@ class AIDatabase:
                         if cursor.rowcount > 0:
                             saved_count += 1
                     except Exception as e:
-                        logger.debug(f"⚠️ Ошибка сохранения сделки биржи: {e}")
+                        pass
                         continue
                 
                 conn.commit()
@@ -3892,9 +3892,9 @@ class AIDatabase:
                         
                         result.append(converted_trade)
                     
-                    logger.debug(f"✅ Загружено {len(bots_trades)} сделок из bots_data.db -> bot_trades_history")
+                    pass
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка загрузки сделок из bots_data.db: {e}")
+                    pass
             
             # ВАЖНО: НЕ загружаем closed_pnl из app_data.db для обучения!
             # Причина: в closed_pnl НЕТ RSI/тренда/волатильности, которые ОБЯЗАТЕЛЬНЫ для обучения ИИ
@@ -3925,7 +3925,7 @@ class AIDatabase:
             if limit:
                 result = result[:limit]
             
-            logger.debug(f"✅ get_trades_for_training: загружено {len(result)} сделок (simulated={include_simulated}, real={include_real}, exchange={include_exchange}, min_trades={min_trades})")
+            pass
             return result
     
     def get_open_positions_for_ai(self) -> List[Dict[str, Any]]:
@@ -3959,7 +3959,7 @@ class AIDatabase:
                 all_positions.extend(positions)
             
             if not all_positions:
-                logger.debug("ℹ️ Нет открытых позиций для анализа ИИ")
+                pass
                 return []
             
             # Загружаем текущий RSI cache
@@ -4034,13 +4034,13 @@ class AIDatabase:
                 
                 enriched_positions.append(enriched_position)
             
-            logger.debug(f"✅ Загружено {len(enriched_positions)} открытых позиций для анализа ИИ")
+            pass
             return enriched_positions
             
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки открытых позиций для ИИ: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return []
     
     def analyze_patterns(self, 
@@ -4474,7 +4474,7 @@ class AIDatabase:
                 conn.commit()
                 return param_id
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка сохранения использованных параметров: {e}")
+            pass
             return None
     
     def get_used_training_parameter(self, param_hash: str) -> Optional[Dict[str, Any]]:
@@ -5003,7 +5003,7 @@ class AIDatabase:
                     # Символ уже заблокирован
                     return False
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка блокировки символа {symbol}: {e}")
+            pass
             return False
     
     def release_lock(self, symbol: str, process_id: str) -> bool:
@@ -5027,7 +5027,7 @@ class AIDatabase:
                 conn.commit()
                 return cursor.rowcount > 0
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка освобождения блокировки {symbol}: {e}")
+            pass
             return False
     
     def get_available_symbols(self, all_symbols: List[str], process_id: str, 
@@ -5094,7 +5094,7 @@ class AIDatabase:
                 conn.commit()
                 return cursor.rowcount > 0
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка продления блокировки {symbol}: {e}")
+            pass
             return False
     
     # ==================== МЕТОДЫ ДЛЯ РАБОТЫ С ИСТОРИЕЙ СВЕЧЕЙ ====================
@@ -5139,7 +5139,7 @@ class AIDatabase:
                 candles_to_save = candles_sorted[-MAX_CANDLES_PER_SYMBOL:]
                 
                 if len(candles_sorted) > MAX_CANDLES_PER_SYMBOL:
-                    logger.debug(f"📊 {symbol}: Ограничено до {MAX_CANDLES_PER_SYMBOL} свечей (было {len(candles_sorted)})")
+                    pass
                 
                 # ⚡ ОПТИМИЗИРОВАННАЯ ВСТАВКА: используем executemany вместо цикла
                 # Вставляем только новые свечи (старые уже удалены)
@@ -5227,7 +5227,7 @@ class AIDatabase:
                         logger.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА! После повторного DELETE осталось {final_count:,} записей для символов из батча!")
                 
                 if old_count > 0:
-                    logger.debug(f"🗑️ Удалено {deleted_total:,} старых свечей для {len(symbols_list)} символов (было {old_count:,}, осталось {count_after_delete:,})")
+                    pass
                 
                 # Собираем все свечи для пакетной вставки
                 all_candles_to_insert = []
@@ -5242,7 +5242,7 @@ class AIDatabase:
                     candles_to_save = candles_sorted[-MAX_CANDLES_PER_SYMBOL:]
                     
                     if len(candles_sorted) > MAX_CANDLES_PER_SYMBOL:
-                        logger.debug(f"📊 {symbol}: Ограничено до {MAX_CANDLES_PER_SYMBOL} свечей (было {len(candles_sorted)})")
+                        pass
                     
                     # Добавляем свечи в общий список для пакетной вставки
                     for candle in candles_to_save:
@@ -5268,7 +5268,7 @@ class AIDatabase:
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, all_candles_to_insert)
                     inserted_total = cursor.rowcount
-                    logger.debug(f"💾 Вставлено {inserted_total:,} новых свечей в ai_data.db ({len(symbols_list)} символов)")
+                    pass
                 
                 conn.commit()
             
@@ -5277,7 +5277,7 @@ class AIDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка батч-сохранения свечей: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return {}
     
     def get_candles(self, symbol: str, timeframe: str = '6h', 
@@ -5378,7 +5378,7 @@ class AIDatabase:
                 symbols = [row[0] for row in cursor.fetchall()]
                 
                 if not symbols:
-                    logger.debug(f"⚠️ В таблице candles_history нет данных для timeframe={timeframe}")
+                    pass
                     return {}
                 
                 result = {}
@@ -5421,7 +5421,7 @@ class AIDatabase:
                         result[symbol] = candles
                 
                 total_candles = sum(len(c) for c in result.values())
-                logger.debug(f"✅ get_all_candles_dict: загружено {len(result)} символов (лимит {max_symbols}), {total_candles} свечей (лимит {max_candles_per_symbol} на символ)")
+                pass
                 return result
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки всех свечей: {e}")
@@ -5488,7 +5488,7 @@ class AIDatabase:
             0 (не сохраняем)
         """
         # Не сохраняем снапшоты - данные уже в нормализованных таблицах
-        logger.debug("ℹ️ Снапшоты больше не сохраняются - данные уже в нормализованных таблицах")
+        pass
         return 0
     
     def get_bots_data_snapshots(self, limit: int = 1000, 
@@ -5510,7 +5510,7 @@ class AIDatabase:
             Пустой список (снапшоты больше не используются)
         """
         # Не загружаем снапшоты - используйте напрямую bots_data.db
-        logger.debug("ℹ️ Снапшоты больше не загружаются - используйте напрямую bots_data.db")
+        pass
         return []
     
     def get_latest_bots_data(self) -> Optional[Dict]:
@@ -5524,7 +5524,7 @@ class AIDatabase:
         Returns:
             None (снапшоты больше не используются)
         """
-        logger.debug("ℹ️ get_latest_bots_data больше не использует снапшоты - используйте напрямую bots_data.db")
+        pass
         return None
     
     def count_bots_data_snapshots(self) -> int:
@@ -5544,7 +5544,7 @@ class AIDatabase:
         Returns:
             0 (нечего удалять)
         """
-        logger.debug("ℹ️ cleanup_old_bots_data_snapshots больше не удаляет снапшоты - таблица будет удалена при миграции")
+        pass
         return 0
     
     def list_backups(self) -> List[Dict[str, Any]]:
@@ -5583,7 +5583,7 @@ class AIDatabase:
                         'timestamp': timestamp_str
                     })
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка обработки резервной копии {filename}: {e}")
+                    pass
             
             backups.sort(key=lambda x: x['created_at'], reverse=True)
             return backups
@@ -5658,7 +5658,7 @@ class AIDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка восстановления БД из резервной копии: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
     
     # ==================== МЕТОДЫ ДЛЯ ИСТОРИИ ОБУЧЕНИЯ (training_history) ====================

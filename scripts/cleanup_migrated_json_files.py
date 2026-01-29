@@ -130,7 +130,7 @@ def verify_json_file_data(file_path):
                 return len(data) > 0
             return bool(data)
     except Exception as e:
-        logger.debug(f"⚠️ Ошибка чтения {file_path}: {e}")
+        pass
         return False
 
 
@@ -226,7 +226,7 @@ def cleanup_json_files(dry_run=True):
                 files_to_remove.append((filename, info, file_path))
                 logger.info(f"📄 {filename} - найден (пустой или невалидный)")
         else:
-            logger.debug(f"📄 {filename} - не найден (уже удален?)")
+            pass
     
     logger.info("")
     

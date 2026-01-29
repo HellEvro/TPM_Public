@@ -716,7 +716,7 @@ class BybitExchange(BaseExchange):
                         'timestamp': response['time']
                     }
                 
-                logger.debug(f"[BYBIT] ⚠️ Пустой ответ тикера для {symbol}: {response}")
+                pass
             except Exception as e:
                 last_error = e
                 logger.warning(f"[BYBIT] ⚠️ Попытка {attempt}/{retries} получить тикер {symbol} не удалась: {e}")
@@ -945,7 +945,7 @@ class BybitExchange(BaseExchange):
                         'message': f"orderQty truncated to zero: позиция {size_to_close} меньше qtyStep {qty_step} для {symbol}. Закройте позицию вручную или рыночным ордером."
                     }
             except Exception as e:
-                logger.debug(f"[BYBIT] {symbol}: не удалось округлить по qtyStep: {e}, используем size как есть")
+                pass
             # Формат qty: убираем лишние нули после запятой, но не теряем точность для малых qtyStep
             qty_str = f"{close_qty:.8f}".rstrip('0').rstrip('.') if isinstance(close_qty, float) else str(close_qty)
             
@@ -1154,7 +1154,7 @@ class BybitExchange(BaseExchange):
                 
                 for interval, interval_name in intervals:
                     try:
-                        logger.debug(f"[BYBIT] Пробуем интервал {interval_name}")
+                        pass
                         # Убираем USDT если он уже есть в символе
                         clean_sym = symbol.replace('USDT', '') if symbol.endswith('USDT') else symbol
                         
@@ -1277,14 +1277,14 @@ class BybitExchange(BaseExchange):
                             if len(klines) <= 500:
                                 selected_interval = interval
                                 selected_klines = klines
-                                logger.debug(f"[BYBIT] Выбран интервал {interval_name} ({len(klines)} свечей)")
+                                pass
                                 break
                             
                             # Если это последний интервал, используем его независимо от количества свечей
                             if interval == 'W':
                                 selected_interval = interval
                                 selected_klines = klines
-                                logger.debug(f"[BYBIT] Использован последний интервал {interval_name} ({len(klines)} свечей)")
+                                pass
                     except Exception as e:
                         logger.error(f"[BYBIT] Ошибка при получении данных для интервала {interval_name}: {e}")
                         continue
@@ -1526,7 +1526,7 @@ class BybitExchange(BaseExchange):
             dict: Значения индикаторов
         """
         try:
-            logger.debug(f"[BYBIT] Запрос индикаторов для {symbol}, таймфрейм: {timeframe}")
+            pass
             
             # Конвертируем таймфрейм в формат Bybit
             timeframe_map = {
@@ -2030,7 +2030,7 @@ class BybitExchange(BaseExchange):
                         self._position_mode_cache_time = current_time
                         return mode
             except Exception as e:
-                logger.debug(f"[BYBIT_BOT] Метод get_position_mode недоступен или вернул ошибку: {e}")
+                pass
             
             # Fallback: проверяем через позиции
             try:
@@ -2056,7 +2056,7 @@ class BybitExchange(BaseExchange):
                         # Сохраняем в кэш
                         self._position_mode_cache = mode
                         self._position_mode_cache_time = current_time
-                        logger.debug(f"[BYBIT_BOT] Режим позиции для {symbol} (через позиции): {mode}")
+                        pass
                         return mode
                     
                     # Если позиций нет для этого символа, пробуем проверить другие символы
@@ -2072,17 +2072,17 @@ class BybitExchange(BaseExchange):
                                     # Сохраняем в кэш
                                     self._position_mode_cache = mode
                                     self._position_mode_cache_time = current_time
-                                    logger.debug(f"[BYBIT_BOT] Режим позиции (определен через другие позиции): {mode}")
+                                    pass
                                     return mode
                                 else:
                                     mode = 'One-Way'
                                     # Сохраняем в кэш
                                     self._position_mode_cache = mode
                                     self._position_mode_cache_time = current_time
-                                    logger.debug(f"[BYBIT_BOT] Режим позиции (определен через другие позиции): {mode}")
+                                    pass
                                     return mode
             except Exception as e:
-                logger.debug(f"[BYBIT_BOT] Не удалось определить режим позиции через позиции: {e}")
+                pass
             
             # Если не удалось определить, используем значение из конфига как fallback
             mode = self.position_mode if hasattr(self, 'position_mode') else 'Hedge'
@@ -2549,10 +2549,10 @@ class BybitExchange(BaseExchange):
                     if last_price > 0:
                         side_upper = (position_side or 'LONG').upper()
                         if side_upper == 'LONG' and take_profit_price <= last_price:
-                            logger.debug(f"[BYBIT_BOT] {symbol}: TP {take_profit_price:.6f} <= lastPrice {last_price:.6f}, пропуск (Long TP должен быть выше цены)")
+                            pass
                             return {'success': True, 'message': f'TP не обновлён: цена {last_price:.6f} уже выше расчётного TP', 'take_profit': take_profit_price}
                         if side_upper == 'SHORT' and take_profit_price >= last_price:
-                            logger.debug(f"[BYBIT_BOT] {symbol}: TP {take_profit_price:.6f} >= lastPrice {last_price:.6f}, пропуск (Short TP должен быть ниже цены)")
+                            pass
                             return {'success': True, 'message': f'TP не обновлён: цена {last_price:.6f} уже ниже расчётного TP', 'take_profit': take_profit_price}
             except Exception as price_err:
                 pass  # Продолжаем без проверки цены
@@ -2598,7 +2598,7 @@ class BybitExchange(BaseExchange):
                     }
                 # 10001: TP для Long должен быть выше base_price, для Short — ниже (цена ушла)
                 if "10001" in error_str or "should be higher than base_price" in error_str or "should be lower than base_price" in error_str:
-                    logger.debug(f"[BYBIT_BOT] {symbol}: TP не обновлён (правило биржи: {error_str[:80]}...)")
+                    pass
                     return {'success': True, 'message': 'TP не обновлён: не соответствует текущей цене', 'take_profit': take_profit_price}
                 logger.error(f"[BYBIT_BOT] Ошибка обновления Take Profit: {e}")
                 import traceback

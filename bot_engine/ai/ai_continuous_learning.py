@@ -54,7 +54,7 @@ class AIContinuousLearning:
                 if result and result.get('knowledge_data'):
                     return result['knowledge_data']
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка загрузки базы знаний из БД: {e}")
+            pass
         
         # База знаний по умолчанию
         default_kb = {
@@ -94,7 +94,7 @@ class AIContinuousLearning:
             
             self.knowledge_base['last_update'] = datetime.now().isoformat()
             self.ai_db.save_knowledge_base('trading_knowledge_base', self.knowledge_base)
-            logger.debug("✅ База знаний сохранена в БД")
+            pass
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения базы знаний в БД: {e}")
     
@@ -508,7 +508,7 @@ class AIContinuousLearning:
             try:
                 self._apply_learning_to_models(improvements)
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка применения улучшений к моделям: {e}")
+                pass
 
         # Сохраняем историю улучшений
         self.knowledge_base['improvement_history'].extend(improvements)
@@ -534,7 +534,7 @@ class AIContinuousLearning:
             ai_system = get_ai_system()
 
             if not ai_system or not ai_system.trainer:
-                logger.debug("⚠️ AI система недоступна для применения улучшений")
+                pass
                 return
 
             logger.info(f"🔄 Применение {len(improvements)} улучшений к ML моделям...")
@@ -589,7 +589,7 @@ class AIContinuousLearning:
                 logger.info(f"📊 Скорректирована модель RSI: успешные сделки при RSI {successful_rsi_avg:.1f}, неуспешные при {failed_rsi_avg:.1f}")
 
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка корректировки модели по RSI: {e}")
+            pass
 
     def _adjust_model_for_trends(self, trend_preferences: List[Dict], ai_trainer) -> None:
         """
@@ -622,7 +622,7 @@ class AIContinuousLearning:
                 logger.info(f"📈 Предпочитаемый тренд для модели: {best_trend}")
 
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка корректировки модели по трендам: {e}")
+            pass
 
 
     def evaluate_ai_performance(self, trades: List[Dict]) -> Dict:

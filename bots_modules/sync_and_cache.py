@@ -208,7 +208,7 @@ def _check_if_trade_already_closed(bot_id, symbol, entry_price, entry_time_str):
         
         return False
     except Exception as e:
-        logger.debug(f"[SYNC_EXCHANGE] ⚠️ Ошибка проверки дубликатов для {symbol}: {e}")
+        pass
         return False
 
 
@@ -649,7 +649,7 @@ def save_system_config(config_data):
                 attrs_to_update[attr] = config_data[key]
 
         if not attrs_to_update:
-            logger.debug("[SYSTEM_CONFIG] ⚠️ Нет параметров для сохранения")
+            pass
             return True
 
         success = save_system_config_to_py(attrs_to_update)
@@ -844,7 +844,7 @@ def save_auto_bot_config(changed_data=None):
             # ✅ Перезагружаем модуль bot_config и обновляем конфигурацию из него
             try:
                 if 'bot_engine.bot_config' in sys.modules:
-                    logger.debug(f"[SAVE_CONFIG] 🔄 Перезагружаем модуль bot_config...")
+                    pass
                     
                     # ✅ КРИТИЧНО: Сохраняем таймфрейм из БД перед перезагрузкой
                     saved_timeframe_from_db = None
@@ -857,7 +857,7 @@ def save_auto_bot_config(changed_data=None):
                     
                     import bot_engine.bot_config
                     importlib.reload(bot_engine.bot_config)
-                    logger.debug(f"[SAVE_CONFIG] ✅ Модуль перезагружен")
+                    pass
                     
                     # ✅ КРИТИЧНО: Восстанавливаем таймфрейм из БД после перезагрузки
                     if saved_timeframe_from_db:
@@ -952,7 +952,7 @@ def load_bots_state():
                         # ✅ КРИТИЧНО: НЕ загружаем ботов в статусе IDLE - они не имеют позиций!
                         # Боты в статусе IDLE должны удаляться при закрытии позиций, а не оставаться в БД.
                         if bot_status == 'idle':
-                            logger.debug(f" ⏭️ Пропускаем бота {symbol} со статусом {bot_status} - бот без позиции должен быть удален")
+                            pass  # бот без позиции должен быть удален
                             continue
                         
                         # ВАЖНО: НЕ проверяем зрелость при восстановлении!
@@ -992,7 +992,7 @@ def load_delisted_coins():
             if 'delisting_scan' in process_state:
                 last_scan = process_state['delisting_scan'].get('last_scan')
         except Exception as state_error:
-            logger.debug(f"Не удалось загрузить last_scan из process_state: {state_error}")
+            pass
         
         # Преобразуем список в формат словаря для обратной совместимости
         if delisted_list:
@@ -1130,7 +1130,7 @@ def scan_all_coins_for_delisting():
                             instruments_list = result.get('list', [])
                             
                             if not instruments_list:
-                                logger.debug(f"📊 Страница {page}: нет инструментов, завершаем сканирование")
+                                pass
                                 break
                             
                             all_instruments.extend(instruments_list)
@@ -1206,7 +1206,7 @@ def scan_all_coins_for_delisting():
                 'new_delisted': new_delisted_count
             })
         except Exception as state_error:
-            logger.debug(f"Не удалось сохранить last_scan в process_state: {state_error}")
+            pass
         
         # Сохраняем обновленные данные
         if save_delisted_coins(delisted_data):
@@ -1242,14 +1242,14 @@ def check_delisting_emergency_close():
                 # Сканируем не чаще чем раз в час (3600 секунд), чтобы не перегружать API
                 if time_since_scan < 3600:
                     should_scan = False
-                    logger.debug(f"⏭️ Пропускаем сканирование делистинга (прошло {time_since_scan:.0f} сек, минимум 3600 сек)")
+                    pass
             except Exception as time_check_error:
-                logger.debug(f"Ошибка проверки времени последнего сканирования: {time_check_error}")
+                pass
         
         if should_scan:
             scan_all_coins_for_delisting()
         else:
-            logger.debug("ℹ️ Используем кэш делистинговых монет (сканирование недавно выполнялось)")
+            pass
         
         logger.info(f"🔍 Проверка делистинга для активных ботов...")
         
@@ -1260,7 +1260,7 @@ def check_delisting_emergency_close():
             ]
         
         if not bots_in_position:
-            logger.debug(f"ℹ️ Нет активных ботов для проверки делистинга")
+            pass
             return True
         
         logger.info(f"📊 Проверяем {len(bots_in_position)} активных ботов")
@@ -1496,7 +1496,7 @@ def update_bots_cache_data():
                             new_stop_loss = float(exchange_stop_loss)
                             if not current_stop_loss or abs(current_stop_loss - new_stop_loss) > 0.001:
                                 bot_data['trailing_stop_price'] = new_stop_loss
-                                logger.debug(f"[POSITION_SYNC] Обновлен стоп-лосс для {symbol}: {new_stop_loss}")
+                                pass
                         else:
                             # Нет стоп-лосса на бирже - очищаем данные бота
                             if current_stop_loss:
@@ -1514,7 +1514,7 @@ def update_bots_cache_data():
                             current_entry_price = bot_data.get('entry_price')
                             if not current_entry_price or abs(current_entry_price - exchange_entry_price) > 0.001:
                                 bot_data['entry_price'] = exchange_entry_price
-                                logger.debug(f"[POSITION_SYNC] Обновлена цена входа для {symbol}: {exchange_entry_price}")
+                                pass
                         
                         # ⚡ Размер позиции уже синхронизирован выше (в USDT)
                         
@@ -1565,7 +1565,7 @@ def update_bot_positions_status():
                 
                 # ⚡ КРИТИЧНО: Не обновляем ботов на паузе!
                 if bot_status == BOT_STATUS['PAUSED']:
-                    logger.debug(f"[POSITION_UPDATE] ⏸️ {symbol}: Бот на паузе - пропускаем обновление")
+                    pass
                     continue
                 
                 try:
@@ -1628,7 +1628,7 @@ def update_bot_positions_status():
                     continue
         
         if updated_count > 0:
-            logger.debug(f"[POSITION_UPDATE] ✅ Обновлено {updated_count} позиций")
+            pass
         
         return True
         
@@ -2095,7 +2095,7 @@ def cleanup_inactive_bots():
                                 created_time = datetime.fromisoformat(created_time_str.replace('Z', '+00:00'))
                                 time_since_creation = current_time - created_time.timestamp()
                                 if time_since_creation < 300:  # 5 минут
-                                    logger.debug(f" ⏳ Бот {symbol} создан {time_since_creation//60:.0f} мин назад - пропускаем удаление")
+                                    pass
                                     continue
                             except Exception:
                                 pass  # Если ошибка парсинга - удаляем бота
@@ -2124,7 +2124,7 @@ def cleanup_inactive_bots():
                 if last_update_str:
                     # ✅ ИСПРАВЛЕНО: Обрабатываем некорректные значения типа 'Никогда'
                     if isinstance(last_update_str, str) and last_update_str.lower() in ['никогда', 'never', '']:
-                        logger.debug(f" ⚠️ Бот {symbol} имеет некорректное значение last_update='{last_update_str}' - проверяем created_at")
+                        pass
                         # Пропускаем проверку last_update, проверяем created_at ниже
                         last_update_str = None
                     else:
@@ -2139,7 +2139,7 @@ def cleanup_inactive_bots():
                                 # Логируем удаление неактивного бота в историю
                                 # log_bot_stop(symbol, f"Неактивен {time_since_update//60:.0f} мин (статус: {bot_status})")  # TODO: Функция не определена
                             else:
-                                logger.debug(f" ⏳ Бот {symbol} активен (последнее обновление {time_since_update//60:.0f} мин назад)")
+                                pass
                                 continue  # Бот активен - пропускаем удаление
                         except Exception as e:
                             logger.error(f" ❌ Ошибка парсинга времени для {symbol}: {e}, значение='{last_update_str}'")
@@ -2314,7 +2314,7 @@ def check_missing_stop_losses():
 
         auto_config, bots_snapshot = _snapshot_bots_for_protections()
         if not bots_snapshot:
-            logger.debug(" ℹ️ Нет ботов в позиции для установки стопов")
+            pass
             return True
 
         # ✅ ИСПРАВЛЕНИЕ: Правильная нормализация символов и фильтрация только активных позиций
@@ -2689,7 +2689,7 @@ def check_missing_stop_losses():
                         logger.error(f" ❌ Ошибка установки тейк-профита для {symbol}: {e}")
 
                 if not _update_bot_record(symbol, updates):
-                    logger.debug(f" ℹ️ Бот {symbol} был удален из памяти до применения обновлений")
+                    pass
 
             except Exception as e:
                 logger.error(f" ❌ Ошибка обработки {symbol}: {e}")
@@ -2855,7 +2855,7 @@ def check_startup_position_conflicts():
                             'managed_by_bot': True,
                         }
                     except Exception as _e:
-                        logger.debug(f" Реестр позиций: пропуск бота {bot_key}: {_e}")
+                        pass
 
                 save_bot_positions_registry(registry)
             except Exception as reg_err:
@@ -2929,7 +2929,7 @@ def sync_bots_with_exchange():
                         break  # Успех!
                         
                     except Exception as e:
-                        logger.debug(f"[SYNC_EXCHANGE] Повтор {retry + 1}/{max_retries}: {e}")
+                        pass
                         if retry < max_retries - 1:
                             time.sleep(2)
                         else:
@@ -3073,7 +3073,7 @@ def sync_bots_with_exchange():
                                         if ticker and ticker.get('last'):
                                             exit_price = float(ticker.get('last'))
                                 except Exception as manual_price_error:
-                                    logger.debug(f"[SYNC_EXCHANGE] ⚠️ Не удалось получить цену для ручного закрытия {symbol}: {manual_price_error}")
+                                    pass
 
                             if not exit_price:
                                 try:
@@ -3209,7 +3209,7 @@ def sync_bots_with_exchange():
                                     )
                                 else:
                                     # Позиция уже была обработана ранее - просто удаляем бота без повторного логирования
-                                    logger.debug(f"[SYNC_EXCHANGE] ⏭️ {symbol}: позиция уже была обработана ранее, пропускаем повторное логирование")
+                                    pass
                             
                             # ✅ УПРОЩЕНО: Логируем удаление бота (делистинг проверяется в отдельной функции)
                             logger.info(f"[SYNC_EXCHANGE] 🗑️ {symbol}: Удаляем бота (позиция закрыта на бирже, статус: {old_status})")

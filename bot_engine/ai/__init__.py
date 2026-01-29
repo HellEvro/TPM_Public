@@ -111,7 +111,7 @@ def _load_pyc_module(module_name, module_import_name):
     
     pyc_path = _get_module_pyc_path(module_name)
     if pyc_path is None:
-        _logger.debug(f"[AI] .pyc файл для {module_name} не найден")
+        pass
         return None
     
     try:
@@ -122,7 +122,7 @@ def _load_pyc_module(module_name, module_import_name):
             return None
         module = importlib.util.module_from_spec(spec)
         loader.exec_module(module)
-        _logger.debug(f"[AI] Модуль {module_name} загружен из {pyc_path}")
+        pass
         return module
     except Exception as e:
         err_msg = str(e).lower()
@@ -296,7 +296,7 @@ def check_premium_license(force_refresh: bool = False) -> bool:
         _LICENSE_INFO = license_checker.get_info() if _LICENSE_STATUS else None
         return _LICENSE_STATUS
     except Exception as exc:
-        _license_logger.debug(f"License validation failed: {exc}", exc_info=True)
+        pass
         _LICENSE_STATUS = False
         _LICENSE_INFO = None
         return False

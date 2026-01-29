@@ -86,7 +86,7 @@ class AppDatabase:
                         last_error = e
                         if retry_on_locked and attempt < max_retries - 1:
                             wait_time = (attempt + 1) * 0.5
-                            logger.debug(f"⚠️ БД заблокирована (попытка {attempt + 1}/{max_retries}), ждем {wait_time:.1f}s...")
+                            pass
                             time.sleep(wait_time)
                             continue
                         else:
@@ -160,7 +160,7 @@ class AppDatabase:
             if not db_exists:
                 logger.info("✅ Все таблицы и индексы созданы в новой базе данных")
             else:
-                logger.debug("✅ Все таблицы и индексы проверены")
+                pass
     
     def save_closed_pnl_history(self, pnl_records: List[Dict]) -> int:
         """
@@ -203,20 +203,20 @@ class AppDatabase:
                         if cursor.rowcount > 0:
                             saved_count += 1
                     except Exception as e:
-                        logger.debug(f"⚠️ Ошибка сохранения записи PnL: {e}")
+                        pass
                         continue
                 
                 conn.commit()
                 
                 if saved_count > 0:
-                    logger.debug(f"💾 Сохранено {saved_count} новых записей PnL в БД")
+                    pass
                 
                 return saved_count
                 
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения истории PnL: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return 0
     
     def load_closed_pnl_history(self, sort_by='time', period='all', start_date=None, end_date=None, exchange=None) -> List[Dict]:
@@ -305,13 +305,13 @@ class AppDatabase:
                         'exchange': row['exchange']
                     })
                 
-                logger.debug(f"📊 Загружено {len(result)} записей PnL из БД (period={period}, sort={sort_by})")
+                pass
                 return result
                 
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки истории PnL: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return []
     
     def get_latest_pnl_timestamp(self, exchange=None) -> Optional[int]:
@@ -346,7 +346,7 @@ class AppDatabase:
                 return None
                 
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка получения последнего timestamp PnL: {e}")
+            pass
             return None
 
 

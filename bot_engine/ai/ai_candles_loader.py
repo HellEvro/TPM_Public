@@ -41,7 +41,7 @@ class AICandlesLoader:
         try:
             from bot_engine.ai.ai_database import get_ai_database
             self.ai_db = get_ai_database()
-            logger.debug("✅ AI Database подключена для AICandlesLoader")
+            pass
         except Exception as e:
             logger.warning(f"⚠️ Не удалось подключиться к AI Database: {e}")
             self.ai_db = None
@@ -187,7 +187,7 @@ class AICandlesLoader:
                             if last_candle_time:
                                 logger.info(f"   📊 {symbol}: найдено {len(existing_candles_list)} существующих свечей, последняя: {datetime.fromtimestamp(last_candle_time/1000).strftime('%Y-%m-%d %H:%M')}")
                             else:
-                                logger.debug(f"   ⚠️ {symbol}: существующие свечи найдены, но не удалось определить время последней свечи")
+                                pass
                     
                     # Используем тот же метод что и bots.py, но с максимальным limit
                     # Для Bybit: используем прямой вызов API с limit=1000
@@ -220,7 +220,7 @@ class AICandlesLoader:
                                 # Полная загрузка: начинаем с текущего времени и идем в прошлое
                                 end_time = int(time.time() * 1000)  # Текущее время в миллисекундах
                                 start_from_time = None
-                                logger.debug(f"   📊 {symbol}: полная загрузка истории")
+                                pass
                                 incremental_mode = False
                             
                             max_candles_per_request = 2000  # ПО 2000 свечей за запрос (максимум биржи)
@@ -262,7 +262,7 @@ class AICandlesLoader:
                                     
                                     # Проверка rate limiting
                                     if response.get('retCode') == 10006:
-                                        logger.debug(f"⚠️ Rate limit для {symbol}, ждем 1 секунду...")
+                                        pass
                                         time.sleep(1)
                                         continue
                                     
@@ -347,7 +347,7 @@ class AICandlesLoader:
                                         break
                                         
                                 except Exception as e:
-                                    logger.debug(f"⚠️ Ошибка запроса свечей для {symbol} (запрос {request_count + 1}): {e}")
+                                    pass
                                     break
                             
                             # Объединяем существующие и новые свечи
@@ -366,7 +366,7 @@ class AICandlesLoader:
                                 original_count = len(all_candles)
                                 if len(all_candles) > MAX_CANDLES_TO_LOAD:
                                     all_candles = all_candles[-MAX_CANDLES_TO_LOAD:]
-                                    logger.debug(f"   📊 {symbol}: после объединения ограничено до {MAX_CANDLES_TO_LOAD} последних (самых новых) свечей из {original_count}")
+                                    pass
                                 
                                 # ВАЖНО: new_candles_count считаем правильно - только действительно новые свечи
                                 # Считаем свечи, которые новее последней существующей свечи
@@ -382,7 +382,7 @@ class AICandlesLoader:
                                 if len(all_candles) > MAX_CANDLES_TO_LOAD:
                                     # Сортируем от старых к новым и берем последние (самые новые)
                                     all_candles = sorted(all_candles, key=lambda x: x['time'])[-MAX_CANDLES_TO_LOAD:]
-                                    logger.debug(f"   📊 {symbol}: существующие свечи ограничены до {MAX_CANDLES_TO_LOAD} последних (самых новых)")
+                                    pass
                                 new_candles_count = 0
                             else:
                                 # Только новые свечи (полная загрузка)
@@ -410,7 +410,7 @@ class AICandlesLoader:
                                         logger.info(f"   💡 Загружали по {max_candles_per_request} свечей за запрос")
                                     logger.info(f"   ✅ Загружены свечи для {symbol}")
                         except Exception as e:
-                            logger.debug(f"⚠️ Ошибка пагинации для {symbol}: {e}")
+                            pass
                             # Fallback: используем один запрос с limit=1000 (ограничение для обучения ИИ)
                             try:
                                 clean_sym = symbol.replace('USDT', '') if symbol.endswith('USDT') else symbol
@@ -426,7 +426,7 @@ class AICandlesLoader:
                                     # klines отсортированы от новых к старым, поэтому берем первые MAX_CANDLES_TO_LOAD (самые новые)
                                     if len(klines) > MAX_CANDLES_TO_LOAD:
                                         klines = klines[:MAX_CANDLES_TO_LOAD]
-                                        logger.debug(f"   📊 {symbol}: fallback режим - ограничено до {MAX_CANDLES_TO_LOAD} самых новых свечей")
+                                        pass
                                     fallback_new_candles = []
                                     for k in klines:
                                         candle_time = int(k[0])
@@ -497,7 +497,7 @@ class AICandlesLoader:
                     return None
                     
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка загрузки свечей для {symbol}: {e}")
+                    pass
                     return None
             
             # Загружаем параллельно (сокращенные логи)
@@ -528,7 +528,7 @@ class AICandlesLoader:
                         else:
                             failed_count += 1
                     except Exception as e:
-                        logger.debug(f"⚠️ Ошибка для {symbol}: {e}")
+                        pass
                         failed_count += 1
             
             # Итоговая статистика (кратко)
@@ -559,11 +559,11 @@ class AICandlesLoader:
             # Сохраняем в файл
             try:
                 self._save_candles(candles_data)
-                logger.debug("✅ Файл сохранен")
+                pass
             except Exception as save_error:
                 logger.error(f"❌ Ошибка сохранения файла: {save_error}")
                 import traceback
-                logger.debug(traceback.format_exc())
+                pass
                 return False
             
             # Итоговая статистика (кратко)
@@ -572,7 +572,7 @@ class AICandlesLoader:
             # Проверка БД
             if self.ai_db:
                 count = self.ai_db.count_candles()
-                logger.debug(f"📁 БД: {count:,} свечей")
+                pass
                 return True
             else:
                 logger.error("❌ AI Database не доступна")
@@ -638,7 +638,7 @@ class AICandlesLoader:
                     # Сортируем от старых к новым и берем последние 1000
                     candles_sorted = sorted(candles_list, key=lambda x: x.get('time', 0))
                     limited_candles[symbol] = candles_sorted[-MAX_CANDLES_PER_SYMBOL:]
-                    logger.debug(f"   📊 {symbol}: загружено {len(limited_candles[symbol])} последних свечей из БД (было {len(candles_list)})")
+                    pass
                 else:
                     limited_candles[symbol] = candles_list
             
@@ -679,7 +679,7 @@ class AICandlesLoader:
                     candles_sorted = sorted(candles, key=lambda x: x.get('time', 0))
                     if len(candles_sorted) > MAX_CANDLES_PER_SYMBOL:
                         candles_sorted = candles_sorted[-MAX_CANDLES_PER_SYMBOL:]
-                        logger.debug(f"   📊 {symbol}: перед сохранением ограничено до {MAX_CANDLES_PER_SYMBOL} последних свечей (было {len(candles)})")
+                        pass
                     db_candles_data[symbol] = candles_sorted
             
             if db_candles_data:

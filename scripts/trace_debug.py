@@ -25,13 +25,11 @@ class _DefaultTraceConfig:
     TRACE_LOG_FILE = 'logs/trace.log'
     TRACE_MAX_LINE_LENGTH = 200
 
-
 try:
     from bot_engine.bot_config import SystemConfig as _InitialTraceConfig
 except Exception:  # pragma: no cover
     # Фолбэк, если конфиг нельзя импортировать (например, при раннем старте)
     _InitialTraceConfig = _DefaultTraceConfig  # type: ignore
-
 
 TRACE_ENABLED = False
 TRACE_INCLUDE_KEYWORDS: Iterable[str] = []
@@ -43,7 +41,6 @@ TRACE_MAX_LINE_LENGTH = 200
 _trace_logger: Optional[logging.Logger] = None
 _last_logged: dict[str, float] = {}
 _global_last_time: Optional[float] = None
-
 
 def _apply_trace_config(config_cls) -> None:
     """Применяет значения из переданного конфига к модулю трейсинга."""
@@ -63,7 +60,6 @@ def _apply_trace_config(config_cls) -> None:
     _last_logged = {}
     _global_last_time = None
 
-
 def set_trace_config(config_cls) -> None:
     """
     Позволяет переопределить конфигурацию трейсинга.
@@ -73,10 +69,8 @@ def set_trace_config(config_cls) -> None:
     """
     _apply_trace_config(config_cls)
 
-
 # Применяем конфиг по умолчанию сразу после инициализации модуля
 _apply_trace_config(_InitialTraceConfig)
-
 
 def _should_trace_file(filename: Optional[str]) -> bool:
     """Возвращает True, если указанный файл нужно трейсить."""
@@ -94,7 +88,6 @@ def _should_trace_file(filename: Optional[str]) -> bool:
 
     # Если список include пустой — по умолчанию трейсим весь проект
     return True
-
 
 def _setup_trace_logger() -> logging.Logger:
     """Создает (или возвращает существующий) логгер для трейсинга."""
@@ -125,7 +118,6 @@ def _setup_trace_logger() -> logging.Logger:
     _trace_logger = logger
     return logger
 
-
 def _format_line(frame: FrameType, delta: float) -> str:
     filename = frame.f_code.co_filename
     lineno = frame.f_lineno
@@ -144,7 +136,6 @@ def _format_line(frame: FrameType, delta: float) -> str:
     delta_str = f"+{delta:.3f}s" if delta > 0.01 else ""
 
     return f"[{timestamp}] {delta_str:>10} | {short_file}:{lineno:4} | {func_name:30} | {line_code}"
-
 
 def trace_calls(frame: FrameType, event: str, arg):
     """Callback для sys.settrace: логирует каждую исполняемую строку."""
@@ -170,11 +161,10 @@ def trace_calls(frame: FrameType, event: str, arg):
     if delta > 1.0 or (current_time - last_time_for_line) > 0.3:
         log_message = _format_line(frame, delta)
         logger = _setup_trace_logger()
-        logger.debug(log_message)
+
         _last_logged[key] = current_time
 
     return trace_calls
-
 
 def enable_trace():
     """Включает трейсинг, если он разрешен в конфигурации."""
@@ -188,10 +178,7 @@ def enable_trace():
     print("=" * 80)
     sys.settrace(trace_calls)
 
-
 def disable_trace():
     """Выключает трейсинг."""
     sys.settrace(None)
     print("TRACE: DISABLED")
-
-

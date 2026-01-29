@@ -287,7 +287,7 @@ def add_no_cache_headers(response):
         # DEBUG: Логируем в dev режиме
         if app.config.get('DEBUG'):
             cache_logger = logging.getLogger('app')
-            cache_logger.debug(f"[CACHE] ✅ JS файл: {request.path} - кэш отключен")
+            pass
     
     # ✅ Для остальных статических файлов также отключаем кэш
     elif is_static:
@@ -707,12 +707,12 @@ def time_sync_loop():
             
             # Показываем время до следующей синхронизации
             next_sync = datetime.now() + timedelta(minutes=interval_minutes)
-            time_sync_logger.debug(f"[TimeSync] Следующая синхронизация: {next_sync.strftime('%Y-%m-%d %H:%M:%S')}")
+            pass
             
     except Exception as e:
         time_sync_logger.error(f"[TimeSync] Критическая ошибка в планировщике синхронизации времени: {e}")
         import traceback
-        time_sync_logger.debug(traceback.format_exc())
+        pass
 
 
 def background_closed_pnl_loader():
@@ -727,7 +727,7 @@ def background_closed_pnl_loader():
             # Получаем timestamp последней загруженной позиции
             last_timestamp = db.get_latest_closed_pnl_timestamp(exchange=ACTIVE_EXCHANGE)
             
-            app_logger.debug(f"[CLOSED_PNL_LOADER] Последний timestamp в БД: {last_timestamp}")
+            pass
             
             # Загружаем новые закрытые позиции с биржи
             # Если есть last_timestamp, загружаем только новые (после этого timestamp)
@@ -758,12 +758,12 @@ def background_closed_pnl_loader():
                     else:
                         app_logger.warning(f"[CLOSED_PNL_LOADER] Не удалось сохранить {len(closed_pnl)} позиций в БД")
                 else:
-                    app_logger.debug("[CLOSED_PNL_LOADER] Нет новых закрытых позиций")
+                    pass
                     
             except Exception as e:
                 app_logger.error(f"[CLOSED_PNL_LOADER] Ошибка загрузки closed_pnl с биржи: {e}")
                 import traceback
-                app_logger.debug(traceback.format_exc())
+                pass
             
             # Ждем 30 секунд до следующей загрузки
             closed_pnl_loader_stop_event.wait(30)
@@ -771,7 +771,7 @@ def background_closed_pnl_loader():
         except Exception as e:
             app_logger.error(f"[CLOSED_PNL_LOADER] Критическая ошибка в фоновом процессе: {e}")
             import traceback
-            app_logger.debug(traceback.format_exc())
+            pass
             # Ждем 30 секунд перед следующей попыткой
             closed_pnl_loader_stop_event.wait(30)
     
@@ -1357,7 +1357,7 @@ def get_ticker(symbol):
             
         # Получаем данные тикера
         ticker_data = current_exchange.get_ticker(symbol)
-        ticker_logger.debug(f"[TICKER] Raw ticker data: {ticker_data}")
+        pass
         
         if ticker_data:
             ticker_logger.info(f"[TICKER] Successfully got ticker for {symbol}")
@@ -2412,7 +2412,7 @@ if __name__ == '__main__':
     except Exception as e:
         app_logger.error(f"[APP] ❌ Ошибка первичной загрузки closed_pnl: {e}")
         import traceback
-        app_logger.debug(traceback.format_exc())
+        pass
     
     # Запускаем поток для отправки дневного отчета
     if TELEGRAM_NOTIFY['DAILY_REPORT']:

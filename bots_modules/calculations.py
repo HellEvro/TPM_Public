@@ -41,19 +41,19 @@ def calculate_rsi(prices, period=14):
     """Рассчитывает RSI на основе массива цен (Wilder's RSI алгоритм)"""
     if len(prices) < period + 1:
         return None
-    
+
     # Рассчитываем изменения цен
     changes = []
     for i in range(1, len(prices)):
         changes.append(prices[i] - prices[i-1])
-    
+
     if len(changes) < period:
         return None
-    
+
     # Разделяем на прибыли и убытки
     gains = []
     losses = []
-    
+
     for change in changes:
         if change > 0:
             gains.append(change)
@@ -61,44 +61,44 @@ def calculate_rsi(prices, period=14):
         else:
             gains.append(0) 
             losses.append(-change)
-    
+
     # Первоначальные средние значения (простое среднее для первого периода)
     avg_gain = sum(gains[:period]) / period
     avg_loss = sum(losses[:period]) / period
-    
+
     # Рассчитываем RSI используя сглаживание Wilder's
     # (это тип экспоненциального сглаживания)
     for i in range(period, len(gains)):
         avg_gain = (avg_gain * (period - 1) + gains[i]) / period
         avg_loss = (avg_loss * (period - 1) + losses[i]) / period
-    
+
     # Избегаем деления на ноль
     if avg_loss == 0:
         return 100.0
-    
+
     # Рассчитываем RS и RSI
     rs = avg_gain / avg_loss
     rsi = 100.0 - (100.0 / (1.0 + rs))
-    
+
     return round(rsi, 2)
 
 def calculate_rsi_history(prices, period=14):
     """Рассчитывает полную историю RSI для анализа зрелости монеты"""
     if len(prices) < period + 1:
         return None
-    
+
     # Рассчитываем изменения цен
     changes = []
     for i in range(1, len(prices)):
         changes.append(prices[i] - prices[i-1])
-    
+
     if len(changes) < period:
         return None
-    
+
     # Разделяем на прибыли и убытки
     gains = []
     losses = []
-    
+
     for change in changes:
         if change > 0:
             gains.append(change)
@@ -106,26 +106,26 @@ def calculate_rsi_history(prices, period=14):
         else:
             gains.append(0) 
             losses.append(-change)
-    
+
     # Первоначальные средние значения
     avg_gain = sum(gains[:period]) / period
     avg_loss = sum(losses[:period]) / period
-    
+
     # Рассчитываем полную историю RSI
     rsi_history = []
-    
+
     for i in range(period, len(gains)):
         avg_gain = (avg_gain * (period - 1) + gains[i]) / period
         avg_loss = (avg_loss * (period - 1) + losses[i]) / period
-        
+
         if avg_loss == 0:
             rsi = 100.0
         else:
             rs = avg_gain / avg_loss
             rsi = 100.0 - (100.0 / (1.0 + rs))
-        
+
         rsi_history.append(round(rsi, 2))
-    
+
     return rsi_history
 
 # Глобальные переменные (импортируются из главного файла)
@@ -151,7 +151,7 @@ def check_coin_maturity_with_storage(symbol, candles):
     """Проверяет зрелость монеты с использованием постоянного хранилища"""
     # Сначала проверяем постоянное хранилище
     if is_coin_mature_stored(symbol):
-        logger.debug(f"[MATURITY_STORAGE] {symbol}: найдена в постоянном хранилище зрелых монет")
+
         # Обновляем время последней проверки
         update_mature_coin_verification(symbol)
         return {
@@ -159,14 +159,14 @@ def check_coin_maturity_with_storage(symbol, candles):
             'reason': 'Монета зрелая (из постоянного хранилища)',
             'details': {'stored': True, 'from_storage': True}
         }
-    
+
     # Если не в хранилище, выполняем полную проверку
     maturity_result = check_coin_maturity(symbol, candles)
-    
+
     # Если монета зрелая, добавляем в постоянное хранилище (без автосохранения)
     if maturity_result['is_mature']:
         add_mature_coin_to_storage(symbol, maturity_result, auto_save=False)
-    
+
     return maturity_result
 
 def check_coin_maturity(symbol, candles):
@@ -175,12 +175,12 @@ def check_coin_maturity(symbol, candles):
         # Получаем настройки зрелости из конфигурации
         with bots_data_lock:
             config = bots_data.get('auto_bot_config', {})
-        
+
         min_candles = config.get('min_candles_for_maturity', MIN_CANDLES_FOR_MATURITY)
         min_rsi_low = config.get('min_rsi_low', MIN_RSI_LOW)
         max_rsi_high = config.get('max_rsi_high', MAX_RSI_HIGH)
         # Убрали min_volatility - больше не проверяем волатильность
-        
+
         if not candles or len(candles) < min_candles:
             return {
                 'is_mature': False,
@@ -190,14 +190,14 @@ def check_coin_maturity(symbol, candles):
                     'min_required': min_candles
                 }
             }
-        
+
         # ✅ ИСПРАВЛЕНИЕ: Берем только последние N свечей для анализа зрелости
         # Это означает что монета должна иметь достаточно истории в РЕЦЕНТНОЕ время
         recent_candles = candles[-min_candles:] if len(candles) >= min_candles else candles
-        
+
         # Извлекаем цены закрытия из последних свечей
         closes = [candle['close'] for candle in recent_candles]
-        
+
         # Рассчитываем историю RSI
         rsi_history = calculate_rsi_history(closes, 14)
         if not rsi_history:
@@ -206,29 +206,29 @@ def check_coin_maturity(symbol, candles):
                 'reason': 'Не удалось рассчитать историю RSI',
                 'details': {}
             }
-        
+
         # Анализируем диапазон RSI
         rsi_min = min(rsi_history)
         rsi_max = max(rsi_history)
         rsi_range = rsi_max - rsi_min
-        
+
         # Проверяем критерии зрелости (убрали проверку волатильности)
         maturity_checks = {
             'sufficient_candles': len(candles) >= min_candles,
             'rsi_reached_low': rsi_min <= min_rsi_low,
             'rsi_reached_high': rsi_max >= max_rsi_high
         }
-        
+
         # Убрали проверку волатильности - она была слишком строгой
         volatility = 0  # Для совместимости с детальной информацией
-        
+
         # Определяем общую зрелость
         # Монета зрелая, если достаточно свечей И RSI достигал низких И высоких значений (полный цикл)
         is_mature = maturity_checks['sufficient_candles'] and maturity_checks['rsi_reached_low'] and maturity_checks['rsi_reached_high']
-        
+
         # Детальное логирование для отладки (отключено для уменьшения спама)
         # logger.info(f"[MATURITY_DEBUG] {symbol}: свечи={maturity_checks['sufficient_candles']} ({len(candles)}/{min_candles}), RSI_low={maturity_checks['rsi_reached_low']} (min={rsi_min:.1f}<=>{min_rsi_low}), RSI_high={maturity_checks['rsi_reached_high']} (max={rsi_max:.1f}>={max_rsi_high}), зрелая={is_mature}")
-        
+
         # Формируем детальную информацию
         details = {
             'candles_count': len(candles),
@@ -238,20 +238,20 @@ def check_coin_maturity(symbol, candles):
             'rsi_range': rsi_range,
             'checks': maturity_checks
         }
-        
+
         # Определяем причину незрелости
         if not is_mature:
             failed_checks = [check for check, passed in maturity_checks.items() if not passed]
             reason = f'Не пройдены проверки: {", ".join(failed_checks)}'
         else:
             reason = 'Монета зрелая для торговли'
-        
+
         return {
             'is_mature': is_mature,
             'reason': reason,
             'details': details
         }
-        
+
     except Exception as e:
         logger.error(f"[MATURITY] Ошибка проверки зрелости {symbol}: {e}")
         return {
@@ -264,28 +264,28 @@ def calculate_ema(prices, period):
     """Рассчитывает EMA для массива цен"""
     if len(prices) < period:
         return None
-    
+
     # Первое значение EMA = SMA
     sma = sum(prices[:period]) / period
     ema = sma
     multiplier = 2 / (period + 1)
-    
+
     # Рассчитываем EMA для остальных значений
     for price in prices[period:]:
         ema = (price * multiplier) + (ema * (1 - multiplier))
-    
+
     return ema
 
 def analyze_trend(symbol, exchange_obj=None, candles_data=None, timeframe=None):
     """
     Анализирует тренд на основе ПРОСТОГО АНАЛИЗА ЦЕНЫ (без EMA)
-    
+
     Логика:
     - Берет последние N свечей (из конфига: trend_analysis_period)
     - Сравниваем цену начала и конца периода
     - Считаем % изменения и количество растущих/падающих свечей
     - Определяет тренд: UP / DOWN / NEUTRAL (по порогам из конфига)
-    
+
     Args:
         symbol: Символ монеты
         exchange_obj: Объект биржи (опционально)
@@ -297,20 +297,20 @@ def analyze_trend(symbol, exchange_obj=None, candles_data=None, timeframe=None):
         if timeframe is None:
             from bot_engine.bot_config import get_current_timeframe
             timeframe = get_current_timeframe()
-        
+
         # Получаем свечи для анализа тренда
         from bots_modules.imports_and_globals import get_exchange, get_auto_bot_config
         exchange_to_use = exchange_obj if exchange_obj else get_exchange()
         if not exchange_to_use:
             logger.error(f"[TREND] ❌ Биржа не доступна для анализа тренда {symbol}")
             return None
-        
+
         # ✅ Получаем параметры анализа тренда из конфига
         config = get_auto_bot_config()
         period = config.get('trend_analysis_period', 30)  # Количество свечей (20-50)
         price_threshold = config.get('trend_price_change_threshold', 7)  # Порог изменения цены (3-15%)
         candles_threshold = config.get('trend_candles_threshold', 70)  # Порог процента свечей (50-80%)
-        
+
         if candles_data is None:
             # Определяем период для загрузки свечей (примерно 30 дней для большинства таймфреймов)
             chart_response = exchange_to_use.get_chart_data(symbol, timeframe, '30d')
@@ -319,39 +319,39 @@ def analyze_trend(symbol, exchange_obj=None, candles_data=None, timeframe=None):
             candles = chart_response['data']['candles']
         else:
             candles = candles_data
-        
+
         if not candles or len(candles) < period:
             return None
-        
+
         # Извлекаем цены закрытия
         closes = [candle['close'] for candle in candles]
         current_close = closes[-1]
-        
+
         # ✅ АНАЛИЗ: Берем последние N свечей (из конфига)
         recent_closes = closes[-period:]
         start_price = recent_closes[0]
         end_price = recent_closes[-1]
-        
+
         # Считаем % изменения
         price_change_pct = ((end_price - start_price) / start_price) * 100
-        
+
         # Считаем растущие/падающие свечи
         rising_candles = sum(1 for i in range(1, len(recent_closes)) if recent_closes[i] > recent_closes[i-1])
         falling_candles = sum(1 for i in range(1, len(recent_closes)) if recent_closes[i] < recent_closes[i-1])
-        
+
         # ✅ ОПРЕДЕЛЕНИЕ ТРЕНДА (используем пороги из конфига):
         # UP: если цена выросла > price_threshold% ИЛИ больше candles_threshold% свечей растут
         # DOWN: если цена упала > price_threshold% ИЛИ больше candles_threshold% свечей падают
         # NEUTRAL: иначе
         trend = 'NEUTRAL'
-        
+
         candles_threshold_pct = candles_threshold / 100.0  # Конвертируем в десятичную дробь
-        
+
         if price_change_pct > price_threshold or rising_candles > (period * candles_threshold_pct):
             trend = 'UP'
         elif price_change_pct < -price_threshold or falling_candles > (period * candles_threshold_pct):
             trend = 'DOWN'
-        
+
         return {
             'trend': trend,
             'price_change_pct': price_change_pct,
@@ -363,7 +363,7 @@ def analyze_trend(symbol, exchange_obj=None, candles_data=None, timeframe=None):
             'timeframe': timeframe,
             'method': 'simple_price_analysis'  # Метод анализа
         }
-        
+
     except Exception as e:
         logger.error(f"Ошибка анализа тренда для {symbol}: {e}")
         return None
@@ -386,7 +386,7 @@ def perform_enhanced_rsi_analysis(candles, current_rsi, symbol):
     try:
         # ✅ Проверяем индивидуальные настройки монеты (имеют приоритет над глобальными)
         enhanced_rsi_enabled = SystemConfig.ENHANCED_RSI_ENABLED
-        
+
         # Получаем индивидуальные настройки монеты, если есть
         try:
             from bots_modules.imports_and_globals import get_individual_coin_settings
@@ -396,7 +396,7 @@ def perform_enhanced_rsi_analysis(candles, current_rsi, symbol):
                 enhanced_rsi_enabled = bool(individual_settings['enhanced_rsi_enabled'])
         except Exception:
             pass  # Если не удалось получить настройки, используем глобальные
-        
+
         # Проверяем, включена ли улучшенная система
         if not enhanced_rsi_enabled:
             return {
@@ -408,13 +408,13 @@ def perform_enhanced_rsi_analysis(candles, current_rsi, symbol):
                 'confirmations': {},
                 'enhanced_signal': None
             }
-        
+
         # Импортируем SignalGenerator для использования улучшенной логики
         from bot_engine.indicators import SignalGenerator, TechnicalIndicators
-        
+
         # Создаем объект для анализа
         signal_generator = SignalGenerator()
-        
+
         # Форматируем данные свечей для анализа
         # Bybit отправляет свечи в правильном порядке для анализа
         formatted_candles = []
@@ -427,22 +427,22 @@ def perform_enhanced_rsi_analysis(candles, current_rsi, symbol):
                 'close': float(candle.get('close', 0)),
                 'volume': float(candle.get('volume', 0))
             })
-        
+
         # Получаем полный анализ
         if len(formatted_candles) >= 50:
             try:
                 analysis_result = signal_generator.generate_signals(formatted_candles)
-                
+
                 # Получаем базовые данные для анализа
                 closes = [candle['close'] for candle in formatted_candles]
                 volumes = [candle['volume'] for candle in formatted_candles]
-                
+
                 # Рассчитываем дополнительные индикаторы
                 rsi_history = TechnicalIndicators.calculate_rsi_history(formatted_candles)
                 adaptive_levels = TechnicalIndicators.calculate_adaptive_rsi_levels(formatted_candles)
                 divergence = TechnicalIndicators.detect_rsi_divergence(closes, rsi_history)
                 volume_confirmation = TechnicalIndicators.confirm_with_volume(volumes)
-                
+
                 # Для Stochastic RSI используем ВСЮ историю RSI
                 # Параметры Bybit: stoch_period=14, k_smooth=3, d_smooth=3
                 stoch_rsi_result = TechnicalIndicators.calculate_stoch_rsi(
@@ -453,8 +453,7 @@ def perform_enhanced_rsi_analysis(candles, current_rsi, symbol):
                 )
                 stoch_rsi = stoch_rsi_result['k'] if stoch_rsi_result else None
                 stoch_rsi_d = stoch_rsi_result['d'] if stoch_rsi_result else None
-                
-                
+
                 # Определяем продолжительность в экстремальной зоне
                 extreme_duration = 0
                 if rsi_history:
@@ -463,11 +462,11 @@ def perform_enhanced_rsi_analysis(candles, current_rsi, symbol):
                             extreme_duration += 1
                         else:
                             break
-                
+
                 # Определяем тип предупреждения
                 warning_type = None
                 warning_message = None
-            
+
                 # Проверяем экстремальные условия
                 if current_rsi <= SystemConfig.RSI_EXTREME_OVERSOLD:
                     if extreme_duration > SystemConfig.RSI_EXTREME_ZONE_TIMEOUT:
@@ -476,7 +475,7 @@ def perform_enhanced_rsi_analysis(candles, current_rsi, symbol):
                     else:
                         warning_type = 'OVERSOLD'
                         warning_message = 'Возможная зона для LONG'
-                        
+
                 elif current_rsi >= SystemConfig.RSI_EXTREME_OVERBOUGHT:
                     if extreme_duration > SystemConfig.RSI_EXTREME_ZONE_TIMEOUT:
                         warning_type = 'EXTREME_OVERBOUGHT_LONG'
@@ -484,7 +483,7 @@ def perform_enhanced_rsi_analysis(candles, current_rsi, symbol):
                     else:
                         warning_type = 'OVERBOUGHT'
                         warning_message = 'Возможная зона для SHORT'
-                
+
                 # Анализ подтверждений (явно преобразуем в стандартные Python типы)
                 confirmations = {
                     'volume': bool(volume_confirmation) if volume_confirmation is not None else False,
@@ -492,7 +491,7 @@ def perform_enhanced_rsi_analysis(candles, current_rsi, symbol):
                     'stoch_rsi_k': float(stoch_rsi) if stoch_rsi is not None else None,
                     'stoch_rsi_d': float(stoch_rsi_d) if stoch_rsi_d is not None else None
                 }
-                
+
                 return {
                     'enabled': True,
                     'warning_type': warning_type,
@@ -503,7 +502,7 @@ def perform_enhanced_rsi_analysis(candles, current_rsi, symbol):
                     'enhanced_signal': analysis_result.get('signal', 'WAIT'),
                     'enhanced_reason': analysis_result.get('reason', 'enhanced_analysis')
                 }
-                
+
             except Exception as e:
                 logger.error(f"Ошибка анализа для {symbol}: {e}")
                 return {
@@ -536,7 +535,7 @@ def perform_enhanced_rsi_analysis(candles, current_rsi, symbol):
                 },
                 'enhanced_signal': 'WAIT'
             }
-            
+
     except Exception as e:
         logger.error(f"Ошибка анализа для {symbol}: {e}")
         return {
@@ -548,4 +547,3 @@ def perform_enhanced_rsi_analysis(candles, current_rsi, symbol):
             'confirmations': {},
             'enhanced_signal': 'WAIT'
         }
-

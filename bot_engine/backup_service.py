@@ -199,7 +199,7 @@ class DatabaseBackupService:
         for attempt in range(max_retries):
             try:
                 if attempt > 0:
-                    logger.debug(f"🔄 Попытка создания бэкапа {attempt + 1}/{max_retries}...")
+                    pass
                     import time
                     time.sleep(1.0 * attempt)
                 
@@ -216,13 +216,13 @@ class DatabaseBackupService:
                     try:
                         shutil.copy2(wal_file, wal_backup)
                     except Exception as e:
-                        logger.debug(f"⚠️ Не удалось скопировать WAL файл: {e}")
+                        pass
                 
                 if os.path.exists(shm_file):
                     try:
                         shutil.copy2(shm_file, shm_backup)
                     except Exception as e:
-                        logger.debug(f"⚠️ Не удалось скопировать SHM файл: {e}")
+                        pass
                 
                 # Проверяем целостность бэкапа
                 is_valid, error_msg = self._check_backup_integrity(backup_path)
@@ -243,7 +243,7 @@ class DatabaseBackupService:
                 
             except PermissionError as e:
                 if attempt < max_retries - 1:
-                    logger.debug(f"⚠️ Файл БД заблокирован, повторяем попытку...")
+                    pass
                     continue
                 else:
                     logger.error(f"❌ Не удалось создать бэкап после {max_retries} попыток: {e}")
@@ -362,7 +362,7 @@ class DatabaseBackupService:
                     })
                     
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка обработки бэкапа {filename}: {e}")
+                    pass
             
             # Сортируем по дате создания (новые первыми)
             backups.sort(key=lambda x: x['created_at'], reverse=True)
@@ -435,17 +435,17 @@ class DatabaseBackupService:
             
             if os.path.exists(wal_backup):
                 shutil.copy2(wal_backup, wal_file)
-                logger.debug("✅ Восстановлен WAL файл")
+                pass
             elif os.path.exists(wal_file):
                 os.remove(wal_file)
-                logger.debug("🗑️ Удален старый WAL файл")
+                pass
             
             if os.path.exists(shm_backup):
                 shutil.copy2(shm_backup, shm_file)
-                logger.debug("✅ Восстановлен SHM файл")
+                pass
             elif os.path.exists(shm_file):
                 os.remove(shm_file)
-                logger.debug("🗑️ Удален старый SHM файл")
+                pass
             
             # Проверяем целостность восстановленной БД
             is_valid, error_msg = self._check_backup_integrity(target_db_path)
@@ -459,7 +459,7 @@ class DatabaseBackupService:
         except Exception as e:
             logger.error(f"❌ Ошибка восстановления БД из бэкапа: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
     
     def delete_backup(self, backup_path: str) -> bool:

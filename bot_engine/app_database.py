@@ -167,7 +167,7 @@ class AppDatabase:
                 if "database is locked" in error_msg or "database table is locked" in error_msg:
                     if retry_on_locked and attempt < max_retries - 1:
                         wait_time = 0.1 * (2 ** attempt)  # Экспоненциальная задержка
-                        logger.debug(f"🔄 БД заблокирована, повторяем через {wait_time:.2f}s (попытка {attempt + 1}/{max_retries})...")
+                        pass
                         time.sleep(wait_time)
                         last_error = e
                         continue
@@ -413,9 +413,9 @@ class AppDatabase:
                             
                             logger.info("✅ Миграция positions_data завершена: данные перенесены из JSON в нормализованные таблицы")
                         else:
-                            logger.debug("ℹ️ Данные positions_data уже мигрированы")
+                            pass
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка миграции positions_data: {e}")
+                pass
             
             # ==================== МИГРАЦИЯ: Переименование data_json в extra_data_json для closed_pnl ====================
             try:
@@ -428,11 +428,11 @@ class AppDatabase:
                     cursor.execute("ALTER TABLE closed_pnl RENAME COLUMN data_json TO extra_data_json")
                     logger.info("✅ Миграция closed_pnl завершена")
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка миграции closed_pnl: {e}")
+                pass
             
             conn.commit()
             
-            logger.debug("✅ Все таблицы и индексы созданы")
+            pass
     
     # ==================== МЕТОДЫ ДЛЯ POSITIONS_DATA ====================
     
@@ -524,13 +524,13 @@ class AppDatabase:
                         now
                     ))
                 
-                logger.debug("💾 positions_data сохранен в нормализованные таблицы БД")
+                pass
                 return True
                 
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения positions_data: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
     
     def load_positions_data(self) -> Dict:
@@ -619,13 +619,13 @@ class AppDatabase:
                     if row['last_update']:
                         result['last_update'] = row['last_update']
                 
-                logger.debug("✅ positions_data загружен из нормализованных таблиц БД")
+                pass
                 return result
                 
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки positions_data: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             # Пробуем загрузить из старой структуры для обратной совместимости
             try:
                 cursor.execute("SELECT data_type, data_json, last_update FROM positions_data")
@@ -745,7 +745,7 @@ class AppDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения closed_pnl: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
     
     def get_closed_pnl(self, sort_by: str = 'time', period: str = 'all', 
@@ -882,13 +882,13 @@ class AppDatabase:
                     
                     result.append(pnl_data)
                 
-                logger.debug(f"✅ Загружено {len(result)} записей closed_pnl из БД")
+                pass
                 return result
                 
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки closed_pnl: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return []
     
     def get_latest_closed_pnl_timestamp(self, exchange: Optional[str] = None) -> Optional[int]:
@@ -962,13 +962,13 @@ class AppDatabase:
                             ?)
                     """, (symbol, 'loss', float(value), timestamp, symbol, 'loss', now, now))
                 
-                logger.debug("💾 max_values сохранены в БД")
+                pass
                 return True
                 
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения max_values: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
     
     def load_max_values(self) -> Tuple[Dict, Dict]:
@@ -998,7 +998,7 @@ class AppDatabase:
                     elif value_type == 'loss':
                         max_loss_values[symbol] = value
                 
-                logger.debug("✅ max_values загружены из БД")
+                pass
                 return max_profit_values, max_loss_values
                 
         except Exception as e:

@@ -88,7 +88,7 @@ def _get_config_snapshot(symbol: Optional[str] = None) -> Dict[str, Any]:
 
         return get_config_snapshot(symbol)
     except Exception as exc:
-        logger.debug(f"⚠️ Не удалось получить конфиг через bots_modules ({exc}), используем запасной путь")
+        pass
         try:
             from bot_engine.bot_config import DEFAULT_AUTO_BOT_CONFIG  # noqa: WPS433,E402
 
@@ -222,7 +222,7 @@ class AITrainer:
             from bot_engine.ai.ai_data_storage import AIDataStorage
             self.data_storage = AIDataStorage(self.data_dir)
         except Exception as e:
-            logger.debug(f"⚠️ Не удалось инициализировать AIDataStorage: {e}")
+            pass
             self.data_storage = None
         
         # Инициализируем реляционную БД для всех данных AI
@@ -236,7 +236,7 @@ class AITrainer:
         except Exception as e:
             logger.warning(f"⚠️ Не удалось инициализировать AI Database: {e}")
             self.ai_db = None
-            logger.debug(f"⚠️ Не удалось инициализировать AIDataStorage: {e}")
+            pass
             self.data_storage = None
         
         # Инициализируем трекер параметров (отслеживание использованных комбинаций)
@@ -244,7 +244,7 @@ class AITrainer:
             from bot_engine.ai.ai_parameter_tracker import AIParameterTracker
             self.param_tracker = AIParameterTracker(self.data_dir)
         except Exception as e:
-            logger.debug(f"⚠️ Не удалось инициализировать AIParameterTracker: {e}")
+            pass
             self.param_tracker = None
 
         self._perf_monitor = None
@@ -258,7 +258,7 @@ class AITrainer:
                 from bot_engine.ai.monitoring import AIPerformanceMonitor
                 self._perf_monitor = AIPerformanceMonitor(max_records=5000)
             except Exception as e:
-                logger.debug(f"⚠️ AIPerformanceMonitor недоступен: {e}")
+                pass
 
         # Ensemble (LSTM + Transformer + SMC) — ленивая инициализация при AI_USE_ENSEMBLE
         self._ensemble_predictor = None
@@ -268,12 +268,12 @@ class AITrainer:
         try:
             from bot_engine.bot_config import AIConfig
             if not getattr(AIConfig, 'AI_PARAMETER_QUALITY_ENABLED', True):
-                logger.debug("ℹ️ ParameterQualityPredictor отключён (AI_PARAMETER_QUALITY_ENABLED=False)")
+                pass
             else:
                 from bot_engine.ai.parameter_quality_predictor import ParameterQualityPredictor
                 self.param_quality_predictor = ParameterQualityPredictor(self.data_dir)
         except Exception as e:
-            logger.debug(f"⚠️ Не удалось инициализировать ParameterQualityPredictor: {e}")
+            pass
         
         # Загружаем историю биржи при инициализации (если файл пустой или не существует)
         # История будет дополняться при каждом обучении и периодически
@@ -290,7 +290,7 @@ class AITrainer:
                 logger.info("📥 Первичная загрузка истории сделок с биржи...")
                 self._update_exchange_trades_history()
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка загрузки истории биржи при инициализации: {e}")
+            pass
 
         # Настройки тренировочного режима (не влияют на боевые боты)
         self.training_param_overrides: Dict[str, Any] = {}
@@ -340,7 +340,7 @@ class AITrainer:
                 record.update({k: v for k, v in payload.items() if v is not None})
             self.data_storage.add_training_record(record)
         except Exception as storage_error:
-            logger.debug(f"⚠️ Не удалось записать событие обучения {event_type}: {storage_error}")
+            pass
 
     def _build_individual_settings(
         self,
@@ -745,7 +745,7 @@ class AITrainer:
             if target_data:
                 return float(target_data.get('target_win_rate', self.win_rate_targets_default))
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка загрузки целевого win rate для {symbol}: {e}")
+            pass
         
         return self.win_rate_targets_default
     
@@ -807,7 +807,7 @@ class AITrainer:
             self.ai_db.save_win_rate_target(symbol_key, target_val, current_win_rate=current_wr)
             self.win_rate_targets_dirty = True
         except Exception as e:
-            logger.debug(f"⚠️ Не удалось обновить цель Win Rate для {symbol}: {e}")
+            pass
 
 
     
@@ -825,14 +825,14 @@ class AITrainer:
         
         ПРИМЕЧАНИЕ: history_data.json больше не используется, так как все данные в БД
         """
-        logger.debug("   📦 _load_history_data(): начало загрузки сделок...")
+        pass
         
         trades = []
         source_counts = {}
         
         # 1. ПРИОРИТЕТ: Загружаем из БД (основной источник)
         if self.ai_db:
-            logger.debug("   📦 _load_history_data(): БД доступна, загрузка через get_trades_for_training()...")
+            pass
             try:
                 # ВАЖНО: Загружаем ВСЕ сделки - и реальные, и симуляции
                 # Симуляции нужны для обучения ИИ на разных параметрах и поиска оптимальных
@@ -859,7 +859,7 @@ class AITrainer:
                             trades=len(db_trades),
                         )
                     except Exception as _e:
-                        logger.debug(f"   ⚠️ Не удалось обновить data_service ready: {_e}")
+                        pass
                     # Конвертируем формат БД в формат для обучения
                     for trade in db_trades:
                         # Получаем RSI и Trend данные (приоритет: entry_rsi/entry_trend > rsi/trend)
@@ -944,7 +944,7 @@ class AITrainer:
                                                             else:
                                                                 trend = 'NEUTRAL'
                                         except Exception as enrich_error:
-                                            logger.debug(f"⚠️ Не удалось обогатить RSI/Trend для {symbol}: {enrich_error}")
+                                            pass
                         
                         # Преобразуем данные из БД в формат, ожидаемый AI
                         converted_trade = {
@@ -973,7 +973,7 @@ class AITrainer:
                     if trades:
                         return trades
             except Exception as e:
-                logger.debug(f"   ⚠️ Ошибка загрузки из БД: {e}, используем fallback")
+                pass
         
         # 2. Fallback: Пробуем загрузить напрямую из data/bot_history.json (основной файл bots.py)
         try:
@@ -1002,15 +1002,15 @@ class AITrainer:
                     # Убрано: logger.debug(f"   ✅ Найдено {len(bot_trades)} сделок, добавлено {len(new_trades)} новых") - слишком шумно
                     source_counts['bot_history.json'] = len(new_trades)
                 else:
-                    logger.debug(f"   ⏳ В файле нет сделок")
+                    pass
             else:
-                logger.debug(f"   ⏳ Файл {bot_history_file} не найден")
+                pass
         except json.JSONDecodeError as json_error:
-            logger.debug(f"   ⚠️ Файл bot_history.json содержит ошибку JSON на позиции {json_error.pos} (пропускаем, оригинал не трогаем)")
+            pass
             # Не сохраняем копию автоматически - это может быть временная проблема при записи
             # Если проблема критична, пользователь может проверить файл вручную
         except Exception as e:
-            logger.debug(f"   ⚠️ Ошибка загрузки bot_history.json: {e}")
+            pass
         
         # 3. Анализируем загруженные сделки (сокращенные логи)
         # Убрано: logger.debug(f"📊 Всего загружено сделок: {len(trades)}") - слишком шумно
@@ -1138,7 +1138,7 @@ class AITrainer:
                                     closed_trades.append(trade)
                         logger.info(f"   ✅ Добавлено {len(closed_trades)} сделок из биржи для обучения")
                 except Exception as e:
-                    logger.debug(f"   ⚠️ Ошибка проверки сделок из биржи в БД: {e}")
+                    pass
             
             if len(closed_trades) == 0:
                 logger.warning("⚠️ Сделки не найдены!")
@@ -1225,7 +1225,7 @@ class AITrainer:
             exchange = get_exchange()
             
             if exchange:
-                logger.debug(f"   ✅ Используем существующий exchange: {type(exchange).__name__}")
+                pass
                 return exchange
             
             # Если exchange недоступен, создаем свой
@@ -1268,13 +1268,13 @@ class AITrainer:
             except Exception as e:
                 logger.warning(f"   ⚠️ Ошибка создания exchange: {e}")
                 import traceback
-                logger.debug(f"Traceback: {traceback.format_exc()}")
+                pass
                 return None
             
         except Exception as e:
             logger.warning(f"   ⚠️ Ошибка создания exchange: {e}")
             import traceback
-            logger.debug(f"Traceback: {traceback.format_exc()}")
+            pass
             return None
     
     def _load_exchange_trades_history(self) -> List[Dict]:
@@ -1403,7 +1403,7 @@ class AITrainer:
                                         reason.append(f"entry_price={entry_price}")
                                     if exit_price <= 0:
                                         reason.append(f"exit_price={exit_price}")
-                                    logger.debug(f"   ⏭️ Пропущена сделка {symbol}: {', '.join(reason) if reason else 'нет данных'}")
+                                    pass
                         
                         logger.info(f"   ✅ Обработано: {processed_count} сделок")
                         if skipped_count > 0:
@@ -1428,7 +1428,7 @@ class AITrainer:
                 except Exception as e:
                     logger.warning(f"⚠️ Ошибка загрузки истории сделок с биржи: {e}")
                     import traceback
-                    logger.debug(f"Traceback: {traceback.format_exc()}")
+                    pass
             else:
                 logger.warning(f"   ⚠️ Exchange не имеет метода get_closed_pnl")
                 logger.warning(f"   💡 Доступные методы: {[m for m in dir(exchange) if not m.startswith('_')][:10]}")
@@ -1440,7 +1440,7 @@ class AITrainer:
         except Exception as e:
             logger.warning(f"⚠️ Ошибка загрузки истории сделок с биржи: {e}")
             import traceback
-            logger.debug(f"Traceback: {traceback.format_exc()}")
+            pass
             return []
     
     def _save_exchange_trades_history(self, new_trades: List[Dict]) -> None:
@@ -1498,7 +1498,7 @@ class AITrainer:
                             if saved > 0:
                                 logger.info(f"📦 Мигрировано {saved} симулированных сделок из JSON в БД")
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка миграции симуляций: {e}")
+                    pass
             
             # Миграция сделок биржи (если есть старый файл)
             exchange_trades_history_file = os.path.join(self.data_dir, 'exchange_trades_history.json')
@@ -1512,9 +1512,9 @@ class AITrainer:
                             if saved > 0:
                                 logger.info(f"📦 Мигрировано {saved} сделок биржи из JSON в БД")
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка миграции сделок биржи: {e}")
+                    pass
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка миграции данных: {e}")
+            pass
     
     def _load_saved_exchange_trades(self) -> List[Dict]:
         """
@@ -1540,7 +1540,7 @@ class AITrainer:
             exchange_trades = [t for t in trades if t.get('source') == 'EXCHANGE']
             
             if exchange_trades:
-                logger.debug(f"📊 Загружено {len(exchange_trades)} сделок биржи из БД")
+                pass
             
             return exchange_trades
         except Exception as e:
@@ -1592,7 +1592,7 @@ class AITrainer:
         except Exception as e:
             logger.warning(f"⚠️ Ошибка обновления истории сделок биржи: {e}")
             import traceback
-            logger.debug(f"Traceback: {traceback.format_exc()}")
+            pass
     
     def _load_simulated_trades(self) -> List[Dict]:
         """
@@ -1622,7 +1622,7 @@ class AITrainer:
             
             return closed_trades
         except (json.JSONDecodeError, Exception) as e:
-            logger.debug(f"⚠️ Ошибка загрузки симулированных сделок: {e}")
+            pass
             return []
     
     def train_on_simulated_trades(self) -> None:
@@ -1634,7 +1634,7 @@ class AITrainer:
             simulated_trades = self._load_simulated_trades()
             
             if len(simulated_trades) < 50:
-                logger.debug(f"💡 Недостаточно симулированных сделок для обучения (есть {len(simulated_trades)}, нужно минимум 50)")
+                pass
                 return
             
             logger.info("=" * 80)
@@ -1684,7 +1684,7 @@ class AITrainer:
                     else:
                         failed_samples.append(sample)
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка обработки симулированной сделки: {e}")
+                    pass
                     continue
             
             all_samples = successful_samples + failed_samples
@@ -1787,7 +1787,7 @@ class AITrainer:
         except Exception as e:
             logger.error(f"❌ Ошибка обучения на симулированных сделках: {e}")
             import traceback
-            logger.debug(f"Traceback: {traceback.format_exc()}")
+            pass
     
     def _load_market_data_for_symbols(self, symbols: List[str]) -> Dict:
         """
@@ -1833,7 +1833,7 @@ class AITrainer:
                             # get_candles() уже возвращает правильный формат {time, open, high, low, close, volume}
                             candles_data[symbol.upper()] = symbol_candles
                     except Exception as symbol_error:
-                        logger.debug(f"⚠️ Ошибка загрузки свечей для {symbol}: {symbol_error}")
+                        pass
                         continue
                 
                 if len(candles_data) < len(symbols):
@@ -1847,7 +1847,7 @@ class AITrainer:
             except Exception as db_error:
                 logger.error(f"❌ Ошибка загрузки свечей из БД: {db_error}")
                 import traceback
-                logger.debug(traceback.format_exc())
+                pass
                 return market_data
             
             if candles_data:
@@ -1883,7 +1883,7 @@ class AITrainer:
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки рыночных данных: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return {'latest': {'candles': {}}}
     
     def _load_market_data(self) -> Dict:
@@ -2175,7 +2175,7 @@ class AITrainer:
                 if abs(cv_mean - test_accuracy) > 0.10:
                     logger.warning(f"⚠️ Большая разница между CV и test accuracy: {abs(cv_mean - test_accuracy):.2%}")
             except Exception as cv_error:
-                logger.debug(f"⚠️ Не удалось выполнить кросс-валидацию: {cv_error}")
+                pass
             
             # Сохраняем accuracy для последующего сохранения в метаданных
             self._signal_predictor_accuracy = final_accuracy
@@ -2436,7 +2436,7 @@ class AITrainer:
                             cv_mean = np.mean(cv_scores)
                             logger.info(f"📊 Кросс-валидация: {cv_mean:.2%} ± {np.std(cv_scores):.2%}")
                         except Exception as cv_error:
-                            logger.debug(f"⚠️ Не удалось выполнить кросс-валидацию: {cv_error}")
+                            pass
                         
                         self._signal_predictor_accuracy = float(test_accuracy)
                         
@@ -2466,7 +2466,7 @@ class AITrainer:
                                     logger.info(f"   Win rate: {optimized_params.get('win_rate', 0):.2%}")
                                     logger.info(f"   Total PnL: {optimized_params.get('total_pnl', 0):.2f} USDT")
                             except Exception as e:
-                                logger.debug(f"⚠️ Ошибка получения оптимальных параметров: {e}")
+                                pass
                         
                         return True
             
@@ -2574,12 +2574,12 @@ class AITrainer:
                             simulated = self._simulate_symbol_trades_from_candles(symbol, candles, params)
                             all_simulated.extend(simulated)
                     except Exception as e:
-                        logger.debug(f"⚠️ Ошибка симуляции для {symbol}: {e}")
+                        pass
             
             return all_simulated
             
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка симуляции сделок: {e}")
+            pass
             return []
         finally:
             # Восстанавливаем параметры
@@ -2687,7 +2687,7 @@ class AITrainer:
             return simulated_trades
             
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка симуляции для {symbol}: {e}")
+            pass
             return []
     
     def train_on_strategy_params(self):
@@ -2783,7 +2783,7 @@ class AITrainer:
                     )
                     self._current_training_session_id = training_session_id
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка создания сессии обучения: {e}")
+                    pass
             
             # 0. Обновляем историю сделок с биржи (дополняем файл/БД)
             logger.info("📥 Обновление истории сделок с биржи...")
@@ -2837,7 +2837,7 @@ class AITrainer:
                     logger.warning(f"   ⚠️ Ошибка загрузки сделок ботов из БД: {e}")
                     logger.warning(f"   🔄 Fallback: загрузка из bot_history.json...")
                     import traceback
-                    logger.debug(traceback.format_exc())
+                    pass
                     bot_trades = self._load_history_data()
                     logger.info(f"   ✅ Загружено {len(bot_trades)} сделок из bot_history.json")
             else:
@@ -3265,7 +3265,7 @@ class AITrainer:
                     processed_trades += 1
                     
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка обработки сделки {trade.get('symbol', 'unknown')}: {e}")
+                    pass
                     skipped_trades += 1
                     continue
             
@@ -3596,7 +3596,7 @@ class AITrainer:
                             status='COMPLETED'
                         )
                     except Exception as e:
-                        logger.debug(f"⚠️ Ошибка обновления сессии обучения: {e}")
+                        pass
                 
                 # Подсчитываем количество обученных моделей
                 models_count = 0
@@ -3652,13 +3652,13 @@ class AITrainer:
             except Exception as hist_error:
                 logger.warning(f"⚠️ Ошибка генерации симуляций на исторических данных: {hist_error}")
                 import traceback
-                logger.debug(traceback.format_exc())
+                pass
             
             # Обучаемся на симулированных сделках (дополнительно к реальным)
             try:
                 self.train_on_simulated_trades()
             except Exception as sim_error:
-                logger.debug(f"⚠️ Ошибка обучения на симулированных сделках: {sim_error}")
+                pass
             
             # Обновляем время и количество последнего обучения на реальных сделках
             self._last_real_trades_training_time = datetime.now()
@@ -3669,7 +3669,7 @@ class AITrainer:
                     exchange_trades = self._load_saved_exchange_trades()
                     self._last_real_trades_training_count = len(bot_trades) + len(exchange_trades)
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка получения количества сделок: {e}")
+                    pass
                     self._last_real_trades_training_count = processed_trades
             else:
                 self._last_real_trades_training_count = processed_trades
@@ -3724,10 +3724,10 @@ class AITrainer:
                 )
                 self._current_training_session_id = training_session_id
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка создания сессии обучения: {e}")
+                pass
         
         # Сокращенные логи - только seed для отслеживания
-        logger.debug(f"🎲 Seed обучения: {training_seed}")
+        pass
 
         def _normalize_timestamp(raw_ts):
             """Преобразует таймстамп свечи (мс/с) в секунды."""
@@ -3802,11 +3802,9 @@ class AITrainer:
                     logger.warning(f"⚠️ Использовано {stats['usage_percentage']:.1f}% всех комбинаций параметров!")
                     logger.warning("💡 Рекомендуется переключиться на обучение на реальных сделках")
                 else:
-                    logger.debug(
-                        f"   📚 Доступно ещё {stats['remaining_combinations']:,} комбинаций RSI параметров"
-                    )
+                    pass  # доступно комбинаций RSI параметров
             else:
-                logger.debug("   ⚙️ Трекер параметров недоступен — используем случайные комбинации на монету")
+                pass
 
             base_config_snapshot = _get_config_snapshot()
             base_config = base_config_snapshot.get('global', {})
@@ -3954,7 +3952,7 @@ class AITrainer:
                 if mature_coins_set:
                     logger.info(f"✅ Загружен список зрелых монет из bots.py: {len(mature_coins_set)} монет")
                 else:
-                    logger.debug("   💡 Список зрелых монет недоступен - используем все монеты")
+                    pass
             except ImportError:
                 # Fallback если helper недоступен
                 mature_coins_set = set()
@@ -3966,10 +3964,10 @@ class AITrainer:
                             mature_coins_set = set(mature_coins_data.keys())
                             logger.info(f"✅ Загружен список зрелых монет из файла: {len(mature_coins_set)} монет")
                 except Exception as e:
-                    logger.debug(f"   ⚠️ Не удалось загрузить список зрелых монет: {e}")
-                    logger.debug("   💡 Продолжаем обучение на всех монетах")
+                    pass
+                    pass
             except Exception as e:
-                logger.debug(f"   ⚠️ Ошибка загрузки списка зрелых монет: {e}")
+                pass
                 mature_coins_set = set()
             
             # Фильтруем монеты: используем только зрелые (если список доступен)
@@ -4025,7 +4023,7 @@ class AITrainer:
                     if len(available_symbols) < len(candles_data):
                         logger.info(f"📊 Доступно для обработки: {len(available_symbols)}/{len(candles_data)} монет (остальные заняты другими процессами)")
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка получения доступных символов: {e}, используем все")
+                    pass
             
             for symbol_idx, (symbol, candle_info) in enumerate(candles_data.items(), 1):
                 # Показываем прогресс каждые 50 монет или для первых 10 монет
@@ -4039,7 +4037,7 @@ class AITrainer:
                 # Блокируем символ для обработки (для параллельной работы на разных ПК)
                 if self.ai_db:
                     if not self.ai_db.try_lock_symbol(symbol, process_id, hostname, lock_duration_minutes=120):
-                        logger.debug(f"   ⏭️ {symbol}: пропущен (обрабатывается другим процессом)")
+                        pass
                         continue
                 
                 try:
@@ -4065,7 +4063,7 @@ class AITrainer:
                         best_params = self.param_tracker.get_best_params_for_symbol(symbol)
                         if best_params and best_params.get('rating', 0) >= 70.0:  # Используем если рейтинг >= 70
                             coin_best_params = best_params.get('rsi_params')
-                            logger.debug(f"   ⭐ {symbol}: используем лучшие параметры (рейтинг {best_params.get('rating', 0):.1f}, Win Rate {best_params.get('win_rate', 0):.1f}%)")
+                            pass
                     
                     # УЛУЧШЕНИЕ: Ограничиваем количество свечей для обучения до 1000
                     # Используем только последние 1000 свечей для обучения ИИ
@@ -4078,7 +4076,7 @@ class AITrainer:
                     MAX_CANDLES_FOR_TRAINING = 1000
                     if len(candles) > MAX_CANDLES_FOR_TRAINING:
                         candles = candles[-MAX_CANDLES_FOR_TRAINING:]
-                        logger.debug(f"   📊 {symbol}: ограничено до {MAX_CANDLES_FOR_TRAINING} последних свечей (было {original_count})")
+                        pass
                     
                     # ВАРИАЦИЯ ДАННЫХ: Используем разные подмножества данных для разнообразия
                     # Это обеспечивает разные паттерны при каждом обучении
@@ -4091,7 +4089,7 @@ class AITrainer:
                         min_length = 300
                         if len(candles) - start_offset >= min_length:
                             candles = candles[start_offset:]
-                            logger.debug(f"   🎲 {symbol}: используем подмножество свечей с offset {start_offset} (всего {len(candles)} свечей)")
+                            pass
 
                     # Проверяем существующую модель и количество свечей при предыдущем обучении
                     # Нормализуем путь и имя символа для Windows
@@ -4108,7 +4106,7 @@ class AITrainer:
                                 previous_candles_count = latest_version.get('training_samples', 0)
                                 model_exists = True
                         except Exception as e:
-                            logger.debug(f"   ⚠️ Ошибка чтения метаданных модели для {symbol} из БД: {e}")
+                            pass
                     
                     current_candles_count = len(candles)
                     candles_increased = current_candles_count > previous_candles_count
@@ -4118,20 +4116,20 @@ class AITrainer:
                     if symbol_idx % progress_interval == 0 or symbol_idx == 1 or symbol_idx == total_coins:
                         logger.info(f"   🎓 [{symbol_idx}/{total_coins}] Обработка {symbol}... ({len(candles)} свечей)")
                     else:
-                        logger.debug(f"🎓 [{symbol_idx}/{total_coins}] ОБУЧЕНИЕ ДЛЯ {symbol}")
-                        logger.debug(f"   📊 Свечей: {len(candles)}")
+                        pass
+                        pass
                     
                     if model_exists:
                         if candles_increased:
-                            logger.debug(f"   🔄 Переобучение: {previous_candles_count} → {current_candles_count} (+{increase_percent:.1f}%)")
+                            pass
                         else:
-                            logger.debug(f"   ✅ Модель существует, переобучаем на {current_candles_count} свечах")
+                            pass
                     else:
-                        logger.debug(f"   🆕 Новая модель на {current_candles_count} свечах")
+                        pass
                     
                     # Предупреждение только если критично
                     if len(candles) <= 1000:
-                        logger.debug(f"   ⚠️ {symbol}: только {len(candles)} свечей (возможно кэш)")
+                        pass
                     
                     # Извлекаем данные из свечей
                     closes = [float(c.get('close', 0) or 0) for c in candles]
@@ -4147,7 +4145,7 @@ class AITrainer:
                     # Вычисляем RSI до приоритетов 1–4: нужен для _generate_adaptive_params (приоритет 4) и симуляции
                     rsi_history = calculate_rsi_history_func(candles, period=RSI_PERIOD)
                     if not rsi_history or len(rsi_history) < 50:
-                        logger.debug(f"   ⚠️ {symbol}: недостаточно данных для RSI ({len(rsi_history) if rsi_history else 0}), пропуск")
+                        pass
                         continue
                     
                     # Готовим индивидуальную базу конфигурации (общий конфиг + индивидуальные настройки монеты)
@@ -4262,10 +4260,10 @@ class AITrainer:
                                     if symbol_idx <= 10 or symbol_idx % progress_interval == 0:
                                         logger.info(f"   🤖 {symbol}: ИИ нашел оптимальные параметры (предсказанное качество: {predicted_quality:.3f})")
                                     else:
-                                        logger.debug(f"   🤖 {symbol}: ИИ нашел оптимальные параметры (качество: {predicted_quality:.3f})")
+                                        pass
                                     break
                         except Exception as e:
-                            logger.debug(f"   ⚠️ {symbol}: ошибка использования ML модели: {e}")
+                            pass
                     
                     # ПРИОРИТЕТ 2: Используем сохранённые лучшие параметры для монеты
                     if not coin_rsi_params and coin_best_params:
@@ -4273,14 +4271,14 @@ class AITrainer:
                         if symbol_idx <= 10 or symbol_idx % progress_interval == 0:
                             logger.info(f"   ⭐ {symbol}: применяем сохранённые лучшие параметры (Win Rate: {coin_best_params.get('win_rate', 0):.1f}%)")
                         else:
-                            logger.debug(f"   ⭐ {symbol}: применяем сохранённые лучшие параметры")
+                            pass
                     
                     # ПРИОРИТЕТ 3: Используем трекер параметров для новых комбинаций
                     if not coin_rsi_params and self.param_tracker:
                         suggested_params = self.param_tracker.get_unused_params_suggestion(base_params, variation_range)
                         if suggested_params:
                             coin_rsi_params = suggested_params
-                            logger.debug(f"   🎯 {symbol}: получили новую комбинацию параметров из трекера")
+                            pass
                     
                     # ПРИОРИТЕТ 4: Генерируем адаптивные параметры на основе анализа рынка
                     # (используется только если ML модель не обучена или не дала результатов)
@@ -4294,12 +4292,12 @@ class AITrainer:
                         if symbol_idx <= 10 or symbol_idx % progress_interval == 0:
                             logger.info(f"   📊 {symbol}: сгенерированы адаптивные параметры на основе анализа рынка")
                         else:
-                            logger.debug(f"   📊 {symbol}: адаптивные параметры")
+                            pass
 
                     if symbol_idx <= 5 or symbol_idx % progress_interval == 0:
                         logger.info(f"   ⚙️ {symbol}: RSI params {coin_rsi_params}, seed {coin_seed}")
                     else:
-                        logger.debug(f"   ⚙️ {symbol}: RSI params {coin_rsi_params}")
+                        pass
 
                     # Используем параметры для этой монеты
                     coin_RSI_OVERSOLD = coin_rsi_params['oversold']
@@ -4380,19 +4378,8 @@ class AITrainer:
                             f"{coin_exit_scam_multi_candle_count}св {coin_exit_scam_multi_candle_percent:.1f}%"
                         )
                     else:
-                        logger.debug(
-                            f"   📐 {symbol}: SL {MAX_LOSS_PERCENT:.1f}%, TP {TAKE_PROFIT_PERCENT:.1f}%, "
-                            f"TS {TRAILING_STOP_ACTIVATION:.1f}%/{TRAILING_STOP_DISTANCE:.1f}%, "
-                            f"TT {TRAILING_TAKE_DISTANCE:.2f}%/{TRAILING_UPDATE_INTERVAL:.1f}с, "
-                            f"BE {'✅' if BREAK_EVEN_PROTECTION else '❌'} ({BREAK_EVEN_TRIGGER:.1f}%), MaxHold {MAX_POSITION_HOURS}ч"
-                        )
-                        logger.debug(
-                            f"   🛡️ {symbol}: RSI TF {coin_rsi_time_filter_candles} [{coin_rsi_time_filter_lower}/{coin_rsi_time_filter_upper}] | "
-                            f"ExitScam: N={coin_exit_scam_candles}, 1св {coin_exit_scam_single_candle_percent:.1f}%, "
-                            f"{coin_exit_scam_multi_candle_count}св {coin_exit_scam_multi_candle_percent:.1f}%"
-                        )
+                        pass  # параметры SL/TP/TS для symbol
 
-                    
                     # RSI уже вычислен выше (до приоритетов 1–4)
                     # УЛУЧШЕНИЕ: Адаптируем диапазоны параметров на основе статистики RSI монеты
                     # Это увеличивает вероятность генерации сделок
@@ -4462,7 +4449,7 @@ class AITrainer:
                         )
                     else:
                         position_size_usdt = position_size_value
-                        logger.debug(f"   💵 {symbol}: размер сделки {position_size_usdt:.4f} USDT (режим fixed_usdt)")
+                        pass
                     
                     # Логируем начало симуляции (INFO только для важных монет)
                     # Вычисляем количество свечей для обработки с учетом пропуска начальных свечей
@@ -4473,7 +4460,7 @@ class AITrainer:
                     if symbol_idx <= 10 or symbol_idx % progress_interval == 0:
                         logger.info(f"   🔄 {symbol}: симуляция {candles_to_process:,} свечей...")
                     else:
-                        logger.debug(f"   🔄 {symbol}: симуляция {candles_to_process:,} свечей...")
+                        pass
                     
                     # Логируем прогресс каждые 1000 свечей (INFO для важных монет)
                     progress_step = 1000
@@ -4487,7 +4474,7 @@ class AITrainer:
                         simulation_start_idx = max(RSI_PERIOD, coin_min_candles_for_maturity)
                         if simulation_start_idx > RSI_PERIOD:
                             skipped_candles = simulation_start_idx - RSI_PERIOD
-                            logger.debug(f"   ⏭️ {symbol}: пропущено {skipped_candles} начальных свечей (до накопления {coin_min_candles_for_maturity} для зрелости)")
+                            pass
                     
                     # Счетчики для диагностики фильтров
                     rsi_entered_long_zone = 0
@@ -4502,7 +4489,7 @@ class AITrainer:
                         processed_count = i - simulation_start_idx
                         if candles_to_process > 1000 and processed_count % progress_step == 0:
                             progress_pct = (processed_count / candles_to_process) * 100
-                            logger.debug(f"   📊 {symbol}: обработано {processed_count:,}/{candles_to_process:,} свечей ({progress_pct:.1f}%)")
+                            pass
                         try:
                             # RSI на текущей позиции
                             rsi_idx = i - RSI_PERIOD
@@ -4683,7 +4670,7 @@ class AITrainer:
                                         'protection_state': _build_protection_state('SHORT', current_price, entry_ts_ms, position_size_usdt),
                                     }
                         except Exception as e:
-                            logger.debug(f"   ⚠️ Ошибка симуляции свечи {i} для {symbol}: {e}")
+                            pass
                             continue
                     
                     total_candles_processed += len(candles)
@@ -4736,7 +4723,7 @@ class AITrainer:
                     if symbol_idx <= 10 or symbol_idx % progress_interval == 0:
                         logger.info(f"   ✅ {symbol}: симуляция завершена ({candles_to_process:,} свечей обработано, {trades_for_symbol} сделок)")
                     else:
-                        logger.debug(f"   ✅ {symbol}: симуляция завершена ({candles_to_process:,} свечей обработано, {trades_for_symbol} сделок)")
+                        pass
                     
                     # ВАЖНО: Логируем сразу после симуляции для отладки
                     symbol_win_rate = 0.0  # значение по умолчанию, если сделок нет
@@ -4792,11 +4779,11 @@ class AITrainer:
                             # Логируем обучение ИИ (только для важных монет)
                             if symbol_idx <= 10 or symbol_idx % progress_interval == 0:
                                 if trades_for_symbol > 0:
-                                    logger.debug(f"   🧠 {symbol}: ИИ учится на результатах (Win Rate: {symbol_win_rate:.1f}%, сделок: {trades_for_symbol})")
+                                    pass
                                 else:
-                                    logger.debug(f"   🧠 {symbol}: ИИ учится на блокировке (попыток: {rsi_entered_zones}, заблокировано: {total_blocked})")
+                                    pass
                         except Exception as e:
-                            logger.debug(f"   ⚠️ {symbol}: ошибка добавления образца в ML модель: {e}")
+                            pass
                     
                     # ВАЖНО: Сохраняем информацию о блокировках для обучения AI
                     # AI должна учиться на том, какие параметры блокируются и почему
@@ -4827,14 +4814,14 @@ class AITrainer:
                                         blocked_long=filters_blocked_long,
                                         blocked_short=filters_blocked_short
                                     )
-                                    logger.debug(f"   📝 {symbol}: сохранена информация о {total_blocked} блокировках в БД")
+                                    pass
                             except Exception as e:
-                                logger.debug(f"   ⚠️ {symbol}: ошибка сохранения информации о блокировках: {e}")
+                                pass
                     
                     # Логируем результаты симуляции (DEBUG - техническая деталь)
                     # symbol_win_rate и symbol_pnl_for_ml уже вычислены выше для ML модели
                     if trades_for_symbol == 0:
-                        logger.debug(f"   ⏭️ {symbol}: сделок не найдено")
+                        pass
                         symbol_pnl = 0.0
                     else:
                         # Используем уже вычисленные значения
@@ -4866,7 +4853,7 @@ class AITrainer:
                             if symbol_idx <= 10 or symbol_idx % progress_interval == 0:
                                 logger.info(f"   🎓 Обучаем модель для {symbol}... ({trades_for_symbol} сделок, Win Rate: {symbol_win_rate:.1f}%)")
                             else:
-                                logger.debug(f"   🎓 Обучаем модель для {symbol}... ({trades_for_symbol} сделок, Win Rate: {symbol_win_rate:.1f}%)")
+                                pass
                             
                             # ВАЖНО: Логируем подготовку данных
                             if symbol_idx <= 10:
@@ -5022,7 +5009,7 @@ class AITrainer:
                                 # Сохраняем полные метаданные в metadata_json
                                 db_metadata.update(metadata)
                                 self.ai_db.save_model_version(db_metadata)
-                                logger.debug(f"   🗄️ {symbol}: метаданные сохранены в БД")
+                                pass
                             if symbol_idx <= 10:
                                 logger.info(f"   ✅ {symbol}: метаданные сохранены")
                             
@@ -5067,7 +5054,7 @@ class AITrainer:
                                         if symbol_idx <= 10:
                                             logger.info(f"   ✅ {symbol}: параметры сохранены в трекер (Win Rate: {symbol_win_rate:.1f}%, PnL: {symbol_pnl:.2f} USDT)")
                                         else:
-                                            logger.debug(f"   🧾 {symbol}: параметры отмечены в трекере")
+                                            pass
                                     except Exception as tracker_error:
                                         logger.error(f"   ❌ {symbol}: ошибка сохранения параметров в трекер: {tracker_error}")
                                         import traceback
@@ -5240,23 +5227,16 @@ class AITrainer:
                                     logger.error(traceback.format_exc())
                             # при save_params=False причина уже залогирована выше (Win Rate / "не лучше")
                         
-                            # Детальные метрики только для DEBUG
                             if signal_score is not None and profit_mse is not None:
-                                logger.debug(
-                                    f"   ✅ {symbol}: модель обучена! Accuracy: {signal_score:.2%}, "
-                                    f"MSE: {profit_mse:.2f}, Win Rate: {symbol_win_rate:.1f}%"
-                                )
+                                pass  # модель обучена, метрики
                             else:
-                                logger.debug(
-                                    f"   ✅ {symbol}: модель обучена! Win Rate: {symbol_win_rate:.1f}% "
-                                    "(метрики не вычислены)"
-                                )
+                                pass  # модель обучена, Win Rate
 
                         if not model_trained:
                             if symbol_idx <= 10 or symbol_idx % progress_interval == 0:
                                 logger.info(f"   ⏳ {symbol}: недостаточно сделок для обучения ({trades_for_symbol} < 1)")
                             else:
-                                logger.debug(f"   ⏳ {symbol}: недостаточно сделок ({trades_for_symbol} < 1)")
+                                pass
                         
                     # ВАЖНО: Увеличиваем счетчик ВСЕГДА, даже если сделок нет!
                     total_trained_coins += 1
@@ -5268,7 +5248,7 @@ class AITrainer:
                     if symbol_idx <= 10 or symbol_idx % progress_interval == 0:
                         logger.info(completion_message)
                     else:
-                        logger.debug(completion_message)
+                        pass
                     
                     # Собираем симулированные сделки для сохранения
                     if simulated_trades_symbol:
@@ -5298,7 +5278,7 @@ class AITrainer:
                     if symbol_idx <= 10 or symbol_idx % progress_interval == 0:
                         logger.error(traceback.format_exc())
                     else:
-                        logger.debug(traceback.format_exc())
+                        pass
                     total_failed_coins += 1
                 finally:
                     # Освобождаем блокировку символа (для параллельной работы на разных ПК)
@@ -5306,7 +5286,7 @@ class AITrainer:
                         try:
                             self.ai_db.release_lock(symbol, process_id)
                         except Exception as lock_error:
-                            logger.debug(f"⚠️ Ошибка освобождения блокировки для {symbol}: {lock_error}")
+                            pass
             
             # Win Rate targets теперь сохраняются в БД автоматически
             
@@ -5432,7 +5412,7 @@ class AITrainer:
                     try:
                         self.train_on_simulated_trades()
                     except Exception as sim_error:
-                        logger.debug(f"⚠️ Ошибка обучения на симулированных сделках: {sim_error}")
+                        pass
                 except Exception as e:
                     logger.error(f"   ❌ Ошибка обучения ML модели: {e}")
                     import traceback
@@ -5482,7 +5462,7 @@ class AITrainer:
             open_positions = self.ai_db.get_open_positions_for_ai()
             
             if not open_positions:
-                logger.debug("ℹ️ Нет открытых позиций для анализа")
+                pass
                 return []
             
             recommendations = []
@@ -5498,7 +5478,7 @@ class AITrainer:
                     if recommendation:
                         recommendations.append(recommendation)
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка анализа позиции {symbol}: {e}")
+                    pass
                     continue
             
             logger.info(f"✅ Проанализировано {len(recommendations)} открытых позиций")
@@ -5507,7 +5487,7 @@ class AITrainer:
         except Exception as e:
             logger.error(f"❌ Ошибка анализа открытых позиций: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return []
     
     def _analyze_single_position(self, position: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -5582,7 +5562,7 @@ class AITrainer:
                         exit_reason = 'AI_LOW_SUCCESS_PROBABILITY'
                     
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка предсказания ИИ для {symbol}: {e}")
+                    pass
             
             # Анализ RSI для рекомендаций по выходу
             if current_rsi:
@@ -5646,7 +5626,7 @@ class AITrainer:
             }
             
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка анализа позиции: {e}")
+            pass
             return None
             # Win Rate targets теперь сохраняются в БД автоматически
             self._record_training_event(
@@ -5714,19 +5694,19 @@ class AITrainer:
                     if os.path.exists(lstm_scaler):
                         lstm_p = LSTMPredictor(model_path=lstm_path_pth, scaler_path=lstm_scaler)
                 except Exception as e:
-                    logger.debug(f"Ensemble: LSTM не загружен: {e}")
+                    pass
             trans_path = 'data/ai/models/transformer_predictor.pth'
             if getattr(AIConfig, 'AI_USE_TRANSFORMER', False) and os.path.exists(trans_path):
                 try:
                     from bot_engine.ai.transformer_predictor import TransformerPredictor
                     trans_p = TransformerPredictor(model_path=trans_path)
                 except Exception as e:
-                    logger.debug(f"Ensemble: Transformer не загружен: {e}")
+                    pass
             try:
                 from bot_engine.ai.smart_money_features import SmartMoneyFeatures
                 smc_p = SmartMoneyFeatures()
             except Exception as e:
-                logger.debug(f"Ensemble: SMC не загружен: {e}")
+                pass
             if lstm_p or trans_p or smc_p:
                 self._ensemble_predictor = EnsemblePredictor(
                     lstm_predictor=lstm_p,
@@ -5736,7 +5716,7 @@ class AITrainer:
                 )
                 return self._ensemble_predictor
         except Exception as e:
-            logger.debug(f"Ensemble predictor: {e}")
+            pass
         return None
 
     def predict(self, symbol: str, market_data: Dict) -> Dict:
@@ -5858,7 +5838,7 @@ class AITrainer:
                 signal_prob = self.signal_predictor.predict_proba(features_scaled)[0]
             except AttributeError as ae:
                 if 'tree_' in str(ae) or 'NoneType' in str(ae):
-                    logger.debug(f"Модель сигналов не готова к предсказанию: {ae}")
+                    pass
                     return {'error': f'Модель не обучена или не загружена: {ae}'}
                 raise
             if use_profit:
@@ -5896,7 +5876,7 @@ class AITrainer:
                                 result['confidence'] = float(ens.get('confidence', 50)) / 100.0
                                 result['ensemble_used'] = True
             except Exception as ens_e:
-                logger.debug(f"Ensemble predict: {ens_e}")
+                pass
 
             if getattr(self, '_perf_monitor', None):
                 try:
@@ -5912,7 +5892,7 @@ class AITrainer:
                         model='signal_predictor'
                     )
                 except Exception as mon_e:
-                    logger.debug(f"Performance monitor: {mon_e}")
+                    pass
 
             return result
 
@@ -5984,7 +5964,7 @@ class AITrainer:
             sample.update(additional_features)
             return sample
         except Exception as sample_error:
-            logger.debug(f"⚠️ Не удалось подготовить решение AI {decision.get('id')}: {sample_error}")
+            pass
             return None
     
     def _should_retrain_parameter_quality_model(self) -> Dict[str, Any]:
@@ -6046,7 +6026,7 @@ class AITrainer:
             else:
                 return {'retrain': False, 'reason': 'AI Database недоступна'}
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка проверки необходимости переобучения: {e}")
+            pass
             # В случае ошибки - переобучаем для безопасности
             return {'retrain': True, 'reason': f'Ошибка проверки, переобучаем для безопасности: {e}'}
     
@@ -6059,7 +6039,7 @@ class AITrainer:
         logger.info("=" * 80)
         
         if not self.data_storage:
-            logger.debug("⚠️ AIDataStorage недоступен - пропускаем переобучение на решениях AI")
+            pass
             return 0
         
         try:
@@ -6080,9 +6060,6 @@ class AITrainer:
                 return 0
             
             if not force and total_closed <= self.ai_decisions_last_trained_count:
-                logger.debug(
-                    f"ℹ️ Новых решений AI нет (последнее переобучение на {self.ai_decisions_last_trained_count} решениях)"
-                )
                 return 0
             
             samples = []
@@ -6149,7 +6126,7 @@ class AITrainer:
                 accuracy = accuracy_score(y_test, y_pred)
                 report = classification_report(y_test, y_pred, output_dict=False, zero_division=0)
                 logger.info(f"✅ Модель решений AI обучена (accuracy: {accuracy * 100:.2f}%)")
-                logger.debug(f"📄 Classification report:\n{report}")
+                pass
                 self._ai_decision_last_accuracy = float(accuracy)
             else:
                 self._ai_decision_last_accuracy = None
@@ -6169,9 +6146,9 @@ class AITrainer:
                 metrics = self.data_storage.calculate_performance_metrics()
                 if metrics:
                     self.data_storage.update_performance_metrics(metrics)
-                    logger.debug("📊 Метрики производительности AI обновлены")
+                    pass
             except Exception as metrics_error:
-                logger.debug(f"⚠️ Не удалось обновить метрики AI решений: {metrics_error}")
+                pass
             
             logger.info(f"🎯 Переобучение на решениях AI завершено (образцов: {len(df)})")
             return len(df)
@@ -6179,7 +6156,7 @@ class AITrainer:
         except Exception as retrain_error:
             logger.error(f"❌ Ошибка переобучения на решениях AI: {retrain_error}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return 0
     
     def update_ai_decision_result(
@@ -6194,11 +6171,11 @@ class AITrainer:
         Обновить результат решения AI после закрытия сделки
         """
         if not decision_id:
-            logger.debug("⚠️ Пустой decision_id для обновления решения AI")
+            pass
             return False
         
         if not self.data_storage:
-            logger.debug("⚠️ AIDataStorage недоступен - не можем обновить решение AI")
+            pass
             return False
         
         updates: Dict[str, Any] = {
@@ -6219,7 +6196,7 @@ class AITrainer:
         try:
             updated = self.data_storage.update_ai_decision(decision_id, updates)
             if updated:
-                logger.debug(f"✅ Решение AI {decision_id} обновлено (pnl={updates.get('pnl')}, roi={updates.get('roi')})")
+                pass
                 
                 # УЛУЧШЕНИЕ: Проверяем, нужно ли переобучить модели на реальных сделках
                 # Делаем это асинхронно, чтобы не блокировать обновление решения
@@ -6238,9 +6215,9 @@ class AITrainer:
                         retrain_thread.start()
                         logger.info("🚀 Запущено автоматическое переобучение на реальных сделках (в фоне)")
                 except Exception as retrain_check_error:
-                    logger.debug(f"⚠️ Ошибка проверки необходимости переобучения: {retrain_check_error}")
+                    pass
             else:
-                logger.debug(f"⚠️ Решение AI {decision_id} не найдено в хранилище")
+                pass
             return updated
         except Exception as update_error:
             logger.warning(f"⚠️ Ошибка обновления решения AI {decision_id}: {update_error}")
@@ -6331,7 +6308,7 @@ class AITrainer:
                 'trades_count': current_trades_count
             }
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка проверки необходимости переобучения на реальных сделках: {e}")
+            pass
             # В случае ошибки - переобучаем для безопасности
             return {
                 'retrain': True,
@@ -6354,7 +6331,7 @@ class AITrainer:
             if not force:
                 should_retrain = self._should_retrain_real_trades_models()
                 if not should_retrain['retrain']:
-                    logger.debug(f"ℹ️ Переобучение на реальных сделках не требуется: {should_retrain['reason']}")
+                    pass
                     return False
             
             # Запускаем обучение на реальных сделках
@@ -6373,7 +6350,7 @@ class AITrainer:
                     exchange_trades = self._load_saved_exchange_trades()
                     self._last_real_trades_training_count = len(bot_trades) + len(exchange_trades)
                 except Exception as e:
-                    logger.debug(f"⚠️ Ошибка получения количества сделок: {e}")
+                    pass
                     self._last_real_trades_training_count = self.get_trades_count()
             else:
                 self._last_real_trades_training_count = self.get_trades_count()
@@ -6384,7 +6361,7 @@ class AITrainer:
         except Exception as e:
             logger.error(f"❌ Ошибка автоматического переобучения на реальных сделках: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
             return False
 
     def update_model_online(self, trade_result: Dict) -> bool:
@@ -6399,13 +6376,13 @@ class AITrainer:
         """
         try:
             if not self.signal_predictor:
-                logger.debug("⚠️ Модель не обучена, онлайн обновление пропущено")
+                pass
                 return False
 
             # Извлекаем признаки из сделки
             features = self._prepare_features(trade_result)
             if features is None:
-                logger.debug("⚠️ Не удалось извлечь признаки из сделки")
+                pass
                 return False
 
             # Получаем результат сделки
@@ -6429,7 +6406,7 @@ class AITrainer:
             if len(self._online_learning_buffer) >= 10 and len(self._online_learning_buffer) % 10 == 0:
                 return self._perform_incremental_training()
 
-            logger.debug("✅ Онлайн обновление модели добавлено в буфер")
+            pass
             return True
 
         except Exception as e:
@@ -6447,7 +6424,7 @@ class AITrainer:
             if len(self._online_learning_buffer) < 5:
                 return False
 
-            logger.debug("🔄 Выполнение инкрементального обучения...")
+            pass
 
             # Извлекаем данные из буфера
             X_online = []
@@ -6464,7 +6441,7 @@ class AITrainer:
             if hasattr(self, 'scaler') and self.scaler:
                 X_online_scaled = self.scaler.transform(X_online)
             else:
-                logger.debug("⚠️ Scaler не найден, пропускаем нормализацию")
+                pass
                 return False
 
             # Для RandomForest инкрементальное обучение ограничено
@@ -6486,12 +6463,12 @@ class AITrainer:
                     differences = np.abs(success_means - failed_means)
                     most_important_idx = np.argmax(differences)
 
-                    logger.debug(f"📊 Самый важный признак в последних сделках: {most_important_idx}, отличие: {differences[most_important_idx]:.3f}")
+                    pass
 
                     # В реальной реализации здесь можно корректировать веса модели
                     # Пока просто логируем для анализа
 
-            logger.debug("✅ Инкрементальное обучение выполнено")
+            pass
             return True
 
         except Exception as e:

@@ -24,7 +24,6 @@ try:
 except ImportError:
     _BAYESIAN_AVAILABLE = False
 
-
 DEFAULT_PARAMETER_GENOMES: Dict[str, Dict[str, Any]] = {
     'rsi_long_threshold': {'min': 20, 'max': 35, 'step': 1, 'type': 'int'},
     'rsi_short_threshold': {'min': 65, 'max': 80, 'step': 1, 'type': 'int'},
@@ -42,23 +41,22 @@ DEFAULT_PARAMETER_GENOMES: Dict[str, Dict[str, Any]] = {
 
 DEFAULT_MAX_TESTS = 200
 
-
 class AIStrategyOptimizer:
     """
     Класс для оптимизации торговых стратегий
     """
-    
+
     def __init__(self):
         """Инициализация оптимизатора"""
         # УДАЛЕНО: self.results_dir - результаты теперь сохраняются в БД (optimized_params, strategy_analysis)
         self.data_dir = 'data/ai'
-        
+
         # Создаем только основную директорию (для БД и моделей)
         os.makedirs(self.data_dir, exist_ok=True)
 
         self.parameter_genomes, self.parameter_genomes_meta = self._load_parameter_genomes()
         self.max_genome_tests = int(self.parameter_genomes_meta.get('max_tests', DEFAULT_MAX_TESTS))
-        
+
         logger.info("✅ AIStrategyOptimizer инициализирован")
 
     def _load_parameter_genomes(self) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Any]]:
@@ -142,16 +140,16 @@ class AIStrategyOptimizer:
         logger.info(f"      📄 Изменения параметров для {symbol}:")
         for key, prev_value, next_value in changes:
             logger.info(f"         - {key}: {prev_value} → {next_value}")
-    
+
     def _load_history_data(self) -> List[Dict]:
         """
         Загрузить историю трейдов
-        
+
         ПРИОРИТЕТ: БД (если доступна), затем bot_history.json
         history_data.json больше не используется, так как все данные в БД
         """
         trades = []
-        
+
         # 1. ПРИОРИТЕТ: Загружаем из БД (если доступна)
         try:
             from bot_engine.ai.ai_database import get_ai_database
@@ -188,12 +186,12 @@ class AIStrategyOptimizer:
                             'is_simulated': False
                         }
                         trades.append(converted_trade)
-                    
+
                     if trades:
                         return trades
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка загрузки из БД: {e}, используем fallback")
-        
+                        pass
+
         # 2. Пробуем загрузить напрямую из data/bot_history.json (основной файл bots.py)
         try:
             bot_history_file = os.path.join('data', 'bot_history.json')
@@ -204,7 +202,7 @@ class AIStrategyOptimizer:
                 except json.JSONDecodeError as json_error:
                     logger.warning(f"⚠️ Файл истории ботов поврежден (JSON ошибка на строке {json_error.lineno}, колонка {json_error.colno}): {bot_history_file}")
                     raise  # Пробрасываем дальше для обработки в общем except
-                
+
                 # Извлекаем сделки из bot_history.json
                 bot_trades = bot_history_data.get('trades', [])
                 if bot_trades:
@@ -214,41 +212,41 @@ class AIStrategyOptimizer:
                         trade_id = trade.get('id') or trade.get('timestamp')
                         if trade_id not in existing_ids:
                             trades.append(trade)
-                    
-                    # Убрано: logger.debug(f"📊 Добавлено {len(bot_trades)} сделок из bot_history.json") - слишком шумно
+
+                    # Убрано:                     # Убрано: pass - слишком шумно
         except json.JSONDecodeError as json_error:
-            logger.debug(f"⚠️ Файл bot_history.json содержит ошибку JSON на позиции {json_error.pos} (пропускаем, оригинал не трогаем)")
+                        pass
             # Не сохраняем копию автоматически - это может быть временная проблема при записи
             # Если проблема критична, пользователь может проверить файл вручную
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка загрузки bot_history.json: {e}")
-        
+                        pass
+
         # 3. Фильтруем только закрытые сделки с PnL
         closed_trades = [
             t for t in trades
             if t.get('status') == 'CLOSED' and t.get('pnl') is not None
         ]
-        
+
         if len(closed_trades) > 0:
             logger.info(f"✅ Загружено {len(closed_trades)} закрытых сделок для анализа (всего {len(trades)} сделок)")
-        
+
         return closed_trades
-    
+
     def analyze_trade_patterns(self) -> Dict:
         """
         Анализ паттернов торговли
-        
+
         Определяет какие условия приводят к прибыльным сделкам
         """
         logger.info("=" * 80)
         logger.info("🔍 АНАЛИЗ ПАТТЕРНОВ ТОРГОВЛИ")
         logger.info("=" * 80)
-        
+
         try:
             trades = self._load_history_data()
-            
+
             logger.info(f"📊 Загружено {len(trades)} сделок для анализа")
-            
+
             if len(trades) < 10:
                 logger.warning("⚠️ Недостаточно данных для анализа (нужно минимум 10 сделок)")
                 logger.info("💡 Возвращаем базовые паттерны...")
@@ -262,11 +260,11 @@ class AIStrategyOptimizer:
                     'time_analysis': {},
                     'note': 'Недостаточно данных для полного анализа'
                 }
-            
+
             # Анализируем прибыльные и убыточные сделки
             profitable_trades = [t for t in trades if t.get('pnl', 0) > 0]
             losing_trades = [t for t in trades if t.get('pnl', 0) < 0]
-            
+
             patterns = {
                 'total_trades': len(trades),
                 'profitable_trades': len(profitable_trades),
@@ -276,51 +274,51 @@ class AIStrategyOptimizer:
                 'trend_analysis': {},
                 'time_analysis': {}
             }
-            
+
             # Анализ по RSI
             profitable_rsi = []
             losing_rsi = []
-            
+
             for trade in profitable_trades:
                 entry_data = trade.get('entry_data', {})
                 rsi = entry_data.get('rsi')
                 if rsi:
                     profitable_rsi.append(rsi)
-            
+
             for trade in losing_trades:
                 entry_data = trade.get('entry_data', {})
                 rsi = entry_data.get('rsi')
                 if rsi:
                     losing_rsi.append(rsi)
-            
+
             if profitable_rsi:
                 patterns['rsi_analysis']['profitable_avg'] = np.mean(profitable_rsi)
                 patterns['rsi_analysis']['profitable_min'] = np.min(profitable_rsi)
                 patterns['rsi_analysis']['profitable_max'] = np.max(profitable_rsi)
-            
+
             if losing_rsi:
                 patterns['rsi_analysis']['losing_avg'] = np.mean(losing_rsi)
                 patterns['rsi_analysis']['losing_min'] = np.min(losing_rsi)
                 patterns['rsi_analysis']['losing_max'] = np.max(losing_rsi)
-            
+
             # Анализ по тренду
             trend_stats = {}
-            
+
             for trade in trades:
                 entry_data = trade.get('entry_data', {})
                 trend = entry_data.get('trend', 'NEUTRAL')
                 pnl = trade.get('pnl', 0)
-                
+
                 if trend not in trend_stats:
                     trend_stats[trend] = {'trades': 0, 'profitable': 0, 'total_pnl': 0}
-                
+
                 trend_stats[trend]['trades'] += 1
                 if pnl > 0:
                     trend_stats[trend]['profitable'] += 1
                 trend_stats[trend]['total_pnl'] += pnl
-            
+
             patterns['trend_analysis'] = trend_stats
-            
+
             # Сохраняем результаты анализа в БД
             try:
                 from bot_engine.ai.ai_database import get_ai_database
@@ -346,33 +344,33 @@ class AIStrategyOptimizer:
                     if patterns_list:
                         ai_db.save_trade_patterns(patterns_list)
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка сохранения паттернов в БД: {e}")
-            
+                                pass
+
             logger.info(f"✅ Анализ завершен: Win Rate={patterns['win_rate']:.2f}%")
-            
+
             return patterns
-            
+
         except Exception as e:
             logger.error(f"❌ Ошибка анализа паттернов: {e}")
             return {}
-    
+
     def optimize_strategy(self) -> Dict:
         """
         Оптимизация параметров стратегии
-        
+
         Returns:
             Оптимизированные параметры стратегии
         """
         logger.info("⚙️ Оптимизация стратегии...")
-        
+
         try:
             # Анализируем паттерны
             patterns = self.analyze_trade_patterns()
-            
+
             if not patterns:
                 logger.warning("⚠️ Недостаточно данных для оптимизации")
                 return {}
-            
+
             # Определяем оптимальные параметры на основе анализа
             optimized_params = {
                 'rsi_long_entry': 29,  # По умолчанию
@@ -382,43 +380,43 @@ class AIStrategyOptimizer:
                 'stop_loss_pct': 2.0,
                 'take_profit_pct': 20.0
             }
-            
+
             # Оптимизируем на основе RSI анализа
             rsi_analysis = patterns.get('rsi_analysis', {})
-            
+
             if 'profitable_avg' in rsi_analysis:
                 profitable_avg_rsi = rsi_analysis['profitable_avg']
-                
+
                 # Для LONG: если прибыльные сделки при низком RSI, используем его
                 if profitable_avg_rsi < 30:
                     optimized_params['rsi_long_entry'] = max(20, int(profitable_avg_rsi - 5))
                     optimized_params['rsi_long_exit'] = min(70, int(profitable_avg_rsi + 35))
-            
+
             if 'losing_avg' in rsi_analysis:
                 losing_avg_rsi = rsi_analysis['losing_avg']
-                
+
                 # Избегаем параметров, которые приводят к убыткам
                 if losing_avg_rsi < 30:
                     # Если убытки при низком RSI, повышаем порог входа
                     optimized_params['rsi_long_entry'] = max(optimized_params['rsi_long_entry'], 25)
-            
+
             # Оптимизация на основе тренда
             trend_analysis = patterns.get('trend_analysis', {})
-            
+
             if trend_analysis:
                 # Определяем лучший тренд для торговли
                 best_trend = None
                 best_win_rate = 0
-                
+
                 for trend, stats in trend_analysis.items():
                     win_rate = stats['profitable'] / stats['trades'] * 100 if stats['trades'] > 0 else 0
                     if win_rate > best_win_rate:
                         best_win_rate = win_rate
                         best_trend = trend
-                
+
                 optimized_params['best_trend'] = best_trend
                 optimized_params['trend_win_rate'] = best_win_rate
-            
+
             # Сохраняем оптимизированные параметры в БД
             try:
                 from bot_engine.ai.ai_database import get_ai_database
@@ -426,41 +424,41 @@ class AIStrategyOptimizer:
                 if ai_db:
                     ai_db.save_optimized_params(None, optimized_params, 'strategy_optimization')
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка сохранения оптимизированных параметров в БД: {e}")
-            
+                                pass
+
             logger.info(f"✅ Оптимизация завершена: {optimized_params}")
-            
+
             return optimized_params
-            
+
         except Exception as e:
             logger.error(f"❌ Ошибка оптимизации: {e}")
             return {}
-    
+
     def optimize_bot_config(self, symbol: str) -> Dict:
         """
         Оптимизация конфигурации конкретного бота
-        
+
         Args:
             symbol: Символ монеты
-        
+
         Returns:
             Оптимизированная конфигурация бота
         """
         logger.info(f"⚙️ Оптимизация конфигурации для {symbol}...")
-        
+
         try:
             trades = self._load_history_data()
-            
+
             # Фильтруем сделки по символу
             symbol_trades = [t for t in trades if t.get('symbol') == symbol]
-            
+
             if len(symbol_trades) < 5:
                 logger.warning(f"⚠️ Недостаточно данных для {symbol}")
                 return {}
-            
+
             # Анализируем сделки для этого символа
             profitable = [t for t in symbol_trades if t.get('pnl', 0) > 0]
-            
+
             # Определяем оптимальные параметры для символа
             optimized_config = {
                 'symbol': symbol,
@@ -469,7 +467,7 @@ class AIStrategyOptimizer:
                 'rsi_short_entry': 71,
                 'rsi_short_exit': 35
             }
-            
+
             # Анализ RSI для этого символа
             profitable_rsi = []
             for trade in profitable:
@@ -477,16 +475,16 @@ class AIStrategyOptimizer:
                 rsi = entry_data.get('rsi')
                 if rsi:
                     profitable_rsi.append(rsi)
-            
+
             if profitable_rsi:
                 avg_rsi = np.mean(profitable_rsi)
                 optimized_config['rsi_long_entry'] = max(20, int(avg_rsi - 5))
                 optimized_config['rsi_long_exit'] = min(70, int(avg_rsi + 35))
-            
+
             logger.info(f"✅ Оптимизация для {symbol} завершена")
-            
+
             return optimized_config
-            
+
         except Exception as e:
             logger.error(f"❌ Ошибка оптимизации для {symbol}: {e}")
             return {}
@@ -642,16 +640,16 @@ class AIStrategyOptimizer:
         """
         ОПТИМИЗАЦИЯ ПАРАМЕТРОВ ДЛЯ КОНКРЕТНОЙ МОНЕТЫ.
         По умолчанию используется Bayesian Optimization; при use_bayesian=False — Grid Search.
-        
+
         Тестирует разные комбинации параметров на исторических свечах
         и находит оптимальные для этой монеты.
-        
+
         Args:
             symbol: Символ монеты
             candles: Список свечей для тестирования
             current_win_rate: Текущий win rate (если < 80%, запускаем оптимизацию)
             use_bayesian: Использовать Bayesian Optimization (быстрее), иначе Grid Search
-        
+
         Returns:
             Оптимизированные параметры или None
         """
@@ -664,7 +662,7 @@ class AIStrategyOptimizer:
             logger.info(f"   📊 Текущий Win Rate: {current_win_rate:.1f}% (<80%, оптимизируем, но НЕ сохраняем пока не достигнем >=80%)")
         logger.info(f"   📈 Свечей для тестирования: {len(candles)}")
         logger.info(f"   🧠 Используем базу знаний для улучшения торговой методики")
-        
+
         # Загружаем базу знаний для использования опыта
         knowledge_base = {}
         successful_rsi_ranges = {}
@@ -672,15 +670,15 @@ class AIStrategyOptimizer:
             from bot_engine.ai.ai_continuous_learning import AIContinuousLearning
             continuous_learning = AIContinuousLearning()
             knowledge_base = continuous_learning.knowledge_base
-            
+
             # Используем знания о успешных RSI диапазонах для приоритизации тестов
             successful_rsi_ranges = knowledge_base.get('successful_patterns', {}).get('rsi_ranges', {})
             if successful_rsi_ranges:
                 best_rsi_range = max(successful_rsi_ranges.items(), key=lambda x: x[1])[0] if successful_rsi_ranges else None
                 logger.info(f"   💡 База знаний: успешные входы в диапазоне RSI {best_rsi_range}")
         except Exception as kb_error:
-            logger.debug(f"   ⚠️ Не удалось загрузить базу знаний: {kb_error}")
-        
+                        pass
+
         try:
             # Загружаем базовые параметры из bot_config.py
             try:
@@ -708,7 +706,7 @@ class AIStrategyOptimizer:
                 base_rsi_short_exit_against = 40
                 base_stop_loss = 15
                 base_take_profit = 20
-            
+
             parameter_ranges = {
                 'rsi_long_entry': self._build_range_from_genome('rsi_long_threshold'),
                 'rsi_short_entry': self._build_range_from_genome('rsi_short_threshold'),
@@ -736,7 +734,7 @@ class AIStrategyOptimizer:
             break_even_trigger_range = parameter_ranges['break_even_trigger']
             trailing_take_distance_range = parameter_ranges['trailing_take_distance']
             trailing_update_interval_range = parameter_ranges['trailing_update_interval']
-            
+
             total_combinations = (
                 len(rsi_long_entry_range) * len(rsi_short_entry_range) *
                 len(rsi_long_exit_range) * len(rsi_short_exit_range) *
@@ -761,19 +759,19 @@ class AIStrategyOptimizer:
                 except ImportError:
                     from bot_engine.utils.rsi_utils import calculate_rsi_history
                     calculate_rsi_history_func = calculate_rsi_history
-            
+
             # Сортируем свечи по времени
             candles_sorted = sorted(candles, key=lambda x: x.get('time', 0))
             if len(candles_sorted) < 100:
                 logger.warning(f"⚠️ Недостаточно свечей для оптимизации ({len(candles_sorted)})")
                 return None
-            
+
             # Вычисляем RSI один раз для всех свечей
             rsi_history = calculate_rsi_history_func(candles_sorted, period=14)
             if not rsi_history or len(rsi_history) < 50:
                 logger.warning(f"⚠️ Недостаточно данных RSI для оптимизации")
                 return None
-            
+
             closes = [float(c.get('close', 0) or 0) for c in candles_sorted]
 
             best_params: Optional[Dict[str, Any]] = None
@@ -860,25 +858,25 @@ class AIStrategyOptimizer:
                                                         for trailing_update_interval in trailing_update_interval_range[:2]:
                                                             if tested_count >= max_tests:
                                                                 break
-                                                        
+
                                                             tested_count += 1
-                                                        
+
                                                         # Симулируем торговлю с этими параметрами
                                                             simulated_trades = []
                                                             current_position = None
                                                             max_profit_achieved = {}  # Для каждой позиции отслеживаем максимальную прибыль
                                                             trailing_active = {}  # Для каждой позиции отслеживаем активацию трейлинга
                                                             break_even_activated = {}  # Для каждой позиции отслеживаем безубыток
-                                        
+
                                                             for i in range(14, len(candles_sorted)):
                                                                 try:
                                                                     rsi_idx = i - 14
                                                                     if rsi_idx >= len(rsi_history):
                                                                         continue
-                                                                
+
                                                                     current_rsi = rsi_history[rsi_idx]
                                                                     current_price = closes[i]
-                                                                
+
                                                                 # Определяем тренд
                                                                     trend = 'NEUTRAL'
                                                                     if i >= 50:
@@ -889,32 +887,32 @@ class AIStrategyOptimizer:
                                                                                 trend = 'UP'
                                                                             elif ema_short < ema_long:
                                                                                 trend = 'DOWN'
-                                                                
+
                                                                 # Проверка выхода с учетом всех защитных механизмов
                                                                     if current_position:
                                                                         direction = current_position['direction']
                                                                         entry_price = current_position['entry_price']
                                                                         position_id = current_position.get('id', id(current_position))
-                                                                    
+
                                                                     # Вычисляем текущую прибыль
                                                                         if direction == 'LONG':
                                                                             profit_pct = ((current_price - entry_price) / entry_price) * 100
                                                                         else:  # SHORT
                                                                             profit_pct = ((entry_price - current_price) / entry_price) * 100
-                                                                    
+
                                                                     # Обновляем максимальную прибыль
                                                                         if position_id not in max_profit_achieved:
                                                                             max_profit_achieved[position_id] = profit_pct
                                                                         else:
                                                                             max_profit_achieved[position_id] = max(max_profit_achieved[position_id], profit_pct)
-                                                                    
+
                                                                     # Проверка Break Even
                                                                         if position_id not in break_even_activated:
                                                                             break_even_activated[position_id] = False
-                                                                    
+
                                                                         if not break_even_activated[position_id] and profit_pct >= break_even_trigger:
                                                                             break_even_activated[position_id] = True
-                                                                    
+
                                                                     # Если безубыток активирован и прибыль упала до 0 или ниже - закрываем
                                                                         if break_even_activated[position_id] and profit_pct <= 0:
                                                                             simulated_trades.append({
@@ -927,15 +925,15 @@ class AIStrategyOptimizer:
                                                                             })
                                                                             current_position = None
                                                                             continue
-                                                                    
+
                                                                     # Проверка Trailing Stop
                                                                         if position_id not in trailing_active:
                                                                             trailing_active[position_id] = False
-                                                                    
+
                                                                     # Активация trailing stop
                                                                         if not trailing_active[position_id] and profit_pct >= trailing_activation:
                                                                             trailing_active[position_id] = True
-                                                                    
+
                                                                     # Если trailing stop активен, проверяем расстояние
                                                                         if trailing_active[position_id]:
                                                                             max_profit = max_profit_achieved[position_id]
@@ -968,11 +966,11 @@ class AIStrategyOptimizer:
                                                                                     })
                                                                                     current_position = None
                                                                                     continue
-                                                                    
+
                                                                     # Стандартные проверки выхода
                                                                         should_exit = False
                                                                         exit_reason = None
-                                                                    
+
                                                                         if direction == 'LONG':
                                                                             if current_rsi >= rsi_long_exit:
                                                                                 should_exit = True
@@ -993,7 +991,7 @@ class AIStrategyOptimizer:
                                                                             elif current_price <= entry_price * (1 - take_profit / 100):
                                                                                 should_exit = True
                                                                                 exit_reason = 'TAKE_PROFIT'
-                                                                    
+
                                                                         if should_exit:
                                                                             simulated_trades.append({
                                                                                 'direction': direction,
@@ -1005,7 +1003,7 @@ class AIStrategyOptimizer:
                                                                             })
                                                                             current_position = None
                                                                             continue
-                                                                
+
                                                                 # Проверка входа
                                                                     if not current_position:
                                                                         if current_rsi <= rsi_long_entry:
@@ -1034,13 +1032,13 @@ class AIStrategyOptimizer:
                                                                             break_even_activated[position_id] = False
                                                                 except:
                                                                     continue
-                                                        
+
                                                         # Оцениваем результаты
                                                             if len(simulated_trades) >= 5:  # Минимум 5 сделок для оценки
                                                                 successful = sum(1 for t in simulated_trades if t['is_successful'])
                                                                 win_rate = successful / len(simulated_trades) * 100
                                                                 total_pnl = sum(t['pnl_pct'] for t in simulated_trades)
-                                                            
+
                                                             # Выбираем лучшую комбинацию (приоритет: win_rate > total_pnl)
                                                                 if win_rate > best_win_rate or (win_rate == best_win_rate and total_pnl > best_total_pnl):
                                                                     best_win_rate = win_rate
@@ -1067,14 +1065,14 @@ class AIStrategyOptimizer:
                                                                         'optimization_trades_count': len(simulated_trades)
                                                                     }
                                                                     best_params['parameter_genome_version'] = self.parameter_genomes_meta.get('version', 'default')
-                                                                
+
                                                                 # Анализ причин выхода для улучшения стратегии
                                                                     exit_reasons = {}
                                                                     for trade in simulated_trades:
                                                                         reason = trade.get('exit_reason', 'UNKNOWN')
                                                                         exit_reasons[reason] = exit_reasons.get(reason, 0) + 1
                                                                     best_params['exit_reasons_analysis'] = exit_reasons
-                                                        
+
                                                             if tested_count >= max_tests:
                                                                 break
                                                         if tested_count >= max_tests:
@@ -1097,7 +1095,7 @@ class AIStrategyOptimizer:
                             break
                     if tested_count >= max_tests:
                         break
-            
+
             if best_params and best_win_rate > current_win_rate:
                 logger.info(f"   ✅ Найдены оптимальные параметры!")
                 logger.info(f"      📊 Win Rate: {current_win_rate:.1f}% → {best_win_rate:.1f}% (+{best_win_rate - current_win_rate:.1f}%)")
@@ -1108,7 +1106,7 @@ class AIStrategyOptimizer:
                 logger.info(f"      🚀 Trailing Stop: активация {best_params['trailing_stop_activation']}%, расстояние {best_params['trailing_stop_distance']}%")
                 logger.info(f"      🎯 Trailing Take: расстояние {best_params['trailing_take_distance']}%, интервал {best_params['trailing_update_interval']}с")
                 logger.info(f"      🛡️ Break Even: триггер {best_params['break_even_trigger']}%")
-                
+
                 # Анализ причин выхода
                 exit_reasons = best_params.get('exit_reasons_analysis', {})
                 if exit_reasons:
@@ -1122,14 +1120,14 @@ class AIStrategyOptimizer:
                     )
                     logger.info(f"      🧾 Полный набор параметров: {formatted_params}")
                 except Exception:
-                    logger.debug("      🧾 Не удалось сериализовать параметры для логов")
-                
+                                        pass
+
                 # ВАЖНО: Сохраняем индивидуальные настройки ТОЛЬКО если win rate >= 80%
                 if best_win_rate >= 80.0:
                     logger.info(f"      🎯 Win Rate >= 80% - СОХРАНЯЕМ индивидуальные настройки для {symbol}")
                     logger.info(f"      💡 Эти параметры будут использоваться ботами вместо глобальных")
                     self._log_param_changes(symbol, best_params)
-                    
+
                     # Сохраняем оптимальные параметры для монеты через API bots.py
                     try:
                         import requests
@@ -1155,31 +1153,30 @@ class AIStrategyOptimizer:
                     logger.info(f"      ⚠️ Win Rate {best_win_rate:.1f}% < 80% - НЕ сохраняем индивидуальные настройки")
                     logger.info(f"      💡 Продолжаем использовать глобальные настройки (скрипты) пока AI модель не достигнет >=80%")
                     logger.info(f"      💡 Параметры найдены, но будут применены только когда win rate >= 80%")
-                
+
                 logger.info("=" * 80)
                 return best_params
             else:
                 logger.info(f"   ⚠️ Не найдено лучших параметров (текущий: {current_win_rate:.1f}%, лучший найденный: {best_win_rate:.1f}%)")
                 logger.info("=" * 80)
                 return None
-            
+
         except Exception as e:
             logger.error(f"❌ Ошибка оптимизации параметров для {symbol}: {e}")
             import traceback
             logger.error(traceback.format_exc())
             return None
-    
+
     def _calculate_ema(self, prices: List[float], period: int) -> Optional[float]:
         """Вычисляет EMA (Exponential Moving Average)"""
         if not prices or len(prices) < period:
             return None
-        
+
         prices_array = np.array(prices[-period:])
         multiplier = 2.0 / (period + 1)
-        
+
         ema = prices_array[0]
         for price in prices_array[1:]:
             ema = (price * multiplier) + (ema * (1 - multiplier))
-        
-        return float(ema)
 
+        return float(ema)

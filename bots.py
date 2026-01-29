@@ -44,7 +44,7 @@ if os.path.exists(_bot_config_path):
     try:
         import subprocess
         git_dir = os.path.dirname(os.path.abspath(__file__))
-        
+
         # Проверяем, установлен ли уже skip-worktree
         result = subprocess.run(
             ['git', 'ls-files', '-v', _bot_config_path],
@@ -65,7 +65,7 @@ if os.path.exists(_bot_config_path):
             # Логгер еще не настроен, используем stderr
             import sys
             sys.stderr.write(f"[INFO] ✅ Защита bot_config.py от перезаписи при git pull активирована\n")
-        
+
         # Дополнительная защита: если файл был изменен в удаленном репозитории,
         # но у нас есть локальная версия - восстанавливаем её из бэкапа (если есть)
         backup_path = _bot_config_path + '.local_backup'
@@ -84,7 +84,7 @@ if os.path.exists(_bot_config_path):
                 sys.stderr.write(f"[INFO] ✅ Восстановлена локальная версия bot_config.py после git pull\n")
             except Exception:
                 pass
-        
+
         # Автоматическая установка git hooks для защиты bot_config.py
         try:
             hooks_install_script = os.path.join(git_dir, 'scripts', 'install_git_hooks.py')
@@ -107,7 +107,7 @@ if os.path.exists(_bot_config_path):
         except Exception:
             # Игнорируем ошибки установки хуков
             pass
-            
+
     except Exception:
         # Игнорируем ошибки git (если это не git репозиторий или git не установлен)
         pass
@@ -118,7 +118,7 @@ try:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from bot_engine.bot_config import SystemConfig
     ENABLE_TRACE = SystemConfig.ENABLE_CODE_TRACING
-    
+
     if ENABLE_TRACE:
         from trace_debug import enable_trace
         enable_trace()
@@ -203,12 +203,12 @@ def check_api_keys():
         # Проверяем наличие файла с ключами
         if not os.path.exists('app/keys.py'):
             return False
-            
+
         from app.config import EXCHANGES, ACTIVE_EXCHANGE
         active_exchange = EXCHANGES.get(ACTIVE_EXCHANGE, {})
         api_key = active_exchange.get('api_key', '')
         api_secret = active_exchange.get('api_secret', '')
-        
+
         # Проверяем что ключи не пустые и не содержат "YOUR_" (из примера)
         if not api_key or not api_secret:
             return False
@@ -216,7 +216,7 @@ def check_api_keys():
             return False
         if api_key == 'YOUR_API_KEY_HERE' or api_secret == 'YOUR_SECRET_KEY_HERE':
             return False
-            
+
         return True
     except:
         return False
@@ -230,7 +230,7 @@ if __name__ == '__main__':
         import sys
         sys.stderr.write("Не удалось освободить порт 5001, завершаем работу\n")
         sys.exit(1)
-    
+
     # Проверяем API ключи
     if not check_api_keys():
         # Логгер еще не настроен, используем stderr для предупреждений
@@ -245,7 +245,7 @@ if __name__ == '__main__':
             sys.stderr.write(f"   Биржа: {ACTIVE_EXCHANGE}\n")
         except:
             sys.stderr.write("   Биржа: НЕ ОПРЕДЕЛЕНА\n")
-        
+
         if not os.path.exists('app/keys.py'):
             sys.stderr.write("   Файл с ключами: app/keys.py НЕ НАЙДЕН\n")
         else:
@@ -328,7 +328,7 @@ try:
     )
     BOT_HISTORY_AVAILABLE = True
     logger.info("✅ Модуль bot_history загружен успешно")
-    
+
     # Устанавливаем bot_history_manager в глобальный модуль
     import bots_modules.imports_and_globals as globals_module
     globals_module.bot_history_manager = bot_history_manager
@@ -341,7 +341,7 @@ except ImportError as e:
         def get_bot_trades(self, *args, **kwargs): return []
         def get_bot_statistics(self, *args, **kwargs): return {}
         def clear_history(self, *args, **kwargs): pass
-    
+
     bot_history_manager = DummyHistoryManager()
     def log_bot_start(*args, **kwargs): pass
     def log_bot_stop(*args, **kwargs): pass
@@ -349,7 +349,7 @@ except ImportError as e:
     def log_position_opened(*args, **kwargs): pass
     def log_position_closed(*args, **kwargs): pass
     BOT_HISTORY_AVAILABLE = False
-    
+
     # Устанавливаем заглушку в глобальный модуль
     import bots_modules.imports_and_globals as globals_module
     globals_module.bot_history_manager = bot_history_manager
@@ -379,16 +379,16 @@ _flask_server = None  # Глобальная ссылка на Flask серве�
 def signal_handler(signum, frame):
     """Обработчик сигналов для graceful shutdown"""
     global graceful_shutdown, _flask_server
-    
+
     if graceful_shutdown:
         # Уже идет завершение, принудительно выходим
         logger.warning("⚠️ Принудительное завершение процесса...")
         os._exit(0)
-    
+
     logger.warning(f"\n🛑 Получен сигнал {signum}, начинаем graceful shutdown...")
     graceful_shutdown = True
     shutdown_flag.set()
-    
+
     # Останавливаем Flask сервер
     if _flask_server:
         try:
@@ -396,22 +396,22 @@ def signal_handler(signum, frame):
             _flask_server.shutdown()
             logger.info("✅ Flask сервер остановлен")
         except Exception as e:
-            logger.debug(f"Ошибка остановки сервера: {e}")
-    
+                        pass
+
     # Очистка ресурсов
     try:
         cleanup_bot_service()
     except Exception as e:
-        logger.debug(f"Ошибка cleanup: {e}")
-    
+                pass
+
     logger.info("✅ Сервис остановлен")
-    
+
     # Принудительное завершение через небольшой таймаут
     def force_exit():
         time.sleep(1.5)  # Даём 1.5 секунды на graceful shutdown
         logger.warning("⏱️ Таймаут graceful shutdown, принудительное завершение...")
         os._exit(0)
-    
+
     exit_thread = threading.Thread(target=force_exit, daemon=True)
     exit_thread.start()
 
@@ -422,12 +422,12 @@ def open_firewall_port_5001():
     try:
         import subprocess
         import platform
-        
+
         logger.info("🔥 Проверка открытия порта 5001 в брандмауэре...")
-        
+
         system = platform.system()
         port = 5001
-        
+
         if system == 'Windows':
             # Проверяем правило для порта 5001
             try:
@@ -438,14 +438,14 @@ def open_firewall_port_5001():
                     encoding='utf-8',
                     errors='replace'
                 )
-                
+
                 # Если правило не найдено (код возврата != 0 или имя не в выводе)
                 rule_exists = (
                     check_result.returncode == 0 and 
                     check_result.stdout and 
                     'InfoBot Bot Service' in check_result.stdout
                 )
-                
+
                 if not rule_exists:
                     logger.info("🔥 Открываем порт 5001...")
                     add_result = subprocess.run([
@@ -456,7 +456,7 @@ def open_firewall_port_5001():
                         'protocol=TCP',
                         f'localport={port}'
                     ], capture_output=True, text=True, encoding='utf-8', errors='replace')
-                    
+
                     if add_result.returncode == 0:
                         logger.info("✅ Порт 5001 открыт")
                     else:
@@ -469,10 +469,10 @@ def open_firewall_port_5001():
                     logger.info("✅ Порт 5001 уже открыт")
             except Exception as e:
                 logger.warning(f"⚠️ Не удалось проверить/открыть порт 5001: {e}")
-        
+
         elif system == 'Darwin':  # macOS
             logger.info("💡 На macOS откройте порт 5001 вручную")
-        
+
         elif system == 'Linux':
             try:
                 # Проверяем наличие ufw
@@ -485,11 +485,11 @@ def open_firewall_port_5001():
                     logger.info(f"✅ Порт {port} уже открыт")
             except:
                 logger.warning(f"⚠️ Настройте порт {port} вручную")
-        
+
         else:
             logger.warning(f"⚠️ Неизвестная система: {system}")
             logger.info("💡 Настройте порт вручную см. docs/INSTALL.md")
-            
+
     except Exception as e:
         logger.warning(f"⚠️ Не удалось открыть порт 5001 автоматически: {e}")
         logger.info("💡 Откройте порт вручную см. docs/INSTALL.md")
@@ -497,33 +497,33 @@ def open_firewall_port_5001():
 def cleanup_bot_service():
     """Очистка ресурсов перед остановкой"""
     global _cleanup_done
-    
+
     if _cleanup_done:
         return
-    
+
     _cleanup_done = True
-    
+
     logger.info("=" * 80)
     logger.info("ОСТАНОВКА СИСТЕМЫ INFOBOT")
     logger.info("=" * 80)
-    
+
     try:
         # 🔄 Останавливаем непрерывный загрузчик данных
         logger.info("🔄 Останавливаем непрерывный загрузчик данных...")
         from bots_modules.continuous_data_loader import stop_continuous_loader
         stop_continuous_loader()
-        
+
         if async_processor:
             logger.info("Остановка асинхронного процессора...")
             stop_async_processor()
-        
+
         logger.info("Сохранение состояния ботов...")
         save_bots_state()
-        
+
         # ✅ ВОССТАНОВЛЕНО: Сохранение зрелых монет при завершении (ТОЛЬКО если данные валидны)
         logger.info("Сохранение хранилища зрелых монет...")
         save_mature_coins_storage()
-        
+
         logger.info("Система остановлена")
         logger.info("=" * 80)
     except Exception as e:
@@ -532,12 +532,12 @@ def cleanup_bot_service():
 def run_bots_service():
     """Запуск Flask сервера для API ботов"""
     global graceful_shutdown, _flask_server
-    
+
     try:
         logger.info("=" * 80)
         logger.info("ЗАПУСК BOTS SERVICE API (Порт 5001)")
         logger.info("=" * 80)
-        
+
         logger.info("\n" + "=" * 80)
         logger.info("✅ BOTS SERVICE ЗАПУЩЕН И РАБОТАЕТ!")
         logger.info("=" * 80)
@@ -547,16 +547,16 @@ def run_bots_service():
         logger.info("=" * 80)
         logger.info("💡 Нажмите Ctrl+C для остановки")
         logger.info("=" * 80 + "\n")
-        
+
         # Используем Werkzeug сервер для возможности корректной остановки
         from werkzeug.serving import make_server
-        
+
         _flask_server = None
         server_thread = None
-        
+
         try:
             _flask_server = make_server('0.0.0.0', 5001, bots_app, threaded=True)
-            
+
             # Запускаем сервер в отдельном потоке
             def run_server():
                 try:
@@ -566,10 +566,10 @@ def run_bots_service():
                 except Exception as e:
                     if not graceful_shutdown:
                         logger.error(f"Ошибка сервера: {e}")
-            
+
             server_thread = threading.Thread(target=run_server, daemon=True)
             server_thread.start()
-            
+
             # Ждем завершения или сигнала
             try:
                 while server_thread.is_alive() and not graceful_shutdown:
@@ -578,7 +578,7 @@ def run_bots_service():
                 logger.info("\n🛑 Получен KeyboardInterrupt, останавливаем сервер...")
                 graceful_shutdown = True
                 shutdown_flag.set()
-                    
+
         finally:
             # Останавливаем сервер
             if _flask_server:
@@ -590,12 +590,12 @@ def run_bots_service():
                     if not graceful_shutdown:
                         logger.info("✅ Flask сервер остановлен")
                 except Exception as e:
-                    logger.debug(f"Ошибка остановки сервера: {e}")
-                
+                                        pass
+
                 # Ждем завершения потока сервера
                 if server_thread and server_thread.is_alive():
                     server_thread.join(timeout=2.0)
-        
+
     except KeyboardInterrupt:
         logger.info("\n🛑 KeyboardInterrupt в run_bots_service")
         graceful_shutdown = True
@@ -623,17 +623,17 @@ def run_bots_service():
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
+
     import atexit
     atexit.register(cleanup_bot_service)
-    
+
     try:
         from bots_modules.workers import auto_save_worker, auto_bot_worker, positions_monitor_worker
-        
+
         logger.info("📋 Загрузка конфигурации Auto Bot...")
         load_auto_bot_config()
         logger.info("✅ Конфигурация Auto Bot загружена")
-        
+
         # Инициализируем ботов в отдельном потоке, чтобы не блокировать запуск сервера
         def init_bots_async():
             try:
@@ -642,40 +642,40 @@ if __name__ == '__main__':
                 logger.error(f"Ошибка инициализации (продолжаем запуск): {init_error}")
                 import traceback
                 traceback.print_exc()
-        
+
         init_thread = threading.Thread(target=init_bots_async, daemon=True)
         init_thread.start()
         logger.info("🔧 Инициализация ботов начата в фоне...")
-        
+
         # ❌ ОТКЛЮЧЕНО: Optimal EMA Worker - больше не используется
         # EMA фильтр убран, расчет оптимальных EMA не нужен
         # from bot_engine.optimal_ema_worker import start_optimal_ema_worker
         # optimal_ema_worker = start_optimal_ema_worker(update_interval=21600) # 6 часов
         logger.info("ℹ️ Optimal EMA Worker отключен (не используется)")
-        
+
         auto_save_thread = threading.Thread(target=auto_save_worker, daemon=True)
         auto_save_thread.start()
         logger.info("Auto Save Worker запущен")
-        
+
         auto_bot_thread = threading.Thread(target=auto_bot_worker, daemon=True)
         auto_bot_thread.start()
         logger.info("Auto Bot Worker запущен")
-        
+
         # ✅ Positions Monitor Worker - мониторинг позиций каждые 5 секунд
         positions_monitor_thread = threading.Thread(target=positions_monitor_worker, daemon=True)
         positions_monitor_thread.start()
         logger.info("📊 Positions Monitor Worker запущен (обновление каждые 5с)")
-        
+
         # Инициализируем AI Manager (проверка лицензии и загрузка модулей)
         ai_manager = None
         try:
             from bot_engine.bot_config import AIConfig
-            
+
             if AIConfig.AI_ENABLED:
                 logger.info("🤖 Инициализация AI модулей...")
                 from bot_engine.ai.ai_manager import get_ai_manager
                 ai_manager = get_ai_manager()
-                
+
                 # ✅ Обучение перенесено в ai.py - здесь только проверка доступности модулей
                 if ai_manager.is_available():
                     logger.info("")
@@ -697,15 +697,15 @@ if __name__ == '__main__':
             else:
                 logger.info("ℹ️ AI модули отключены в конфигурации")
         except ImportError as ai_import_error:
-            logger.debug(f"AI модули не доступны: {ai_import_error}")
+                        pass
         except Exception as ai_error:
             logger.warning(f"⚠️ Ошибка инициализации AI: {ai_error}")
-        
+
         # Открываем порт 5001 в брандмауэре
         open_firewall_port_5001()
-        
+
         run_bots_service()
-        
+
     except KeyboardInterrupt:
         logger.info("\n🛑 Получен KeyboardInterrupt, останавливаем сервис...")
         graceful_shutdown = True
@@ -720,8 +720,8 @@ if __name__ == '__main__':
             cleanup_bot_service()
             logger.info("✅ Сервис остановлен\n")
         except Exception as cleanup_error:
-            logger.debug(f"Ошибка при cleanup: {cleanup_error}")
-        
+                        pass
+
         # Принудительное завершение процесса
         logger.info("🚪 Завершение процесса...")
         os._exit(0)

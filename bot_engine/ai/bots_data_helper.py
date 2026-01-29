@@ -36,21 +36,21 @@ def get_mature_coins() -> Set[str]:
             with open(mature_coins_file, 'r', encoding='utf-8') as f:
                 mature_coins_data = json.load(f)
                 mature_coins_set = set(mature_coins_data.keys())
-                logger.debug(f"✅ Загружен список зрелых монет из файла: {len(mature_coins_set)} монет")
+                pass
                 return mature_coins_set
     except Exception as e:
-        logger.debug(f"   ⚠️ Не удалось загрузить из файла: {e}")
+        pass
     
     try:
         # 2. Пробуем импортировать из bots_modules если доступно
         from bots_modules.imports_and_globals import mature_coins_storage
         mature_coins_set = set(mature_coins_storage.keys())
-        logger.debug(f"✅ Загружен список зрелых монет из памяти: {len(mature_coins_set)} монет")
+        pass
         return mature_coins_set
     except ImportError:
-        logger.debug("   💡 bots_modules недоступен - список зрелых монет не загружен")
+        pass
     except Exception as e:
-        logger.debug(f"   ⚠️ Ошибка загрузки из памяти: {e}")
+        pass
     
     return mature_coins_set
 
@@ -76,7 +76,7 @@ def get_individual_coin_settings(symbol: str) -> Optional[Dict[str, Any]]:
     except ImportError:
         pass
     except Exception as e:
-        logger.debug(f"   ⚠️ Ошибка получения настроек из памяти: {e}")
+        pass
     
     # Fallback: загружаем из файла
     try:
@@ -85,7 +85,7 @@ def get_individual_coin_settings(symbol: str) -> Optional[Dict[str, Any]]:
         normalized_symbol = symbol.upper()
         return all_settings.get(normalized_symbol)
     except Exception as e:
-        logger.debug(f"   ⚠️ Ошибка загрузки настроек из файла: {e}")
+        pass
     
     return None
 
@@ -104,7 +104,7 @@ def get_rsi_cache() -> Optional[Dict[str, Any]]:
     except ImportError:
         pass
     except Exception as e:
-        logger.debug(f"   ⚠️ Ошибка получения RSI кэша: {e}")
+        pass
     
     return None
 
@@ -127,7 +127,7 @@ def get_auto_bot_config() -> Optional[Dict[str, Any]]:
     except ImportError:
         pass
     except Exception as e:
-        logger.debug(f"   ⚠️ Ошибка получения конфигурации: {e}")
+        pass
     
     # Fallback при отдельном запуске ai.py: загружаем whitelist/blacklist/scope из БД
     try:
@@ -135,13 +135,9 @@ def get_auto_bot_config() -> Optional[Dict[str, Any]]:
         db = get_bots_database()
         filters = db.load_coin_filters()
         if filters:
-            logger.debug(
-                f"📂 [AI] Конфиг фильтров из БД: whitelist={len(filters.get('whitelist', []))}, "
-                f"blacklist={len(filters.get('blacklist', []))}, scope={filters.get('scope', 'all')}"
-            )
             return filters
     except Exception as e:
-        logger.debug(f"   ⚠️ [AI] Не удалось загрузить фильтры из БД для обучения: {e}")
+        pass
     
     return None
 

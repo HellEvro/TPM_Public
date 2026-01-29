@@ -76,7 +76,7 @@ class BotHistoryManager:
             self.ai_db = get_ai_database()
             logger.info("✅ AI Database подключена в BotHistoryManager")
         except Exception as e:
-            logger.debug(f"⚠️ Не удалось инициализировать AI Database в BotHistoryManager: {e}")
+            pass
         
         # Загружаем историю из файла
         self._load_history()
@@ -265,7 +265,7 @@ class BotHistoryManager:
                 if attempt == max_retries - 1:
                     logger.error(f"❌ Ошибка сохранения истории после {max_retries} попыток: {e}")
                     import traceback
-                    logger.debug(traceback.format_exc())
+                    pass
                 else:
                     time.sleep(retry_delay * (attempt + 1))
     
@@ -351,7 +351,7 @@ class BotHistoryManager:
                 for existing_trade in self.trades:
                     if existing_trade.get('id') == trade_id:
                         is_duplicate = True
-                        logger.debug(f"[BOT_HISTORY] ⏭️ Пропущен дубликат сделки по ID: {trade_id}")
+                        pass
                         break
             
             if not is_duplicate and bot_id and symbol and entry_price and timestamp:
@@ -371,12 +371,12 @@ class BotHistoryManager:
                                                 datetime.fromisoformat(new_ts)).total_seconds())
                                 if time_diff < 5:
                                     is_duplicate = True
-                                    logger.debug(f"[BOT_HISTORY] ⏭️ Пропущен дубликат сделки: {symbol} @ {entry_price} (разница < 5 сек)")
+                                    pass
                                     break
                             except Exception:
                                 pass
                 except Exception as e:
-                    logger.debug(f"[BOT_HISTORY] ⚠️ Ошибка проверки дубликатов: {e}")
+                    pass
             
             if is_duplicate:
                 # Дубликат не сохраняем
@@ -580,7 +580,7 @@ class BotHistoryManager:
             trend: Тренд на момент открытия
         """
         if self._is_simulated_entry(is_simulated, None, None, decision_source, None, bot_id):
-            logger.debug(f"[BOT_HISTORY] ⏭️ Пропускаем запись симуляции (open) для {symbol}")
+            pass
             return
         
         # КРИТИЧНО: Проверяем, нет ли уже такой позиции в истории
@@ -702,7 +702,7 @@ class BotHistoryManager:
                 if trade_id:
                     pass
             except Exception as bots_db_error:
-                logger.debug(f"[BOT_HISTORY] ⚠️ Ошибка сохранения истории открытия в bots_data.db: {bots_db_error}")
+                pass
         
         logger.info(f"📈 {entry['details']}")
     
@@ -851,7 +851,7 @@ class BotHistoryManager:
                     ai_confidence = closed_trade.get('ai_confidence')
             except Exception as db_check_error:
                 # Если ошибка проверки БД, продолжаем работу (не критично)
-                logger.debug(f"[BOT_HISTORY] ⚠️ Ошибка проверки БД на закрытые сделки: {db_check_error}")
+                pass
         
         # Используем найденный ai_decision_id
         ai_decision_id = found_ai_decision_id
@@ -860,7 +860,7 @@ class BotHistoryManager:
         original_roi_input = roi
         
         if self._is_simulated_entry(is_simulated, entry_data, market_data, decision_source, reason, bot_id):
-            logger.debug(f"[BOT_HISTORY] ⏭️ Пропускаем запись симуляции (close) для {symbol}")
+            pass
             return
         
         def _to_float(value: Any) -> Optional[float]:
@@ -919,11 +919,6 @@ class BotHistoryManager:
                 recalculated_pnl = roi_fraction * 100  # fallback в процентах
             
             if (pnl is None) or (abs(recalculated_pnl - pnl) > 1e-9):
-                logger.debug(
-                    f"[BOT_HISTORY] 🔄 PnL пересчитан из цен для {symbol}: "
-                    f"entry={entry_price_for_calc}, exit={exit_price_for_calc}, side={calc_direction}, "
-                    f"old_pnl={pnl}, new_pnl={recalculated_pnl:.6f}"
-                )
                 recalculated = True
             pnl = recalculated_pnl
             roi = recalculated_roi
@@ -1050,7 +1045,7 @@ class BotHistoryManager:
                 # Сохраняем в БД
                 trade_id = self.ai_db.save_bot_trade(db_trade)
                 if trade_id:
-                    logger.debug(f"💾 Сделка {symbol} сохранена в БД (ID: {trade_id})")
+                    pass
             except Exception as e:
                 logger.warning(f"⚠️ Ошибка сохранения сделки в БД: {e}")
         
@@ -1187,7 +1182,7 @@ class BotHistoryManager:
                     if result:
                         return result[:limit]
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка загрузки сделок из bots_db: {e}, пробуем ai_db")
+            pass
         
         # ПРИОРИТЕТ 2: Загружаем из ai_db (AIDatabase) - дополнительное хранилище
         if self.ai_db:
@@ -1256,7 +1251,7 @@ class BotHistoryManager:
                 if result:
                     return result[:limit]
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка загрузки сделок из БД: {e}, используем JSON fallback")
+                pass
         
         # Fallback: загружаем из JSON (только для UI, не для обучения)
         with self.lock:
@@ -1320,7 +1315,7 @@ class BotHistoryManager:
                 if period:
                     trades = self._filter_by_period(trades, period, ['close_timestamp', 'timestamp'])
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка загрузки сделок из БД для статистики: {e}, используем JSON fallback")
+                pass
         
         # Fallback: загружаем из JSON (только если БД недоступна)
         if not trades:
@@ -1558,7 +1553,7 @@ def create_demo_data() -> bool:
                 try:
                     ai_storage.save_ai_decision(ai_decision_id, decision_payload)
                 except Exception as storage_error:
-                    logger.debug(f"⚠️ Не удалось сохранить демо-решение AI: {storage_error}")
+                    pass
                     ai_decision_id = None
                     use_ai = False
             
@@ -1610,7 +1605,7 @@ def create_demo_data() -> bool:
                             'closed_at': datetime.now().isoformat()
                         })
                     except Exception as storage_error:
-                        logger.debug(f"⚠️ Не удалось обновить демо-решение AI: {storage_error}")
+                        pass
         
         logger.info("✅ Демо-данные созданы успешно!")
         return True

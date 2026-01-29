@@ -124,7 +124,7 @@ class AISelfLearning:
                     self.stats.update(state.get('stats', {}))
                     logger.info("✅ Состояние самообучения загружено")
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка загрузки состояния: {e}")
+            pass
 
     def _save_state(self):
         """Сохранение состояния системы самообучения"""
@@ -137,7 +137,7 @@ class AISelfLearning:
             with open(state_file, 'w', encoding='utf-8') as f:
                 json.dump(state, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка сохранения состояния: {e}")
+            pass
 
     def process_trade_result(self, trade_result: Dict) -> None:
         """
@@ -147,7 +147,7 @@ class AISelfLearning:
             trade_result: Результат закрытой сделки
         """
         try:
-            logger.debug(f"🧠 Обработка сделки для самообучения: {trade_result.get('symbol', 'UNKNOWN')}")
+            pass
 
             # Добавляем в буфер онлайн обучения
             self.online_learning_buffer.append(trade_result)
@@ -178,7 +178,7 @@ class AISelfLearning:
             if not self.ai_trainer or not self.online_learning_buffer:
                 return
 
-            logger.debug("🔄 Выполнение онлайн обучения...")
+            pass
 
             # Преобразуем буфер в обучающие данные
             training_data = self._prepare_online_training_data()
@@ -225,7 +225,7 @@ class AISelfLearning:
                     failed_trades.append(trade)
 
             if len(successful_trades) == 0 or len(failed_trades) == 0:
-                logger.debug("⚠️ Недостаточно разнообразных данных для онлайн обучения")
+                pass
                 return None
 
             # Извлекаем паттерны успеха/неудачи
@@ -327,13 +327,13 @@ class AISelfLearning:
                 success = self._set_model_weights(new_weights)
 
                 if success:
-                    logger.debug("✅ Весы модели обновлены онлайн")
+                    pass
                     return True
                 else:
                     logger.warning("⚠️ Не удалось обновить весы модели")
                     return False
             else:
-                logger.debug("ℹ️ Корректировки весов не требуются")
+                pass
                 return True
 
         except Exception as e:
@@ -353,7 +353,7 @@ class AISelfLearning:
                     'model_type': 'RandomForest'
                 }
             else:
-                logger.debug("⚠️ Модель не поддерживает получение весов")
+                pass
                 return None
 
         except Exception as e:
@@ -384,7 +384,7 @@ class AISelfLearning:
                 # Если успешные сделки при определенном RSI, усиливаем этот фактор
                 rsi_adjustment = (success_rsi - failure_rsi) * 0.01  # Небольшая корректировка
                 adjustments['rsi_weight'] = rsi_adjustment
-                logger.debug(".2f")
+                pass
 
             # Корректировка на основе трендов
             success_trends = success_patterns.get('trend_distribution', {})
@@ -400,7 +400,7 @@ class AISelfLearning:
                         'preferred': best_trend,
                         'avoid': worst_trend
                     }
-                    logger.debug(f"📈 Предпочитаемый тренд: {best_trend}, избегаемый: {worst_trend}")
+                    pass
 
             return adjustments if adjustments else None
 
@@ -425,7 +425,7 @@ class AISelfLearning:
             # Применяем корректировки (простая реализация)
             if 'rsi_weight' in adjustments:
                 # Для RandomForest можем только логировать, так как feature_importances_ read-only
-                logger.debug(f"📊 Рекомендуется усилить вес RSI на {adjustments['rsi_weight']}")
+                pass
 
             if 'trend_preference' in adjustments:
                 # Сохраняем предпочтения для использования в будущем обучении
@@ -445,7 +445,7 @@ class AISelfLearning:
             with open(weights_file, 'w', encoding='utf-8') as f:
                 json.dump(weights, f, ensure_ascii=False, indent=2)
 
-            logger.debug("✅ Весы модели сохранены")
+            pass
             return True
 
         except Exception as e:
@@ -473,7 +473,7 @@ class AISelfLearning:
                     self._perform_market_adaptation(changes)
 
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка проверки адаптации к рынку: {e}")
+            pass
 
     def _extract_market_conditions(self, trade_result: Dict) -> Dict:
         """Извлечение рыночных условий из сделки"""
@@ -520,7 +520,7 @@ class AISelfLearning:
             }
 
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка анализа рыночных изменений: {e}")
+            pass
             return None
 
     def _perform_market_adaptation(self, changes: Dict) -> None:
@@ -583,7 +583,7 @@ class AISelfLearning:
                 json.dump(adaptations, f, ensure_ascii=False, indent=2)
 
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка сохранения адаптации: {e}")
+            pass
 
     def _evaluate_learning_effectiveness(self) -> None:
         """Оценка эффективности обучения"""
@@ -602,7 +602,7 @@ class AISelfLearning:
             self.stats['performance_score'] = current_performance
 
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка оценки эффективности обучения: {e}")
+            pass
 
     def get_learning_stats(self) -> Dict:
         """
@@ -676,7 +676,7 @@ class PerformanceTracker:
             return max(0, min(1, performance_score))
 
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка расчета оценки производительности: {e}")
+            pass
             return 0.5
 
 
@@ -714,4 +714,4 @@ def process_trade_for_self_learning(trade_result: Dict) -> None:
         # Запускаем в отдельном потоке, чтобы не блокировать основной поток
         self_learning.executor.submit(self_learning.process_trade_result, trade_result)
     except Exception as e:
-        logger.debug(f"⚠️ Ошибка запуска самообучения: {e}")
+        pass

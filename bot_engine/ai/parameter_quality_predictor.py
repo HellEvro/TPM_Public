@@ -33,7 +33,7 @@ try:
     XGBOOST_AVAILABLE = True
 except ImportError:
     XGBOOST_AVAILABLE = False
-    logger.debug("⚠️ XGBoost недоступен, используем GradientBoostingRegressor")
+    pass
 
 
 class ParameterQualityPredictor:
@@ -80,7 +80,7 @@ class ParameterQualityPredictor:
         try:
             from bot_engine.ai.ai_database import get_ai_database
             self.ai_db = get_ai_database()
-            logger.debug("✅ AI Database подключена для ParameterQualityPredictor")
+            pass
         except Exception as e:
             logger.warning(f"⚠️ Не удалось подключиться к AI Database: {e}")
             self.ai_db = None
@@ -165,7 +165,7 @@ class ParameterQualityPredictor:
                     self.is_trained = True
                     logger.info(f"✅ Загружена модель предсказания качества параметров ({expected_features} признаков)")
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка загрузки модели: {e}")
+            pass
             self.is_trained = False
     
     def _save_model(self):
@@ -461,7 +461,7 @@ class ParameterQualityPredictor:
             sample_id = self.ai_db.save_parameter_training_sample(sample)
             if sample_id:
                 try:
-                    logger.debug(f"📝 Добавлен образец для обучения (ID: {sample_id}, quality: {quality:.3f}, win_rate: {win_rate:.1f}%)")
+                    pass
                 except MemoryError:
                     # Не логируем при MemoryError
                     pass
@@ -601,7 +601,7 @@ class ParameterQualityPredictor:
                         best_model = model
                         best_model_name = model_name
                 except Exception as e:
-                    logger.debug(f"   ⚠️ Ошибка обучения {model_name}: {e}")
+                    pass
             
             if best_model is None:
                 # Fallback на GradientBoosting если все не удались
@@ -686,10 +686,6 @@ class ParameterQualityPredictor:
             # Определяем, какую версию признаков использовать
             if expected_features is not None and expected_features < 21:
                 # Старая модель - используем legacy версию сразу
-                logger.debug(
-                    f"⚠️ Модель ожидает {expected_features} признаков (старая версия). "
-                    f"Используем legacy режим для обратной совместимости"
-                )
                 features = self._extract_features_legacy(rsi_params, risk_params, num_features=expected_features)
             else:
                 # Новая модель или не можем определить - используем новую версию
@@ -710,21 +706,11 @@ class ParameterQualityPredictor:
                         match = re.search(r'expecting (\d+) features', error_msg)
                         if match:
                             expected_features = int(match.group(1))
-                            # Используем legacy версию
-                            logger.debug(
-                                f"⚠️ Модель ожидает {expected_features} признаков (обнаружено из ошибки). "
-                                f"Используем legacy режим для обратной совместимости"
-                            )
                             features = self._extract_features_legacy(rsi_params, risk_params, num_features=expected_features)
                 else:
                     # Проверяем совместимость
                     actual_features = features.shape[1]
                     if actual_features != expected_features:
-                        # Используем legacy версию
-                        logger.debug(
-                            f"⚠️ Модель ожидает {expected_features} признаков, получено {actual_features}. "
-                            f"Используем legacy режим для обратной совместимости"
-                        )
                         features = self._extract_features_legacy(rsi_params, risk_params, num_features=expected_features)
             
             features_scaled = self.scaler.transform(features)
@@ -744,10 +730,6 @@ class ParameterQualityPredictor:
                     # Пробуем использовать legacy режим
                     if expected_features in [7, 8, 10]:
                         try:
-                            logger.debug(
-                                f"⚠️ Модель ожидает {expected_features} признаков (обнаружено из ошибки), "
-                                f"используем legacy режим для обратной совместимости"
-                            )
                             features = self._extract_features_legacy(rsi_params, risk_params, num_features=expected_features)
                             features_scaled = self.scaler.transform(features)
                             quality = self.model.predict(features_scaled)[0]
@@ -769,10 +751,10 @@ class ParameterQualityPredictor:
                         f"Модель нужно переобучить с новыми признаками!"
                     )
             else:
-                logger.debug(f"⚠️ Ошибка предсказания: {ve}")
+                pass
             return 0.0
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка предсказания: {e}")
+            pass
             return 0.0
     
     def suggest_optimal_params(self, base_params: Dict, risk_params: Optional[Dict] = None,

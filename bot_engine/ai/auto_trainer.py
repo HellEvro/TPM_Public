@@ -127,7 +127,7 @@ class ExperimentTracker:
                 'status': 'RUNNING'
             }
         
-        logger.debug(f"[ExperimentTracker] Запуск: {run_name} ({run_id})")
+        pass
         return run_id
     
     def log_params(self, params: Dict[str, Any]):
@@ -141,7 +141,7 @@ class ExperimentTracker:
         else:
             self.current_run_data['params'].update(params)
         
-        logger.debug(f"[ExperimentTracker] Params: {params}")
+        pass
     
     def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None):
         """Логирует метрики"""
@@ -184,7 +184,7 @@ class ExperimentTracker:
                     # Sklearn или другие
                     mlflow.sklearn.log_model(model, model_name)
             except Exception as e:
-                logger.debug(f"[ExperimentTracker] Не удалось залогировать модель: {e}")
+                pass
     
     def end_run(self, status: str = 'FINISHED'):
         """Завершает текущий запуск"""
@@ -200,7 +200,7 @@ class ExperimentTracker:
                 self._save_local_runs()
                 self.current_run_data = {}
         
-        logger.debug(f"[ExperimentTracker] Запуск завершён: {status}")
+        pass
     
     def get_best_run(self, metric: str = 'accuracy', maximize: bool = True) -> Optional[Dict]:
         """Возвращает лучший запуск по метрике"""
@@ -392,7 +392,7 @@ class AutoTrainer:
                     models_found.append("anomaly_detector")
                     logger.info("[AutoTrainer] ✅ Anomaly Detector найден в БД")
             except Exception as e:
-                logger.debug(f"[AutoTrainer] Ошибка проверки Anomaly Detector в БД: {e}")
+                pass
         
         # 2. Проверяем Parameter Quality Predictor
         try:
@@ -417,7 +417,7 @@ class AutoTrainer:
                     # Это нормально - модель будет обучена при следующем запуске обучения
                     logger.info(f"[AutoTrainer] ℹ️ Parameter Quality Predictor: {samples_count} образцов в БД (достаточно для обучения)")
             except Exception as e:
-                logger.debug(f"[AutoTrainer] Ошибка проверки Parameter Quality Predictor: {e}")
+                pass
         
         # Если хотя бы одна модель найдена - считаем что обучение не требуется
         if len(models_found) > 0:
@@ -447,7 +447,7 @@ class AutoTrainer:
                 else:
                     logger.info(f"[AutoTrainer] ℹ️ В БД: {candles_count:,} свечей, {symbols_count} монет - нужен сбор")
         except Exception as e:
-            logger.debug(f"[AutoTrainer] Ошибка проверки БД: {e}")
+            pass
         
         # 2. Собираем данные только если их нет
         if not data_exists:
@@ -530,7 +530,7 @@ class AutoTrainer:
         """
         # Защита от множественных запусков
         if self._data_update_in_progress:
-            logger.debug("[AutoTrainer] Обновление данных уже выполняется, пропускаем...")
+            pass
             return False
         
         self._data_update_in_progress = True
@@ -615,7 +615,7 @@ class AutoTrainer:
         """
         # Защита от множественных запусков
         if self._training_in_progress:
-            logger.debug("[AutoTrainer] Обучение уже выполняется, пропускаем...")
+            pass
             return False
         
         self._training_in_progress = True
@@ -762,7 +762,7 @@ class AutoTrainer:
                                  float(c.get('close', 0)), float(c.get('volume', 0))])
             return np.array(rows, dtype=np.float64) if rows else None
         except Exception as e:
-            logger.debug(f"[AutoTrainer] Ошибка получения матрицы для дрифта: {e}")
+            pass
             return None
 
     def _check_drift_and_trigger_retrain(self) -> None:
@@ -795,9 +795,9 @@ class AutoTrainer:
             else:
                 self._drift_ref_path.parent.mkdir(parents=True, exist_ok=True)
                 np.save(ref_path, current, allow_pickle=False)
-                logger.debug("[AutoTrainer] Сохранён первичный drift reference")
+                pass
         except Exception as e:
-            logger.debug(f"[AutoTrainer] Проверка дрифта пропущена: {e}")
+            pass
 
     def _save_drift_reference_after_retrain(self) -> None:
         if not getattr(AIConfig, 'AI_DRIFT_DETECTION_ENABLED', True):
@@ -813,7 +813,7 @@ class AutoTrainer:
                 np.save(self._drift_ref_path, current, allow_pickle=False)
                 logger.info("[AutoTrainer] ✅ Drift reference обновлён после переобучения")
         except Exception as e:
-            logger.debug(f"[AutoTrainer] Не удалось обновить drift reference: {e}")
+            pass
 
     def _train_model(self, script_path: Path, model_name: str, timeout: int = 600, args: list = None) -> bool:
         """
@@ -897,7 +897,7 @@ class AutoTrainer:
             ai_manager = get_ai_manager()
             
             if not ai_manager:
-                logger.debug("[AutoTrainer] AI Manager не инициализирован")
+                pass
                 return
             
             # 1. Перезагружаем Anomaly Detector
@@ -922,7 +922,7 @@ class AutoTrainer:
                             candles_count = ai_db.count_candles(timeframe='6h') if ai_db else 0
                             symbols_count = ai_db.count_symbols_with_candles(timeframe='6h') if ai_db else 0
                         except Exception as e:
-                            logger.debug(f"[AutoTrainer] Не удалось проверить свечи в AI БД: {e}")
+                            pass
                             candles_count = 0
                             symbols_count = 0
 
@@ -964,7 +964,7 @@ class AutoTrainer:
                     else:
                         if not scaler_exists:
                             logger.warning(f"[AutoTrainer] ⚠️ Файл scaler Anomaly Detector не найден: {scaler_path}")
-                            logger.debug("[AutoTrainer] Будет использован новый scaler")
+                            pass
                         
                         success = ai_manager.anomaly_detector.load_model(model_path, scaler_path)
                         
@@ -972,8 +972,8 @@ class AutoTrainer:
                             logger.info("[AutoTrainer] ✅ Anomaly Detector перезагружен (hot reload)")
                         else:
                             logger.error(f"[AutoTrainer] ❌ Ошибка перезагрузки Anomaly Detector")
-                            logger.debug(f"[AutoTrainer] Путь модели: {model_path} (существует: {model_exists})")
-                            logger.debug(f"[AutoTrainer] Путь scaler: {scaler_path} (существует: {scaler_exists})")
+                            pass
+                            pass
                 except Exception as e:
                     logger.error(f"[AutoTrainer] ❌ Ошибка hot reload Anomaly Detector: {e}", exc_info=True)
             
@@ -1032,7 +1032,7 @@ class AutoTrainer:
                 retrain_thread.start()
                 logger.info("[AutoTrainer] 🚀 Запущено автоматическое переобучение на реальных сделках (в фоне)")
         except Exception as e:
-            logger.debug(f"[AutoTrainer] ⚠️ Ошибка проверки переобучения на реальных сделках: {e}")
+            pass
         finally:
             self._retrain_check_in_progress = False
     
@@ -1058,7 +1058,7 @@ class AutoTrainer:
                     if accuracy is not None:
                         accuracy = float(accuracy)
                         max_accuracy = max(max_accuracy, accuracy)
-                        logger.debug(f"[AutoTrainer] 📊 {model_name}: accuracy = {accuracy:.2%}")
+                        pass
             
             # Обновляем последнюю точность
             if max_accuracy > 0:
@@ -1069,7 +1069,7 @@ class AutoTrainer:
             self._check_real_trades_performance()
         
         except Exception as e:
-            logger.debug(f"[AutoTrainer] ⚠️ Ошибка проверки качества модели: {e}")
+            pass
     
     def _check_real_trades_performance(self):
         """
@@ -1100,7 +1100,7 @@ class AutoTrainer:
             
             # Проверяем, достаточно ли реальных сделок для оценки
             if real_count < AIConfig.AI_REAL_PERFORMANCE_WINDOW:
-                logger.debug(f"[AutoTrainer] 📊 Недостаточно реальных сделок для оценки: {real_count} < {AIConfig.AI_REAL_PERFORMANCE_WINDOW}")
+                pass
                 return
             
             logger.info(f"[AutoTrainer] 📊 Производительность на реальных сделках:")
@@ -1130,7 +1130,7 @@ class AutoTrainer:
                 return
         
         except Exception as e:
-            logger.debug(f"[AutoTrainer] ⚠️ Ошибка проверки производительности на реальных сделках: {e}")
+            pass
     
     def _trigger_retrain_on_real_trades(self):
         """Запускает переобучение на реальных сделках"""
@@ -1206,7 +1206,7 @@ class AutoTrainer:
             return False
         
         except Exception as e:
-            logger.debug(f"[AutoTrainer] ⚠️ Ошибка проверки триггеров остановки: {e}")
+            pass
             return False
     
     def resume_training(self):

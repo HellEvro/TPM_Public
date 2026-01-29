@@ -50,7 +50,7 @@ class AIDataCollector:
         try:
             from bot_engine.ai.ai_database import get_ai_database
             self.ai_db = get_ai_database()
-            logger.debug("✅ AI Database подключена для AIDataCollector")
+            pass
         except Exception as e:
             logger.warning(f"⚠️ Не удалось подключиться к AI Database: {e}")
             self.ai_db = None
@@ -77,7 +77,7 @@ class AIDataCollector:
                                 logger.info(f"   ✅ Используем резервную копию {backup_file}")
                                 return json.load(backup)
                         except Exception as backup_error:
-                            logger.debug(f"   ⚠️ Резервная копия тоже не читается: {backup_error}")
+                            pass
 
                     # Сохраняем текущую версию как .corrupted для ручного анализа
                     try:
@@ -85,14 +85,14 @@ class AIDataCollector:
                         shutil.copy2(filepath, corrupted_file)
                         logger.info(f"   📁 Сохранен проблемный файл: {corrupted_file}")
                     except Exception as copy_error:
-                        logger.debug(f"   ⚠️ Не удалось сохранить копию: {copy_error}")
+                        pass
 
                     # Возвращаем пустой dict, но основной файл не трогаем
                     return {}
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки данных из {filepath}: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
         return {}
     
     def _save_data(self, filepath: str, data: Dict):
@@ -163,26 +163,26 @@ class AIDataCollector:
             except PermissionError as perm_error:
                 # Windows: файл занят другим процессом
                 if attempt < max_retries - 1:
-                    logger.debug(f"⚠️ Файл {filepath} занят, повторная попытка {attempt + 1}/{max_retries}...")
+                    pass
                     time.sleep(retry_delay * (attempt + 1))
                     continue
                 else:
                     logger.warning(f"⚠️ Не удалось сохранить {filepath} после {max_retries} попыток (файл занят другим процессом)")
-                    logger.debug(f"   Ошибка: {perm_error}")
+                    pass
             except OSError as os_error:
                 # Другие ошибки ОС (WinError 32 и т.д.)
                 if attempt < max_retries - 1:
-                    logger.debug(f"⚠️ Ошибка доступа к файлу {filepath}, повторная попытка {attempt + 1}/{max_retries}...")
+                    pass
                     time.sleep(retry_delay * (attempt + 1))
                     continue
                 else:
                     logger.warning(f"⚠️ Не удалось сохранить {filepath} после {max_retries} попыток")
-                    logger.debug(f"   Ошибка: {os_error}")
+                    pass
             except Exception as e:
                 # Другие ошибки
                 logger.error(f"❌ Ошибка сохранения данных в {filepath}: {e}")
                 import traceback
-                logger.debug(traceback.format_exc())
+                pass
                 return  # Не повторяем для других ошибок
     
     def _call_bots_api(self, endpoint: str, method: str = 'GET', data: Dict = None, silent: bool = False) -> Optional[Dict]:
@@ -212,21 +212,21 @@ class AIDataCollector:
                 return response.json()
             else:
                 if not silent:
-                    logger.debug(f"⚠️ API {endpoint} вернул статус {response.status_code}")
+                    pass
                 return None
                 
         except requests.exceptions.ConnectionError:
             # Не логируем предупреждения для фоновых попыток
             if not silent:
-                logger.debug(f"⚠️ Сервис bots.py недоступен по адресу {self.bots_service_url} (продолжаем работу)")
+                pass
             return None
         except requests.exceptions.Timeout:
             if not silent:
-                logger.debug(f"⏳ Таймаут подключения к bots.py (продолжаем работу)")
+                pass
             return None
         except Exception as e:
             if not silent:
-                logger.debug(f"⚠️ Ошибка вызова API {endpoint}: {e}")
+                pass
             return None
     
     def collect_bots_data(self) -> Dict:
@@ -357,7 +357,7 @@ class AIDataCollector:
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки из БД: {e}, используем fallback")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
         
         # FALLBACK: Загружаем из bot_history.json только если БД пуста
         if not collected_data['trades']:
@@ -381,11 +381,11 @@ class AIDataCollector:
                     bot_trades = bot_history_data.get('trades', [])
                     if bot_trades:
                         collected_data['trades'].extend(bot_trades)
-                        logger.debug(f"📊 Загружено {len(bot_trades)} сделок из bot_history.json (fallback)")
+                        pass
             except json.JSONDecodeError as json_error:
-                logger.debug(f"⚠️ bot_history.json содержит ошибку JSON на позиции {json_error.pos}")
+                pass
             except Exception as e:
-                logger.debug(f"⚠️ Ошибка загрузки bot_history.json: {e}")
+                pass
         
         try:
             # Получаем историю сделок через API (дополняем загрузку из БД) - неблокирующий вызов
@@ -401,7 +401,7 @@ class AIDataCollector:
                         if trade_id not in existing_ids:
                             collected_data['trades'].append(trade)
             except Exception as api_error:
-                logger.debug(f"⚠️ Ошибка получения сделок через API: {api_error}")
+                pass
             
             # Получаем статистику - неблокирующий вызов
             try:
@@ -409,7 +409,7 @@ class AIDataCollector:
                 if stats_response and stats_response.get('success'):
                     collected_data['statistics'] = stats_response.get('statistics', {})
             except Exception as api_error:
-                logger.debug(f"⚠️ Ошибка получения статистики через API: {api_error}")
+                pass
             
             # Получаем историю действий - неблокирующий вызов
             try:
@@ -417,7 +417,7 @@ class AIDataCollector:
                 if history_response and history_response.get('success'):
                     collected_data['actions'] = history_response.get('history', [])
             except Exception as api_error:
-                logger.debug(f"⚠️ Ошибка получения истории через API: {api_error}")
+                pass
             
             trades_count = len(collected_data.get('trades', []))
             
@@ -428,12 +428,12 @@ class AIDataCollector:
                     history_loaded=True
                 )
             except Exception as status_error:
-                logger.debug(f"⚠️ Ошибка обновления статуса data-service: {status_error}")
+                pass
             
         except Exception as e:
             logger.error(f"❌ Ошибка сбора данных из bot_history: {e}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
         
         return collected_data
     
@@ -486,14 +486,14 @@ class AIDataCollector:
                                         
                                         # Если данные обновлены менее часа назад - используем БД без перезагрузки
                                         if age_hours < 1.0:
-                                            logger.debug(f"✅ Данные в БД актуальны ({candles_count:,} свечей, обновлено {age_hours:.1f}ч назад)")
+                                            pass
                                             return True
                                     except Exception:
                                         pass
                             
-                            logger.debug(f"🔄 Инкрементальное обновление БД (найдено {candles_count:,} свечей)")
+                            pass
                 except Exception as check_error:
-                    logger.debug(f"⚠️ Ошибка проверки БД: {check_error}")
+                    pass
                     # Продолжаем загрузку если не удалось проверить БД
             
             # Сокращенные логи
@@ -508,9 +508,9 @@ class AIDataCollector:
                 from bots_modules.imports_and_globals import get_exchange
                 exchange = get_exchange()
                 if exchange:
-                    logger.debug("✅ Биржа получена из bots.py")
+                    pass
             except Exception as e:
-                logger.debug(f"⏳ Не удалось получить биржу из bots.py: {e}")
+                pass
             
             # Если не получилось - инициализируем напрямую
             if not exchange:
@@ -533,7 +533,7 @@ class AIDataCollector:
                 except Exception as init_error:
                     logger.error(f"❌ Ошибка инициализации биржи: {init_error}")
                     import traceback
-                    logger.debug(traceback.format_exc())
+                    pass
                     return False
             
             if not exchange:
@@ -558,7 +558,7 @@ class AIDataCollector:
                             history_loaded=True
                         )
                 except Exception as status_error:
-                    logger.debug(f"⚠️ Ошибка обновления статуса: {status_error}")
+                    pass
             else:
                 logger.warning("⚠️ Загрузка свечей не завершена, проверьте логи")
             
@@ -618,7 +618,7 @@ class AIDataCollector:
                     logger.info(f"✅ Загружено {len(candles_data)} монет из БД ({total_candles:,} свечей, ограничено для экономии памяти)")
                 else:
                     logger.warning("⚠️ БД пуста или get_all_candles_dict вернул пустой результат, ожидаем загрузки свечей...")
-                    logger.debug(f"   candles_data type: {type(candles_data)}, length: {len(candles_data) if candles_data else 0}")
+                    pass
             except Exception as db_error:
                 logger.error(f"❌ Ошибка загрузки из БД: {db_error}")
                 import traceback
@@ -657,7 +657,7 @@ class AIDataCollector:
                             
                             # Убрано: логирование каждые 100 монет - слишком шумно
                     except Exception as e:
-                        logger.debug(f"⚠️ Ошибка обработки свечей для {symbol}: {e}")
+                        pass
                         continue
                 
                 logger.info(f"✅ Обработано свечей: {candles_count} монет, {total_candles} свечей всего")
@@ -668,7 +668,7 @@ class AIDataCollector:
                         history_loaded=True
                     )
                 except Exception as status_error:
-                    logger.debug(f"⚠️ Ошибка обновления статуса: {status_error}")
+                    pass
             else:
                 logger.warning("⚠️ БД пуста, ожидаем загрузки свечей...")
             
@@ -705,14 +705,14 @@ class AIDataCollector:
                             indicators_count += 1
                             
                         except Exception as e:
-                            logger.debug(f"⚠️ Ошибка обработки индикаторов для {symbol}: {e}")
+                            pass
                             continue
                     
                     # Убрано: logger.debug(f"✅ Индикаторы: {indicators_count} монет") - слишком шумно
                 else:
-                    logger.debug("⚠️ Не удалось получить индикаторы через API (продолжаем без них)")
+                    pass
             except Exception as api_error:
-                logger.debug(f"⚠️ Ошибка получения индикаторов через API: {api_error}")
+                pass
                 # Продолжаем работу без индикаторов - это не критично
             
             # Итоговая статистика (кратко)
@@ -875,9 +875,9 @@ class AIDataCollector:
                 
                 # Сохраняем в БД
                 self.ai_db.save_data_service_status('data_service', status)
-                logger.debug("✅ Статус data-service обновлен в БД")
+                pass
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка обновления статуса data-service: {e}")
+            pass
             # НЕ логируем как ERROR, чтобы не засорять логи - это не критично
     
     def get_data_service_status(self) -> Optional[Dict]:

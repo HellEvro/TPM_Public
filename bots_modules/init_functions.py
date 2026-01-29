@@ -165,7 +165,7 @@ def init_bot_service():
         except Exception as tf_err:
             logger.warning(f"⚠️ Ошибка загрузки таймфрейма из БД: {tf_err}")
             import traceback
-            logger.debug(traceback.format_exc())
+            pass
         
         # 3. Загружаем состояние процессов
         load_process_state()
@@ -602,7 +602,7 @@ def create_bot(symbol, config=None, exchange_obj=None):
                 f"(Win Rate: {win_rate:.1f}%, Rating: {individual_settings.get('ai_rating', 0):.2f})"
             )
         else:
-            logger.debug(f"[BOT_INIT] 📝 Применены индивидуальные настройки для {symbol} (не AI-оптимизированные)")
+            pass
     
     # ✅ Обновляем только если НЕ использовали серверный конфиг как базу
     if not has_server_config:
@@ -679,9 +679,9 @@ def create_bot(symbol, config=None, exchange_obj=None):
                 )
                 logger.info(f"[BOT_HISTORY] ✅ Записано открытие бота {symbol} в историю")
             else:
-                logger.debug(f"[BOT_HISTORY] ⏭️ Бот {symbol} не сохранен в bots_data - пропускаем логирование")
+                pass
         except ImportError as e:
-            logger.debug(f"[BOT_HISTORY] ⚠️ Модуль bot_history недоступен: {e}")
+            pass
         except Exception as e:
             logger.error(f"[BOT_HISTORY] ❌ Ошибка логирования запуска бота {symbol}: {e}")
     
@@ -774,7 +774,7 @@ def process_trading_signals_on_candle_close(candle_timestamp: int, exchange_obj=
                     with bots_data_lock:
                         bots_data['bots'][symbol] = trading_bot.to_dict()
                 else:
-                    logger.debug(f"[TRADING] 💤 {symbol}: Нет активных сигналов")
+                    pass
                     
             except Exception as bot_error:
                 logger.error(f"[TRADING] ❌ Ошибка обработки бота {symbol}: {bot_error}")

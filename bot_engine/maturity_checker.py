@@ -126,7 +126,7 @@ def add_mature_coin_to_storage(symbol, maturity_data, auto_save=True, save_func=
     with mature_coins_lock:
         if symbol in mature_coins_storage:
             mature_coins_storage[symbol]['last_verified'] = time.time()
-            logger.debug(f"[MATURITY_STORAGE] {symbol}: обновлено время последней проверки")
+            pass
             return
         
         mature_coins_storage[symbol] = {
@@ -139,7 +139,7 @@ def add_mature_coin_to_storage(symbol, maturity_data, auto_save=True, save_func=
         save_func()
         logger.info(f"[MATURITY_STORAGE] Монета {symbol} добавлена в хранилище")
     else:
-        logger.debug(f"[MATURITY_STORAGE] Монета {symbol} добавлена (без автосохранения)")
+        pass
 
 
 def remove_mature_coin_from_storage(symbol):
@@ -147,7 +147,7 @@ def remove_mature_coin_from_storage(symbol):
     global mature_coins_storage
     if symbol in mature_coins_storage:
         del mature_coins_storage[symbol]
-        logger.debug(f"[MATURITY_STORAGE] Монета {symbol} удалена из хранилища")
+        pass
 
 
 def update_mature_coin_verification(symbol):
@@ -155,14 +155,14 @@ def update_mature_coin_verification(symbol):
     global mature_coins_storage
     if symbol in mature_coins_storage:
         mature_coins_storage[symbol]['last_verified'] = time.time()
-        logger.debug(f"[MATURITY_STORAGE] Обновлено время проверки для {symbol}")
+        pass
 
 
 def check_coin_maturity_with_storage(symbol, candles, config, save_func=None, calculate_rsi_history_func=None):
     """Проверяет зрелость с использованием хранилища"""
     # Проверяем хранилище
     if is_coin_mature_stored(symbol):
-        logger.debug(f"[MATURITY_STORAGE] {symbol}: найдена в хранилище")
+        pass
         update_mature_coin_verification(symbol)
         return {
             'is_mature': True,

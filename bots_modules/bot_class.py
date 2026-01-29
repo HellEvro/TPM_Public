@@ -1266,9 +1266,7 @@ class NewTradingBot:
             market_price = self._get_market_price(price)
             if market_price and market_price > 0:
                 if price and abs(market_price - price) / max(price, 1e-9) >= 0.01:
-                    logger.debug(
-                        f"[NEW_BOT_{self.symbol}] 📉 Обновили цену по бирже: {price} → {market_price}"
-                    )
+                    pass  # обновили цену по бирже
                 price = market_price
 
             self.current_price = price
@@ -1393,13 +1391,9 @@ class NewTradingBot:
             # Минимально стоп не ниже уровня входа (базовая защита)
             stop_price = max(stop_price, entry_price)
             
-            # ✅ ОТЛАДКА: Логируем финальный расчет для LONG
+            # Break-even LONG расчёт
             price_str = f"{price:.6f}" if price is not None else "None"
-            logger.debug(
-                f"[NEW_BOT_{self.symbol}] 🔍 Break-even LONG: "
-                f"entry={entry_price:.6f}, protected_per_coin={protected_profit_per_coin:.6f}, "
-                f"stop_price={stop_price:.6f}, current_price={price_str}"
-            )
+            pass  # debug break-even
         else:  # SHORT
             # ✅ Для SHORT: стоп на уровне entry_price - protected_profit_per_coin
             # Если realized_pnl = 0, то protected_profit_per_coin = 0, стоп = entry_price (базовая защита)
@@ -1419,12 +1413,12 @@ class NewTradingBot:
         После установки на бирже, защитный стоп больше не обновляется, чтобы не сбивать трейлинг-стоп.
         """
         if not self.exchange or self.position_side not in ('LONG', 'SHORT'):
-            logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Не могу установить break-even стоп: exchange={self.exchange is not None}, position_side={self.position_side}")
+            pass
             return
 
         stop_price = self._calculate_break_even_stop_price(current_price)
         if stop_price is None:
-            logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Не могу установить break-even стоп: stop_price=None (возможно, нет entry_price или quantity)")
+            pass
             return
 
         # ✅ ИСПРАВЛЕНО: Проверяем наличие стопа на бирже
@@ -1485,7 +1479,7 @@ class NewTradingBot:
                                 )
                         except (TypeError, ValueError):
                             # Не удалось распарсить стоп - устанавливаем наш
-                            logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось распарсить стоп с биржи, устанавливаем break-even стоп")
+                            pass
                     else:
                         # Стопа нет на бирже
                         if self.break_even_stop_set:
@@ -1570,7 +1564,7 @@ class NewTradingBot:
 
             if price_change_percent > self.max_profit_achieved:
                 self.max_profit_achieved = price_change_percent
-                logger.debug(f"[NEW_BOT_{self.symbol}] 📈 Обновлена максимальная прибыль: {price_change_percent:.2f}%")
+                pass
 
             # ✅ ИСПРАВЛЕНО: Рассчитываем profit_percent как процент от СТОИМОСТИ СДЕЛКИ (position_value)
             # Триггер защиты безубыточности - это процент от стоимости сделки, а не от цены
@@ -1772,7 +1766,7 @@ class NewTradingBot:
                             previous_price=previous_stop
                         )
                     except Exception as log_err:
-                        logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка логирования trailing stop: {log_err}")
+                        pass
                 else:
                     logger.warning(
                         f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось обновить trailing stop: "
@@ -1781,7 +1775,7 @@ class NewTradingBot:
             except Exception as exc:
                 logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка обновления trailing stop: {exc}")
         elif should_update_stop and not can_update_now:
-            logger.debug(f"[NEW_BOT_{self.symbol}] ⏳ Пропуск обновления trailing stop (интервал {update_interval}s)")
+            pass
 
         tp_price = None
         if take_distance > 0:
@@ -1829,7 +1823,7 @@ class NewTradingBot:
                                 previous_price=previous_tp
                             )
                         except Exception as log_err:
-                            logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка логирования trailing take profit: {log_err}")
+                            pass
                     else:
                         logger.warning(
                             f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось обновить trailing тейк: "
@@ -2176,7 +2170,7 @@ class NewTradingBot:
                     entry_rsi = history[0].get('rsi')
                     entry_trend = history[0].get('trend')
             except Exception as e:
-                logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось получить RSI/тренд из истории: {e}")
+                pass
             
             # Если не нашли в истории, пытаемся из глобальных данных
             if entry_rsi is None or entry_trend is None:
@@ -2311,13 +2305,13 @@ class NewTradingBot:
                     from bot_engine.ai.ai_integration import update_ai_decision_result
                     is_successful = pnl > 0
                     update_ai_decision_result(self.ai_decision_id, pnl, pnl_pct, is_successful)
-                    logger.debug(f"[NEW_BOT_{self.symbol}] 📝 Обновлен результат решения AI: {'SUCCESS' if is_successful else 'FAILED'}")
+                    pass
                     self.ai_decision_id = None
                 except Exception as ai_track_error:
-                    logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка обновления решения AI: {ai_track_error}")
+                    pass
             
         except Exception as e:
-            logger.debug(f"[NEW_BOT_{self.symbol}] Не удалось сохранить историю: {e}")
+            pass
     
     def _evaluate_ai_prediction(self, reason, close_result):
         """Оценивает предсказание ИИ и сохраняет для обучения"""
@@ -2349,7 +2343,7 @@ class NewTradingBot:
             logger.info(f"[NEW_BOT_{self.symbol}] 🎓 ИИ оценен: score={evaluation.get('score', 0):.2f}")
             
         except Exception as e:
-            logger.debug(f"[NEW_BOT_{self.symbol}] Не удалось оценить ИИ: {e}")
+            pass
     
     def to_dict(self):
         """Преобразует бота в словарь для сохранения"""
@@ -2503,7 +2497,7 @@ class NewTradingBot:
                     from bot_engine.bot_config import get_trend_from_coin_data
                     entry_trend_value = get_trend_from_coin_data(rsi_info) or rsi_info.get('trend')
             except Exception as e:
-                logger.debug(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось получить тренд из глобальных данных: {e}")
+                pass
         
         # Обновляем состояние текущего бота
         self.entry_price = result.get('entry_price')

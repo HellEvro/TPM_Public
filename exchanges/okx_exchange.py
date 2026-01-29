@@ -43,26 +43,26 @@ class OkxExchange(BaseExchange):
                     }
                 }
             })
-            
+
             self.daily_pnl = {}
             self.last_reset_day = None
             self.max_profit_values = {}
             self.max_loss_values = {}
-            
+
             # Загружаем рынки при инициализации
             try:
                 self.markets = self.client.load_markets()
             except Exception as market_error:
                 logger.error(f"Error loading markets: {str(market_error)}")
                 raise Exception("Failed to load markets")
-            
+
             # Определяем текущий режим позиций
             try:
                 account_config = self.client.private_get_account_config()
                 if account_config and account_config.get('code') == '0':
                     config_data = account_config.get('data', [{}])[0]
                     self.position_mode = 'Hedge' if config_data.get('posMode') == 'long_short_mode' else 'OneWay'
-                    
+
                     # Проверяем, что режим позиций соответствует запрошенному
                     if self.position_mode != position_mode:
                         logger.warning(f"[OKX] Warning: Current position mode ({self.position_mode}) differs from requested ({position_mode})")
@@ -71,7 +71,7 @@ class OkxExchange(BaseExchange):
             except Exception as e:
                 logger.error(f"[OKX] Error determining position mode: {str(e)}")
                 self.position_mode = position_mode
-                
+
         except Exception as e:
             logger.error(f"Error initializing OKX exchange: {str(e)}")
             raise Exception(f"Failed to initialize OKX exchange: {str(e)}")
@@ -81,23 +81,23 @@ class OkxExchange(BaseExchange):
             positions = self.client.fetch_positions()
             processed_positions = []
             rapid_growth_positions = []
-            
+
             for position in positions:
                 try:
                     contracts = float(position['contracts'])
                     if contracts == 0:
                         continue
-                    
+
                     symbol = clean_symbol(position['symbol'])
                     current_pnl = float(position['unrealizedPnl'])
                     position_value = float(position['notional'])
                     leverage = float(position.get('lever', 1) or 1)
-                    
+
                     # ROI рассчитывается от маржи (залога) в сделке
                     # Маржа = стоимость позиции / плечо
                     margin = position_value / leverage if leverage > 0 else position_value
                     roi = (current_pnl / margin * 100) if margin > 0 else 0
-                    
+
                     if current_pnl > 0:
                         if symbol not in self.max_profit_values or current_pnl > self.max_profit_values[symbol]:
                             self.max_profit_values[symbol] = current_pnl
@@ -118,9 +118,9 @@ class OkxExchange(BaseExchange):
                         'realized_pnl': float(position.get('realizedPnl', 0)),
                         'leverage': float(position.get('lever', 1))
                     }
-                    
+
                     processed_positions.append(position_info)
-                    
+
                     if symbol in self.daily_pnl:
                         start_pnl = self.daily_pnl[symbol]
                         if start_pnl > 0 and current_pnl > 0:
@@ -134,20 +134,20 @@ class OkxExchange(BaseExchange):
                                 })
                     else:
                         self.daily_pnl[symbol] = current_pnl
-                        
+
                 except Exception as pos_error:
                     logger.error(f"[OKX] Error processing position: {str(pos_error)}")
                     continue
 
             return processed_positions, rapid_growth_positions
-            
+
         except Exception as e:
             logger.error(f"[OKX] Error getting positions: {str(e)}")
             return [], []
 
     def get_closed_pnl(self, sort_by='time', period='all', start_date=None, end_date=None):
         """Получает историю закрытых позиций с PNL
-        
+
         Args:
             sort_by: Способ сортировки ('time' или 'pnl')
             period: Период фильтрации ('all', 'day', 'week', 'month', 'half_year', 'year', 'custom')
@@ -156,10 +156,10 @@ class OkxExchange(BaseExchange):
         """
         try:
             all_closed_pnl = []
-            
+
             end_time = int(time.time() * 1000)
             end_dt = datetime.fromtimestamp(end_time / 1000)
-            
+
             # Определяем диапазон дат в зависимости от периода
             if period == 'custom' and start_date and end_date:
                 try:
@@ -168,7 +168,7 @@ class OkxExchange(BaseExchange):
                         start_time = int(start_dt.timestamp() * 1000)
                     else:
                         start_time = int(start_date)
-                    
+
                     if isinstance(end_date, str) and '-' in end_date:
                         end_dt = datetime.strptime(end_date, '%Y-%m-%d')
                         end_dt = end_dt.replace(hour=23, minute=59, second=59)
@@ -205,7 +205,7 @@ class OkxExchange(BaseExchange):
                 start_time = int(year_start.timestamp() * 1000)
             else:  # period == 'all'
                 start_time = end_time - (730 * 24 * 60 * 60 * 1000)  # 2 года
-            
+
             try:
                 # Используем прямой запрос к API OKX для получения истории закрытых позиций
                 params = {
@@ -213,61 +213,61 @@ class OkxExchange(BaseExchange):
                     'state': 'closed',  # Получаем только закрытые позиции
                     'limit': '100'  # Увеличиваем лимит
                 }
-                
+
                 closed_positions = self.client.private_get_account_positions(params)
-                
+
                 if closed_positions and closed_positions.get('code') == '0' and closed_positions.get('data'):
                     positions = closed_positions['data']
-                    
+
                     for position in positions:
                         try:
                             # Проверяем наличие всех необходимых данных
                             if not all(k in position for k in ['instId', 'pos', 'avgPx', 'markPx', 'realizedPnl', 'upl', 'uTime']):
                                 continue
-                            
+
                             # Проверяем время закрытия позиции
                             close_timestamp = int(position.get('uTime', 0))
                             if close_timestamp < start_time or close_timestamp > end_time:
                                 continue
-                            
+
                             # Рассчитываем общий PNL (реализованный + нереализованный)
                             realized_pnl = float(position.get('realizedPnl', 0))
                             unrealized_pnl = float(position.get('upl', 0))
                             total_pnl = realized_pnl + unrealized_pnl
-                            
+
                             # Пропускаем позиции с нулевым PNL
                             if total_pnl == 0:
                                 continue
-                            
+
                             symbol = clean_symbol(position['instId'])
                             position_size = abs(float(position.get('pos', 0)))
-                            
+
                             # Получаем историю сделок для этой позиции
                             trades = self.client.fetch_my_trades(
                                 symbol=position['instId'],
                                 limit=100
                             )
-                            
+
                             trades_by_position = {}
-                            
+
                             # Группируем сделки по positionSide
                             for trade in trades:
                                 pos_side = trade['info']['posSide']
                                 if pos_side not in trades_by_position:
                                     trades_by_position[pos_side] = []
                                 trades_by_position[pos_side].append(trade)
-                            
+
                             # Обрабатываем каждую группу сделок
                             for pos_side, position_trades in trades_by_position.items():
                                 # Сортируем сделки по времени
                                 position_trades.sort(key=lambda x: x['timestamp'])
-                                
+
                                 # Находим все сделки с PnL (закрывающие сделки)
                                 for i, trade in enumerate(position_trades):
                                     trade_timestamp = int(trade['info'].get('fillTime', trade['timestamp'] * 1000))
                                     if trade_timestamp < start_time or trade_timestamp > end_time:
                                         continue
-                                    
+
                                     if float(trade['info']['fillPnl']) != 0:
                                         # Ищем соответствующую сделку открытия
                                         entry_trade = None
@@ -275,7 +275,7 @@ class OkxExchange(BaseExchange):
                                             if prev_trade['side'] != trade['side'] and float(prev_trade['info']['fillPnl']) == 0:
                                                 entry_trade = prev_trade
                                                 break
-                                        
+
                                         if entry_trade:
                                             pnl_record = {
                                                 'symbol': clean_symbol(trade['info']['instId']),
@@ -292,7 +292,7 @@ class OkxExchange(BaseExchange):
                                             all_closed_pnl.append(pnl_record)
                         except Exception:
                             continue
-                    
+
                     # Фильтруем по датам (дополнительная проверка)
                     if period != 'all':
                         filtered_pnl = []
@@ -301,21 +301,21 @@ class OkxExchange(BaseExchange):
                             if start_time <= close_ts <= end_time:
                                 filtered_pnl.append(pnl)
                         all_closed_pnl = filtered_pnl
-                    
+
                     # Сортировка результатов
                     if sort_by == 'pnl':
                         all_closed_pnl.sort(key=lambda x: abs(float(x['closed_pnl'])), reverse=True)
                     else:  # sort by time
                         all_closed_pnl.sort(key=lambda x: x.get('close_timestamp', 0), reverse=True)
-                    
+
                     return all_closed_pnl
                 else:
                     return []
-                
+
             except Exception as e:
                 logger.error(f"Error in get_closed_pnl: {e}")
                 return []
-                
+
         except Exception as e:
             logger.error(f"Error in get_closed_pnl: {e}")
             return []
@@ -325,8 +325,7 @@ class OkxExchange(BaseExchange):
         try:
             # Используем тот же формат, что в позициях: XRP-USDT-SWAP
             market_symbol = f"{symbol}-USDT-SWAP"
-            logger.debug(f"Getting chart data for {market_symbol}")
-            
+
             try:
                 # Используем параметры OKX API
                 params = {
@@ -335,18 +334,18 @@ class OkxExchange(BaseExchange):
                     'limit': '24'
                 }
                 candles = self.client.publicGetMarketCandles(params)
-                
+
                 if candles and candles.get('data'):
-                    logger.debug(f"Got {len(candles['data'])} candles")
+
                     return [float(candle[4]) for candle in reversed(candles['data'])]
-                    
+
                 logger.warning(f"No candles data")
                 return []
-                
+
             except Exception as e:
                 logger.error(f"Error fetching OHLCV: {str(e)}")
                 return []
-                
+
         except Exception as e:
             logger.error(f"Error getting OKX chart data: {str(e)}")
             return []
@@ -356,21 +355,21 @@ class OkxExchange(BaseExchange):
         try:
             # Используем тот же формат, что в позициях: XRP-USDT-SWAP
             market_symbol = f"{symbol}-USDT-SWAP"
-            
+
             klines = self.client.fetch_ohlcv(
                 market_symbol,
                 timeframe='1d',
                 limit=200
             )
-            
+
             if len(klines) >= 200:
                 closes = [float(k[4]) for k in klines]
                 sma200 = sum(closes[:200]) / 200
                 current_price = float(klines[0][4])
                 return current_price > sma200
-                
+
             return None
-            
+
         except Exception as e:
             logger.error(f"Error getting OKX SMA200 for {symbol}: {e}")
             return None
@@ -394,33 +393,33 @@ class OkxExchange(BaseExchange):
     def get_instrument_status(self, symbol):
         """
         Получает статус торговли для символа
-        
+
         Возможные статусы OKX:
         - live: Активная торговля
         - suspend: Торговля приостановлена
         - preopen: Предварительная торговля
-        
+
         Returns:
             dict: {'status': str, 'is_tradeable': bool, 'is_delisting': bool}
         """
         try:
             # Добавляем небольшую задержку для предотвращения rate limiting
             time.sleep(0.02)  # 20ms задержка для проверки статуса инструмента
-            
+
             market_symbol = f"{symbol}-USDT-SWAP"
             instruments = self.client.fetch_markets()
-            
+
             for instrument in instruments:
                 if instrument['id'] == market_symbol:
                     status = instrument.get('status', 'Unknown')
-                    
+
                     return {
                         'status': status,
                         'is_tradeable': status == 'live',
                         'is_delisting': status in ['suspend', 'preopen'],
                         'symbol': market_symbol
                     }
-            
+
             logger.warning(f"[OKX] ⚠️ Не удалось получить статус инструмента {symbol}")
             return {
                 'status': 'Unknown',
@@ -428,7 +427,7 @@ class OkxExchange(BaseExchange):
                 'is_delisting': False,
                 'symbol': market_symbol
             }
-                
+
         except Exception as e:
             logger.error(f"[OKX] ❌ Ошибка получения статуса инструмента {symbol}: {e}")
             return {
@@ -449,45 +448,41 @@ class OkxExchange(BaseExchange):
         """
         try:
             logger.info(f"[OKX] Closing position {symbol}, size: {size}, side: {side}, type: {order_type}")
-            
+
             # Формируем символ в формате OKX
             market_symbol = f"{symbol}-USDT-SWAP"
-            
+
             # Проверяем существование позиции
             try:
                 positions = self.client.fetch_positions([market_symbol])
                 active_position = None
-                
+
                 for pos in positions:
                     if float(pos['contracts']) > 0 and pos['side'] == side.lower():
                         active_position = pos
                         break
-                
+
                 if not active_position:
                     return {
                         'success': False,
                         'message': f'No active {side} position found for {symbol}'
                     }
-                
-                logger.debug(f"[OKX] Found active position: {active_position}")
-                
+
                 # Получаем режим маржи из позиции
                 margin_mode = active_position.get('marginMode', '').lower()
                 if not margin_mode:
                     margin_mode = 'isolated'  # По умолчанию используем isolated
-                logger.debug(f"[OKX] Using margin mode: {margin_mode}")
-                
+
                 # Определяем тип позиции (хедж или нет)
                 is_hedged = active_position.get('hedged', False)
-                logger.debug(f"[OKX] Position is {'hedged' if is_hedged else 'one-way'}")
-                
+
             except Exception as e:
                 logger.error(f"[OKX] Error checking position: {str(e)}")
                 return {
                     'success': False,
                     'message': f'Error checking position: {str(e)}'
                 }
-            
+
             # Получаем текущую цену
             ticker = self.get_ticker(symbol)
             if not ticker:
@@ -495,10 +490,10 @@ class OkxExchange(BaseExchange):
                     'success': False,
                     'message': 'Could not get current price'
                 }
-            
+
             # Определяем направление закрытия
             close_side = "sell" if side == "Long" else "buy"
-            
+
             # Базовые параметры ордера
             order_params = {
                 'instId': f"{symbol}-USDT-SWAP",
@@ -508,11 +503,11 @@ class OkxExchange(BaseExchange):
                 'ordType': order_type.lower(),
                 'reduceOnly': True
             }
-            
+
             # Добавляем posSide в режиме хеджирования
             if self.position_mode == 'Hedge':
                 order_params['posSide'] = "long" if side == "Long" else "short"
-            
+
             # Добавляем параметры для лимитных ордеров
             if order_type.upper() == "LIMIT":
                 price_multiplier = (100 - self.limit_order_offset) / 100 if close_side == "buy" else (100 + self.limit_order_offset) / 100
@@ -523,9 +518,9 @@ class OkxExchange(BaseExchange):
                         'message': 'Invalid limit price calculated'
                     }
                 order_params['px'] = str(round(limit_price, 6))
-            
+
             response = self.client.private_post_trade_order(order_params)
-            
+
             if response and response.get('code') == '0':
                 order_id = response['data'][0]['ordId']
                 close_price = float(order_params.get('px', ticker['last']))
@@ -541,7 +536,7 @@ class OkxExchange(BaseExchange):
                     'success': False,
                     'message': f'Failed to place {order_type} order: {error_msg}'
                 }
-                
+
         except Exception as e:
             logger.error(f"[OKX] Error closing position: {str(e)}")
             logger.error(f"[OKX] Traceback: {traceback.format_exc()}")
@@ -554,7 +549,7 @@ class OkxExchange(BaseExchange):
         """Получение списка всех доступных бессрочных фьючерсов"""
         try:
             instruments = self.client.fetch_markets()
-            
+
             # Фильтруем только бессрочные фьючерсы
             pairs = [
                 clean_symbol(market['id'])  # Используем существующую функцию clean_symbol
@@ -583,7 +578,7 @@ class OkxExchange(BaseExchange):
                 '1d': '1D',
                 '1w': '1W'
             }
-            
+
             # Обработка таймфрейма "all"
             if timeframe == 'all':
                 intervals = ['1m', '5m', '15m', '30m', '1h', '4h', '1d']
@@ -600,7 +595,7 @@ class OkxExchange(BaseExchange):
                             'limit': '1000'
                         }
                         response = self.client.publicGetMarketCandles(params)
-                        
+
                         if response and response.get('data'):
                             klines = response['data']
                             if len(klines) > max_klines:
@@ -612,7 +607,7 @@ class OkxExchange(BaseExchange):
                         continue
 
                 if selected_interval and selected_klines:
-                    logger.debug(f"[OKX] Выбран интервал {selected_interval} с {len(selected_klines)} свечами")
+
                     candles = []
                     for k in reversed(selected_klines):
                         try:
@@ -628,7 +623,7 @@ class OkxExchange(BaseExchange):
                         except (ValueError, IndexError) as e:
                             logger.error(f"[OKX] Ошибка при обработке свечи: {e}, данные: {k}")
                             continue
-                    
+
                     candles.sort(key=lambda x: x['time'])
                     return {
                         'success': True,
@@ -641,7 +636,7 @@ class OkxExchange(BaseExchange):
                         'success': False,
                         'error': 'Не удалось получить данные ни для одного интервала'
                     }
-            
+
             # Стандартная обработка для конкретного таймфрейма
             interval = timeframe_map.get(timeframe)
             if not interval:
@@ -650,10 +645,9 @@ class OkxExchange(BaseExchange):
                     'success': False,
                     'error': f'Неподдерживаемый таймфрейм: {timeframe}'
                 }
-            
+
             market_symbol = f"{symbol}-USDT-SWAP"
-            logger.debug(f"[OKX] Getting chart data for {market_symbol} with interval {interval}")
-            
+
             try:
                 params = {
                     'instId': market_symbol,
@@ -661,14 +655,14 @@ class OkxExchange(BaseExchange):
                     'limit': '1000'
                 }
                 response = self.client.publicGetMarketCandles(params)
-                
+
                 if not response or not response.get('data'):
                     logger.warning(f"[OKX] Нет данных свечей")
                     return {
                         'success': False,
                         'error': 'Нет данных свечей'
                     }
-                
+
                 candles = []
                 for k in reversed(response['data']):
                     try:
@@ -684,24 +678,23 @@ class OkxExchange(BaseExchange):
                     except (ValueError, IndexError) as e:
                         logger.error(f"[OKX] Ошибка при обработке свечи: {e}, данные: {k}")
                         continue
-                
+
                 candles.sort(key=lambda x: x['time'])
-                
-                logger.debug(f"[OKX] Подготовлен ответ с {len(candles)} свечами")
+
                 return {
                     'success': True,
                     'data': {
                         'candles': candles
                     }
                 }
-                
+
             except Exception as e:
                 logger.error(f"[OKX] Ошибка получения OHLCV: {str(e)}")
                 return {
                     'success': False,
                     'error': str(e)
                 }
-                
+
         except Exception as e:
             logger.error(f"[OKX] Ошибка получения данных графика: {str(e)}")
             return {
@@ -711,17 +704,16 @@ class OkxExchange(BaseExchange):
 
     def get_indicators(self, symbol, timeframe='1h'):
         """Получение значений индикаторов
-        
+
         Args:
             symbol (str): Символ торговой пары
             timeframe (str): Таймфрейм
-            
+
         Returns:
             dict: Значения индикаторов
         """
         try:
-            logger.debug(f"[OKX] Запрос индикаторов для {symbol}, таймфрейм: {timeframe}")
-            
+
             # Конвертируем таймфрейм в формат OKX
             timeframe_map = {
                 '1m': '1m',
@@ -734,7 +726,7 @@ class OkxExchange(BaseExchange):
                 '1d': '1D',
                 '1w': '1W'
             }
-            
+
             interval = timeframe_map.get(timeframe)
             if not interval:
                 logger.warning(f"[OKX] Неподдерживаемый таймфрейм: {timeframe}")
@@ -773,7 +765,7 @@ class OkxExchange(BaseExchange):
             # 1. Расчет RSI
             rsi = self._calculate_rsi(closes)
             current_rsi = rsi[-1]
-            
+
             # Определение состояния RSI
             rsi_status = "Нейтральный"
             if current_rsi >= 70:
@@ -783,7 +775,7 @@ class OkxExchange(BaseExchange):
 
             # 2. Расчет тренда
             trend_info = self._calculate_trend(closes)
-            
+
             # 3. Расчет объемов
             volume_info = self._calculate_volume_metrics(volumes)
 
@@ -891,7 +883,7 @@ class OkxExchange(BaseExchange):
         # Используем 20-периодную SMA для определения тренда
         sma20 = np.mean(closes[-20:])
         current_price = closes[-1]
-        
+
         # Определяем направление тренда
         if current_price > sma20 * 1.02:  # Цена выше SMA на 2%
             direction = "Восходящий"
@@ -918,7 +910,7 @@ class OkxExchange(BaseExchange):
         """Расчет метрик объема"""
         current_24h = sum(volumes[-24:]) if len(volumes) >= 24 else sum(volumes)
         prev_24h = sum(volumes[-48:-24]) if len(volumes) >= 48 else sum(volumes)
-        
+
         # Изменение объема
         if prev_24h > 0:
             change_percent = ((current_24h - prev_24h) / prev_24h) * 100
@@ -958,7 +950,7 @@ class OkxExchange(BaseExchange):
 
         # Сортируем кластеры по количеству точек
         sorted_clusters = sorted(price_clusters.items(), key=lambda x: x[1], reverse=True)
-        
+
         current_price = closes[-1]
         support = current_price
         resistance = current_price
@@ -1044,54 +1036,54 @@ class OkxExchange(BaseExchange):
         try:
             # Получаем баланс аккаунта
             account_response = self.client.fetch_balance({'type': 'swap'})
-            
+
             if not account_response:
                 raise Exception("Empty account response")
-            
+
             # Получаем значения из ответа API
             total_balance = float(account_response.get('total', {}).get('USDT', 0))
             available_balance = float(account_response.get('free', {}).get('USDT', 0))
-            
+
             # Получаем позиции для расчета нереализованного PNL
             positions = self.client.fetch_positions()
             unrealized_pnl = sum(float(pos['unrealizedPnl']) for pos in positions if pos['contracts'] != 0)
-            
+
             # Получаем реализованный PNL
             realized_pnl = 0.0
-            
+
             try:
                 # Получаем историю PNL за последние 7 дней
                 end_time = int(time.time() * 1000)
                 start_time = end_time - (7 * 24 * 60 * 60 * 1000)
-                
+
                 params = {
                     'instType': 'SWAP',
                     'begin': str(start_time),
                     'end': str(end_time),
                     'limit': '100'
                 }
-                
+
                 # Используем метод для получения истории сделок
                 trades = self.client.private_get_trade_fills(params)
-                
+
                 if trades and trades.get('code') == '0' and trades.get('data'):
                     for trade in trades['data']:
                         pnl = float(trade.get('fillPnl', 0))
                         if pnl != 0:
                             realized_pnl += pnl
-                
+
             except Exception as e:
                 logger.error(f"[OKX] Error fetching PNL history: {str(e)}")
-            
+
             # Общий PNL = реализованный + нереализованный
             total_pnl = realized_pnl + unrealized_pnl
-            
+
             return {
                 'total_balance': total_balance,
                 'available_balance': available_balance,
                 'realized_pnl': total_pnl
             }
-            
+
         except Exception as e:
             logger.error(f"[OKX] Error in get_wallet_balance: {str(e)}")
             return {
@@ -1099,15 +1091,15 @@ class OkxExchange(BaseExchange):
                 'available_balance': 0.0,
                 'realized_pnl': 0.0
             }
-    
+
     def set_leverage(self, symbol, leverage):
         """
         Устанавливает кредитное плечо для символа
-        
+
         Args:
             symbol (str): Символ торговой пары (например, 'BTC')
             leverage (int): Значение плеча (например, 5 для x5)
-            
+
         Returns:
             dict: Результат установки плеча с полями:
                 - success (bool): Успешность операции
@@ -1121,9 +1113,9 @@ class OkxExchange(BaseExchange):
                     'success': False,
                     'message': f'Недопустимое значение плеча: {leverage}. Допустимый диапазон: 1-125'
                 }
-            
+
             okx_symbol = f"{symbol}-USDT-SWAP"
-            
+
             # Получаем текущее плечо
             current_leverage = None
             try:
@@ -1132,14 +1124,14 @@ class OkxExchange(BaseExchange):
                     current_leverage = float(positions[0].get('leverage', 1))
             except Exception as e:
                 logger.warning(f"[OKX] ⚠️ Не удалось получить текущее плечо: {e}")
-            
+
             # Если плечо уже установлено на нужное значение, пропускаем
             if current_leverage and int(current_leverage) == leverage:
                 return {
                     'success': True,
                     'message': f'Плечо уже установлено на {leverage}x'
                 }
-            
+
             # Устанавливаем плечо через API OKX (используем ccxt метод)
             # OKX требует установку плеча через set_leverage с параметрами
             try:
@@ -1158,7 +1150,7 @@ class OkxExchange(BaseExchange):
                         'mgnMode': 'isolated'  # или 'cross' в зависимости от режима маржи
                     }
                     response = self.client.private_post_account_set_leverage(params)
-                    
+
                     if response and response.get('code') == '0':
                         logger.info(f"[OKX] ✅ {symbol}: Плечо установлено на {leverage}x")
                         return {
@@ -1178,7 +1170,7 @@ class OkxExchange(BaseExchange):
                         'success': False,
                         'message': f'Ошибка установки плеча: {str(private_error)}'
                     }
-                
+
         except Exception as e:
             logger.error(f"[OKX] ❌ {symbol}: Ошибка установки плеча: {e}")
             return {

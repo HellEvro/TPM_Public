@@ -63,7 +63,7 @@ try:
     # Логируем только на уровне DEBUG и только если логгер BOTS уже настроен (когда запущен bots.py)
     bots_logger = logging.getLogger('BOTS')
     if bots_logger.handlers:  # Логируем только если есть обработчики
-        bots_logger.debug("New bot_engine modules loaded successfully")
+        pass
 except ImportError as e:
     # Логируем только если логгер BOTS уже настроен
     bots_logger = logging.getLogger('BOTS')
@@ -945,7 +945,7 @@ def load_individual_coin_settings():
         except Exception as migration_exc:
             # Если не удалось выполнить миграцию (например, БД еще не инициализирована),
             # просто загружаем настройки без миграции
-            logger.debug(f" ⚠️ Не удалось проверить/выполнить миграцию включения фильтра: {migration_exc}")
+            pass
             with bots_data_lock:
                 bots_data['individual_coin_settings'] = normalized
         
@@ -989,7 +989,7 @@ def get_individual_coin_settings(symbol):
             current_mtime = None
         last_mtime = _individual_coin_settings_state.get('last_mtime')
         if current_mtime and current_mtime != last_mtime:
-            logger.debug(" 🔄 Обнаружены новые индивидуальные настройки на диске, обновляем кэш")
+            pass
             load_individual_coin_settings()
             with bots_data_lock:
                 settings = bots_data.get('individual_coin_settings', {}).get(normalized)
@@ -1189,7 +1189,7 @@ def unregister_bot_position(order_id):
                     logger.info(f" ✅ Удалена позиция из реестра: {info.get('symbol')} (order_id={order_id})")
                     return True
 
-        logger.debug(f" ⚠️ Позиция {order_id} не найдена в реестре")
+        pass
         return False
     except Exception as e:
         logger.error(f" ❌ Ошибка удаления позиции из реестра: {e}")
@@ -1395,7 +1395,7 @@ def open_position_for_bot(symbol, side, volume_value, current_price, take_profit
                         auto_bot_config = bots_data.get('auto_bot_config', {})
                         leverage = auto_bot_config.get('leverage')
         except Exception as e:
-            logger.debug(f" {symbol}: Не удалось получить leverage из конфига: {e}")
+            pass
         
         logger.info(f" {symbol}: 📊 Используемое плечо из конфига: {leverage}x (для open_position_for_bot)")
         

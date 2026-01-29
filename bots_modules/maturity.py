@@ -223,7 +223,7 @@ def is_coin_mature_stored(symbol):
     # Зрелость считается только по каноническому ТФ 6h; старые записи без timeframe считаем валидными
     stored_timeframe = stored_details.get('timeframe') or MATURITY_CANONICAL_TIMEFRAME
     if stored_timeframe != MATURITY_CANONICAL_TIMEFRAME:
-        logger.debug(f" {symbol}: зрелость была по ТФ {stored_timeframe}, сейчас канонический {MATURITY_CANONICAL_TIMEFRAME}")
+        pass
         del mature_coins_storage[symbol]
         return False
 
@@ -234,17 +234,17 @@ def is_coin_mature_stored(symbol):
     
     # Если параметры конфига изменились - перепроверяем монету
     if stored_min_candles != current_min_candles:
-        logger.debug(f" {symbol}: изменилось min_candles ({stored_min_candles} → {current_min_candles})")
+        pass
         del mature_coins_storage[symbol]
         return False
     
     if stored_config_min_rsi_low != current_min_rsi_low:
-        logger.debug(f" {symbol}: изменилось config_min_rsi_low ({stored_config_min_rsi_low} → {current_min_rsi_low})")
+        pass
         del mature_coins_storage[symbol]
         return False
     
     if stored_config_max_rsi_high != current_max_rsi_high:
-        logger.debug(f" {symbol}: изменилось config_max_rsi_high ({stored_config_max_rsi_high} → {current_max_rsi_high})")
+        pass
         del mature_coins_storage[symbol]
         return False
     
@@ -258,7 +258,7 @@ def add_mature_coin_to_storage(symbol, maturity_data, auto_save=True):
         # Проверяем, есть ли уже монета в хранилище
         if symbol in mature_coins_storage:
             # Монета уже есть - ничего не делаем
-            logger.debug(f" {symbol}: уже есть в хранилище")
+            pass
             return
         
         # ✅ СБРАСЫВАЕМ ФЛАГ: Если добавляем первую монету после сброса, данные снова валидны
@@ -276,7 +276,7 @@ def add_mature_coin_to_storage(symbol, maturity_data, auto_save=True):
         save_mature_coins_storage()
         logger.info(f" Монета {symbol} добавлена в постоянное хранилище зрелых монет")
     else:
-        logger.debug(f" Монета {symbol} добавлена в хранилище (без автосохранения)")
+        pass
 
 def remove_mature_coin_from_storage(symbol):
     """Удаляет монету из постоянного хранилища зрелых монет"""
@@ -284,7 +284,7 @@ def remove_mature_coin_from_storage(symbol):
     if symbol in mature_coins_storage:
         del mature_coins_storage[symbol]
         # Отключаем автоматическое сохранение - будет сохранено пакетно
-        logger.debug(f" Монета {symbol} удалена из хранилища (без автосохранения)")
+        pass
 
 # ❌ ОТКЛЮЧЕНО: Все функции optimal_ema удалены (EMA фильтр убран из системы)
 # def load_optimal_ema_data():
@@ -504,13 +504,13 @@ def calculate_all_coins_maturity():
                 # (результат используется для всех ТФ без повторной загрузки свечей)
                 chart_response = exchange.get_chart_data(symbol, MATURITY_CANONICAL_TIMEFRAME, '30d')
                 if not chart_response or not chart_response.get('success'):
-                    logger.debug(f"⚠️ {symbol}: Не удалось получить свечи")
+                    pass
                     immature_count += 1
                     continue
                 
                 candles = chart_response.get('data', {}).get('candles', [])
                 if not candles:
-                    logger.debug(f"⚠️ {symbol}: Нет свечей")
+                    pass
                     immature_count += 1
                     continue
                 

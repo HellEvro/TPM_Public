@@ -38,7 +38,7 @@ def _get_cached_individual_settings(symbol: Optional[str]) -> Optional[Dict[str,
         settings = _individual_settings_cache.get(normalized)
         return deepcopy(settings) if settings else None
     except Exception as exc:  # pragma: no cover - резервный путь
-        logger.debug(f"⚠️ Не удалось загрузить индивидуальные настройки {normalized}: {exc}")
+        pass
         return None
 
 
@@ -51,7 +51,7 @@ def _get_config_snapshot(symbol: Optional[str] = None) -> Dict[str, Any]:
 
         return get_config_snapshot(symbol)
     except Exception as exc:  # pragma: no cover - fallback при отсутствии сервиса ботов
-        logger.debug(f"⚠️ Не удалось получить конфиг через bots_modules ({exc}), используем bot_config.py")
+        pass
         try:
             from bot_engine.bot_config import DEFAULT_AUTO_BOT_CONFIG  # noqa: WPS433,E402
 
@@ -231,7 +231,7 @@ class AIBacktester:
                                 'volume': coin_data.get('volume')
                             }
             except Exception as api_error:
-                logger.debug(f"⚠️ Не удалось получить индикаторы через API: {api_error}")
+                pass
             
             return market_data
                 
@@ -290,13 +290,13 @@ class AIBacktester:
                     if trades:
                         return trades
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка загрузки из БД: {e}, используем fallback")
+            pass
         
         # 2. Fallback: загружаем из bot_history.json или API
         try:
             history_file = os.path.join(self.data_dir, 'history_data.json')
             if not os.path.exists(history_file):
-                logger.debug("📊 Файл истории не найден, пробуем получить через API...")
+                pass
                 # Пробуем получить через API
                 try:
                     import requests
@@ -883,7 +883,7 @@ class AIBacktester:
                         backtest_name=backtest_name,
                         symbol=symbol
                     )
-                    logger.debug(f"✅ Результаты бэктеста сохранены в БД: {backtest_name}")
+                    pass
             except Exception as e:
                 logger.warning(f"⚠️ Не удалось сохранить результаты бэктеста в БД: {e}")
             

@@ -87,14 +87,14 @@ class AsyncRSILoader:
             
             # Определяем какую биржу использовать
             exchange_to_use = self.exchange
-            logger.debug(f"[ASYNC_RSI] self.exchange для {symbol}: {type(exchange_to_use)}")
+            pass
             
             if not exchange_to_use:
                 # Пытаемся получить глобальную переменную exchange
                 try:
                     import bots
                     exchange_to_use = getattr(bots, 'exchange', None)
-                    logger.debug(f"[ASYNC_RSI] Глобальная биржа для {symbol}: {type(exchange_to_use)}")
+                    pass
                     
                     if exchange_to_use:
                         logger.info(f"[ASYNC_RSI] Используем глобальную биржу для {symbol}")
@@ -109,7 +109,7 @@ class AsyncRSILoader:
                     logger.error(f"[ASYNC_RSI] Ошибка получения глобальной биржи для {symbol}: {e}")
                     return None
             else:
-                logger.debug(f"[ASYNC_RSI] Используем переданную биржу для {symbol}")
+                pass
             
             # Получаем RSI данные, передавая биржу
             rsi_data = get_coin_rsi_data(symbol, exchange_to_use)
@@ -167,7 +167,7 @@ class AsyncRSILoader:
         try:
             from bots import save_mature_coins_storage
             save_mature_coins_storage()
-            logger.debug(f"[ASYNC_RSI] 💾 Maturity данные сохранены пакетно")
+            pass
         except Exception as e:
             logger.warning(f"[ASYNC_RSI] Ошибка сохранения maturity данных: {e}")
         
@@ -477,7 +477,7 @@ class AsyncMainProcessor:
         try:
             from bots import save_mature_coins_storage
             save_mature_coins_storage()
-            logger.debug("[ASYNC_MAIN] 💾 Maturity данные сохранены")
+            pass
         except Exception as e:
             logger.warning(f"[ASYNC_MAIN] Ошибка сохранения maturity данных: {e}")
     

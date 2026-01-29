@@ -31,7 +31,7 @@ class AIParameterTracker:
         try:
             from bot_engine.ai.ai_database import get_ai_database
             self.ai_db = get_ai_database()
-            logger.debug("✅ AI Database подключена для AIParameterTracker")
+            pass
         except Exception as e:
             logger.warning(f"⚠️ Не удалось подключиться к AI Database: {e}")
             self.ai_db = None
@@ -212,9 +212,9 @@ class AIParameterTracker:
             # Обновляем только если новый рейтинг лучше
             if not current_best or rating > current_best.get('rating', 0):
                 self.ai_db.save_best_params_for_symbol(symbol, rsi_params, rating, win_rate, total_pnl)
-                logger.debug(f"✅ Обновлены лучшие параметры для {symbol}: рейтинг {rating:.2f}, Win Rate {win_rate:.1f}%")
+                pass
         except Exception as e:
-            logger.debug(f"⚠️ Ошибка обновления лучших параметров для {symbol}: {e}")
+            pass
     
     def get_usage_stats(self) -> Dict:
         """
@@ -442,7 +442,7 @@ class AIParameterTracker:
             blocked_params = self._load_blocked_params()
             if blocked_params:
                 blocking_patterns = self._analyze_blocking_patterns(blocked_params)
-                logger.debug(f"📊 Учитываем {len(blocked_params)} записей о блокировках при генерации параметров")
+                pass
         
         # УЛУЧШЕНИЕ: Адаптивное количество попыток в зависимости от заполненности
         # При низком использовании (0.01%) увеличиваем попытки для лучшего покрытия
@@ -504,7 +504,7 @@ class AIParameterTracker:
                     if self._is_params_similar_to_blocked(rsi_params, blocked_params):
                         continue
                 
-                logger.debug(f"✅ Найдены неиспользованные параметры через LHS (использовано {used_count}/{stats.get('total_combinations', 0)}, {usage_percentage:.2f}%)")
+                pass
                 return rsi_params
         
         # Систематический перебор вокруг базовых параметров (для среднего использования)
@@ -569,11 +569,11 @@ class AIParameterTracker:
         # Если не нашли за max_attempts попыток - пробуем найти любые параметры (даже использованные)
         # но с хорошим рейтингом, если параметры почти исчерпаны
         if usage_percentage > 80:
-            logger.debug(f"💡 Параметры почти исчерпаны ({usage_percentage:.1f}%), ищем лучшие использованные параметры")
+            pass
             best_params = self.get_best_params(limit=10, min_win_rate=0.0)
             if best_params:
                 best = best_params[0]
-                logger.debug(f"✅ Используем лучшие параметры (Win Rate: {best.get('win_rate', 0):.1f}%, Рейтинг: {best.get('rating', 0):.1f})")
+                pass
                 return best.get('rsi_params')
         
         # Если все попытки не удались - возвращаем None

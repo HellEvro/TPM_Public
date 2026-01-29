@@ -504,7 +504,7 @@ class BinanceExchange(BaseExchange):
                         })
                         continue
                     
-                    logger.debug(f"[BINANCE] Found active position: {active_position}")
+                    pass
                     
                     # Получаем текущую цену
                     ticker = self.get_ticker(symbol)
@@ -578,7 +578,7 @@ class BinanceExchange(BaseExchange):
 
     def get_chart_data(self, symbol, timeframe='1h', period='1w'):
         try:
-            logger.debug(f"[BINANCE] Запрос данных для {symbol}, таймфрейм: {timeframe}, период: {period}")
+            pass
             
             # Специальная обработка для таймфрейма "all"
             if timeframe == 'all':
@@ -600,7 +600,7 @@ class BinanceExchange(BaseExchange):
                 
                 for interval, interval_name in intervals:
                     try:
-                        logger.debug(f"[BINANCE] Пробуем интервал {interval_name}")
+                        pass
                         klines = self.client.futures_klines(
                             symbol=f"{symbol}USDT",
                             interval=interval,
@@ -610,14 +610,14 @@ class BinanceExchange(BaseExchange):
                         if len(klines) <= 500:
                             selected_interval = interval
                             selected_klines = klines
-                            logger.debug(f"[BINANCE] Выбран интервал {interval_name} ({len(klines)} свечей)")
+                            pass
                             break
                         
                         # Если это последний интервал, используем его независимо от количества свечей
                         if interval == Client.KLINE_INTERVAL_1MONTH:
                             selected_interval = interval
                             selected_klines = klines
-                            logger.debug(f"[BINANCE] Использован последний интервал {interval_name} ({len(klines)} свечей)")
+                            pass
                     except Exception as e:
                         logger.error(f"[BINANCE] Ошибка при получении данных для интервала {interval_name}: {e}")
                         continue
@@ -654,9 +654,9 @@ class BinanceExchange(BaseExchange):
                     limit=1000
                 )
 
-            logger.debug(f"[BINANCE] Получено {len(klines)} свечей")
+            pass
             if klines:
-                logger.debug(f"[BINANCE] Пример первой свечи: {klines[0]}")
+                pass
             
             # Преобразуем данные в формат свечей
             candles = []
@@ -681,7 +681,7 @@ class BinanceExchange(BaseExchange):
                 }
             }
             
-            logger.debug(f"[BINANCE] Подготовлен ответ с {len(candles)} свечами")
+            pass
             return result
             
         except Exception as e:
@@ -703,7 +703,7 @@ class BinanceExchange(BaseExchange):
             dict: Значения индикаторов
         """
         try:
-            logger.debug(f"[BINANCE] Запрос индикаторов для {symbol}, таймфрейм: {timeframe}")
+            pass
             
             # Конвертируем таймфрейм в формат Binance
             timeframe_map = {

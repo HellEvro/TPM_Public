@@ -62,7 +62,7 @@ def _get_cached_bot_symbols():
         if os.path.exists(bots_state_file):
             _bots_state_cache['file_mtime'] = os.path.getmtime(bots_state_file)
     except Exception as e:
-        logger.debug(f"⚠️ Ошибка загрузки кэша bots_state: {e}")
+        pass
         # В случае ошибки возвращаем старый кэш
         return _bots_state_cache['symbols'].copy()
     
@@ -457,7 +457,7 @@ def refresh_manual_positions():
                                     saved_bot_symbols = set(saved_data['bots'].keys())
                             except json.JSONDecodeError as e:
                                 logger.warning(f"⚠️ Ошибка парсинга JSON (строка {e.lineno}, колонка {e.colno}): {e.msg}")
-                                logger.debug(f"Проблемный участок около символа {e.pos}")
+                                pass
                                 
                                 # ✅ Пытаемся восстановить из резервной копии
                                 backup_file = f"{bots_state_file}.backup"
@@ -482,7 +482,7 @@ def refresh_manual_positions():
                                     shutil.copy2(bots_state_file, corrupted_file)
                                     logger.info(f"📁 Поврежденный файл сохранен: {corrupted_file}")
                                 except Exception as copy_error:
-                                    logger.debug(f"⚠️ Не удалось сохранить копию поврежденного файла: {copy_error}")
+                                    pass
                         else:
                             logger.warning(" ⚠️ Файл состояния пустой! Пытаемся восстановить или инициализировать...")
                             # ✅ Пытаемся восстановить из резервной копии
@@ -703,7 +703,7 @@ def get_coins_with_rsi():
                                 effective_signal = 'WAIT'
                                 cleaned_coin['effective_signal'] = 'WAIT'
                     except Exception as ai_err:
-                        logger.debug(f" AI check for {symbol} in get_coins_with_rsi: {ai_err}")
+                        pass
                 
                 # ✅ ИСПРАВЛЕНИЕ: Добавляем количество свечей из данных зрелых монет
                 try:
@@ -715,7 +715,7 @@ def get_coins_with_rsi():
                         if candles_count is not None:
                             cleaned_coin['candles_count'] = candles_count
                 except Exception as e:
-                    logger.debug(f" Ошибка получения candles_count для {symbol}: {e}")
+                    pass
                 
                 cleaned_coins[symbol] = cleaned_coin
                 
@@ -787,7 +787,7 @@ def get_coins_with_rsi():
         
         # Убираем спам-лог, только в debug режиме
         if SystemConfig.DEBUG_MODE:
-            logger.debug(f" Возврат RSI данных для {len(result['coins'])} монет")
+            pass
         return jsonify(result)
         
     except MemoryError as e:
@@ -1018,7 +1018,7 @@ def create_bot_endpoint():
                             logger.info(f" ✋ {symbol}: Обнаружена ручная позиция - пропускаем проверку зрелости")
                             break
         except Exception as e:
-            logger.debug(f" Не удалось проверить ручную позицию: {e}")
+            pass
         
         # Проверяем зрелость монеты (если включена проверка для этой монеты И нет ручной позиции)
         enable_maturity_check_coin = bot_runtime_config.get('enable_maturity_check', True)
@@ -1065,7 +1065,7 @@ def create_bot_endpoint():
                         logger.info(f" 🔍 {symbol}: Обнаружена существующая позиция на бирже (размер: {pos.get('size')})")
                         break
         except Exception as e:
-            logger.debug(f" Не удалось проверить существующую позицию: {e}")
+            pass
         
         # ✅ Возвращаем ответ БЫСТРО
         logger.info(f" ✅ Бот для {symbol} создан")
@@ -2310,7 +2310,7 @@ def get_rsi_history_for_chart(symbol):
                 if db_cached_data:
                     candles = db_cached_data.get('candles', [])
             except Exception as e:
-                logger.debug(f"Не удалось прочитать кэш из БД для {symbol}: {e}")
+                pass
         
         if not candles or len(candles) < 15:
             return jsonify({
@@ -2376,7 +2376,7 @@ def get_candles_from_cache(symbol):
                 if db_cached_data:
                     candles_6h = db_cached_data.get('candles', [])
             except Exception as e:
-                logger.debug(f"Не удалось прочитать кэш из БД для {symbol}: {e}")
+                pass
         
         if not candles_6h:
             return jsonify({
@@ -2881,7 +2881,7 @@ def auto_bot_config():
             # Добавляем логирование для отладки
             try:
                 data = request.get_json()
-                logger.debug(f" 📦 Получены данные: {data}")
+                pass
             except Exception as json_error:
                 logger.error(f" ❌ Ошибка парсинга JSON: {json_error}")
                 return jsonify({'success': False, 'error': f'Invalid JSON: {str(json_error)}'}), 400

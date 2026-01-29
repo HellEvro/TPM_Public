@@ -16,7 +16,7 @@ class TelegramNotifier:
         # Создаем директорию для логов, если она не существует
         log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
         os.makedirs(log_dir, exist_ok=True)
-        
+
         # Создаем логгер с автоматической ротацией при превышении 10MB
         self.logger = setup_logger_with_rotation(
             name='TelegramNotifier',
@@ -31,18 +31,18 @@ class TelegramNotifier:
         self.chat_id = TELEGRAM_CHAT_ID
         self.api_url = f"https://api.telegram.org/bot{self.bot_token}"
         self.enabled = TELEGRAM_NOTIFICATIONS_ENABLED
-        
+
         # Добавляем текущий язык
         self.language = get_current_language()
-        
+
         # Обновляем путь к файлу состояний
         self.states_file = 'app/telegram_states.json'
-        
+
         # Добавляем словари для отслеживания
         self.last_notification_time = {}
         self.last_values = {}  # Словарь для хранения последних значений
         self.notification_cooldown = 10
-        
+
         # Добавляем пороговые значения для отслеживания пересечений
         self.thresholds = {
             'high_pnl': DEFAULT_PNL_THRESHOLD,  # 1000 USDT
@@ -50,7 +50,7 @@ class TelegramNotifier:
             'high_loss': HIGH_LOSS_THRESHOLD,   # -40 USDT
             'rapid_growth': GROWTH_MULTIPLIER    # 2.0
         }
-        
+
         # Загружаем сохраненные состояния или создаем новые
         if os.path.exists(self.states_file):
             try:
@@ -76,10 +76,10 @@ class TelegramNotifier:
 
         # Добавляем блокировку д��я безопасного вывода
         self.print_lock = Lock()
-        
+
         # Регистрируем обработчик завершения
         atexit.register(self.cleanup)
-        
+
     def cleanup(self):
         """Очистка ресурсов при завершении"""
         try:
@@ -87,7 +87,7 @@ class TelegramNotifier:
                 sys.stdout.flush()
         except:
             pass
-            
+
     def safe_print(self, message):
         """Безопасный вывод сообщений"""
         try:
@@ -103,11 +103,11 @@ class TelegramNotifier:
         self.high_loss_positions = set()
         self.rapid_growth_positions = set()
         self.high_pnl_positions = set()
-        
+
         # Удаляем существующий файл состояний
         if os.path.exists(self.states_file):
             os.remove(self.states_file)
-        
+
         # Сохраняем пустые состояния
         self._save_states()
 
@@ -123,7 +123,7 @@ class TelegramNotifier:
         try:
             # Создаем директорию app, если её нет
             os.makedirs('app', exist_ok=True)
-            
+
             with open(self.states_file, 'w') as f:
                 json.dump(states, f, indent=2)
             self.logger.info(f"States saved successfully: {states}")
@@ -132,19 +132,19 @@ class TelegramNotifier:
 
     def send_message(self, message, parse_mode='HTML'):
         """Отправка сообщения в Telegram"""
-        
+
         if not self.enabled:
             self.logger.info("Telegram notifications disabled - skipping message")
             return
-        
+
         # Проверяем наличие необходимых параметров
         if not self.bot_token or not self.chat_id:
             self.logger.warning("Telegram bot_token or chat_id not configured - skipping message")
             return
-        
+
         # Логируем попытку отправки
         self.logger.info(f"Attempting to send Telegram message: {message[:100]}...")
-        
+
         try:
             url = f"{self.api_url}/sendMessage"
             data = {
@@ -152,9 +152,9 @@ class TelegramNotifier:
                 "text": message,
                 "parse_mode": parse_mode
             }
-            
+
             response = requests.post(url, data=data, timeout=10)
-            
+
             if response.ok:
                 self.logger.info(f"Telegram message sent successfully to chat {self.chat_id}")
             else:
@@ -163,7 +163,7 @@ class TelegramNotifier:
                     error_data = response.json()
                     error_code = error_data.get('error_code', response.status_code)
                     description = error_data.get('description', response.text)
-                    
+
                     hint = " Проверьте TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID в app/keys.py (или app/config.py)."
                     if error_code == 404:
                         if 'chat not found' in description.lower():
@@ -178,12 +178,12 @@ class TelegramNotifier:
                         error_reason = f"Bad Request (400): {description}. Проверьте формат сообщения или chat_id.{hint}"
                     else:
                         error_reason = f"Error {error_code}: {description}"
-                    
+
                     if error_code in (401, 404):
                         self.logger.warning(f"Telegram: {error_reason}")
                     else:
                         self.logger.error(f"Failed to send Telegram message: {error_reason}")
-                    self.logger.debug(f"Full response: {response.text}")
+
                 except (ValueError, KeyError):
                     hint = " Проверьте TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID в app/keys.py (или app/config.py)."
                     msg = f"Failed to send message: {response.text} (Status: {response.status_code}).{hint}"
@@ -191,7 +191,7 @@ class TelegramNotifier:
                         self.logger.warning(f"Telegram: {msg}")
                     else:
                         self.logger.error(msg)
-            
+
         except requests.exceptions.Timeout:
             self.logger.error("Timeout while sending Telegram message (10s)")
         except requests.exceptions.ConnectionError:
@@ -199,13 +199,12 @@ class TelegramNotifier:
         except Exception as e:
             self.logger.error(f"Error sending message: {str(e)}")
             import traceback
-            self.logger.debug(traceback.format_exc())
 
     def send_error(self, error):
         if not TELEGRAM_NOTIFY.get('ERRORS', False):
             self.logger.info("Error notifications disabled, skipping")
             return
-            
+
         message = f"❌ <b>Error</b>\n\n{error}\n\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         self.send_message(message)
 
@@ -213,10 +212,10 @@ class TelegramNotifier:
         if not TELEGRAM_NOTIFY.get(alert_type.upper(), False):
             self.logger.info(f"Alert type {alert_type} disabled, skipping")
             return
-        
+
         symbol = position['symbol']
         current_time = datetime.now()
-        
+
         # Получаем текущее значение с учетом разных ключей
         current_value = {
             'high_pnl': position.get('pnl', position.get('current_pnl', 0)),
@@ -229,7 +228,7 @@ class TelegramNotifier:
         if symbol in self.last_values:
             last_value = self.last_values[symbol].get(alert_type)
             threshold = self.thresholds[alert_type]
-            
+
             if last_value is not None:
                 # Для high_pnl и high_roi
                 if alert_type in ['high_pnl', 'high_roi']:
@@ -241,7 +240,7 @@ class TelegramNotifier:
                     if current_value < threshold:
                         self.last_values[symbol][alert_type] = current_value
                         return
-                
+
                 # Для high_loss
                 elif alert_type == 'high_loss':
                     # Если предыдущее значение было ниже порога и текущее тоже ниже
@@ -252,7 +251,7 @@ class TelegramNotifier:
                     if current_value > threshold:
                         self.last_values[symbol][alert_type] = current_value
                         return
-                
+
                 # Для rapid_growth
                 elif alert_type == 'rapid_growth':
                     # Если предыдущее значение было выше порога  текущее тоже выше
@@ -291,7 +290,7 @@ class TelegramNotifier:
                 f"Current PnL: {position.get('current_pnl', 0):.2f} USDT\n"
                 f"Start PnL: {position.get('start_pnl', 0):.2f} USDT"
             )
-            
+
         elif alert_type == 'high_roi' and TELEGRAM_NOTIFY['HIGH_ROI']:
             if symbol in self.high_roi_positions:
                 self.logger.info(f"High ROI alert for {symbol} already sent and still above threshold")
@@ -304,7 +303,7 @@ class TelegramNotifier:
                 f"ROI: {position.get('roi', 0):.2f}%\n"
                 f"PnL: {position.get('pnl', position.get('current_pnl', 0)):.2f} USDT"
             )
-            
+
         elif alert_type == 'high_loss' and TELEGRAM_NOTIFY['HIGH_LOSS']:
             if symbol in self.high_loss_positions:
                 self.logger.info(f"High loss alert for {symbol} already sent and still below threshold")
@@ -332,7 +331,7 @@ class TelegramNotifier:
         else:
             self.logger.info(f"Unknown alert type or disabled: {alert_type}")
             return
-        
+
         # Отправляем сообщение
         self.send_message(message)
 
@@ -340,24 +339,24 @@ class TelegramNotifier:
         """Обновляет состояния позиций и удаляет те, что вышли из своих состояний"""
         changed = False  # Флаг для отслеживания изменений
         current_symbols = set()
-        
+
         for position in positions:
             symbol = position['symbol']
             current_symbols.add(symbol)
-            
+
             # Проверяем и обновляем состояния
             if symbol in self.high_roi_positions:
                 if position['roi'] <= HIGH_ROI_THRESHOLD:
                     self.high_roi_positions.remove(symbol)
                     self.logger.info(f"{symbol} removed from high ROI positions (ROI: {position['roi']}%)")
                     changed = True
-            
+
             if symbol in self.high_loss_positions:
                 if position['pnl'] > HIGH_LOSS_THRESHOLD:
                     self.high_loss_positions.remove(symbol)
                     self.logger.info(f"{symbol} removed from high loss positions (PnL: {position['pnl']} USDT)")
                     changed = True
-            
+
             # Для rapid growth проверяем соотношение роста
             if symbol in self.rapid_growth_positions:
                 if symbol in daily_pnl:
@@ -373,21 +372,21 @@ class TelegramNotifier:
                         self.rapid_growth_positions.remove(symbol)
                         self.logger.info(f"{symbol} removed from rapid growth positions (negative PnL)")
                         changed = True
-            
+
             # Проверяем high_pnl позиции
             if symbol in self.high_pnl_positions:
                 if position['pnl'] <= DEFAULT_PNL_THRESHOLD:
                     self.high_pnl_positions.remove(symbol)
                     self.logger.info(f"{symbol} removed from high PnL positions (PnL: {position['pnl']:.2f} USDT)")
                     changed = True
-        
+
         # Удаляем позиции, которых больше нет в списке
         for symbol_set in [self.high_roi_positions, self.high_loss_positions, self.rapid_growth_positions, self.high_pnl_positions]:
             symbols_to_remove = symbol_set - current_symbols
             for symbol in symbols_to_remove:
                 symbol_set.remove(symbol)
                 self.logger.info(f"Removed closed position {symbol} from tracking")
-        
+
         # Сохраняем состояния только если были изменения
         if changed:
             self._save_states()
@@ -396,7 +395,7 @@ class TelegramNotifier:
         if not TELEGRAM_NOTIFY.get('DAILY_REPORT', False):
             self.logger.info("Daily report disabled, skipping")
             return
-        
+
         current_time = datetime.now().strftime('%H:%M')
         if current_time != TELEGRAM_NOTIFY['DAILY_REPORT_TIME']:
             self.logger.info(f"Not time for daily report (current: {current_time}, scheduled: {TELEGRAM_NOTIFY['DAILY_REPORT_TIME']})")
@@ -410,7 +409,7 @@ class TelegramNotifier:
             f"• {pos.get('symbol', '?')}: {float(pos.get('pnl', 0)):.2f} USDT"
             for pos in top_profitable_list[:3]
         ])
-        
+
         top_losing = '\n'.join([
             f"• {pos.get('symbol', '?')}: {float(pos.get('pnl', 0)):.2f} USDT"
             for pos in top_losing_list[:3]
@@ -427,7 +426,7 @@ class TelegramNotifier:
             top_profitable=top_profitable,
             top_losing=top_losing
         )
-        
+
         self.send_message(message)
 
     def send_statistics(self, stats):
@@ -444,7 +443,7 @@ class TelegramNotifier:
                 f"• {pos.get('symbol', '?')}: {float(pos.get('pnl', 0)):.2f} USDT"
                 for pos in top_profitable_list[:3]
             ])
-            
+
             top_losing = '\n'.join([
                 f"• {pos.get('symbol', '?')}: {float(pos.get('pnl', 0)):.2f} USDT"
                 for pos in top_losing_list[:3]
@@ -461,7 +460,7 @@ class TelegramNotifier:
                 top_profitable=top_profitable,
                 top_losing=top_losing
             )
-            
+
             self.send_message(message)
 
         except Exception as e:
@@ -472,7 +471,7 @@ class TelegramNotifier:
         symbol = position['symbol']
         pnl = position['pnl']
         roi = position['roi']
-        
+
         # Проверка на высокий PnL
         if (TELEGRAM_NOTIFY.get('HIGH_PNL') and 
             pnl >= DEFAULT_PNL_THRESHOLD and 
@@ -485,7 +484,7 @@ class TelegramNotifier:
                 roi=f"{roi:.2f}"
             )
             self.send_message(message)
-        
+
         # Проверка на высокий ROI
         if (TELEGRAM_NOTIFY.get('HIGH_ROI') and 
             roi >= HIGH_ROI_THRESHOLD and 
@@ -498,7 +497,7 @@ class TelegramNotifier:
                 pnl=f"{pnl:.2f}"
             )
             self.send_message(message)
-        
+
         # Проверка на большой убыток
         if (TELEGRAM_NOTIFY.get('HIGH_LOSS') and 
             pnl <= HIGH_LOSS_THRESHOLD and 
@@ -516,13 +515,13 @@ class TelegramNotifier:
         """Проверяет позиции на быстрый рост"""
         if not TELEGRAM_NOTIFY.get('RAPID_GROWTH', False):
             return
-        
+
         for position in rapid_growth_positions:
             symbol = position['symbol']
             if symbol not in self.rapid_growth_positions:
                 growth_rate = position.get('growth_ratio')
                 pnl = position.get('current_pnl')
-                
+
                 self.rapid_growth_positions.add(symbol)
                 self._save_states()
                 message = get_telegram_message('rapid_growth', self.language).format(

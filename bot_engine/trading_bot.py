@@ -327,8 +327,8 @@ class TradingBot:
                 
                 # Логируем для проверки
                 if formatted_candles:
-                    self.logger.debug(f"Got {len(formatted_candles)} candles for {self.symbol}")
-                    self.logger.debug(f"First: {formatted_candles[0]['timestamp']}, Last: {formatted_candles[-1]['timestamp']}")
+                    pass
+                    pass
                 
                 return formatted_candles
             else:
@@ -461,7 +461,7 @@ class TradingBot:
                 time_filter_result = check_rsi_time_filter(candles, current_rsi, signal)
                 
                 if not time_filter_result['allowed']:
-                    self.logger.debug(f" {self.symbol}: ⏰ Временной фильтр блокирует вход: {time_filter_result['reason']}")
+                    pass
                     return {
                         'action': 'blocked_time_filter',
                         'reason': time_filter_result['reason'],
@@ -552,7 +552,7 @@ class TradingBot:
                     self.logger.error(f" {self.symbol}: 🚫 ДЕЛИСТИНГ! Не открываем {side} - {delisting_info.get('reason', 'Delisting detected')}")
                     return {'success': False, 'error': 'coin_delisted', 'message': f'Монета в делистинге: {delisting_info.get("reason", "Delisting detected")}'}
             except Exception as delisting_check_error:
-                self.logger.debug(f" {self.symbol}: ⚠️ Ошибка проверки делистинга: {delisting_check_error}")
+                pass
                 # Продолжаем работу, если не удалось проверить делистинг
             
             # КРИТИЧЕСКАЯ ПРОВЕРКА: не открываем новую позицию, если уже есть открытая
@@ -697,7 +697,7 @@ class TradingBot:
                                 f"({dynamic_size['reason']})"
                             )
             except Exception as ai_error:
-                self.logger.debug(f" {self.symbol}: AI адаптация размера недоступна: {ai_error}")
+                pass
             
             # Получаем конфигурацию для набора позиций (только глобальные настройки)
             try:
@@ -743,7 +743,7 @@ class TradingBot:
                             and o.get('side', '') == limit_side
                         ]
                     except Exception as e:
-                        self.logger.debug(f" {self.symbol}: Не удалось проверить открытые ордера на бирже: {e}")
+                        pass
                 
                 # Если в памяти нет ордеров, но на бирже есть - проверяем, что это ордера бота
                 if not has_limit_orders_in_memory and limit_orders_on_exchange:
@@ -924,7 +924,7 @@ class TradingBot:
                                         f"({ai_reason})"
                                     )
                     except Exception as ai_error:
-                        self.logger.debug(f" {self.symbol}: AI SL недоступен: {ai_error}")
+                        pass
                     
                     # Устанавливаем стоп-лосс (стандартный или адаптивный)
                     stop_result = self._place_stop_loss(side, self.entry_price, sl_percent)
@@ -989,7 +989,7 @@ class TradingBot:
                         from bots_modules.sync_and_cache import add_symbol_to_delisted
                         add_symbol_to_delisted(self.symbol, reason="No new positions during delisting (ErrCode: 30228)")
                     except Exception as add_err:
-                        self.logger.debug(f" add_symbol_to_delisted: {add_err}")
+                        pass
                     self.logger.error(f" {self.symbol}: 🚫 ДЕЛИСТИНГ! Открытие позиции запрещено биржей (ErrCode: 30228)")
                 self.logger.error(f"Failed to enter position: {order_result}")
                 return {'success': False, 'error': order_result.get('error', 'order_failed')}
@@ -1172,7 +1172,7 @@ class TradingBot:
                 
                 # Если это не последняя попытка, повторяем
                 if attempt < max_retries - 1:
-                    self.logger.debug(f" {self.symbol}: Повторная попытка через {retry_delay} сек...")
+                    pass
                     time.sleep(retry_delay)
                     continue
                 else:
@@ -1184,7 +1184,7 @@ class TradingBot:
                 
                 # Если это не последняя попытка, повторяем
                 if attempt < max_retries - 1:
-                    self.logger.debug(f" {self.symbol}: Повторная попытка через {retry_delay} сек...")
+                    pass
                     time.sleep(retry_delay)
                     continue
                 else:
@@ -1199,7 +1199,7 @@ class TradingBot:
                     
                     # Если это не последняя попытка, повторяем
                     if attempt < max_retries - 1:
-                        self.logger.debug(f" {self.symbol}: Повторная попытка через {retry_delay} сек...")
+                        pass
                         time.sleep(retry_delay)
                         continue
                     else:
@@ -1393,7 +1393,7 @@ class TradingBot:
                         for order in existing_orders:
                             self.logger.warning(f" {self.symbol}:   - Ордер {order.get('order_id', 'unknown')}: {order.get('side', 'unknown')} {order.get('quantity', 0)} @ {order.get('price', 0):.6f}")
                 except Exception as e:
-                    self.logger.debug(f" {self.symbol}: ⚠️ Не удалось проверить существующие ордера: {e}")
+                    pass
             
             self.limit_orders = []
             self.last_limit_orders_count = 0  # Сбрасываем счетчик при размещении новых ордеров
@@ -1418,12 +1418,8 @@ class TradingBot:
                     self.logger.warning(f" {self.symbol}: ⚠️ Ордер #{i+1}: margin_amount={margin_amount} <= 0, пропускаем")
                     continue
                 
-                # ✅ ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ: Показываем, какая сумма используется для каждого ордера
-                self.logger.debug(f" {self.symbol}: 📋 Ордер #{i+1}: percent_step={percent_step}%, margin_amount={margin_amount} USDT (из массива margin_amounts[{i}]={margin_amounts[i]})")
-                
                 # ✅ КРИТИЧНО: Убеждаемся, что используем именно margin_amount из массива, а не self.volume_value
                 actual_quantity = margin_amount  # Используем значение из массива
-                self.logger.debug(f" {self.symbol}: ✅ Используем для ордера #{i+1}: {actual_quantity} USDT (self.volume_value={self.volume_value}, НЕ используется!)")
                 
                 # Если первый шаг = 0, то первая сделка по рынку
                 if i == 0 and percent_step == 0:
@@ -1431,7 +1427,6 @@ class TradingBot:
                     # Размещаем рыночный ордер
                     # ✅ КРИТИЧНО: Используем margin_amount из массива, а НЕ self.volume_value!
                     actual_quantity = margin_amount
-                    self.logger.debug(f" {self.symbol}: 🚀 Размещаем рыночный ордер: {actual_quantity} USDT (из массива, НЕ из self.volume_value={self.volume_value})")
                     order_result = self.exchange.place_order(
                         symbol=self.symbol,
                         side=side,
@@ -1465,7 +1460,7 @@ class TradingBot:
                                 percent_step=0
                             )
                         except Exception as log_err:
-                            self.logger.debug(f" {self.symbol}: ⚠️ Ошибка логирования ордера: {log_err}")
+                            pass
                     else:
                         # Обработка ошибки для рыночного ордера
                         error_message = order_result.get('message', 'unknown error')
@@ -1497,7 +1492,7 @@ class TradingBot:
                                     save_delisted_coins(delisted_data)
                                     self.logger.warning(f" {self.symbol}: ✅ Монета автоматически добавлена в delisted.json")
                                 else:
-                                    self.logger.debug(f" {self.symbol}: Монета уже в списке делистинговых")
+                                    pass
                             except Exception as delisting_error:
                                 self.logger.error(f" {self.symbol}: ❌ Ошибка добавления монеты в delisted.json: {delisting_error}")
                             
@@ -1540,8 +1535,6 @@ class TradingBot:
                 # Размещаем лимитный ордер
                 # ✅ КРИТИЧНО: Используем margin_amount из массива, а НЕ self.volume_value!
                 actual_quantity = margin_amount
-                self.logger.debug(f" {self.symbol}: 🚀 Размещаем лимитный ордер #{i+1}: {actual_quantity} USDT @ {limit_price:.6f} ({percent_step}%)")
-                self.logger.debug(f" {self.symbol}: ✅ Используем {actual_quantity} USDT из массива margin_amounts[{i}]={margin_amounts[i]}, НЕ self.volume_value={self.volume_value}")
                 order_result = self.exchange.place_order(
                     symbol=self.symbol,
                     side=side,
@@ -1578,7 +1571,7 @@ class TradingBot:
                             percent_step=percent_step
                         )
                     except Exception as log_err:
-                        self.logger.debug(f" {self.symbol}: ⚠️ Ошибка логирования ордера: {log_err}")
+                        pass
                 else:
                     error_message = order_result.get('message', 'unknown error')
                     error_code = order_result.get('error_code', '')
@@ -1609,7 +1602,7 @@ class TradingBot:
                                 save_delisted_coins(delisted_data)
                                 self.logger.warning(f" {self.symbol}: ✅ Монета автоматически добавлена в delisted.json")
                             else:
-                                self.logger.debug(f" {self.symbol}: Монета уже в списке делистинговых")
+                                pass
                         except Exception as delisting_error:
                             self.logger.error(f" {self.symbol}: ❌ Ошибка добавления монеты в delisted.json: {delisting_error}")
                         
@@ -1764,7 +1757,7 @@ class TradingBot:
                     elif orders_result and isinstance(orders_result, dict):
                         open_orders = orders_result.get('orders', [])
                 except Exception as e:
-                    self.logger.debug(f" {self.symbol}: ⚠️ Не удалось получить открытые ордера: {e}")
+                    pass
             
             # Если метод недоступен, пытаемся проверить через попытку отмены
             # (если ордер не существует, отмена вернет ошибку)
@@ -1789,7 +1782,7 @@ class TradingBot:
                         pass
                 
                 # Если метод проверки недоступен, просто логируем предупреждение
-                self.logger.debug(f" {self.symbol}: ⚠️ Метод проверки статуса ордеров недоступен, пропускаем проверку удаленных ордеров")
+                pass
                 return
             
             # Создаем множество ID открытых ордеров на бирже
@@ -1953,7 +1946,7 @@ class TradingBot:
                         elif orders_result and isinstance(orders_result, dict):
                             open_orders_on_exchange = orders_result.get('orders', [])
                     except Exception as e:
-                        self.logger.debug(f" {self.symbol}: ⚠️ Не удалось получить открытые ордера для проверки: {e}")
+                        pass
                 
                 # Создаем множество ID открытых ордеров на бирже
                 open_order_ids_on_exchange = set()

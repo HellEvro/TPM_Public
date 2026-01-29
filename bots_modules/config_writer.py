@@ -149,7 +149,7 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
                 
                 if old_normalized == new_normalized:
                     # Значение не изменилось — оставляем строку как есть
-                    logger.debug(f"[CONFIG_WRITER] ↩️ {key}: без изменений")
+                    pass
                 else:
                     # Собираем обновленную строку
                     # Сохраняем комментарий, если он был
@@ -164,7 +164,7 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
                     if key in ('enabled', 'max_concurrent', 'risk_cap_percent', 'scope', 'whitelist', 'blacklist', 'ai_enabled', 'ai_min_confidence', 'ai_override_original', 'leverage', 'trailing_stop_activation', 'trailing_stop_distance', 'break_even_trigger', 'avoid_down_trend', 'avoid_up_trend', 'limit_orders_entry_enabled', 'limit_orders_percent_steps', 'limit_orders_margin_amounts'):
                         logger.info(f"[CONFIG_WRITER] ✏️ {key}: {old_normalized[:50] if len(old_normalized) <= 50 else old_normalized[:50] + '...'} → {new_normalized[:50] if len(new_normalized) <= 50 else new_normalized[:50] + '...'}")
                     else:
-                        logger.debug(f"[CONFIG_WRITER] ✏️ {key}: {old_normalized[:50] if len(old_normalized) <= 50 else old_normalized[:50] + '...'} → {new_normalized[:50] if len(new_normalized) <= 50 else new_normalized[:50] + '...'}")
+                        pass
             
             updated_lines.append(updated_line)
         
@@ -188,7 +188,7 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
                 config['leverage'] = 1
             else:
                 # leverage есть в файле, но не передан в config - это нормально (не изменялся)
-                logger.debug(f"[CONFIG_WRITER] ℹ️ leverage не передан в config (не изменялся), оставляем значение из файла")
+                pass
         
         # Добавляем недостающие ключи перед закрывающей скобкой
         # Находим последнюю строку перед закрывающей скобкой
@@ -329,7 +329,7 @@ def save_system_config_to_py(config: Dict[str, Any]) -> bool:
                 logger.error(f"[CONFIG_WRITER] ❌ Файл {config_file} не найден (проверяли также {alt_config_file})")
                 return False
 
-        logger.debug(f"[CONFIG_WRITER] 📝 Открываем файл: {config_file}")
+        pass
         with open(config_file, 'r', encoding='utf-8') as f:
             lines = f.readlines()
 
@@ -339,14 +339,14 @@ def save_system_config_to_py(config: Dict[str, Any]) -> bool:
             # ✅ Ищем класс SystemConfig (может быть с комментарием или наследованием)
             if 'class SystemConfig' in line or line.strip().startswith('class SystemConfig'):
                 start_idx = i
-                logger.debug(f"[CONFIG_WRITER] ✅ Найден класс SystemConfig на строке {i+1}: {line.strip()}")
+                pass
                 break
 
         if start_idx is None:
             logger.error(f"[CONFIG_WRITER] ❌ Не найден класс SystemConfig в файле {config_file}")
-            logger.debug(f"[CONFIG_WRITER] 🔍 Первые 20 строк файла:")
+            pass
             for i, line in enumerate(lines[:20]):
-                logger.debug(f"  {i+1}: {line.rstrip()}")
+                pass
             return False
 
         for j in range(start_idx + 1, len(lines)):
@@ -372,7 +372,7 @@ def save_system_config_to_py(config: Dict[str, Any]) -> bool:
                         if comment_fragment and not comment_fragment.startswith(' '):
                             comment_fragment = f' {comment_fragment}'
                         line = f"{indent}{attr_name} = {new_value}{comment_fragment}\n"
-                        logger.debug(f"[CONFIG_WRITER] ✏️ {attr_name}: {old_value.strip()} → {new_value}")
+                        pass
             updated_lines.append(line)
 
         updated_lines.extend(lines[end_idx:])
