@@ -338,7 +338,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'rsi_volume_confirmation_multiplier': 1.2,
     'self_learning_enabled': False,
     'stop_loss_setup_interval': 60,
-    'system_timeframe': '3m',
+    'system_timeframe': '5m',
     'mini_chart_update_interval': 60,
 }
 
@@ -355,7 +355,7 @@ DEFAULT_BOT_CONFIG = {
 # Системные настройки
 class SystemConfig:
     # Таймфрейм системы (сохраняется при переключении в UI; config_writer обновляет эту строку)
-    SYSTEM_TIMEFRAME = '6h'
+    SYSTEM_TIMEFRAME = '5m'
     # Интервалы обновления (в секундах)
     RSI_UPDATE_INTERVAL = 60 # 30 минут (рекомендуется для 6H RSI)
     ACCOUNT_UPDATE_INTERVAL = 3  # 5 секунд

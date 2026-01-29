@@ -41,6 +41,10 @@ except ImportError as exc:  # pragma: no cover - tkinter should be available on 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 VENV_DIR = PROJECT_ROOT / ".venv"
+# Подавление UserWarning sklearn delayed/Parallel в дочерних процессах (app, bots, ai)
+_pw = os.environ.get("PYTHONWARNINGS", "").strip()
+_add = "ignore::UserWarning:sklearn.utils.parallel"
+os.environ["PYTHONWARNINGS"] = f"{_pw},{_add}" if _pw else _add
 # Управляем только .venv. .venv_gpu не создаём и не используем (PyTorch ставится в .venv).
 DEFAULT_REMOTE_URL = "https://github.com/HellEvro/TPM_Public.git"
 STATE_FILE = PROJECT_ROOT / "launcher" / ".infobot_manager_state.json"
