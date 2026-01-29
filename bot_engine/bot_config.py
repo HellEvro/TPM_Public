@@ -48,17 +48,49 @@ TIMEFRAME = '6h'
 # Глобальная переменная для динамического изменения таймфрейма в runtime
 _current_timeframe = None
 
+# Список поддерживаемых таймфреймов (для валидации при чтении из БД)
+_SUPPORTED_TIMEFRAMES = ('1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M')
+
+# Флаг рекурсии: при логировании внутри get_bots_database() форматтер снова вызывает get_current_timeframe()
+_get_timeframe_loading = False
+
 # Функция для получения текущего таймфрейма
 def get_current_timeframe():
     """
     Возвращает текущий таймфрейм системы.
-    Сначала проверяет глобальную переменную _current_timeframe (для runtime изменений),
-    затем возвращает TIMEFRAME из конфига.
-    Может быть переопределена для динамического получения из конфига или БД.
+    Порядок: 1) _current_timeframe (runtime), 2) БД (db_metadata.system_timeframe), 3) SystemConfig.SYSTEM_TIMEFRAME, 4) TIMEFRAME.
+    При рекурсивном вызове (из логгера при инициализации БД) БД не вызывается — только конфиг/TIMEFRAME.
     """
-    global _current_timeframe
+    global _current_timeframe, _get_timeframe_loading
     if _current_timeframe is not None:
         return _current_timeframe
+    # Защита от рекурсии: форматтер логов -> get_current_timeframe -> get_bots_database -> logger.info -> форматтер -> ...
+    if _get_timeframe_loading:
+        try:
+            tf = getattr(SystemConfig, 'SYSTEM_TIMEFRAME', None)
+            if tf and tf in _SUPPORTED_TIMEFRAMES:
+                return tf
+        except Exception:
+            pass
+        return TIMEFRAME
+    try:
+        _get_timeframe_loading = True
+        try:
+            from bot_engine.bots_database import get_bots_database
+            db = get_bots_database()
+            tf = db.load_timeframe()
+            if tf and tf in _SUPPORTED_TIMEFRAMES:
+                return tf
+        finally:
+            _get_timeframe_loading = False
+    except Exception:
+        _get_timeframe_loading = False
+    try:
+        tf = getattr(SystemConfig, 'SYSTEM_TIMEFRAME', None)
+        if tf and tf in _SUPPORTED_TIMEFRAMES:
+            return tf
+    except Exception:
+        pass
     return TIMEFRAME
 
 # Функция для установки таймфрейма в runtime
@@ -74,10 +106,7 @@ def set_current_timeframe(timeframe: str):
     """
     global _current_timeframe
     
-    # Список поддерживаемых таймфреймов
-    supported_timeframes = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M']
-    
-    if timeframe not in supported_timeframes:
+    if timeframe not in _SUPPORTED_TIMEFRAMES:
         return False
     
     _current_timeframe = timeframe
@@ -325,6 +354,8 @@ DEFAULT_BOT_CONFIG = {
 
 # Системные настройки
 class SystemConfig:
+    # Таймфрейм системы (сохраняется при переключении в UI; config_writer обновляет эту строку)
+    SYSTEM_TIMEFRAME = '6h'
     # Интервалы обновления (в секундах)
     RSI_UPDATE_INTERVAL = 60 # 30 минут (рекомендуется для 6H RSI)
     ACCOUNT_UPDATE_INTERVAL = 3  # 5 секунд

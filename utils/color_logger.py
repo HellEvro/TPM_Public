@@ -304,11 +304,29 @@ def _get_timeframe_for_ai_logger(logger_name):
         return ''
 
 
+def _get_timeframe_for_app_logger(logger_name):
+    """Возвращает текущий таймфрейм для префикса TF:X в логах [APP], иначе пустую строку."""
+    if not logger_name:
+        return ''
+    if logger_name.lower() != 'app' and 'app' not in logger_name.lower():
+        return ''
+    try:
+        from bot_engine.bot_config import get_current_timeframe
+        tf = get_current_timeframe()
+        return f" TF:{tf}" if tf else ''
+    except Exception:
+        return ''
+
+
 class FileFormatterWithTF(logging.Formatter):
-    """Форматтер для файла: для логгеров BOTS и AI добавляет префикс TF:X."""
+    """Форматтер для файла: для логгеров BOTS, AI и APP добавляет префикс TF:X."""
     
     def format(self, record):
-        tf_prefix = _get_timeframe_for_bots_logger(record.name) or _get_timeframe_for_ai_logger(record.name)
+        tf_prefix = (
+            _get_timeframe_for_bots_logger(record.name)
+            or _get_timeframe_for_ai_logger(record.name)
+            or _get_timeframe_for_app_logger(record.name)
+        )
         if tf_prefix:
             # Вставляем TF после levelname: ... - LEVEL - TF:X - message
             s = super().format(record)
@@ -486,11 +504,13 @@ class ColorFormatter(logging.Formatter):
             else:
                 prefix = '[BOTS]'  # По умолчанию для bots.py
         
-        # Для [BOTS] и [AI] добавляем текущий таймфрейм в префикс (TF:X)
+        # Для [BOTS], [AI] и [APP] добавляем текущий таймфрейм в префикс (TF:X)
         if prefix == '[BOTS]':
             tf_prefix = _get_timeframe_for_bots_logger(logger_name)
         elif prefix == '[AI]':
             tf_prefix = _get_timeframe_for_ai_logger(logger_name)
+        elif prefix == '[APP]':
+            tf_prefix = _get_timeframe_for_app_logger(logger_name)
         else:
             tf_prefix = ''
         

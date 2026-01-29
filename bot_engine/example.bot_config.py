@@ -145,6 +145,8 @@ DEFAULT_BOT_CONFIG = {
 
 # Системные настройки
 class SystemConfig:
+    # Таймфрейм системы (сохраняется при переключении в UI; config_writer обновляет эту строку)
+    SYSTEM_TIMEFRAME = '6h'
     # Интервалы обновления (в секундах)
     RSI_UPDATE_INTERVAL = 300 # 30 минут (рекомендуется для 6H RSI)
     ACCOUNT_UPDATE_INTERVAL = 5  # 5 секунд

@@ -377,6 +377,14 @@ def save_system_config_to_py(config: Dict[str, Any]) -> bool:
 
         updated_lines.extend(lines[end_idx:])
 
+        # ✅ При сохранении SYSTEM_TIMEFRAME также обновляем модульную константу TIMEFRAME (fallback после перезапуска)
+        if 'SYSTEM_TIMEFRAME' in config:
+            new_tf = _format_python_value(config['SYSTEM_TIMEFRAME']).strip("'\"")
+            for i, line in enumerate(updated_lines):
+                if re.match(r"^TIMEFRAME\s*=\s*['\"]", line.strip()) and not line.strip().startswith('#'):
+                    updated_lines[i] = f"TIMEFRAME = {repr(new_tf)}\n"
+                    break
+
         with open(config_file, 'w', encoding='utf-8') as f:
             f.writelines(updated_lines)
 
