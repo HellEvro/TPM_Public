@@ -82,12 +82,12 @@ setattr(joblib, "delayed", delayed)
 
 # Надёжное подавление UserWarning: в части сценариев (launcher, дочерние процессы, и т.д.)
 # backend=sequential не применяется, и предупреждение всё равно возникает. Фильтр убирает его.
+# module не задаём — предупреждение может приходить из разных модулей (в т.ч. из воркеров joblib).
 warnings.filterwarnings(
     "ignore",
     message=re.escape("`sklearn.utils.parallel.delayed` should be used with ")
     + r".*",
     category=UserWarning,
-    module=r"sklearn\.utils\.parallel",
 )
 
 __all__ = ["Parallel", "delayed"]

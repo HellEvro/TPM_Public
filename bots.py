@@ -11,6 +11,10 @@ import sys
 _root = os.path.dirname(os.path.abspath(__file__))
 if _root and _root not in sys.path:
     sys.path.insert(0, _root)
+# Подавление UserWarning sklearn delayed/Parallel (дочерние процессы наследуют PYTHONWARNINGS)
+_pw = os.environ.get("PYTHONWARNINGS", "").strip()
+_add = "ignore::UserWarning:sklearn.utils.parallel"
+os.environ["PYTHONWARNINGS"] = f"{_pw},{_add}" if _pw else _add
 # Вариант 1: joblib → sklearn.utils.parallel до любых импортов sklearn
 import utils.sklearn_parallel_config  # noqa: F401
 

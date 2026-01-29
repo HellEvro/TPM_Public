@@ -10,6 +10,10 @@
 import os
 import sys
 os.environ['INFOBOT_AI_PROCESS'] = 'true'
+# Подавление UserWarning sklearn delayed/Parallel для всего процесса и дочерних (joblib воркеры не наследуют filters).
+_pw = os.environ.get("PYTHONWARNINGS", "").strip()
+_add = "ignore::UserWarning:sklearn.utils.parallel"
+os.environ["PYTHONWARNINGS"] = f"{_pw},{_add}" if _pw else _add
 # Корень проекта в path до импорта utils — иначе sklearn_parallel_config не найдётся при запуске из другой директории
 _root = os.path.dirname(os.path.abspath(__file__))
 if _root and _root not in sys.path:
