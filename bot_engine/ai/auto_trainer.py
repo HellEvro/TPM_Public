@@ -358,6 +358,11 @@ class AutoTrainer:
                 if not self._retrain_check_in_progress:
                     self._check_real_trades_retrain()
                 
+                try:
+                    from utils.memory_utils import force_collect
+                    force_collect()
+                except Exception:
+                    pass
                 time.sleep(600)
                 
             except KeyboardInterrupt:

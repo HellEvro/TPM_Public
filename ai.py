@@ -330,6 +330,12 @@ def _run_rebuild_bot_history_from_exchange():
 
 _run_rebuild_bot_history_from_exchange()
 
+try:
+    from utils.memory_utils import force_collect
+    force_collect()
+except Exception:
+    pass
+
 
 def _init_timeframe_from_bots_db():
     """При старте ai.py подгружаем текущий таймфрейм из bots_data.db (тот же, что в UI/bots.py)."""
@@ -345,6 +351,12 @@ def _init_timeframe_from_bots_db():
 
 
 _init_timeframe_from_bots_db()
+
+try:
+    from utils.memory_utils import force_collect
+    force_collect()
+except Exception:
+    pass
 
 # Настройка логирования ПЕРЕД импортом защищенного модуля (свой конфиг: ai_launcher_config)
 import logging
@@ -418,6 +430,11 @@ for _key, _value in _protected_module.__dict__.items():
 
 del _globals, _skip, _key, _value
 
+try:
+    from utils.memory_utils import force_collect
+    force_collect()
+except Exception:
+    pass
 
 if __name__ == '__main__':
     _protected_module.main()
