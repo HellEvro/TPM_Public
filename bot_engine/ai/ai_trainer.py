@@ -4113,11 +4113,7 @@ class AITrainer:
                     increase_percent = ((current_candles_count - previous_candles_count) / previous_candles_count * 100) if previous_candles_count > 0 else 0
                     
                     # Показываем прогресс для каждой монеты (но не слишком часто)
-                    if symbol_idx % progress_interval == 0 or symbol_idx == 1 or symbol_idx == total_coins:
-                        logger.info(f"   🎓 [{symbol_idx}/{total_coins}] Обработка {symbol}... ({len(candles)} свечей)")
-                    else:
-                        pass
-                        pass
+                    pass  # посимвольный лог "Обработка symbol" отключён
                     
                     if model_exists:
                         if candles_increased:
@@ -4828,20 +4824,7 @@ class AITrainer:
                         symbol_pnl = symbol_pnl_for_ml
                         win_rate_target = self._get_win_rate_target(symbol)
                         
-                        if symbol_idx <= 10:
-                            logger.info(f"   🎯 {symbol}: текущая цель Win Rate: {win_rate_target:.1f}%")
-                        
-                        # Показываем результаты для монет с хорошими результатами или при каждом 50-м прогрессе
-                        if symbol_win_rate >= win_rate_target or symbol_idx % progress_interval == 0:
-                            logger.info(
-                                f"   ✅ {symbol}: {trades_for_symbol} сделок, Win Rate: {symbol_win_rate:.1f}% "
-                                f"(цель: {win_rate_target:.1f}%), PnL: {symbol_pnl:.2f} USDT"
-                            )
-                        else:
-                            logger.info(
-                                f"   ✅ {symbol}: {trades_for_symbol} сделок, Win Rate: {symbol_win_rate:.1f}% "
-                                f"(цель: {win_rate_target:.1f}%), PnL: {symbol_pnl:.2f} USDT"
-                            )
+                        pass  # посимвольный лог Win Rate/PnL отключён
                         
                         # ОБУЧАЕМ МОДЕЛЬ ДЛЯ ЭТОЙ МОНЕТЫ ОТДЕЛЬНО
                         signal_score = None

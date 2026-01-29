@@ -346,7 +346,7 @@ def _init_timeframe_from_bots_db():
 
 _init_timeframe_from_bots_db()
 
-# Настройка логирования ПЕРЕД импортом защищенного модуля
+# Настройка логирования ПЕРЕД импортом защищенного модуля (свой конфиг: ai_launcher_config)
 import logging
 try:
     from bot_engine.ai.ai_launcher_config import AILauncherConfig
@@ -354,7 +354,6 @@ try:
     console_levels = getattr(AILauncherConfig, 'CONSOLE_LOG_LEVELS', [])
     setup_color_logging(console_log_levels=console_levels if console_levels else None)
 except Exception as e:
-    # Если не удалось загрузить конфиг, используем стандартную настройку
     try:
         from utils.color_logger import setup_color_logging
         setup_color_logging()
