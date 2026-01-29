@@ -524,6 +524,8 @@ def cleanup_bot_service():
         logger.info("Сохранение хранилища зрелых монет...")
         save_mature_coins_storage()
 
+        from utils.memory_utils import force_collect
+        force_collect()
         logger.info("Система остановлена")
         logger.info("=" * 80)
     except Exception as e:
@@ -570,10 +572,16 @@ def run_bots_service():
             server_thread = threading.Thread(target=run_server, daemon=True)
             server_thread.start()
 
-            # Ждем завершения или сигнала
+            # Ждем завершения или сигнала (периодическая сборка мусора раз в ~60 с)
             try:
+                _gc_ticks = 0
                 while server_thread.is_alive() and not graceful_shutdown:
                     time.sleep(0.1)
+                    _gc_ticks += 1
+                    if _gc_ticks >= 600:
+                        from utils.memory_utils import force_collect
+                        force_collect()
+                        _gc_ticks = 0
             except KeyboardInterrupt:
                 logger.info("\n🛑 Получен KeyboardInterrupt, останавливаем сервер...")
                 graceful_shutdown = True

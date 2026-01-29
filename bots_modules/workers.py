@@ -34,6 +34,12 @@ except ImportError as e:
 # Импорт функций (будут доступны после импорта)
 from bot_engine.bot_config import SystemConfig
 
+try:
+    from utils.memory_utils import force_collect
+except ImportError:
+    def force_collect():
+        pass
+
 # Импорт функций из других модулей
 try:
     from bots_modules.imports_and_globals import should_log_message
@@ -143,6 +149,8 @@ def auto_save_worker():
                     'last_error': None if save_result else 'Save failed'
                 })
 
+                force_collect()
+
         except Exception as e:
             logger.error(f" ❌ Ошибка автосохранения: {e}")
 
@@ -189,6 +197,10 @@ def auto_bot_worker():
             # Логируем статус раз в 5 минут с важной информацией
             if cycle_count % 300 == 1:
                 log_system_status(cycle_count, auto_bot_enabled, check_interval_seconds)
+
+            # Сборка мусора раз в ~60 сек (цикл ~1 сек)
+            if cycle_count % 60 == 0:
+                force_collect()
 
             # Ждем только 1 секунду для обновления позиций
             if shutdown_flag.wait(1):
@@ -292,6 +304,7 @@ def positions_monitor_worker():
     # Время начала ожидания инициализации биржи
     exchange_init_wait_start = time.time()
     exchange_init_warning_shown = False
+    _gc_ticks = 0
 
     while not shutdown_flag.is_set():
         try:
@@ -450,6 +463,11 @@ def positions_monitor_worker():
                     logger.error(f" ❌ Ошибка проверки закрытия позиций по RSI: {e}")
                     import traceback
                     logger.error(f" ❌ Traceback: {traceback.format_exc()}")
+
+            _gc_ticks += 1
+            if _gc_ticks >= 60:
+                force_collect()
+                _gc_ticks = 0
 
             # Ждем 1 секунду перед следующей проверкой - КАЖДУЮ СЕКУНДУ!
             time.sleep(1)

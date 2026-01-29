@@ -699,7 +699,7 @@ class BotsDatabase:
                         logger.warning(f"⚠️ БД заблокирована при записи (уже попытка {attempt + 1})")
                         raise
                     
-                    # КРИТИЧНО: Обработка ошибок I/O
+                    # КРИТИЧНО: Обработка ошибок I/O (после yield — нельзя continue, иначе "generator didn't stop after throw()")
                     elif "disk i/o error" in error_str or "i/o error" in error_str:
                         conn.rollback()
                         conn.close()
@@ -708,16 +708,13 @@ class BotsDatabase:
                         if self._is_unc_path():
                             logger.info(self._unc_hint)
                         if attempt == 0:
-                            # Пытаемся исправить только один раз
-                            if self._repair_database():
-                                logger.info("✅ БД исправлена, повторяем операцию...")
-                                time.sleep(1)  # Небольшая задержка перед повтором
-                                continue
-                            else:
-                                logger.error("❌ Не удалось исправить БД после I/O ошибки")
-                                raise
-                        else:
-                            raise
+                            try:
+                                if self._repair_database():
+                                    logger.info("✅ БД исправлена (повтор операции — на усмотрение вызывающего кода)")
+                            except Exception as repair_err:
+                                logger.warning(f"⚠️ Ошибка при исправлении БД: {repair_err}")
+                        logger.error("❌ Не удалось выполнить операцию после I/O ошибки")
+                        raise
                     
                     # КРИТИЧНО: Ошибка "attempt to write a readonly database" (из блока with — нельзя retry через yield)
                     elif "readonly" in error_str or "read-only" in error_str or "read only" in error_str:
@@ -5581,102 +5578,114 @@ class BotsDatabase:
         Returns:
             ID сохраненной записи или None в случае ошибки
         """
-        try:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
-                
-                now = datetime.now().isoformat()
-                
-                # Извлекаем значения с дефолтами
-                bot_id = trade.get('bot_id') or trade.get('symbol', '')
-                symbol = trade.get('symbol', '')
-                direction = trade.get('direction', 'LONG')
-                entry_price = trade.get('entry_price', 0.0)
-                exit_price = trade.get('exit_price')
-                # ✅ ИСПРАВЛЕНО: Если entry_time отсутствует или равен None, используем текущее время
-                entry_time = trade.get('entry_time') or now
-                exit_time = trade.get('exit_time')
-                entry_timestamp = trade.get('entry_timestamp') or trade.get('entry_timestamp_ms')
-                exit_timestamp = trade.get('exit_timestamp') or trade.get('exit_timestamp_ms')
-                position_size_usdt = trade.get('position_size_usdt')
-                position_size_coins = trade.get('position_size_coins') or trade.get('size')
-                pnl = trade.get('pnl')
-                roi = trade.get('roi') or trade.get('roi_pct') or trade.get('closed_pnl_percent')
-                status = trade.get('status', 'CLOSED')
-                close_reason = trade.get('close_reason') or trade.get('reason')
-                decision_source = trade.get('decision_source', 'SCRIPT')
-                ai_decision_id = trade.get('ai_decision_id')
-                ai_confidence = trade.get('ai_confidence')
-                entry_rsi = trade.get('entry_rsi') or trade.get('rsi')
-                exit_rsi = trade.get('exit_rsi')
-                entry_trend = trade.get('entry_trend') or trade.get('trend')
-                exit_trend = trade.get('exit_trend')
-                entry_volatility = trade.get('entry_volatility')
-                entry_volume_ratio = trade.get('entry_volume_ratio')
-                is_successful = 1 if trade.get('is_successful', False) or (pnl and pnl > 0) else 0
-                is_simulated = 1 if trade.get('is_simulated', False) else 0
-                source = trade.get('source', 'bot')
-                order_id = trade.get('order_id')
-                
-                # Обрабатываем extra_data_json
-                extra_data = trade.get('extra_data') or trade.get('extra_data_json')
-                if isinstance(extra_data, dict):
-                    extra_data_json = json.dumps(extra_data, ensure_ascii=False) if extra_data else None
-                elif isinstance(extra_data, str):
-                    extra_data_json = extra_data if extra_data else None
-                else:
-                    extra_data_json = None
-                
-                # Конвертируем timestamps если нужно
-                if entry_timestamp is None and entry_time:
-                    try:
-                        dt = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
-                        entry_timestamp = dt.timestamp() * 1000
-                    except:
-                        pass
-                
-                # ✅ ИСПРАВЛЕНО: Если entry_timestamp все еще None, вычисляем из текущего времени
-                if entry_timestamp is None:
-                    entry_timestamp = datetime.now().timestamp() * 1000
-                
-                if exit_timestamp is None and exit_time:
-                    try:
-                        dt = datetime.fromisoformat(exit_time.replace('Z', '+00:00'))
-                        exit_timestamp = dt.timestamp() * 1000
-                    except:
-                        pass
-                
-                # Проверяем на дубликаты (по bot_id, symbol, entry_price, entry_timestamp)
-                if entry_timestamp:
-                    cursor.execute("""
-                        SELECT id FROM bot_trades_history
-                        WHERE bot_id = ? AND symbol = ? AND entry_price = ? AND entry_timestamp = ?
-                    """, (bot_id, symbol, entry_price, entry_timestamp))
-                    existing = cursor.fetchone()
-                    if existing:
-                        # Обновляем существующую запись
+        max_save_retries = 3
+        for save_attempt in range(max_save_retries):
+            try:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    
+                    now = datetime.now().isoformat()
+                    
+                    # Извлекаем значения с дефолтами
+                    bot_id = trade.get('bot_id') or trade.get('symbol', '')
+                    symbol = trade.get('symbol', '')
+                    direction = trade.get('direction', 'LONG')
+                    entry_price = trade.get('entry_price', 0.0)
+                    exit_price = trade.get('exit_price')
+                    # ✅ ИСПРАВЛЕНО: Если entry_time отсутствует или равен None, используем текущее время
+                    entry_time = trade.get('entry_time') or now
+                    exit_time = trade.get('exit_time')
+                    entry_timestamp = trade.get('entry_timestamp') or trade.get('entry_timestamp_ms')
+                    exit_timestamp = trade.get('exit_timestamp') or trade.get('exit_timestamp_ms')
+                    position_size_usdt = trade.get('position_size_usdt')
+                    position_size_coins = trade.get('position_size_coins') or trade.get('size')
+                    pnl = trade.get('pnl')
+                    roi = trade.get('roi') or trade.get('roi_pct') or trade.get('closed_pnl_percent')
+                    status = trade.get('status', 'CLOSED')
+                    close_reason = trade.get('close_reason') or trade.get('reason')
+                    decision_source = trade.get('decision_source', 'SCRIPT')
+                    ai_decision_id = trade.get('ai_decision_id')
+                    ai_confidence = trade.get('ai_confidence')
+                    entry_rsi = trade.get('entry_rsi') or trade.get('rsi')
+                    exit_rsi = trade.get('exit_rsi')
+                    entry_trend = trade.get('entry_trend') or trade.get('trend')
+                    exit_trend = trade.get('exit_trend')
+                    entry_volatility = trade.get('entry_volatility')
+                    entry_volume_ratio = trade.get('entry_volume_ratio')
+                    is_successful = 1 if trade.get('is_successful', False) or (pnl and pnl > 0) else 0
+                    is_simulated = 1 if trade.get('is_simulated', False) else 0
+                    source = trade.get('source', 'bot')
+                    order_id = trade.get('order_id')
+                    
+                    # Обрабатываем extra_data_json
+                    extra_data = trade.get('extra_data') or trade.get('extra_data_json')
+                    if isinstance(extra_data, dict):
+                        extra_data_json = json.dumps(extra_data, ensure_ascii=False) if extra_data else None
+                    elif isinstance(extra_data, str):
+                        extra_data_json = extra_data if extra_data else None
+                    else:
+                        extra_data_json = None
+                    
+                    # Конвертируем timestamps если нужно
+                    if entry_timestamp is None and entry_time:
+                        try:
+                            dt = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
+                            entry_timestamp = dt.timestamp() * 1000
+                        except:
+                            pass
+                    
+                    # ✅ ИСПРАВЛЕНО: Если entry_timestamp все еще None, вычисляем из текущего времени
+                    if entry_timestamp is None:
+                        entry_timestamp = datetime.now().timestamp() * 1000
+                    
+                    if exit_timestamp is None and exit_time:
+                        try:
+                            dt = datetime.fromisoformat(exit_time.replace('Z', '+00:00'))
+                            exit_timestamp = dt.timestamp() * 1000
+                        except:
+                            pass
+                    
+                    # Проверяем на дубликаты (по bot_id, symbol, entry_price, entry_timestamp)
+                    if entry_timestamp:
                         cursor.execute("""
-                            UPDATE bot_trades_history SET
-                                exit_price = ?,
-                                exit_time = ?,
-                                exit_timestamp = ?,
-                                pnl = ?,
-                                roi = ?,
-                                status = ?,
-                                close_reason = ?,
-                                exit_rsi = ?,
-                                exit_trend = ?,
-                                is_successful = ?,
-                                updated_at = ?
-                            WHERE id = ?
-                        """, (exit_price, exit_time, exit_timestamp, pnl, roi, status, close_reason,
-                              exit_rsi, exit_trend, is_successful, now, existing['id']))
-                        conn.commit()
-                        return existing['id']
-                
-                # Создаем новую запись
-                cursor.execute("""
-                    INSERT INTO bot_trades_history (
+                            SELECT id FROM bot_trades_history
+                            WHERE bot_id = ? AND symbol = ? AND entry_price = ? AND entry_timestamp = ?
+                        """, (bot_id, symbol, entry_price, entry_timestamp))
+                        existing = cursor.fetchone()
+                        if existing:
+                            # Обновляем существующую запись
+                            cursor.execute("""
+                                UPDATE bot_trades_history SET
+                                    exit_price = ?,
+                                    exit_time = ?,
+                                    exit_timestamp = ?,
+                                    pnl = ?,
+                                    roi = ?,
+                                    status = ?,
+                                    close_reason = ?,
+                                    exit_rsi = ?,
+                                    exit_trend = ?,
+                                    is_successful = ?,
+                                    updated_at = ?
+                                WHERE id = ?
+                            """, (exit_price, exit_time, exit_timestamp, pnl, roi, status, close_reason,
+                                  exit_rsi, exit_trend, is_successful, now, existing['id']))
+                            conn.commit()
+                            return existing['id']
+                    
+                    # Создаем новую запись
+                    cursor.execute("""
+                        INSERT INTO bot_trades_history (
+                            bot_id, symbol, direction, entry_price, exit_price,
+                            entry_time, exit_time, entry_timestamp, exit_timestamp,
+                            position_size_usdt, position_size_coins, pnl, roi,
+                            status, close_reason, decision_source, ai_decision_id,
+                            ai_confidence, entry_rsi, exit_rsi, entry_trend, exit_trend,
+                            entry_volatility, entry_volume_ratio, is_successful,
+                            is_simulated, source, order_id, extra_data_json,
+                            created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
                         bot_id, symbol, direction, entry_price, exit_price,
                         entry_time, exit_time, entry_timestamp, exit_timestamp,
                         position_size_usdt, position_size_coins, pnl, roi,
@@ -5684,64 +5693,60 @@ class BotsDatabase:
                         ai_confidence, entry_rsi, exit_rsi, entry_trend, exit_trend,
                         entry_volatility, entry_volume_ratio, is_successful,
                         is_simulated, source, order_id, extra_data_json,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    bot_id, symbol, direction, entry_price, exit_price,
-                    entry_time, exit_time, entry_timestamp, exit_timestamp,
-                    position_size_usdt, position_size_coins, pnl, roi,
-                    status, close_reason, decision_source, ai_decision_id,
-                    ai_confidence, entry_rsi, exit_rsi, entry_trend, exit_trend,
-                    entry_volatility, entry_volume_ratio, is_successful,
-                    is_simulated, source, order_id, extra_data_json,
-                    now, now
-                ))
-                
-                # ⚠️ КРИТИЧНО: Периодически удаляем старые записи, чтобы предотвратить раздувание БД
-                # Проверяем каждые 100 вставок (чтобы не замедлять работу)
-                import random
-                if random.randint(1, 100) == 1:  # 1% вероятность
-                    try:
-                        # Удаляем закрытые сделки старше 1 года
-                        one_year_ago_ts = (datetime.now().timestamp() - 365 * 24 * 3600) * 1000
-                        cursor.execute("""
-                            DELETE FROM bot_trades_history
-                            WHERE status = 'CLOSED' 
-                            AND exit_timestamp IS NOT NULL 
-                            AND exit_timestamp < ?
-                        """, (one_year_ago_ts,))
-                        deleted_count = cursor.rowcount
-                        if deleted_count > 0:
-                            pass
-                        
-                        # Также ограничиваем общее количество записей (максимум 100,000)
-                        cursor.execute("SELECT COUNT(*) FROM bot_trades_history")
-                        total_count = cursor.fetchone()[0]
-                        MAX_TRADES_HISTORY = 100_000
-                        if total_count > MAX_TRADES_HISTORY:
-                            # Удаляем самые старые закрытые сделки
+                        now, now
+                    ))
+                    
+                    # ⚠️ КРИТИЧНО: Периодически удаляем старые записи, чтобы предотвратить раздувание БД
+                    # Проверяем каждые 100 вставок (чтобы не замедлять работу)
+                    import random
+                    if random.randint(1, 100) == 1:  # 1% вероятность
+                        try:
+                            # Удаляем закрытые сделки старше 1 года
+                            one_year_ago_ts = (datetime.now().timestamp() - 365 * 24 * 3600) * 1000
                             cursor.execute("""
                                 DELETE FROM bot_trades_history
-                                WHERE id IN (
-                                    SELECT id FROM bot_trades_history
-                                    WHERE status = 'CLOSED'
-                                    ORDER BY exit_timestamp ASC, created_at ASC
-                                    LIMIT ?
-                                )
-                            """, (total_count - MAX_TRADES_HISTORY,))
+                                WHERE status = 'CLOSED' 
+                                AND exit_timestamp IS NOT NULL 
+                                AND exit_timestamp < ?
+                            """, (one_year_ago_ts,))
                             deleted_count = cursor.rowcount
                             if deleted_count > 0:
-                                logger.info(f"🗑️ Очистка bot_trades_history: удалено {deleted_count} старых сделок (лимит: {MAX_TRADES_HISTORY:,})")
-                    except Exception as cleanup_error:
-                        logger.warning(f"⚠️ Ошибка очистки bot_trades_history: {cleanup_error}")
-                
-                conn.commit()
-                return cursor.lastrowid
-        except Exception as e:
-            logger.error(f"❌ Ошибка сохранения истории сделки: {e}")
-            import traceback
-            pass
-            return None
+                                pass
+                            
+                            # Также ограничиваем общее количество записей (максимум 100,000)
+                            cursor.execute("SELECT COUNT(*) FROM bot_trades_history")
+                            total_count = cursor.fetchone()[0]
+                            MAX_TRADES_HISTORY = 100_000
+                            if total_count > MAX_TRADES_HISTORY:
+                                # Удаляем самые старые закрытые сделки
+                                cursor.execute("""
+                                    DELETE FROM bot_trades_history
+                                    WHERE id IN (
+                                        SELECT id FROM bot_trades_history
+                                        WHERE status = 'CLOSED'
+                                        ORDER BY exit_timestamp ASC, created_at ASC
+                                        LIMIT ?
+                                    )
+                                """, (total_count - MAX_TRADES_HISTORY,))
+                                deleted_count = cursor.rowcount
+                                if deleted_count > 0:
+                                    logger.info(f"🗑️ Очистка bot_trades_history: удалено {deleted_count} старых сделок (лимит: {MAX_TRADES_HISTORY:,})")
+                        except Exception as cleanup_error:
+                            logger.warning(f"⚠️ Ошибка очистки bot_trades_history: {cleanup_error}")
+                    
+                    conn.commit()
+                    return cursor.lastrowid
+            except sqlite3.OperationalError as e:
+                err_str = str(e).lower()
+                if ("locked" in err_str or "database is locked" in err_str) and save_attempt < max_save_retries - 1:
+                    time.sleep(0.3 * (save_attempt + 1))
+                    continue
+                logger.error(f"❌ Ошибка сохранения истории сделки (БД заблокирована): {e}")
+                return None
+            except Exception as e:
+                logger.error(f"❌ Ошибка сохранения истории сделки: {e}")
+                return None
+        return None
     
     def get_bot_trades_history(self, 
                               bot_id: Optional[str] = None,

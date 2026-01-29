@@ -223,7 +223,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'trading_enabled': True,    # Включить реальную торговлю
     'use_test_server': False,   # Использовать тестовый сервер
     # Защитные механизмы
-    'max_loss_percent': 5, # Максимальный убыток в % от входа (стоп-лосс)
+    'max_loss_percent': 25, # Максимальный убыток в % от входа (стоп-лосс)
     'take_profit_percent': 70, # Защитный Take Profit в % от входа (рассчитывается как стоп-лосс)
     'trailing_stop_activation': 10, # Процент прибыли, после которого активируется трейлинг
     'trailing_stop_distance': 5,      # Дистанция трейлинга от максимальной цены, %
@@ -309,7 +309,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'rsi_volume_confirmation_multiplier': 1.2,
     'self_learning_enabled': False,
     'stop_loss_setup_interval': 60,
-    'system_timeframe': '1m',
+    'system_timeframe': '3m',
     'mini_chart_update_interval': 60,
 }
 
@@ -476,7 +476,7 @@ class SystemConfig:
     #   - Регистр не важен: '+error' = '+ERROR' = '+Error'
     #   - Пробелы вокруг запятых игнорируются
     # ========================================================================
-    CONSOLE_LOG_LEVELS = ['+ERROR', '+WARNING', '+CRITICAL', '+DEBUG']  # По умолчанию все уровни разрешены
+    CONSOLE_LOG_LEVELS = []  # По умолчанию все уровни разрешены
 
     # ========================================================================
     # ОГРАНИЧЕНИЕ ОЗУ ДЛЯ AI (ai.py)
@@ -543,7 +543,7 @@ _patch_system_config_ai_memory()
 # Настройки риск-менеджмента
 class RiskConfig:
     # Стоп-лосс и защитные механизмы
-    STOP_LOSS_PERCENT = 15.0
+    STOP_LOSS_PERCENT = 5.0
     TRAILING_STOP_ACTIVATION = 20.0  # Процент прибыли для активации трейлинга
     TRAILING_STOP_DISTANCE = 150.0    # x1.5 от входа
     MAX_POSITION_TIME_HOURS = 48

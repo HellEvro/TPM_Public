@@ -2098,20 +2098,19 @@ def get_rsi_6h(symbol):
     """Получение RSI данных для текущего таймфрейма за 56 свечей (неделя)"""
     rsi_logger = logging.getLogger('app')
     try:
-        rsi_logger.info(f"[RSI 6h] Getting RSI 6h data for {symbol}")
+        from bot_engine.bot_config import get_current_timeframe
+        current_timeframe = get_current_timeframe()
+        rsi_logger.info(f"[RSI {current_timeframe}] Getting RSI {current_timeframe} data for {symbol}")
         
         # Проверяем инициализацию биржи
         if not current_exchange:
-            rsi_logger.error("[RSI 6h] Exchange not initialized")
+            rsi_logger.error(f"[RSI {current_timeframe}] Exchange not initialized")
             return jsonify({'error': 'Exchange not initialized'}), 500
         
         # Импортируем функцию расчета RSI
         from bot_engine.utils.rsi_utils import calculate_rsi_history
         
         # ✅ ЧИТАЕМ НАПРЯМУЮ ИЗ ФАЙЛА (не требует запущенного bots.py)
-        # Получаем текущий таймфрейм
-        from bot_engine.bot_config import get_current_timeframe
-        current_timeframe = get_current_timeframe()
         # Определяем период в днях в зависимости от таймфрейма
         # 56 свечей для разных таймфреймов = разное количество дней
         timeframe_hours = {'1m': 1/60, '3m': 3/60, '5m': 5/60, '15m': 15/60, '30m': 30/60, 
@@ -2120,19 +2119,19 @@ def get_rsi_6h(symbol):
         period_days = max(1, int((56 * hours_per_candle) / 24))  # Минимум 1 день
         data = get_candles_from_file(symbol, timeframe=current_timeframe, period_days=period_days)
         if not data or not data.get('success'):
-            rsi_logger.error(f"[RSI 6h] Failed to get chart data from file for {symbol}")
+            rsi_logger.error(f"[RSI {current_timeframe}] Failed to get chart data from file for {symbol}")
             return jsonify({'error': 'Failed to get chart data from file'}), 500
             
         candles = data.get('data', {}).get('candles', [])
         if not candles:
-            rsi_logger.warning(f"[RSI 6h] No candles data for {symbol}")
+            rsi_logger.warning(f"[RSI {current_timeframe}] No candles data for {symbol}")
             return jsonify({'error': 'No chart data available'}), 404
         
         # Берем последние 56 свечей
         candles = candles[-56:] if len(candles) >= 56 else candles
         
         if len(candles) < 15:  # Минимум для расчета RSI (период 14 + 1)
-            rsi_logger.warning(f"[RSI 6h] Not enough data for RSI calculation for {symbol}")
+            rsi_logger.warning(f"[RSI {current_timeframe}] Not enough data for RSI calculation for {symbol}")
             return jsonify({'error': 'Not enough data for RSI calculation'}), 400
         
         # Извлекаем цены закрытия
@@ -2142,7 +2141,7 @@ def get_rsi_6h(symbol):
         rsi_history = calculate_rsi_history(closes, period=14)
         
         if not rsi_history:
-            rsi_logger.error(f"[RSI 6h] Failed to calculate RSI for {symbol}")
+            rsi_logger.error(f"[RSI {current_timeframe}] Failed to calculate RSI for {symbol}")
             return jsonify({'error': 'Failed to calculate RSI'}), 500
         
         # Подготавливаем временные метки (берем только те, для которых есть RSI)
@@ -2193,7 +2192,7 @@ def get_rsi_6h(symbol):
             rsi_history = rsi_history[-56:]
             timestamps = timestamps[-56:]
         
-        rsi_logger.info(f"[RSI 6h] Successfully calculated RSI for {symbol}: {len(rsi_history)} values")
+        rsi_logger.info(f"[RSI {current_timeframe}] Successfully calculated RSI for {symbol}: {len(rsi_history)} values")
         
         return jsonify({
             'success': True,
@@ -2205,9 +2204,14 @@ def get_rsi_6h(symbol):
         })
         
     except Exception as e:
-        rsi_logger.error(f"[RSI 6h] Error calculating RSI 6h for {symbol}: {str(e)}")
         import traceback
-        rsi_logger.error(f"[RSI 6h] Traceback: {traceback.format_exc()}")
+        try:
+            from bot_engine.bot_config import get_current_timeframe
+            _tf = get_current_timeframe()
+        except Exception:
+            _tf = '?'
+        rsi_logger.error(f"[RSI {_tf}] Error calculating RSI for {symbol}: {str(e)}")
+        rsi_logger.error(f"[RSI {_tf}] Traceback: {traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
 
 
