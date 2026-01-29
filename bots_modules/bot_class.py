@@ -2295,7 +2295,12 @@ class NewTradingBot:
                     if self.symbol in bots_data['bots']:
                         bots_data['bots'][self.symbol]['last_position_close_timestamp'] = current_timestamp
                 
-                logger.info(f"[NEW_BOT_{self.symbol}] ⏰ Сохранен timestamp последнего закрытия: {current_timestamp} (через 1 свечу 6ч разрешим новый вход)")
+                try:
+                    from bot_engine.bot_config import get_current_timeframe
+                    _tf = get_current_timeframe()
+                except Exception:
+                    _tf = '?'
+                logger.info(f"[NEW_BOT_{self.symbol}] ⏰ Сохранен timestamp последнего закрытия: {current_timestamp} (через 1 свечу {_tf} разрешим новый вход)")
             except Exception as timestamp_error:
                 logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка сохранения timestamp закрытия: {timestamp_error}")
             
