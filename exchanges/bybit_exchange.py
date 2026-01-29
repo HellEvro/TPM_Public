@@ -294,10 +294,8 @@ class BybitExchange(BaseExchange):
                             elif position_value > 1000.0 and leverage > 0:
                                 margin = position_value / leverage
                         
-                        # Если маржа все еще 0 или очень маленькая, логируем для отладки (только DEBUG)
+                        # Если маржа все еще 0 или очень маленькая, используем минимум для расчёта ROI
                         if margin == 0 or margin < 0.01:
-                            logger.debug(f"[BYBIT ROI] {symbol}: margin={margin}, positionValue={position.get('positionValue')}, leverage={leverage}, size={position_size}, avgPrice={avg_price}, pnl={current_pnl}")
-                            logger.debug(f"[BYBIT ROI] Все поля позиции: {list(position.keys())}")
                             margin = 1.0  # Минимальная маржа для избежания деления на ноль
                         
                         roi = (current_pnl / margin * 100) if margin > 0 else 0
@@ -2543,24 +2541,33 @@ class BybitExchange(BaseExchange):
             dict: Результат обновления TP
         """
         try:
-            logger.info(f"[BYBIT_BOT] Обновление Take Profit: {symbol} → {take_profit_price:.6f} (side: {position_side})")
+            # ✅ Bybit: для Long (Buy) TP должен быть выше текущей цены, для Short (Sell) — ниже
+            try:
+                ticker = self.client.get_tickers(category="linear", symbol=f"{symbol}USDT")
+                if ticker.get('retCode') == 0 and ticker.get('result', {}).get('list'):
+                    last_price = float(ticker['result']['list'][0].get('lastPrice', 0) or 0)
+                    if last_price > 0:
+                        side_upper = (position_side or 'LONG').upper()
+                        if side_upper == 'LONG' and take_profit_price <= last_price:
+                            logger.debug(f"[BYBIT_BOT] {symbol}: TP {take_profit_price:.6f} <= lastPrice {last_price:.6f}, пропуск (Long TP должен быть выше цены)")
+                            return {'success': True, 'message': f'TP не обновлён: цена {last_price:.6f} уже выше расчётного TP', 'take_profit': take_profit_price}
+                        if side_upper == 'SHORT' and take_profit_price >= last_price:
+                            logger.debug(f"[BYBIT_BOT] {symbol}: TP {take_profit_price:.6f} >= lastPrice {last_price:.6f}, пропуск (Short TP должен быть ниже цены)")
+                            return {'success': True, 'message': f'TP не обновлён: цена {last_price:.6f} уже ниже расчётного TP', 'take_profit': take_profit_price}
+            except Exception as price_err:
+                pass  # Продолжаем без проверки цены
             
-            # ✅ КРИТИЧНО: Определяем positionIdx в зависимости от режима позиции
-            # В One-Way Mode: position_idx = 0 (для обеих сторон)
-            # В Hedge Mode: position_idx = 1 (LONG), position_idx = 2 (SHORT)
+            # Определяем positionIdx в зависимости от режима позиции
             position_mode = self._get_position_mode(symbol)
             if position_mode == 'One-Way':
                 position_idx = 0
             else:
-                # Hedge mode
                 if position_side:
                     position_idx = 1 if position_side.upper() == 'LONG' else 2
                 else:
-                    # Если side не указан, пытаемся определить из позиции
-                    position_idx = 0  # Fallback
+                    position_idx = 0
                     logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Hedge mode, но side не указан, используем position_idx=0")
             
-            # Параметры для обновления TP (используем Trading Stop API)
             tp_params = {
                 "category": "linear",
                 "symbol": f"{symbol}USDT",
@@ -2568,9 +2575,6 @@ class BybitExchange(BaseExchange):
                 "positionIdx": position_idx
             }
             
-            logger.info(f"[BYBIT_BOT] Параметры TP: {tp_params}")
-            
-            # Обновляем TP через API - используем метод set_trading_stop
             try:
                 response = self.client.set_trading_stop(**tp_params)
                 if response['retCode'] == 0:
@@ -2585,24 +2589,21 @@ class BybitExchange(BaseExchange):
                         'message': f"Ошибка обновления TP: {response['retMsg']}"
                     }
             except Exception as e:
-                # Проверяем код ошибки 34040 (not modified) - это нормально, TP уже установлен
                 error_str = str(e)
                 if "34040" in error_str or "not modified" in error_str:
-                    logger.info(f"[BYBIT_BOT] ✅ TP уже установлен на {take_profit_price:.6f}")
                     return {
                         'success': True,
                         'message': f'Take Profit уже установлен: {take_profit_price:.6f}',
                         'take_profit': take_profit_price
                     }
-                
-                # Для других ошибок - логируем и возвращаем ошибку
+                # 10001: TP для Long должен быть выше base_price, для Short — ниже (цена ушла)
+                if "10001" in error_str or "should be higher than base_price" in error_str or "should be lower than base_price" in error_str:
+                    logger.debug(f"[BYBIT_BOT] {symbol}: TP не обновлён (правило биржи: {error_str[:80]}...)")
+                    return {'success': True, 'message': 'TP не обновлён: не соответствует текущей цене', 'take_profit': take_profit_price}
                 logger.error(f"[BYBIT_BOT] Ошибка обновления Take Profit: {e}")
                 import traceback
                 logger.error(f"[BYBIT_BOT] Трейсбек: {traceback.format_exc()}")
-                return {
-                    'success': False,
-                    'message': f"Ошибка обновления TP: {error_str}"
-                }
+                return {'success': False, 'message': f"Ошибка обновления TP: {error_str}"}
             except AttributeError:
                 # Если метод set_trading_stop не существует, пробуем альтернативный способ
                 logger.warning(f"[BYBIT_BOT] ⚠️ Метод set_trading_stop не найден, используем альтернативный способ")
