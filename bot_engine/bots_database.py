@@ -796,18 +796,13 @@ class BotsDatabase:
                     else:
                         raise
                 
-                # Обработка блокировок при подключении
+                # Обработка блокировок при подключении (или при записи — исключение проброшено из inner except)
+                # КРИТИЧНО: Не делать continue здесь — иначе при throw() из with-блока генератор снова
+                # сделает yield и возникнет "generator didn't stop after throw()". Retry делает вызывающий код.
                 elif "database is locked" in error_str or "locked" in error_str:
-                    # Ошибка блокировки при подключении
                     last_error = e
-                    if retry_on_locked and attempt < max_retries - 1:
-                        wait_time = (attempt + 1) * 0.5
-                        pass
-                        time.sleep(wait_time)
-                        continue
-                    else:
-                        logger.warning(f"⚠️ БД заблокирована при подключении после {max_retries} попыток")
-                        raise
+                    logger.warning(f"⚠️ БД заблокирована при подключении после {max_retries} попыток")
+                    raise
                 
                 # КРИТИЧНО: Обработка ошибки "attempt to write a readonly database" при подключении
                 elif "readonly" in error_str or "read-only" in error_str or "read only" in error_str:
