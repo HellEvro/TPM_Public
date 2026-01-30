@@ -43,7 +43,7 @@ TREND_REQUIRE_CANDLES = True # Требовать N свечей подряд (T
 
 # Таймфрейм для анализа
 # Поддерживаемые таймфреймы: '1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M'
-TIMEFRAME = '5m'
+TIMEFRAME = '1m'
 
 # Глобальная переменная для динамического изменения таймфрейма в runtime
 _current_timeframe = None
@@ -355,7 +355,7 @@ DEFAULT_BOT_CONFIG = {
 # Системные настройки
 class SystemConfig:
     # Таймфрейм системы (сохраняется при переключении в UI; config_writer обновляет эту строку)
-    SYSTEM_TIMEFRAME = '5m'
+    SYSTEM_TIMEFRAME = '1m'
     # Интервалы обновления (в секундах)
     RSI_UPDATE_INTERVAL = 60 # 30 минут (рекомендуется для 6H RSI)
     ACCOUNT_UPDATE_INTERVAL = 3  # 5 секунд

@@ -164,16 +164,11 @@ class AppDatabase:
                 
             except sqlite3.OperationalError as e:
                 error_msg = str(e).lower()
+                # КРИТИЧНО: не делать continue при "locked" — иначе "generator didn't stop after throw()"
                 if "database is locked" in error_msg or "database table is locked" in error_msg:
-                    if retry_on_locked and attempt < max_retries - 1:
-                        wait_time = 0.1 * (2 ** attempt)  # Экспоненциальная задержка
-                        pass
-                        time.sleep(wait_time)
-                        last_error = e
-                        continue
-                    else:
-                        logger.error(f"❌ БД заблокирована после {max_retries} попыток")
-                        raise
+                    last_error = e
+                    logger.error(f"❌ БД заблокирована после {max_retries} попыток")
+                    raise
                 else:
                     raise
             except Exception as e:

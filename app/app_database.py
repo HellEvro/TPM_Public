@@ -80,17 +80,12 @@ class AppDatabase:
                     return
                 except sqlite3.OperationalError as e:
                     error_str = str(e).lower()
+                    # КРИТИЧНО: не делать continue — иначе "generator didn't stop after throw()"
                     if "database is locked" in error_str or "locked" in error_str:
                         conn.rollback()
                         conn.close()
                         last_error = e
-                        if retry_on_locked and attempt < max_retries - 1:
-                            wait_time = (attempt + 1) * 0.5
-                            pass
-                            time.sleep(wait_time)
-                            continue
-                        else:
-                            raise
+                        raise
                     else:
                         conn.rollback()
                         conn.close()

@@ -326,20 +326,13 @@ class AIDatabase:
                     return  # Успешно выполнили операцию
                 except sqlite3.OperationalError as e:
                     error_str = str(e).lower()
-                    # Обрабатываем ошибки блокировки
+                    # Обрабатываем ошибки блокировки (из with-блока).
+                    # КРИТИЧНО: не делать continue — иначе генератор снова сделает yield и возникнет "generator didn't stop after throw()". Retry делает вызывающий код.
                     if "database is locked" in error_str or "locked" in error_str:
                         conn.rollback()
                         conn.close()
-                        last_error = e
-                        if retry_on_locked and attempt < max_retries - 1:
-                            wait_time = (attempt + 1) * 0.5  # Экспоненциальная задержка: 0.5s, 1s, 1.5s...
-                            pass
-                            time.sleep(wait_time)
-                            continue  # Повторяем попытку
-                        else:
-                            # Превышено количество попыток
-                            logger.warning(f"⚠️ БД заблокирована после {max_retries} попыток")
-                            raise
+                        logger.warning(f"⚠️ БД заблокирована при записи (попытка {attempt + 1})")
+                        raise
                     elif "disk i/o error" in error_str or "i/o error" in error_str:
                         # Критическая ошибка I/O - БД может быть повреждена
                         conn.rollback()
@@ -449,16 +442,11 @@ class AIDatabase:
                     else:
                         raise
                 elif "database is locked" in error_str or "locked" in error_str:
-                    # Ошибка блокировки при подключении
+                    # Ошибка блокировки (или исключение проброшено из inner except).
+                    # КРИТИЧНО: не делать continue — иначе "generator didn't stop after throw()".
                     last_error = e
-                    if retry_on_locked and attempt < max_retries - 1:
-                        wait_time = (attempt + 1) * 0.5
-                        pass
-                        time.sleep(wait_time)
-                        continue
-                    else:
-                        logger.warning(f"⚠️ БД заблокирована при подключении после {max_retries} попыток")
-                        raise
+                    logger.warning(f"⚠️ БД заблокирована при подключении после {max_retries} попыток")
+                    raise
                 else:
                     # Другие ошибки - не повторяем
                     raise
