@@ -18,6 +18,26 @@ os.environ["PYTHONWARNINGS"] = f"{_pw},{_add}" if _pw else _add
 # Вариант 1: joblib → sklearn.utils.parallel до любых импортов sklearn
 import utils.sklearn_parallel_config  # noqa: F401
 
+# Ограничение ОЗУ процесса (AI_MEMORY_LIMIT_MB / AI_MEMORY_PCT из bot_config) — как для ai.py
+try:
+    from utils.process_limits import (
+        compute_memory_limit_mb,
+        apply_memory_limit_setrlimit,
+        apply_windows_job_limits,
+    )
+    _limit_mb, _kind, _total_mb, _pct = compute_memory_limit_mb()
+    if _limit_mb is not None:
+        if _kind == 'pct' and _total_mb is not None and _pct is not None:
+            sys.stderr.write(f"[Bots] Лимит ОЗУ: {_limit_mb} MB ({_pct:.0f}% от {_total_mb} MB)\n")
+        else:
+            sys.stderr.write(f"[Bots] Лимит ОЗУ: {_limit_mb} MB (AI_MEMORY_LIMIT_MB)\n")
+        if sys.platform == 'win32':
+            apply_windows_job_limits(memory_mb=_limit_mb, cpu_pct=0, process_name='Bots')
+        else:
+            apply_memory_limit_setrlimit(_limit_mb)
+except Exception:
+    pass
+
 # 🔍 Проверка и создание bot_config.py из example.bot_config.py (если отсутствует)
 # Также настраиваем git skip-worktree для игнорирования локальных изменений
 _bot_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bot_engine', 'bot_config.py')
