@@ -894,16 +894,14 @@ def get_coin_rsi_data_for_timeframe(symbol, exchange_obj=None, timeframe=None):
         result['is_mature'] = base_data.get('is_mature', True) if base_data else True
         result['has_existing_position'] = base_data.get('has_existing_position', False) if base_data else False
 
-        # Scope
+        # Scope: черный список ВСЕГДА исключает монету из торговли (при любом scope)
         scope = auto_config.get('scope', 'all')
         whitelist = auto_config.get('whitelist', [])
         blacklist = auto_config.get('blacklist', [])
         is_blocked_by_scope = False
-        if scope == 'whitelist' and symbol not in whitelist:
+        if symbol in blacklist:
             is_blocked_by_scope = True
-        elif scope == 'blacklist' and symbol in blacklist:
-            is_blocked_by_scope = True
-        elif symbol in blacklist:
+        elif scope == 'whitelist' and symbol not in whitelist:
             is_blocked_by_scope = True
         result['blocked_by_scope'] = is_blocked_by_scope
         if is_blocked_by_scope:
@@ -1063,6 +1061,7 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
             }
         
         # ✅ ФИЛЬТР 1: Whitelist/Blacklist/Scope - Проверяем ДО загрузки данных с биржи
+        # Черный список ВСЕГДА исключает монету из торговли при любой настройке scope.
         # ⚡ БЕЗ БЛОКИРОВКИ: конфиг не меняется во время выполнения, безопасно читать
         auto_config = bots_data.get('auto_bot_config', {})
         scope = auto_config.get('scope', 'all')
@@ -1070,27 +1069,10 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
         blacklist = auto_config.get('blacklist', [])
         
         is_blocked_by_scope = False
-        
-        if scope == 'whitelist':
-            # Режим ТОЛЬКО whitelist - работаем ТОЛЬКО с монетами из белого списка
-            if symbol not in whitelist:
-                is_blocked_by_scope = True
-                pass
-        
-        elif scope == 'blacklist':
-            # Режим ТОЛЬКО blacklist - работаем со ВСЕМИ монетами КРОМЕ черного списка
-            if symbol in blacklist:
-                is_blocked_by_scope = True
-                pass
-        
-        elif scope == 'all':
-            # Режим ALL - работаем со ВСЕМИ монетами, но проверяем оба списка
-            if symbol in blacklist:
-                is_blocked_by_scope = True
-                pass
-            # Если в whitelist - даем приоритет (логируем, но не блокируем)
-            if whitelist and symbol in whitelist:
-                pass
+        if symbol in blacklist:
+            is_blocked_by_scope = True
+        elif scope == 'whitelist' and symbol not in whitelist:
+            is_blocked_by_scope = True
         
         # БЕЗ задержки - семафор и ThreadPool уже контролируют rate limit
         
@@ -2490,6 +2472,10 @@ def get_effective_signal(coin):
     # ✅ КРИТИЧНО: Проверяем результаты ВСЕХ фильтров!
     # Если любой фильтр заблокировал сигнал - возвращаем WAIT
     
+    # ✅ Проверяем Whitelist/Blacklist (Scope) — монеты из черного списка не торгуем
+    if coin.get('blocked_by_scope', False):
+        return 'WAIT'
+    
     # Проверяем ExitScam фильтр
     if coin.get('blocked_by_exit_scam', False):
         # Убрано избыточное логирование
@@ -2604,6 +2590,8 @@ def process_auto_bot_signals(exchange_obj=None):
             
             # Если сигнал ENTER_LONG или ENTER_SHORT - проверяем остальные фильтры и AI до попадания в список
             if signal in ['ENTER_LONG', 'ENTER_SHORT']:
+                if coin_data.get('blocked_by_scope', False):
+                    continue
                 if coin_data.get('is_delisting') or coin_data.get('trading_status') in ('Closed', 'Delivering'):
                     pass
                     continue
@@ -2873,7 +2861,10 @@ def check_new_autobot_filters(symbol, signal, coin_data):
         # 6. ExitScam фильтр
         # 7. RSI временной фильтр
         
-        # Здесь делаем только дубль-проверку зрелости и ExitScam на всякий случай
+        # ✅ Дубль-проверка черного списка (Scope) — монеты из blacklist не открываем
+        if coin_data.get('blocked_by_scope', False):
+            logger.warning(f" {symbol}: ❌ БЛОКИРОВКА: Монета в черном списке (blocked_by_scope)")
+            return False
         
         # Дубль-проверка зрелости монеты
         if not check_coin_maturity_stored_or_verify(symbol):
