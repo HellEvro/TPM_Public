@@ -419,17 +419,18 @@ def positions_monitor_worker():
                             try:
                                 position_side = bot_data.get('position_side')
 
-                                # ✅ КРИТИЧНО: Закрытие по RSI — по выбранному (текущему) таймфрейму, не по entry_timeframe.
-                                # Если пользователь выбрал 1m — позиции закрываются по RSI на 1m.
-                                from bot_engine.bot_config import get_current_timeframe, get_rsi_from_coin_data
-                                timeframe_for_exit = get_current_timeframe()
+                                # ✅ КРИТИЧНО: Закрытие по RSI — по таймфрейму ВХОДА бота (entry_timeframe). 1m-бот закрывается по 1m RSI.
+                                bot_entry_timeframe = bot_data.get('entry_timeframe')
+                                if not bot_entry_timeframe:
+                                    from bot_engine.bot_config import get_current_timeframe
+                                    bot_entry_timeframe = get_current_timeframe()
 
-                                # Берем уже рассчитанный RSI из coins_rsi_data
                                 rsi_data = coins_rsi_data.get('coins', {}).get(symbol)
                                 if not rsi_data:
                                     continue
 
-                                current_rsi = get_rsi_from_coin_data(rsi_data, timeframe=timeframe_for_exit)
+                                from bot_engine.bot_config import get_rsi_from_coin_data
+                                current_rsi = get_rsi_from_coin_data(rsi_data, timeframe=bot_entry_timeframe)
                                 current_price = rsi_data.get('price')
 
                                 if current_rsi is None or current_price is None:

@@ -2771,10 +2771,17 @@ def process_trading_signals_for_all_bots(exchange_obj=None):
                 from bots_modules.bot_class import NewTradingBot
                 trading_bot = NewTradingBot(symbol, bot_data, exchange_to_use)
                 
-                # ✅ КРИТИЧНО: Для закрытия по RSI ВСЕГДА используем выбранный (текущий) таймфрейм.
-                # Пользователь выбрал ТФ (напр. 1m) — лонги/шорты должны закрываться по RSI на этом ТФ, а не по 6h.
-                from bot_engine.bot_config import get_current_timeframe
-                timeframe_to_use = get_current_timeframe()
+                # ✅ КРИТИЧНО: Определяем таймфрейм для проверки сигналов закрытия
+                # Бот закрывается по RSI того ТФ, на котором ОТКРЫЛСЯ (entry_timeframe). 6h-бот — по 6h, 1m-бот — по 1m.
+                bot_entry_timeframe = bot_data.get('entry_timeframe')
+                if bot_entry_timeframe and bot_data.get('status') in [
+                    BOT_STATUS.get('IN_POSITION_LONG'),
+                    BOT_STATUS.get('IN_POSITION_SHORT')
+                ]:
+                    timeframe_to_use = bot_entry_timeframe
+                else:
+                    from bot_engine.bot_config import get_current_timeframe
+                    timeframe_to_use = get_current_timeframe()
                 
                 # Получаем RSI данные для монеты
                 # ⚡ БЕЗ БЛОКИРОВКИ: чтение словаря - атомарная операция

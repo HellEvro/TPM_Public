@@ -3223,6 +3223,13 @@ class BotsDatabase:
         """
         try:
             now = datetime.now().isoformat()
+            # ✅ Текущий таймфрейм системы — до блокировки, чтобы не вызывать get_bots_database внутри lock
+            try:
+                from bot_engine.bot_config import get_current_timeframe
+                default_timeframe = get_current_timeframe()
+            except Exception:
+                from bot_engine.bot_config import TIMEFRAME
+                default_timeframe = TIMEFRAME
             
             with self.lock:
                 with self._get_connection() as conn:
@@ -3361,7 +3368,7 @@ class BotsDatabase:
                                 break_even_activated, break_even_stop_price, break_even_stop_set, order_id,
                                 current_price, last_price, last_rsi, last_trend,
                                 last_signal_time, last_bar_timestamp, entry_trend,
-                                opened_by_autobot, bot_id, bot_data.get('entry_timeframe') or '6h', extra_data_json,
+                                opened_by_autobot, bot_id, bot_data.get('entry_timeframe') or default_timeframe, extra_data_json,
                                 now, final_created_at
                             ))
                         except Exception as e:

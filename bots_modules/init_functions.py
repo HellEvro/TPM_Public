@@ -725,9 +725,16 @@ def process_trading_signals_on_candle_close(candle_timestamp: int, exchange_obj=
         # Обрабатываем каждого бота
         for symbol, bot_data in active_bots.items():
             try:
-                # ✅ КРИТИЧНО: Для закрытия по RSI используем выбранный (текущий) таймфрейм
-                from bot_engine.bot_config import get_current_timeframe
-                timeframe_to_use = get_current_timeframe()
+                # ✅ КРИТИЧНО: Закрытие по RSI — по таймфрейму входа бота (entry_timeframe)
+                bot_entry_timeframe = bot_data.get('entry_timeframe')
+                if bot_entry_timeframe and bot_data.get('status') in [
+                    BOT_STATUS.get('IN_POSITION_LONG'),
+                    BOT_STATUS.get('IN_POSITION_SHORT')
+                ]:
+                    timeframe_to_use = bot_entry_timeframe
+                else:
+                    from bot_engine.bot_config import get_current_timeframe
+                    timeframe_to_use = get_current_timeframe()
                 
                 # Получаем актуальные RSI данные для монеты
                 with rsi_data_lock:

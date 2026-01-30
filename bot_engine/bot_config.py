@@ -254,8 +254,8 @@ DEFAULT_AUTO_BOT_CONFIG = {
     # Защитные механизмы
     'max_loss_percent': 35, # Максимальный убыток в % от входа (стоп-лосс)
     'take_profit_percent': 70, # Защитный Take Profit в % от входа (рассчитывается как стоп-лосс)
-    'trailing_stop_activation': 10, # Процент прибыли, после которого активируется трейлинг
-    'trailing_stop_distance': 5,      # Дистанция трейлинга от максимальной цены, %
+    'trailing_stop_activation': 2, # Процент прибыли, после которого активируется трейлинг
+    'trailing_stop_distance': 2, # Дистанция трейлинга от максимальной цены, %
     'trailing_take_distance': 0.5,    # Резервный trailing-тейк (лимит) в %, когда процесс упадет
     'trailing_update_interval': 3,  # Минимальный интервал обновлений стопов/тейков (сек)
     'max_position_hours': 0,     # Максимальное время удержания позиции в часах (0 = отключено)
@@ -338,7 +338,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'rsi_volume_confirmation_multiplier': 1.2,
     'self_learning_enabled': False,
     'stop_loss_setup_interval': 60,
-    'system_timeframe': '5m',
+    'system_timeframe': '1m',
     'mini_chart_update_interval': 60,
 }
 

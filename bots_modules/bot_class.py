@@ -1111,9 +1111,15 @@ class NewTradingBot:
             current_rsi = None
             current_trend = external_trend
             
-            # ✅ КРИТИЧНО: Для закрытия по RSI используем выбранный (текущий) таймфрейм
-            from bot_engine.bot_config import get_current_timeframe
-            timeframe_to_use = get_current_timeframe()
+            # ✅ КРИТИЧНО: Для закрытия по RSI используем таймфрейм ВХОДА бота (entry_timeframe). 1m-бот — по 1m RSI.
+            if self.entry_timeframe and self.status in [
+                BOT_STATUS.get('IN_POSITION_LONG'),
+                BOT_STATUS.get('IN_POSITION_SHORT')
+            ]:
+                timeframe_to_use = self.entry_timeframe
+            else:
+                from bot_engine.bot_config import get_current_timeframe
+                timeframe_to_use = get_current_timeframe()
             
             # Получаем RSI данные с учетом таймфрейма бота
             try:
@@ -2517,6 +2523,13 @@ class NewTradingBot:
                 bots_data['bots'][self.symbol] = self.to_dict()
         except Exception as save_error:
             logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка сохранения состояния после входа: {save_error}")
+
+        # ✅ КРИТИЧНО: Сразу сохраняем бота в БД с entry_timeframe (1m/6h и т.д.), чтобы при перезапуске лонги 1m не закрывались по 6h
+        try:
+            from bots_modules.sync_and_cache import save_bots_state
+            save_bots_state()
+        except Exception as persist_err:
+            logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось сразу сохранить состояние в БД: {persist_err}")
 
         logger.info(f"[NEW_BOT_{self.symbol}] ✅ Позиция {side} открыта: qty={self.position_size} price={self.entry_price}")
         if result.get('success'):
