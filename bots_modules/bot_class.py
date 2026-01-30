@@ -1111,18 +1111,9 @@ class NewTradingBot:
             current_rsi = None
             current_trend = external_trend
             
-            # ✅ КРИТИЧНО: Определяем таймфрейм для работы бота
-            # Если бот в позиции - используем его entry_timeframe, иначе системный
-            if self.entry_timeframe and self.status in [
-                BOT_STATUS.get('IN_POSITION_LONG'),
-                BOT_STATUS.get('IN_POSITION_SHORT')
-            ]:
-                # Бот в позиции - используем его таймфрейм
-                timeframe_to_use = self.entry_timeframe
-            else:
-                # Бот не в позиции - используем системный таймфрейм
-                from bot_engine.bot_config import get_current_timeframe
-                timeframe_to_use = get_current_timeframe()
+            # ✅ КРИТИЧНО: Для закрытия по RSI используем выбранный (текущий) таймфрейм
+            from bot_engine.bot_config import get_current_timeframe
+            timeframe_to_use = get_current_timeframe()
             
             # Получаем RSI данные с учетом таймфрейма бота
             try:
