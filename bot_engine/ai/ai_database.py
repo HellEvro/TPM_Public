@@ -1043,6 +1043,24 @@ class AIDatabase:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_decisions_created_at ON ai_decisions(created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_decisions_result ON ai_decisions(result_successful)")
             
+            # ==================== ТАБЛИЦА: ПОСЛЕДНИЕ РЕКОМЕНДАЦИИ AI (для чтения из bots.py) ====================
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ai_recommendations (
+                    symbol TEXT NOT NULL,
+                    direction TEXT NOT NULL,
+                    should_open INTEGER NOT NULL,
+                    signal TEXT,
+                    confidence REAL,
+                    reason TEXT,
+                    ai_used INTEGER,
+                    smc_used INTEGER,
+                    data_json TEXT,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (symbol, direction)
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_recommendations_updated ON ai_recommendations(updated_at)")
+            
             # ==================== ТАБЛИЦА: СЕССИИ ОБУЧЕНИЯ ====================
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS training_sessions (
@@ -3593,6 +3611,59 @@ class AIDatabase:
                 result.append(decision)
             
             return result
+    
+    # ==================== РЕКОМЕНДАЦИИ AI (чтение из bots.py, запись из ai.py) ====================
+    
+    def save_ai_recommendation(self, symbol: str, direction: str, data: Dict[str, Any]) -> None:
+        """Сохраняет последнюю рекомендацию AI по символу и направлению (пишет только ai.py)."""
+        with self.lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                now = datetime.now().isoformat()
+                data_json = json.dumps(data, ensure_ascii=False) if data else None
+                cursor.execute("""
+                    INSERT OR REPLACE INTO ai_recommendations (
+                        symbol, direction, should_open, signal, confidence, reason,
+                        ai_used, smc_used, data_json, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    symbol,
+                    direction,
+                    1 if data.get('should_open', True) else 0,
+                    data.get('signal') or data.get('ai_signal'),
+                    data.get('confidence') or data.get('ai_confidence'),
+                    data.get('reason'),
+                    1 if data.get('ai_used', False) else 0,
+                    1 if data.get('smc_used', False) else 0,
+                    data_json,
+                    now,
+                ))
+    
+    def get_latest_ai_recommendation(self, symbol: str, direction: str) -> Optional[Dict[str, Any]]:
+        """Возвращает последнюю рекомендацию AI по символу и направлению (читает bots.py)."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT should_open, signal, confidence, reason, ai_used, smc_used, data_json, updated_at
+                FROM ai_recommendations WHERE symbol = ? AND direction = ?
+            """, (symbol, direction))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            try:
+                data = json.loads(row[6]) if row[6] else {}
+            except Exception:
+                data = {}
+            return {
+                'should_open': bool(row[0]),
+                'signal': row[1],
+                'confidence': row[2] or 0,
+                'reason': row[3],
+                'ai_used': bool(row[4]),
+                'smc_used': bool(row[5]),
+                'updated_at': row[7],
+                **data,
+            }
     
     # ==================== МЕТОДЫ ДЛЯ СЕССИЙ ОБУЧЕНИЯ ====================
     

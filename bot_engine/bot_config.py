@@ -420,6 +420,11 @@ class SystemConfig:
     BOTS_SERVICE_HOST = '0.0.0.0'  # Доступ из сети
     MAIN_APP_PORT = 5000
     MAIN_APP_HOST = '127.0.0.1'
+    # AI-сервис (ai.py --server): предсказания выполняются только в процессе ai.py
+    AI_SERVICE_PORT = 5002
+    AI_SERVICE_HOST = '127.0.0.1'
+    # True = bots.py получает предсказания по HTTP (без загрузки моделей в процесс ботов)
+    USE_AI_SERVICE = True
     REQUEST_TIMEOUT = 30
     
     # Настройки UI

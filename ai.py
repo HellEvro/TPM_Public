@@ -523,5 +523,6 @@ try:
 except Exception:
     pass
 
+
 if __name__ == '__main__':
     _protected_module.main()

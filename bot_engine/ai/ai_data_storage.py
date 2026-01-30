@@ -148,6 +148,25 @@ class AIDataStorage:
         except Exception as e:
             logger.error(f"❌ Ошибка получения решений AI: {e}")
             return []
+
+    def save_ai_recommendation(self, symbol: str, direction: str, data: Dict) -> None:
+        """Сохранить последнюю рекомендацию AI (вызывает только ai.py)."""
+        if not self.ai_db:
+            return
+        try:
+            self.ai_db.save_ai_recommendation(symbol, direction, data)
+        except Exception as e:
+            logger.warning(f"save_ai_recommendation: {e}")
+
+    def get_latest_ai_recommendation(self, symbol: str, direction: str) -> Optional[Dict]:
+        """Получить последнюю рекомендацию AI по символу и направлению (читает bots.py)."""
+        if not self.ai_db:
+            return None
+        try:
+            return self.ai_db.get_latest_ai_recommendation(symbol, direction)
+        except Exception as e:
+            logger.warning(f"get_latest_ai_recommendation: {e}")
+            return None
     
     # ==================== История обучения ====================
     
