@@ -1947,7 +1947,15 @@ def system_config():
         else:
             logger.info("ℹ️  System config: изменений не обнаружено")
         
-        # ⚠️ ВАЖНО: При перезагрузке конфига таймфрейм восстанавливается из БД (приоритет БД над файлом)
+        # Сохраняем текущий таймфрейм из snapshot в БД до перезагрузки, чтобы load_system_config() не подставил старое значение
+        if saved_to_file and 'system_timeframe' in system_config_data:
+            try:
+                from bot_engine.bots_database import get_bots_database
+                db = get_bots_database()
+                db.save_timeframe(system_config_data['system_timeframe'])
+            except Exception as tf_save_err:
+                logger.warning(f"⚠️ Не удалось сохранить таймфрейм в БД перед перезагрузкой: {tf_save_err}")
+        # При перезагрузке конфига таймфрейм восстанавливается из БД (приоритет БД над файлом)
         if saved_to_file and (changes_count > 0 or system_changes_count > 0):
             load_system_config()
 

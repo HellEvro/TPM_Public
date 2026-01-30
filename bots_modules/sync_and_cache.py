@@ -308,10 +308,20 @@ def _update_bot_record(symbol, updates):
 
 
 def get_system_config_snapshot():
-    """Возвращает текущие значения SystemConfig в формате, ожидаемом UI."""
+    """Возвращает текущие значения SystemConfig в формате, ожидаемом UI.
+    Для system_timeframe берём фактический текущий таймфрейм (runtime/БД), а не только из конфига,
+    иначе при сохранении других настроек в файл попадал бы старый SYSTEM_TIMEFRAME и сбрасывал таймфрейм на 6h.
+    """
     snapshot = {}
     for key, attr in SYSTEM_CONFIG_FIELD_MAP.items():
-        snapshot[key] = getattr(SystemConfig, attr, None)
+        if key == 'system_timeframe':
+            try:
+                from bot_engine.bot_config import get_current_timeframe
+                snapshot[key] = get_current_timeframe()
+            except Exception:
+                snapshot[key] = getattr(SystemConfig, attr, None)
+        else:
+            snapshot[key] = getattr(SystemConfig, attr, None)
     return snapshot
 
 
