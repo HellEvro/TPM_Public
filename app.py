@@ -1,13 +1,17 @@
 import errno
 import os
 import sys
+import warnings
+# Подавление FutureWarning LeafSpec (PyTorch/зависимости) — до любых импортов, которые могут его вызвать
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*LeafSpec.*")
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*TreeSpec.*is_leaf.*")
 # Корень проекта в path до импорта utils — иначе sklearn_parallel_config не найдётся при запуске из другой директории
 _root = os.path.dirname(os.path.abspath(__file__))
 if _root and _root not in sys.path:
     sys.path.insert(0, _root)
-# Подавление UserWarning sklearn delayed/Parallel (дочерние процессы наследуют PYTHONWARNINGS)
+# Подавление UserWarning sklearn и FutureWarning для дочерних процессов
 _pw = os.environ.get("PYTHONWARNINGS", "").strip()
-_add = "ignore::UserWarning:sklearn.utils.parallel"
+_add = "ignore::UserWarning:sklearn.utils.parallel,ignore::FutureWarning"
 os.environ["PYTHONWARNINGS"] = f"{_pw},{_add}" if _pw else _add
 import utils.sklearn_parallel_config  # noqa: F401 — первым до sklearn (вариант A: оба Parallel/delayed из sklearn)
 import base64
