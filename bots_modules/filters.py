@@ -737,42 +737,18 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         return {'allowed': True, 'reason': f'Ошибка проверки: {str(e)}', 'candles_passed': None}
 
 
-# Единая шкала таймфреймов для ExitScam (минуты на одну свечу). Референс: 1h = 60 мин.
-_EXIT_SCAM_TF_MINUTES = {
-    '1m': 1, '3m': 3, '5m': 5, '15m': 15, '30m': 30,
-    '1h': 60, '2h': 120, '4h': 240, '6h': 360, '8h': 480, '12h': 720,
-    '1d': 1440, '3d': 4320, '1w': 10080, '1M': 43200
-}
-
-
-def _exit_scam_timeframe_minutes():
-    """Длительность одной свечи в минутах. Строго по выбранному ТФ из конфига; '1m' только при сбое get_current_timeframe()."""
-    try:
-        from bot_engine.bot_config import get_current_timeframe
-        tf = get_current_timeframe() or '1m'
-    except Exception:
-        tf = '1m'
-    return float(_EXIT_SCAM_TF_MINUTES.get(tf, 1))
-
-
 def get_exit_scam_effective_limits(single_pct, multi_count, multi_pct):
     """
-    Эффективные пороги ExitScam строго по выбранному таймфрейму из конфига (дефолта нет).
-    Настройки заданы в «% за 1h-свечу»; для текущего ТФ пересчёт: 1m → 50*(1/60)%, 6h → 50%.
-    Возвращает: (current_tf, tf_min, effective_single_pct, effective_multi_pct).
+    Возвращает (current_tf, single_pct, multi_pct). Лимиты как в конфиге: 0.5 = 0.5%, без пересчёта по ТФ.
     """
     try:
         from bot_engine.bot_config import get_current_timeframe
         current_tf = get_current_timeframe() or '1m'
     except Exception:
         current_tf = '1m'
-    tf_min = float(_EXIT_SCAM_TF_MINUTES.get(current_tf, 1))
     single = float(single_pct or 15.0)
     multi = float(multi_pct or 50.0)
-    n = int(multi_count or 4)
-    effective_single = single * (tf_min / 60.0)
-    effective_multi = multi * (tf_min * n / 60.0)
-    return (current_tf, tf_min, effective_single, effective_multi)
+    return (current_tf, single, multi)
 
 
 def check_exit_scam_filter(symbol, coin_data):
@@ -999,7 +975,7 @@ def get_coin_rsi_data_for_timeframe(symbol, exchange_obj=None, timeframe=None):
                     single_candle_percent = float(auto_config.get('exit_scam_single_candle_percent', 15.0) or 15.0)
                     multi_candle_count = auto_config.get('exit_scam_multi_candle_count', 4)
                     multi_candle_percent = float(auto_config.get('exit_scam_multi_candle_percent', 50.0) or 50.0)
-                    _tf, _tf_min, effective_single, effective_multi = get_exit_scam_effective_limits(
+                    _tf, limit_single, limit_multi = get_exit_scam_effective_limits(
                         single_candle_percent, multi_candle_count, multi_candle_percent
                     )
                     exit_scam_reason = 'ExitScam фильтр пройден'
@@ -1011,9 +987,9 @@ def get_coin_rsi_data_for_timeframe(symbol, exchange_obj=None, timeframe=None):
                             if o <= 0:
                                 continue
                             ch = abs((cl - o) / o) * 100
-                            if ch > effective_single:
+                            if ch > limit_single:
                                 exit_scam_allowed = False
-                                exit_scam_reason = f'Одна свеча {ch:.1f}% > {effective_single:.1f}% (лимит {single_candle_percent}% за 1h, при ТФ {_tf}: {effective_single:.1f}%)'
+                                exit_scam_reason = f'Тело свечи {ch:.2f}% > лимит {limit_single}% (как в конфиге, тело = |C-O|/O×100%)'
                                 break
                         if exit_scam_allowed and len(recent) >= multi_candle_count:
                             m = recent[-multi_candle_count:]
@@ -1021,9 +997,9 @@ def get_coin_rsi_data_for_timeframe(symbol, exchange_obj=None, timeframe=None):
                             cl_last = float(m[-1].get('close', 0) or 0)
                             if o0 > 0:
                                 total_ch = abs((cl_last - o0) / o0) * 100
-                                if total_ch > effective_multi:
+                                if total_ch > limit_multi:
                                     exit_scam_allowed = False
-                                    exit_scam_reason = f'{multi_candle_count} свечей суммарно {total_ch:.1f}% > {effective_multi:.1f}%'
+                                    exit_scam_reason = f'{multi_candle_count} свечей суммарно {total_ch:.1f}% > {limit_multi}%'
                     exit_scam_info = {'blocked': not exit_scam_allowed, 'reason': exit_scam_reason, 'filter_type': 'exit_scam'}
                 except Exception as e:
                     exit_scam_info = {'blocked': False, 'reason': str(e), 'filter_type': 'exit_scam'}
@@ -1602,7 +1578,7 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                     single_candle_percent = float(auto_config.get('exit_scam_single_candle_percent', 15.0) or 15.0)
                     multi_candle_count = auto_config.get('exit_scam_multi_candle_count', 4)
                     multi_candle_percent = float(auto_config.get('exit_scam_multi_candle_percent', 50.0) or 50.0)
-                    _tf, _tf_min, effective_single, effective_multi = get_exit_scam_effective_limits(
+                    _tf, limit_single, limit_multi = get_exit_scam_effective_limits(
                         single_candle_percent, multi_candle_count, multi_candle_percent
                     )
                     exit_scam_allowed = True
@@ -1615,9 +1591,9 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                             if open_price <= 0:
                                 continue
                             price_change = abs((close_price - open_price) / open_price) * 100
-                            if price_change > effective_single:
+                            if price_change > limit_single:
                                 exit_scam_allowed = False
-                                exit_scam_reason = f'ExitScam фильтр: одна свеча превысила лимит {effective_single:.1f}% при ТФ {_tf} (было {price_change:.1f}%)'
+                                exit_scam_reason = f'ExitScam: тело свечи {price_change:.2f}% > лимит {limit_single}% (как в конфиге)'
                                 break
                         
                         # 2. Проверка суммарного изменения (если первая проверка прошла)
@@ -1627,9 +1603,9 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                             last_close = float(multi_candles[-1].get('close', 0) or 0)
                             if first_open > 0:
                                 total_change = abs((last_close - first_open) / first_open) * 100
-                                if total_change > effective_multi:
+                                if total_change > limit_multi:
                                     exit_scam_allowed = False
-                                    exit_scam_reason = f'ExitScam фильтр: {multi_candle_count} свечей превысили суммарный лимит {effective_multi:.1f}% (было {total_change:.1f}%)'
+                                    exit_scam_reason = f'ExitScam фильтр: {multi_candle_count} свечей превысили суммарный лимит {limit_multi}% (было {total_change:.1f}%)'
                         
                         # 3. AI детекция аномалий (если включена и базовые проверки прошли)
                         if exit_scam_allowed:
@@ -3298,7 +3274,7 @@ def _legacy_check_exit_scam_filter(symbol, coin_data, individual_settings=None):
         if multi_candle_percent is None:
             multi_candle_percent = auto_config.get('exit_scam_multi_candle_percent', 50.0)
         multi_candle_percent = float(multi_candle_percent or 50.0)
-        _tf, _tf_min, effective_single, effective_multi = get_exit_scam_effective_limits(
+        _tf, limit_single, limit_multi = get_exit_scam_effective_limits(
             single_candle_percent, multi_candle_count, multi_candle_percent
         )
         
@@ -3336,7 +3312,7 @@ def _legacy_check_exit_scam_filter(symbol, coin_data, individual_settings=None):
             if open_price <= 0:
                 continue
             price_change = abs((close_price - open_price) / open_price) * 100
-            if price_change > effective_single:
+            if price_change > limit_single:
                 return False
         
         # 2. ПРОВЕРКА: N свечей суммарно превысили максимальный % изменения
@@ -3346,8 +3322,8 @@ def _legacy_check_exit_scam_filter(symbol, coin_data, individual_settings=None):
             last_close = float(multi_candles[-1].get('close', 0) or 0)
             if first_open > 0:
                 total_change = abs((last_close - first_open) / first_open) * 100
-                if total_change > effective_multi:
-                    logger.warning(f"{symbol}: ❌ БЛОКИРОВКА: {multi_candle_count} свечей превысили суммарный лимит {effective_multi:.1f}% (было {total_change:.1f}%)")
+                if total_change > limit_multi:
+                    logger.warning(f"{symbol}: ❌ БЛОКИРОВКА: {multi_candle_count} свечей превысили суммарный лимит {limit_multi}% (было {total_change:.1f}%)")
                     return False
         
         pass
@@ -3684,15 +3660,12 @@ def test_exit_scam_filter(symbol):
         single_candle_percent = float(bots_data.get('auto_bot_config', {}).get('exit_scam_single_candle_percent', 15.0) or 15.0)
         multi_candle_count = bots_data.get('auto_bot_config', {}).get('exit_scam_multi_candle_count', 4)
         multi_candle_percent = float(bots_data.get('auto_bot_config', {}).get('exit_scam_multi_candle_percent', 50.0) or 50.0)
-        current_tf, tf_min, effective_single, effective_multi = get_exit_scam_effective_limits(
+        current_tf, limit_single, limit_multi = get_exit_scam_effective_limits(
             single_candle_percent, multi_candle_count, multi_candle_percent
         )
         logger.info(f"🔍 Тестируем ExitScam фильтр для {symbol}")
-        logger.info(f"⚙️ Текущий ТФ из конфига: {current_tf} ({tf_min} мин), свечи запрашиваются по этому ТФ (не 6h)")
-        logger.info(f"⚙️ - Включен: {exit_scam_enabled}")
-        logger.info(f"⚙️ - Анализ свечей: {exit_scam_candles}")
-        logger.info(f"⚙️ - Лимит одной свечи: {single_candle_percent}% за 1h → при ТФ {current_tf}: {effective_single:.2f}%")
-        logger.info(f"⚙️ - Лимит {multi_candle_count} свечей: {multi_candle_percent}% → при ТФ {current_tf}: {effective_multi:.2f}%")
+        logger.info(f"⚙️ Текущий ТФ: {current_tf}. Лимиты как в конфиге (без пересчёта): одна свеча {limit_single}%, суммарно {limit_multi}%")
+        logger.info(f"⚙️ - Включен: {exit_scam_enabled}, анализ свечей: {exit_scam_candles}")
         
         if not exit_scam_enabled:
             logger.info(f"{symbol}: ⚠️ Фильтр ОТКЛЮЧЕН в конфиге")
@@ -3738,7 +3711,7 @@ def test_exit_scam_filter(symbol):
         # Дополнительный анализ
         logger.info(f"{symbol}: 📊 Дополнительный анализ:")
         
-        # 1. Проверка отдельных свечей (эффективный порог по таймфрейму)
+        # 1. Проверка отдельных свечей (лимит как в конфиге)
         extreme_single_count = 0
         for i, candle in enumerate(recent_candles):
             open_price = float(candle.get('open', 0) or 0)
@@ -3746,9 +3719,9 @@ def test_exit_scam_filter(symbol):
             if open_price <= 0:
                 continue
             price_change = abs((close_price - open_price) / open_price) * 100
-            if price_change > effective_single:
+            if price_change > limit_single:
                 extreme_single_count += 1
-                logger.warning(f"{symbol}: ❌ Превышение лимита одной свечи #{i+1}: {price_change:.1f}% > {effective_single:.2f}%")
+                logger.warning(f"{symbol}: ❌ Превышение лимита одной свечи #{i+1}: {price_change:.1f}% > {limit_single}%")
         
         # 2. Проверка суммарного изменения за N свечей
         if len(recent_candles) >= multi_candle_count:
@@ -3757,9 +3730,9 @@ def test_exit_scam_filter(symbol):
             last_close = float(multi_candles[-1].get('close', 0) or 0)
             total_change = abs((last_close - first_open) / first_open) * 100 if first_open > 0 else 0
             
-            logger.info(f"{symbol}: 📈 {multi_candle_count}-свечечный анализ: {total_change:.1f}% (порог: {effective_multi:.2f}%)")
-            if total_change > effective_multi:
-                logger.warning(f"{symbol}: ❌ Превышение суммарного лимита: {total_change:.1f}% > {effective_multi:.2f}%")
+            logger.info(f"{symbol}: 📈 {multi_candle_count}-свечечный анализ: {total_change:.1f}% (порог: {limit_multi}%)")
+            if total_change > limit_multi:
+                logger.warning(f"{symbol}: ❌ Превышение суммарного лимита: {total_change:.1f}% > {limit_multi}%")
         
     except Exception as e:
         logger.error(f"{symbol}: Ошибка тестирования: {e}")

@@ -6609,15 +6609,10 @@ class BotsManager {
         }
         const exitScamEffectiveScaleEl = document.getElementById('exitScamEffectiveScale');
         if (exitScamEffectiveScaleEl) {
-            const tf = autoBotConfig.exit_scam_timeframe || '1m';
-            const effSingle = autoBotConfig.exit_scam_effective_single_pct;
-            const effMulti = autoBotConfig.exit_scam_effective_multi_pct;
+            const single = autoBotConfig.exit_scam_effective_single_pct ?? autoBotConfig.exit_scam_single_candle_percent ?? 15;
+            const multi = autoBotConfig.exit_scam_effective_multi_pct ?? autoBotConfig.exit_scam_multi_candle_percent ?? 50;
             const n = autoBotConfig.exit_scam_multi_candle_count || 4;
-            if (typeof effSingle === 'number' && typeof effMulti === 'number') {
-                exitScamEffectiveScaleEl.textContent = `При ТФ ${tf}: лимит одной свечи = ${effSingle.toFixed(2)}%, суммарно за ${n} св. = ${effMulti.toFixed(2)}%`;
-            } else {
-                exitScamEffectiveScaleEl.textContent = `Текущий ТФ: ${tf}. Эффективные пороги загружаются с сервера.`;
-            }
+            exitScamEffectiveScaleEl.textContent = `Одна свеча: ${Number(single)}% | суммарно за ${n} св.: ${Number(multi)}% (как в конфиге)`;
         }
         // ==========================================
         // НАСТРОЙКИ ЗРЕЛОСТИ МОНЕТ

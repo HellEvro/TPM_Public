@@ -728,7 +728,7 @@ const TRANSLATIONS = {
         // ExitScam фильтр
         'exit_scam_enabled_help': 'Блокирует вход в сделки после резких движений цены',
         'exit_scam_candles_help': 'Количество свечей для анализа в истории. 10 свечей = 60 часов на 6H',
-        'exit_scam_single_candle_help': 'Если одна свеча изменилась больше чем на этот % - блокировка входа',
+        'exit_scam_single_candle_help': 'Лимит в % как есть: 0.5 = 0.5%. Тело свечи: |close−open|/open×100%',
         'exit_scam_multi_count_help': 'Количество свечей для проверки суммарного изменения',
         'exit_scam_multi_percent_help': 'Если N свечей суммарно изменились больше чем на этот % - блокировка входа',
         
@@ -1702,7 +1702,7 @@ const TRANSLATIONS = {
         'exit_scam_candles_label': 'Candle analysis (6H):',
         'exit_scam_candles_help': 'Number of candles for analysis in history. 10 candles = 60 hours on 6H',
         'exit_scam_single_candle_label': 'Single candle limit:',
-        'exit_scam_single_candle_help': 'If one candle changed by more than this % - entry blocked',
+        'exit_scam_single_candle_help': 'Limit in % as-is: 0.5 = 0.5%. Candle body: |close−open|/open×100%',
         'exit_scam_multi_count_label': 'Candles for total analysis:',
         'exit_scam_multi_count_help': 'Number of candles to check for total change',
         'exit_scam_multi_percent_label': 'Total change limit:',
