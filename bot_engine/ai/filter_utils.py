@@ -106,6 +106,14 @@ def run_rsi_time_filter(
         return False, f'Ошибка временного фильтра: {exc}'
 
 
+def _timeframe_to_minutes(tf: str) -> float:
+    """Длительность одной свечи в минутах. Порог «50% на одну свечу» масштабируется по таймфрейму."""
+    _map = {'1m': 1, '3m': 3, '5m': 5, '15m': 15, '30m': 30,
+            '1h': 60, '2h': 120, '4h': 240, '6h': 360, '8h': 480, '12h': 720,
+            '1d': 1440, '3d': 4320, '1w': 10080, '1M': 43200}
+    return float(_map.get((tf or '1m').strip(), 1))
+
+
 def run_exit_scam_filter(
     candles: List[Dict[str, Any]],
     config: Dict[str, Any],
@@ -118,6 +126,10 @@ def run_exit_scam_filter(
     single_candle_percent = float(config.get('exit_scam_single_candle_percent', 15.0) or 15.0)
     multi_candle_count = int(config.get('exit_scam_multi_candle_count', 4) or 4)
     multi_candle_percent = float(config.get('exit_scam_multi_candle_percent', 50.0) or 50.0)
+    tf = config.get('system_timeframe') or config.get('timeframe') or '1m'
+    tf_min = _timeframe_to_minutes(tf)
+    effective_single = single_candle_percent * (tf_min / 60.0)
+    effective_multi = multi_candle_percent * (tf_min * multi_candle_count / 60.0)
 
     if len(candles) < exit_scam_candles:
         return False, f'Недостаточно свечей для ExitScam ({len(candles)}/{exit_scam_candles})'
@@ -130,8 +142,8 @@ def run_exit_scam_filter(
         if open_p <= 0:
             continue
         change_pct = abs((close_p - open_p) / open_p) * 100
-        if change_pct > single_candle_percent:
-            return False, f'ExitScam: свеча изменилась на {change_pct:.1f}% (> {single_candle_percent}%)'
+        if change_pct > effective_single:
+            return False, f'ExitScam: свеча изменилась на {change_pct:.1f}% (> {effective_single:.1f}%)'
 
     if len(normalized) >= multi_candle_count:
         subset = normalized[-multi_candle_count:]
@@ -139,8 +151,8 @@ def run_exit_scam_filter(
         last_close = subset[-1]['close']
         if first_open > 0:
             total_change = abs((last_close - first_open) / first_open) * 100
-            if total_change > multi_candle_percent:
-                return False, f'ExitScam: {multi_candle_count} свечей изменились на {total_change:.1f}% (> {multi_candle_percent}%)'
+            if total_change > effective_multi:
+                return False, f'ExitScam: {multi_candle_count} свечей изменились на {total_change:.1f}% (> {effective_multi:.1f}%)'
 
     return True, 'ExitScam пройден'
 

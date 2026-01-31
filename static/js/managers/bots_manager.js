@@ -6607,6 +6607,18 @@ class BotsManager {
             exitScamMultiCandlePercentEl.value = autoBotConfig.exit_scam_multi_candle_percent || 50.0;
             console.log('[BotsManager] 📊 ExitScam суммарный лимит:', exitScamMultiCandlePercentEl.value);
         }
+        const exitScamEffectiveScaleEl = document.getElementById('exitScamEffectiveScale');
+        if (exitScamEffectiveScaleEl) {
+            const tf = autoBotConfig.exit_scam_timeframe || '1m';
+            const effSingle = autoBotConfig.exit_scam_effective_single_pct;
+            const effMulti = autoBotConfig.exit_scam_effective_multi_pct;
+            const n = autoBotConfig.exit_scam_multi_candle_count || 4;
+            if (typeof effSingle === 'number' && typeof effMulti === 'number') {
+                exitScamEffectiveScaleEl.textContent = `При ТФ ${tf}: лимит одной свечи = ${effSingle.toFixed(2)}%, суммарно за ${n} св. = ${effMulti.toFixed(2)}%`;
+            } else {
+                exitScamEffectiveScaleEl.textContent = `Текущий ТФ: ${tf}. Эффективные пороги загружаются с сервера.`;
+            }
+        }
         // ==========================================
         // НАСТРОЙКИ ЗРЕЛОСТИ МОНЕТ
         // ==========================================

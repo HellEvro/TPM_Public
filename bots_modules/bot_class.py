@@ -497,8 +497,13 @@ class NewTradingBot:
                 rsi_time_filter_enabled = self.config.get('rsi_time_filter_enabled') if 'rsi_time_filter_enabled' in self.config else auto_config.get('rsi_time_filter_enabled', True)
                 rsi_time_filter_candles = self.config.get('rsi_time_filter_candles') or auto_config.get('rsi_time_filter_candles', 8)
                 rsi_time_filter_lower = self.config.get('rsi_time_filter_lower') or auto_config.get('rsi_time_filter_lower', 35)
-                ai_enabled = auto_config.get('ai_enabled', False)  # Включение AI
                 ai_override = auto_config.get('ai_override_original', True)
+                # AI включение: из auto_bot_config или AIConfig (UI «AI Модули» сохраняет в AIConfig)
+                try:
+                    from bot_engine.config_live import get_ai_config_attr
+                    ai_enabled = bool(auto_config.get('ai_enabled', False) or get_ai_config_attr('AI_ENABLED', False))
+                except Exception:
+                    ai_enabled = bool(auto_config.get('ai_enabled', False))
             
             # 🤖 ПРОВЕРКА AI ПРЕДСКАЗАНИЯ (если включено)
             self._set_decision_source('SCRIPT')
@@ -601,8 +606,12 @@ class NewTradingBot:
                 rsi_time_filter_enabled = self.config.get('rsi_time_filter_enabled') if 'rsi_time_filter_enabled' in self.config else auto_config.get('rsi_time_filter_enabled', True)
                 rsi_time_filter_candles = self.config.get('rsi_time_filter_candles') or auto_config.get('rsi_time_filter_candles', 8)
                 rsi_time_filter_upper = auto_config.get('rsi_time_filter_upper', 65)
-                ai_enabled = auto_config.get('ai_enabled', False)  # Включение AI
                 ai_override = auto_config.get('ai_override_original', True)
+                try:
+                    from bot_engine.config_live import get_ai_config_attr
+                    ai_enabled = bool(auto_config.get('ai_enabled', False) or get_ai_config_attr('AI_ENABLED', False))
+                except Exception:
+                    ai_enabled = bool(auto_config.get('ai_enabled', False))
             
             # 🤖 ПРОВЕРКА AI ПРЕДСКАЗАНИЯ (если включено)
             self._set_decision_source('SCRIPT')

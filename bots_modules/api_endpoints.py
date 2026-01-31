@@ -2960,7 +2960,21 @@ def auto_bot_config():
                 if 'scope' not in config:
                     config['scope'] = 'all'
                 
-                # ✅ Финальная проверка перед возвратом (логирование убрано для уменьшения спама)
+                # ✅ ExitScam: эффективные пороги для текущего ТФ из конфига (не 6h) — единая шкала %
+                try:
+                    from bots_modules.filters import get_exit_scam_effective_limits
+                    single_pct = config.get('exit_scam_single_candle_percent', 15.0)
+                    multi_count = config.get('exit_scam_multi_candle_count', 4)
+                    multi_pct = config.get('exit_scam_multi_candle_percent', 50.0)
+                    tf_name, tf_min, eff_single, eff_multi = get_exit_scam_effective_limits(single_pct, multi_count, multi_pct)
+                    config['exit_scam_timeframe'] = tf_name
+                    config['exit_scam_effective_single_pct'] = round(eff_single, 2)
+                    config['exit_scam_effective_multi_pct'] = round(eff_multi, 2)
+                except Exception:
+                    config['exit_scam_timeframe'] = '1m'
+                    n = config.get('exit_scam_multi_candle_count', 4)
+                    config['exit_scam_effective_single_pct'] = round(config.get('exit_scam_single_candle_percent', 15.0) * (1 / 60.0), 2)
+                    config['exit_scam_effective_multi_pct'] = round(config.get('exit_scam_multi_candle_percent', 50.0) * (n / 60.0), 2)
                 
                 return jsonify({
                     'success': True,

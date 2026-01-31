@@ -197,12 +197,25 @@ def check_rsi_time_filter(candles, rsi, signal, config, calculate_rsi_history_fu
         logger.error(f"[RSI_TIME_FILTER] Ошибка проверки временного фильтра: {e}")
         return {'allowed': False, 'reason': f'Ошибка анализа: {str(e)}', 'last_extreme_candles_ago': None, 'calm_candles': 0}
 
+def _exit_scam_timeframe_minutes():
+    """Длительность одной свечи в минутах для текущего таймфрейма. Порог «50% на одну свечу» на 1h = 50%, на 1m = 50*(1/60)%."""
+    try:
+        from .bot_config import get_current_timeframe
+        tf = get_current_timeframe() or '1m'
+    except Exception:
+        tf = '1m'
+    _map = {'1m': 1, '3m': 3, '5m': 5, '15m': 15, '30m': 30,
+            '1h': 60, '2h': 120, '4h': 240, '6h': 360, '8h': 480, '12h': 720,
+            '1d': 1440, '3d': 4320, '1w': 10080, '1M': 43200}
+    return float(_map.get(tf, 1))
+
+
 def check_exit_scam_filter(symbol, coin_data, config, exchange_obj, ensure_exchange_func):
     """
     EXIT SCAM ФИЛЬТР
 
     Защита от резких движений цены (памп/дамп/скам):
-    1. Одна свеча превысила максимальный % изменения
+    1. Одна свеча превысила максимальный % изменения (порог масштабирован по таймфрейму)
     2. N свечей суммарно превысили максимальный % изменения
 
     Args:
@@ -213,24 +226,23 @@ def check_exit_scam_filter(symbol, coin_data, config, exchange_obj, ensure_excha
         ensure_exchange_func: Функция проверки инициализации биржи
     """
     try:
-        # Получаем настройки из конфига
         exit_scam_enabled = config.get('exit_scam_enabled', True)
         exit_scam_candles = config.get('exit_scam_candles', 10)
-        single_candle_percent = config.get('exit_scam_single_candle_percent', 15.0)
+        single_candle_percent = float(config.get('exit_scam_single_candle_percent', 15.0) or 15.0)
         multi_candle_count = config.get('exit_scam_multi_candle_count', 4)
-        multi_candle_percent = config.get('exit_scam_multi_candle_percent', 50.0)
+        multi_candle_percent = float(config.get('exit_scam_multi_candle_percent', 50.0) or 50.0)
+        tf_min = _exit_scam_timeframe_minutes()
+        effective_single = single_candle_percent * (tf_min / 60.0)
+        effective_multi = multi_candle_percent * (tf_min * multi_candle_count / 60.0)
 
-        # Если фильтр отключен
         if not exit_scam_enabled:
-
             return True
 
-        # Проверяем биржу
         if not ensure_exchange_func():
             return False
 
         try:
-            from bot_engine.bot_config import get_current_timeframe, TIMEFRAME
+            from .bot_config import get_current_timeframe, TIMEFRAME
             timeframe = get_current_timeframe()
         except Exception:
             timeframe = TIMEFRAME
@@ -242,34 +254,29 @@ def check_exit_scam_filter(symbol, coin_data, config, exchange_obj, ensure_excha
         if len(candles) < exit_scam_candles:
             return False
 
-        # Проверяем последние N свечей
         recent_candles = candles[-exit_scam_candles:]
 
-        # 1. Проверка отдельных свечей
         for i, candle in enumerate(recent_candles):
-            open_price = candle['open']
-            close_price = candle['close']
-
+            open_price = float(candle.get('open', 0) or 0)
+            close_price = float(candle.get('close', 0) or 0)
+            if open_price <= 0:
+                continue
             price_change = abs((close_price - open_price) / open_price) * 100
-
-            if price_change > single_candle_percent:
-                logger.warning(f"{symbol}: ❌ БЛОКИРОВКА ExitScam: Одна свеча превысила лимит {single_candle_percent}% (было {price_change:.1f}%)")
-                logger.info(f"{symbol}: Свеча: O={open_price:.4f} C={close_price:.4f} H={candle['high']:.4f} L={candle['low']:.4f}")
+            if price_change > effective_single:
+                logger.warning(f"{symbol}: ❌ БЛОКИРОВКА ExitScam: Одна свеча превысила лимит {effective_single:.1f}% (было {price_change:.1f}%, настройка {single_candle_percent}%×{tf_min}/60)")
+                logger.info(f"{symbol}: Свеча: O={open_price:.4f} C={close_price:.4f} H={candle.get('high', 0):.4f} L={candle.get('low', 0):.4f}")
                 return False
 
-        # 2. Проверка суммарного изменения
         if len(recent_candles) >= multi_candle_count:
             multi_candles = recent_candles[-multi_candle_count:]
-
-            first_open = multi_candles[0]['open']
-            last_close = multi_candles[-1]['close']
-
-            total_change = abs((last_close - first_open) / first_open) * 100
-
-            if total_change > multi_candle_percent:
-                logger.warning(f"{symbol}: ❌ БЛОКИРОВКА: {multi_candle_count} свечей превысили суммарный лимит {multi_candle_percent}% (было {total_change:.1f}%)")
-                logger.info(f"{symbol}: Первая свеча: {first_open:.4f}, Последняя свеча: {last_close:.4f}")
-                return False
+            first_open = float(multi_candles[0].get('open', 0) or 0)
+            last_close = float(multi_candles[-1].get('close', 0) or 0)
+            if first_open > 0:
+                total_change = abs((last_close - first_open) / first_open) * 100
+                if total_change > effective_multi:
+                    logger.warning(f"{symbol}: ❌ БЛОКИРОВКА: {multi_candle_count} свечей превысили суммарный лимит {effective_multi:.1f}% (было {total_change:.1f}%)")
+                    logger.info(f"{symbol}: Первая свеча: {first_open:.4f}, Последняя свеча: {last_close:.4f}")
+                    return False
 
         return True
 
