@@ -2527,6 +2527,9 @@ def process_auto_bot_signals(exchange_obj=None):
         # ✅ На лету: перечитываем конфиг с диска (если файл меняли в UI — подхватим без перезапуска)
         try:
             from bots_modules.imports_and_globals import load_auto_bot_config
+            # Принудительно сбрасываем кэш mtime, чтобы конфиг перечитался из файла в этом цикле
+            if hasattr(load_auto_bot_config, '_last_mtime'):
+                load_auto_bot_config._last_mtime = 0
             load_auto_bot_config()
         except Exception as _reload_err:
             pass

@@ -210,9 +210,9 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'rsi_long_threshold': 25, # Вход в LONG при RSI <= 29
     'rsi_short_threshold': 75, # Вход в SHORT при RSI >= 71
     # ✅ Новые параметры RSI выхода с учетом тренда
-    'rsi_exit_long_with_trend': 65,      # Выход из LONG при RSI >= 65 (вход по тренду)
+    'rsi_exit_long_with_trend': 60, # Выход из LONG при RSI >= 65 (вход по тренду)
     'rsi_exit_long_against_trend': 60,   # Выход из LONG при RSI >= 60 (вход против тренда)
-    'rsi_exit_short_with_trend': 35,     # Выход из SHORT при RSI <= 35 (вход по тренду)
+    'rsi_exit_short_with_trend': 40, # Выход из SHORT при RSI <= 35 (вход по тренду)
     'rsi_exit_short_against_trend': 40,  # Выход из SHORT при RSI <= 40 (вход против тренда)
     'default_position_size': 5,          # Базовый размер позиции (в единицах согласно default_position_mode)
     'default_position_mode': 'percent', # Режим расчета: usdt | percent
@@ -256,7 +256,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'limit_orders_percent_steps': [0, 0.5, 1, 1.5, 2], # Шаги в % от цены входа (0 = рыночный, далее лимитные с увеличивающимся отступом)
     'limit_orders_margin_amounts': [5, 5, 5, 5, 5], # Объем маржи в USDT для каждого ордера (минимум 5 USDT на бирже Bybit, иначе ордер будет отклонен)
     # ExitScam фильтр (защита от резких движений цены)
-    'exit_scam_enabled': False, # Включить проверку на ExitScam
+    'exit_scam_enabled': True, # Включить проверку на ExitScam
     'exit_scam_candles': 4, # Количество свечей для проверки (10 = 60 часов на 6H)
     'exit_scam_single_candle_percent': 50, # Максимальный % изменения одной свечи (15% = блокировка)
     'exit_scam_multi_candle_count': 4,        # Количество свечей для суммарного анализа
@@ -265,9 +265,9 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'ai_optimal_entry_enabled': True, # ИИ определение оптимальной точки входа (выкл. по умолчанию)
     'ai_enabled': True, # Включить подтверждение сигналов AI
     'ai_min_confidence': 0.7,          # Минимальная уверенность AI (0.0-1.0)
-    'ai_override_original': True,      # AI может блокировать решения скрипта,
+    'ai_override_original': True, # AI может блокировать решения скрипта,
     'anomaly_block_threshold': 0.7,
-    'anomaly_detection_enabled': False,
+    'anomaly_detection_enabled': True,
     'anomaly_log_enabled': True,
     'auto_refresh_ui': True,
     'auto_retrain': True,
@@ -307,11 +307,11 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'rsi_extreme_zone_timeout': 3,
     'rsi_update_interval': 10,
     'rsi_volume_confirmation_multiplier': 1.2,
-    'self_learning_enabled': False,
+    'self_learning_enabled': True,
     'stop_loss_setup_interval': 10,
     'system_timeframe': '1m',
     'mini_chart_update_interval': 30,
-    'smc_enabled': False,
+    'smc_enabled': True,
 }
 
 # Настройки по умолчанию для отдельного бота
@@ -600,7 +600,7 @@ class AIConfig:
     AI_CONFIDENCE_THRESHOLD = 0.65  # Минимальная уверенность для применения рекомендации ИИ (0.0-1.0)
     
     # Anomaly Detection - обнаружение аномалий (pump/dump)
-    AI_ANOMALY_DETECTION_ENABLED = False
+    AI_ANOMALY_DETECTION_ENABLED = True
     AI_ANOMALY_MODEL_PATH = 'data/ai/models/anomaly_detector.pkl'
     AI_ANOMALY_SCALER_PATH = 'data/ai/models/anomaly_scaler.pkl'
     AI_ANOMALY_BLOCK_THRESHOLD = 0.7
@@ -640,7 +640,7 @@ class AIConfig:
     AI_LOG_PATTERNS = True
     
     # Smart Money Concepts (Order Blocks, FVG, BOS/CHoCH) — на минутках может давать шум
-    AI_SMC_ENABLED = False
+    AI_SMC_ENABLED = True
     
     # ==========================================
     # АВТОМАТИЧЕСКОЕ ОБУЧЕНИЕ
@@ -666,7 +666,7 @@ class AIConfig:
     AI_RETRAIN_HOUR = 3
 
     # Самообучение AI в реальном времени
-    AI_SELF_LEARNING_ENABLED = False
+    AI_SELF_LEARNING_ENABLED = True
     AI_SELF_LEARNING_BUFFER_SIZE = 50    # Размер буфера для онлайн обучения (макс. сделок)
     AI_ADAPTATION_THRESHOLD = 0.1        # Порог изменения для адаптации к рынку (0.0-1.0)
     AI_PERFORMANCE_WINDOW = 50           # Окно сделок для оценки производительности

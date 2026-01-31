@@ -7897,6 +7897,77 @@ class BotsManager {
         }
     }
 
+    /**
+     * Экспорт конфигурации в config.json (Auto Bot + System с сервера)
+     */
+    async exportConfig() {
+        try {
+            const [autoBotRes, systemRes] = await Promise.all([
+                fetch(`${this.BOTS_SERVICE_URL}/api/bots/auto-bot`),
+                fetch(`${this.BOTS_SERVICE_URL}/api/bots/system-config`)
+            ]);
+            if (!autoBotRes.ok || !systemRes.ok) throw new Error('Не удалось загрузить конфигурацию');
+            const autoBotData = await autoBotRes.json();
+            const systemData = await systemRes.json();
+            if (!autoBotData.success || !systemData.success) throw new Error(autoBotData.error || systemData.error || 'Ошибка API');
+            const payload = {
+                autoBot: autoBotData.config || {},
+                system: systemData.config || {},
+                exportedAt: new Date().toISOString(),
+                version: 1
+            };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'config.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            this.showNotification('✅ Конфигурация экспортирована в config.json', 'success');
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка экспорта:', error);
+            this.showNotification('❌ Ошибка экспорта: ' + error.message, 'error');
+        }
+    }
+
+    /**
+     * Импорт конфигурации из config.json (файл File)
+     */
+    async importConfig(file) {
+        try {
+            const text = await file.text();
+            const data = JSON.parse(text);
+            if (!data || typeof data !== 'object') throw new Error('Неверный формат JSON');
+            const hasAutoBot = data.autoBot && typeof data.autoBot === 'object';
+            const hasSystem = data.system && typeof data.system === 'object';
+            if (!hasAutoBot && !hasSystem) throw new Error('В файле должны быть autoBot и/или system');
+            if (!confirm('Применить загруженную конфигурацию? Текущие настройки будут перезаписаны.')) return;
+            if (hasAutoBot) {
+                const res = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/auto-bot`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data.autoBot)
+                });
+                const result = await res.json();
+                if (!result.success) throw new Error('Auto Bot: ' + (result.error || 'ошибка'));
+            }
+            if (hasSystem) {
+                const res = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/system-config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data.system)
+                });
+                const result = await res.json();
+                if (!result.success) throw new Error('System: ' + (result.error || 'ошибка'));
+            }
+            await this.loadConfigurationData();
+            this.showNotification('✅ Конфигурация импортирована из config.json', 'success');
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка импорта:', error);
+            this.showNotification('❌ Ошибка импорта: ' + error.message, 'error');
+        }
+    }
+
     testConfiguration() {
         console.log('[BotsManager] 🧪 Тестирование конфигурации...');
         const config = this.collectConfigurationData();
@@ -8418,6 +8489,26 @@ class BotsManager {
             testConfigBtn.setAttribute('data-initialized', 'true');
             testConfigBtn.addEventListener('click', () => this.testConfiguration());
             console.log('[BotsManager] ✅ Кнопка "Тестировать конфигурацию" инициализирована');
+        }
+
+        // Экспорт конфигурации в config.json
+        const exportConfigBtn = document.getElementById('exportConfigBtn');
+        if (exportConfigBtn && !exportConfigBtn.hasAttribute('data-initialized')) {
+            exportConfigBtn.setAttribute('data-initialized', 'true');
+            exportConfigBtn.addEventListener('click', () => this.exportConfig());
+        }
+
+        // Импорт конфигурации из config.json
+        const importConfigBtn = document.getElementById('importConfigBtn');
+        const importConfigFileInput = document.getElementById('importConfigFileInput');
+        if (importConfigBtn && importConfigFileInput && !importConfigBtn.hasAttribute('data-initialized')) {
+            importConfigBtn.setAttribute('data-initialized', 'true');
+            importConfigBtn.addEventListener('click', () => importConfigFileInput.click());
+            importConfigFileInput.addEventListener('change', (e) => {
+                const file = e.target.files?.[0];
+                if (file) this.importConfig(file);
+                e.target.value = '';
+            });
         }
         
         // ✅ ОБРАБОТЧИКИ ДЛЯ КНОПОК СОХРАНЕНИЯ ОТДЕЛЬНЫХ БЛОКОВ

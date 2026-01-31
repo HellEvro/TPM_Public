@@ -45,7 +45,10 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
         True если успешно, False если ошибка
     """
     try:
-        config_file = 'bot_engine/bot_config.py'
+        # Абсолютный путь к bot_config.py (не зависит от cwd процесса)
+        _current_dir = os.path.dirname(os.path.abspath(__file__))
+        _project_root = os.path.dirname(_current_dir)
+        config_file = os.path.join(_project_root, 'bot_engine', 'bot_config.py')
         
         if not os.path.exists(config_file):
             logger.error(f"[CONFIG_WRITER] ❌ Файл {config_file} не найден")

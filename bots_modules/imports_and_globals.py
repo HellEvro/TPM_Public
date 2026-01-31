@@ -622,7 +622,10 @@ def load_auto_bot_config():
         import os
         import re
         
-        config_file_path = os.path.join('bot_engine', 'bot_config.py')
+        # Абсолютный путь к bot_config.py (не зависит от cwd — на лету подхватываем сохранённый конфиг)
+        _bc_dir = os.path.dirname(os.path.abspath(__file__))
+        _project_root = os.path.dirname(_bc_dir)
+        config_file_path = os.path.join(_project_root, 'bot_engine', 'bot_config.py')
         reloaded = False
 
         if os.path.exists(config_file_path):
@@ -720,8 +723,8 @@ def load_auto_bot_config():
         
         # ✅ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: читаем значение напрямую из файла для сравнения
         try:
-            config_file_path_check = os.path.join('bot_engine', 'bot_config.py')
-            if os.path.exists(config_file_path_check):
+            config_file_path_check = config_file_path
+            if config_file_path_check and os.path.exists(config_file_path_check):
                 with open(config_file_path_check, 'r', encoding='utf-8') as f:
                     content = f.read()
                     # Ищем значение leverage в DEFAULT_AUTO_BOT_CONFIG

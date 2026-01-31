@@ -1064,13 +1064,6 @@
                         </div>
                         <div class="config-item">
                             <label class="config-label">
-                                <span class="label-icon">📊</span>
-                                <span class="label-text" data-translate="risk_cap_percent_label">Риск-кап (% от депозита):</span>
-                            </label>
-                            <input type="number" id="autoBotRiskCap" value="10" min="1" max="50" step="0.1" class="config-input" />
-                        </div>
-                        <div class="config-item">
-                            <label class="config-label">
                                 <span class="label-icon">🎯</span>
                                 <span class="label-text" data-translate="action_scope_input">Область действия:</span>
                             </label>
@@ -1089,44 +1082,6 @@
                         </div>
                     </div>
 
-                    <h4 class="config-subblock-title">🤖 AI подтверждение сигналов</h4>
-                    <div class="config-grid config-subblock">
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-icon">🤖</span>
-                                <span class="label-text">AI подтверждение сигналов:</span>
-                            </label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="autoBotAIEnabled" />
-                                <span class="toggle-slider"></span>
-                            </label>
-                            <small class="config-help">Включите, чтобы AI подтверждал входы (модель signal_predictor.pkl + опционально SMC)</small>
-                        </div>
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-icon">🎯</span>
-                                <span class="label-text">Мин. уверенность AI:</span>
-                            </label>
-                            <div class="config-input-with-unit">
-                                <input type="number" id="aiMinConfidence" class="config-input"
-                                       min="0.1" max="0.99" step="0.05" value="0.7" placeholder="0.7">
-                                <span class="input-unit">0‒1</span>
-                            </div>
-                            <small class="config-help">0.7 = 70% уверенности для подтверждения сигнала</small>
-                        </div>
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-icon">🛑</span>
-                                <span class="label-text">AI блокирует скрипт:</span>
-                            </label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="aiOverrideOriginal" checked />
-                                <span class="toggle-slider"></span>
-                            </label>
-                            <small class="config-help">Отключите, чтобы AI был рекомендательным</small>
-                        </div>
-                    </div>
-                    
                     <div class="config-section-actions">
                         <button class="btn btn-success config-section-save-btn" data-section="basic">
                             <span data-translate="save_basic_section_btn">💾 Сохранить основные настройки</span>
@@ -1357,6 +1312,14 @@
                         
                         <div class="config-item">
                             <label class="config-label">
+                                <span class="label-icon">📊</span>
+                                <span class="label-text" data-translate="risk_cap_percent_label">Риск-кап (% от депозита):</span>
+                            </label>
+                            <input type="number" id="autoBotRiskCap" value="10" min="1" max="50" step="0.1" class="config-input" />
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
                                 <span class="label-icon">⚡</span>
                                 <span class="label-text" data-translate="leverage_label">Кредитное плечо:</span>
                             </label>
@@ -1418,9 +1381,54 @@
                         </div>
                     </div>
                     
+                    <!-- RSI выходы из позиций (часть торговых параметров) -->
+                    <div class="config-subsection" style="margin-top: 1.5rem;">
+                        <h4 data-translate="rsi_exits_title">🎯 RSI выходы из позиций</h4>
+                        <div class="section-description" style="margin-bottom: 10px;">
+                            <span data-translate="rsi_exits_description">Уровни RSI для автоматического выхода из позиций согласно ТЗ</span>
+                        </div>
+                        <div class="config-grid">
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">🟢📈</span>
+                                    <span class="label-text" data-translate="rsi_exit_long_with_trend_label">RSI выход из LONG (по тренду):</span>
+                                </label>
+                                <input type="number" id="rsiExitLongWithTrendGlobal" value="65" min="50" max="99" class="config-input" />
+                                <small class="config-help" data-translate="rsi_exit_long_with_trend_help">Выход когда вход был ПО тренду (UP тренд) - можно ждать большего движения</small>
+                            </div>
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">🟢📉</span>
+                                    <span class="label-text" data-translate="rsi_exit_long_against_trend_label">RSI выход из LONG (против тренда):</span>
+                                </label>
+                                <input type="number" id="rsiExitLongAgainstTrendGlobal" value="60" min="50" max="99" class="config-input" />
+                                <small class="config-help" data-translate="rsi_exit_long_against_trend_help">Выход когда вход был ПРОТИВ тренда (DOWN тренд) - выходим раньше, безопаснее</small>
+                            </div>
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">🔴📉</span>
+                                    <span class="label-text" data-translate="rsi_exit_short_with_trend_label">RSI выход из SHORT (по тренду):</span>
+                                </label>
+                                <input type="number" id="rsiExitShortWithTrendGlobal" value="35" min="1" max="50" class="config-input" />
+                                <small class="config-help" data-translate="rsi_exit_short_with_trend_help">Выход когда вход был ПО тренду (DOWN тренд) - можно ждать большего движения</small>
+                            </div>
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">🔴📈</span>
+                                    <span class="label-text" data-translate="rsi_exit_short_against_trend_label">RSI выход из SHORT (против тренда):</span>
+                                </label>
+                                <input type="number" id="rsiExitShortAgainstTrendGlobal" value="40" min="1" max="50" class="config-input" />
+                                <small class="config-help" data-translate="rsi_exit_short_against_trend_help">Выход когда вход был ПРОТИВ тренда (UP тренд) - выходим раньше, безопаснее</small>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div class="config-section-actions">
                         <button class="btn btn-success config-section-save-btn" data-section="trading">
                             <span data-translate="save_trading_section_btn">💾 Сохранить торговые параметры</span>
+                        </button>
+                        <button class="btn btn-success config-section-save-btn" data-section="rsi-exits">
+                            <span data-translate="save_rsi_exits_section_btn">💾 Сохранить RSI выходы</span>
                         </button>
                     </div>
                 </div>
@@ -1474,65 +1482,195 @@
                     </div>
                 </div>
 
-                <!-- ═══ БЛОК 4: RSI — выходы и фильтры ═══ -->
-                <h2 class="config-block-group-title">🎯 RSI: выходы и фильтры</h2>
+                <!-- 🛡️ Защитные механизмы (часть Торговля: объём и вход) -->
                 <div class="config-section">
                     <div class="section-header">
-                        <h3 data-translate="rsi_exits_title">🎯 RSI выходы из позиций</h3>
+                        <h3 data-translate="protective_mechanisms_title">🛡️ Защитные механизмы</h3>
                         <div class="section-description">
-                            <span data-translate="rsi_exits_description">Уровни RSI для автоматического выхода из позиций согласно ТЗ</span>
+                            <span data-translate="protective_mechanisms_description">Настройки стоп-лоссов, trailing stop и защиты капитала</span>
                         </div>
                     </div>
                     
                     <div class="config-grid">
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">💀</span>
+                                <span class="label-text" data-translate="stop_loss_percent_label">Стоп-лосс (% убытка):</span>
+                            </label>
+                            <input type="number" id="maxLossPercent" value="15.0" min="1" max="50" step="0.5" class="config-input" />
+                            <small class="config-help" data-translate="max_loss_description">Максимальный убыток от стоимости входа позиции (например: вход 5 USDT, стоп 15% = убыток 0.75 USDT)</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🎯</span>
+                                <span class="label-text" data-translate="take_profit_percent_label">Защитный Take Profit (% прибыли):</span>
+                            </label>
+                            <input type="number" id="takeProfitPercent" value="20.0" min="1" max="100" step="0.5" class="config-input" />
+                            <small class="config-help" data-translate="take_profit_description">Защитный TP рассчитывается как стоп-лосс: % от стоимости входа. Основной выход по RSI 6h (65 для LONG, 35 для SHORT)</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🚀</span>
+                                <span class="label-text" data-translate="trailing_stop_activation_percent">Активация Trailing Stop (% прибыли):</span>
+                            </label>
+                            <input type="number" id="trailingStopActivation" value="20.0" min="1" max="200" step="1" class="config-input" />
+                            <small class="config-help" data-translate="trailing_stop_activation_description">Процент прибыли от входа, после которого трейлинг начинает работать</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📏</span>
+                                <span class="label-text" data-translate="trailing_stop_distance_percent">Расстояние Trailing Stop (%):</span>
+                            </label>
+                            <input type="number" id="trailingStopDistance" value="5.0" min="0.5" max="50" step="0.5" class="config-input" />
+                            <small class="config-help">На сколько процентов ниже/выше максимальной цены будет выставлен стоп</small>
+                        </div>
 
-                        
                         <div class="config-item">
                             <label class="config-label">
-                                <span class="label-icon">🟢📈</span>
-                                <span class="label-text" data-translate="rsi_exit_long_with_trend_label">RSI выход из LONG (по тренду):</span>
+                                <span class="label-icon">🎯</span>
+                                <span class="label-text">Резервный Trailing Take (%):</span>
                             </label>
-                            <input type="number" id="rsiExitLongWithTrendGlobal" value="65" min="50" max="99" class="config-input" />
-                            <small class="config-help" data-translate="rsi_exit_long_with_trend_help">Выход когда вход был ПО тренду (UP тренд) - можно ждать большего движения</small>
+                            <input type="number" id="trailingTakeDistance" value="0.5" min="0" max="20" step="0.1" class="config-input" />
+                            <small class="config-help">Лимит-ордер на фиксацию прибыли, который двигается вслед за ценой (на случай падения сервиса)</small>
                         </div>
-                        
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-icon">🟢📉</span>
-                                <span class="label-text" data-translate="rsi_exit_long_against_trend_label">RSI выход из LONG (против тренда):</span>
-                            </label>
-                            <input type="number" id="rsiExitLongAgainstTrendGlobal" value="60" min="50" max="99" class="config-input" />
-                            <small class="config-help" data-translate="rsi_exit_long_against_trend_help">Выход когда вход был ПРОТИВ тренда (DOWN тренд) - выходим раньше, безопаснее</small>
-                        </div>
-                        
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-icon">🔴📉</span>
-                                <span class="label-text" data-translate="rsi_exit_short_with_trend_label">RSI выход из SHORT (по тренду):</span>
-                            </label>
-                            <input type="number" id="rsiExitShortWithTrendGlobal" value="35" min="1" max="50" class="config-input" />
-                            <small class="config-help" data-translate="rsi_exit_short_with_trend_help">Выход когда вход был ПО тренду (DOWN тренд) - можно ждать большего движения</small>
-                        </div>
-                        
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-icon">🔴📈</span>
-                                <span class="label-text" data-translate="rsi_exit_short_against_trend_label">RSI выход из SHORT (против тренда):</span>
-                            </label>
-                            <input type="number" id="rsiExitShortAgainstTrendGlobal" value="40" min="1" max="50" class="config-input" />
-                            <small class="config-help" data-translate="rsi_exit_short_against_trend_help">Выход когда вход был ПРОТИВ тренда (UP тренд) - выходим раньше, безопаснее</small>
-                        </div>
-                        
 
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">⏱️</span>
+                                <span class="label-text">Интервал обновления трейлинга (сек):</span>
+                            </label>
+                            <input type="number" id="trailingUpdateInterval" value="3" min="0" max="60" step="0.5" class="config-input" />
+                            <small class="config-help">Минимальное время между запросами на обновление стопов/тейков (0 = без ограничений)</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">⏰</span>
+                                <span class="label-text" data-translate="max_position_minutes_label">Макс. время позиции (мин):</span>
+                            </label>
+                            <input type="number" id="maxPositionHours" min="0" max="10080" step="1" class="config-input" value="0" placeholder="0" />
+                            <small class="config-help" data-translate="max_position_time_help">0 = отключено (бесконечно), принудительное закрытие через указанное время</small>
+                        </div>
+                        
+                        <div class="config-item break-even-config">
+                            <label class="config-label">
+                                <span class="label-text" data-translate="break_even_protection_toggle">Защита безубыточности:</span>
+                            </label>
+                            <div class="config-row">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="breakEvenProtection" checked />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <div class="break-even-trigger-group">
+                                    <label for="breakEvenTrigger" class="break-even-trigger-label" data-translate="break_even_trigger_percent">Триггер безубыточности (%):</label>
+                                    <input type="number" id="breakEvenTrigger" value="100.0" min="25" max="300" step="25" class="config-input" />
+                                </div>
+                            </div>
+                            <small class="config-help" data-translate="break_even_protection_help">Перенос стопа на уровень входа при прибыли</small>
+                            <small class="config-help" data-translate="break_even_trigger_description">При x1 прибыли (100%) активируется защита</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-text" data-translate="avoid_down_trend_label">Избегать нисходящий тренд:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="avoidDownTrend" checked />
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <small class="config-help" data-translate="avoid_down_trend_help">Не входить в LONG при DOWN тренде монеты</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-text" data-translate="avoid_up_trend_label">Избегать восходящий тренд:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="avoidUpTrend" checked />
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <small class="config-help" data-translate="avoid_up_trend_help">Не входить в SHORT при UP тренде монеты</small>
+                        </div>
+                        
+                        <div class="config-item loss-reentry-protection-item">
+                            <div class="config-row config-row-header">
+                                <label class="config-label" style="margin-bottom: 0;">
+                                    <span class="label-text" data-translate="loss_reentry_protection_toggle">🛡️ Защита от повторных входов после убытка</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="lossReentryProtection" checked />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="loss-reentry-params-group">
+                                <div class="loss-reentry-param">
+                                    <label for="lossReentryCount" class="loss-reentry-param-label" data-translate="loss_reentry_count_label">Количество убыточных позиций (N):</label>
+                                    <input type="number" id="lossReentryCount" value="1" min="1" max="10" step="1" class="config-input loss-reentry-input" />
+                                </div>
+                                <div class="loss-reentry-param">
+                                    <label for="lossReentryCandles" class="loss-reentry-param-label" data-translate="loss_reentry_candles_label">ВХОД ЧЕРЕЗ X СВЕЧЕЙ:</label>
+                                    <input type="number" id="lossReentryCandles" value="3" min="1" max="50" step="1" class="config-input loss-reentry-input" />
+                                </div>
+                            </div>
+                            <small class="config-help" data-translate="loss_reentry_protection_help">Блокирует повторный вход если последние N позиций закрылись в минус, разрешает вход только через X свечей</small>
+                        </div>
+                        
+                        <div class="config-divider"></div>
+                        
+                        <h4 class="config-subsection-title">⚙️ Параметры анализа тренда</h4>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-text" data-translate="trend_detection_enabled_label">Включить анализ трендов:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="trendDetectionEnabled" checked />
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <small class="config-help" data-translate="trend_detection_enabled_help">Включить определение UP/DOWN/NEUTRAL трендов для монет. Выключить = входы без учета тренда</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📊</span>
+                                <span class="label-text" data-translate="trend_analysis_period_label">Период анализа (свечей 6h):</span>
+                            </label>
+                            <input type="number" id="trendAnalysisPeriod" value="30" min="20" max="50" step="5" class="config-input" />
+                            <small class="config-help" data-translate="trend_analysis_period_help">Количество свечей для анализа тренда (30 свечей = 7.5 дней)</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📈</span>
+                                <span class="label-text" data-translate="trend_price_change_threshold_label">Порог изменения цены (%):</span>
+                            </label>
+                            <input type="number" id="trendPriceChangeThreshold" value="7" min="3" max="15" step="1" class="config-input" />
+                            <small class="config-help" data-translate="trend_price_change_threshold_help">Процент изменения цены для определения тренда (7% = UP/DOWN, меньше = более чувствительный)</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">🕯️</span>
+                                <span class="label-text" data-translate="trend_candles_threshold_label">Порог свечей (%):</span>
+                            </label>
+                            <input type="number" id="trendCandlesThreshold" value="70" min="50" max="80" step="5" class="config-input" />
+                            <small class="config-help" data-translate="trend_candles_threshold_help">Процент растущих/падающих свечей для тренда (70% = 21 из 30 свечей)</small>
+                        </div>
+                        
                     </div>
                     
                     <div class="config-section-actions">
-                        <button class="btn btn-success config-section-save-btn" data-section="rsi-exits">
-                            <span data-translate="save_rsi_exits_section_btn">💾 Сохранить RSI выходы</span>
+                        <button class="btn btn-success config-section-save-btn" data-section="protective">
+                            <span data-translate="save_protective_section_btn">💾 Сохранить защитные механизмы</span>
                         </button>
                     </div>
                 </div>
 
+                <!-- ═══ БЛОК 4: RSI — фильтры (выходы перенесены в Торговые параметры) ═══ -->
+                <h2 class="config-block-group-title">🎯 RSI: фильтры</h2>
                 <!-- RSI временной фильтр -->
                 <div class="config-section">
                     <div class="section-header">
@@ -1828,193 +1966,6 @@
                     </div>
                 </div>
 
-                <!-- 🛡️ Защитные механизмы -->
-                <div class="config-section">
-                    <div class="section-header">
-                        <h3 data-translate="protective_mechanisms_title">🛡️ Защитные механизмы</h3>
-                        <div class="section-description">
-                            <span data-translate="protective_mechanisms_description">Настройки стоп-лоссов, trailing stop и защиты капитала</span>
-                        </div>
-                    </div>
-                    
-                    <div class="config-grid">
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-icon">💀</span>
-                                <span class="label-text" data-translate="stop_loss_percent_label">Стоп-лосс (% убытка):</span>
-                            </label>
-                            <input type="number" id="maxLossPercent" value="15.0" min="1" max="50" step="0.5" class="config-input" />
-                            <small class="config-help" data-translate="max_loss_description">Максимальный убыток от стоимости входа позиции (например: вход 5 USDT, стоп 15% = убыток 0.75 USDT)</small>
-                        </div>
-                        
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-icon">🎯</span>
-                                <span class="label-text" data-translate="take_profit_percent_label">Защитный Take Profit (% прибыли):</span>
-                            </label>
-                            <input type="number" id="takeProfitPercent" value="20.0" min="1" max="100" step="0.5" class="config-input" />
-                            <small class="config-help" data-translate="take_profit_description">Защитный TP рассчитывается как стоп-лосс: % от стоимости входа. Основной выход по RSI 6h (65 для LONG, 35 для SHORT)</small>
-                        </div>
-                        
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-icon">🚀</span>
-                                <span class="label-text" data-translate="trailing_stop_activation_percent">Активация Trailing Stop (% прибыли):</span>
-                            </label>
-                            <input type="number" id="trailingStopActivation" value="20.0" min="1" max="200" step="1" class="config-input" />
-                            <small class="config-help" data-translate="trailing_stop_activation_description">Процент прибыли от входа, после которого трейлинг начинает работать</small>
-                        </div>
-                        
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-icon">📏</span>
-                                <span class="label-text" data-translate="trailing_stop_distance_percent">Расстояние Trailing Stop (%):</span>
-                            </label>
-                            <input type="number" id="trailingStopDistance" value="5.0" min="0.5" max="50" step="0.5" class="config-input" />
-                            <small class="config-help">На сколько процентов ниже/выше максимальной цены будет выставлен стоп</small>
-                        </div>
-
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-icon">🎯</span>
-                                <span class="label-text">Резервный Trailing Take (%):</span>
-                            </label>
-                            <input type="number" id="trailingTakeDistance" value="0.5" min="0" max="20" step="0.1" class="config-input" />
-                            <small class="config-help">Лимит-ордер на фиксацию прибыли, который двигается вслед за ценой (на случай падения сервиса)</small>
-                        </div>
-
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-icon">⏱️</span>
-                                <span class="label-text">Интервал обновления трейлинга (сек):</span>
-                            </label>
-                            <input type="number" id="trailingUpdateInterval" value="3" min="0" max="60" step="0.5" class="config-input" />
-                            <small class="config-help">Минимальное время между запросами на обновление стопов/тейков (0 = без ограничений)</small>
-                        </div>
-                        
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-icon">⏰</span>
-                                <span class="label-text" data-translate="max_position_minutes_label">Макс. время позиции (мин):</span>
-                            </label>
-                            <input type="number" id="maxPositionHours" min="0" max="10080" step="1" class="config-input" value="0" placeholder="0" />
-                            <small class="config-help" data-translate="max_position_time_help">0 = отключено (бесконечно), принудительное закрытие через указанное время</small>
-                        </div>
-                        
-                        <div class="config-item break-even-config">
-                            <label class="config-label">
-                                <span class="label-text" data-translate="break_even_protection_toggle">Защита безубыточности:</span>
-                            </label>
-                            <div class="config-row">
-                                <label class="toggle-switch">
-                                    <input type="checkbox" id="breakEvenProtection" checked />
-                                    <span class="toggle-slider"></span>
-                                </label>
-                                <div class="break-even-trigger-group">
-                                    <label for="breakEvenTrigger" class="break-even-trigger-label" data-translate="break_even_trigger_percent">Триггер безубыточности (%):</label>
-                                    <input type="number" id="breakEvenTrigger" value="100.0" min="25" max="300" step="25" class="config-input" />
-                                </div>
-                            </div>
-                            <small class="config-help" data-translate="break_even_protection_help">Перенос стопа на уровень входа при прибыли</small>
-                            <small class="config-help" data-translate="break_even_trigger_description">При x1 прибыли (100%) активируется защита</small>
-                        </div>
-                        
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-text" data-translate="avoid_down_trend_label">Избегать нисходящий тренд:</span>
-                            </label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="avoidDownTrend" checked />
-                                <span class="toggle-slider"></span>
-                            </label>
-                            <small class="config-help" data-translate="avoid_down_trend_help">Не входить в LONG при DOWN тренде монеты</small>
-                        </div>
-                        
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-text" data-translate="avoid_up_trend_label">Избегать восходящий тренд:</span>
-                            </label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="avoidUpTrend" checked />
-                                <span class="toggle-slider"></span>
-                            </label>
-                            <small class="config-help" data-translate="avoid_up_trend_help">Не входить в SHORT при UP тренде монеты</small>
-                        </div>
-                        
-                        <div class="config-item loss-reentry-protection-item">
-                            <div class="config-row config-row-header">
-                                <label class="config-label" style="margin-bottom: 0;">
-                                    <span class="label-text" data-translate="loss_reentry_protection_toggle">🛡️ Защита от повторных входов после убытка</span>
-                                </label>
-                                <label class="toggle-switch">
-                                    <input type="checkbox" id="lossReentryProtection" checked />
-                                    <span class="toggle-slider"></span>
-                                </label>
-                            </div>
-                            <div class="loss-reentry-params-group">
-                                <div class="loss-reentry-param">
-                                    <label for="lossReentryCount" class="loss-reentry-param-label" data-translate="loss_reentry_count_label">Количество убыточных позиций (N):</label>
-                                    <input type="number" id="lossReentryCount" value="1" min="1" max="10" step="1" class="config-input loss-reentry-input" />
-                                </div>
-                                <div class="loss-reentry-param">
-                                    <label for="lossReentryCandles" class="loss-reentry-param-label" data-translate="loss_reentry_candles_label">ВХОД ЧЕРЕЗ X СВЕЧЕЙ:</label>
-                                    <input type="number" id="lossReentryCandles" value="3" min="1" max="50" step="1" class="config-input loss-reentry-input" />
-                                </div>
-                            </div>
-                            <small class="config-help" data-translate="loss_reentry_protection_help">Блокирует повторный вход если последние N позиций закрылись в минус, разрешает вход только через X свечей</small>
-                        </div>
-                        
-                        <div class="config-divider"></div>
-                        
-                        <h4 class="config-subsection-title">⚙️ Параметры анализа тренда</h4>
-                        
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-text" data-translate="trend_detection_enabled_label">Включить анализ трендов:</span>
-                            </label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="trendDetectionEnabled" checked />
-                                <span class="toggle-slider"></span>
-                            </label>
-                            <small class="config-help" data-translate="trend_detection_enabled_help">Включить определение UP/DOWN/NEUTRAL трендов для монет. Выключить = входы без учета тренда</small>
-                        </div>
-                        
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-icon">📊</span>
-                                <span class="label-text" data-translate="trend_analysis_period_label">Период анализа (свечей 6h):</span>
-                            </label>
-                            <input type="number" id="trendAnalysisPeriod" value="30" min="20" max="50" step="5" class="config-input" />
-                            <small class="config-help" data-translate="trend_analysis_period_help">Количество свечей для анализа тренда (30 свечей = 7.5 дней)</small>
-                        </div>
-                        
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-icon">📈</span>
-                                <span class="label-text" data-translate="trend_price_change_threshold_label">Порог изменения цены (%):</span>
-                            </label>
-                            <input type="number" id="trendPriceChangeThreshold" value="7" min="3" max="15" step="1" class="config-input" />
-                            <small class="config-help" data-translate="trend_price_change_threshold_help">Процент изменения цены для определения тренда (7% = UP/DOWN, меньше = более чувствительный)</small>
-                        </div>
-                        
-                        <div class="config-item">
-                            <label class="config-label">
-                                <span class="label-icon">🕯️</span>
-                                <span class="label-text" data-translate="trend_candles_threshold_label">Порог свечей (%):</span>
-                            </label>
-                            <input type="number" id="trendCandlesThreshold" value="70" min="50" max="80" step="5" class="config-input" />
-                            <small class="config-help" data-translate="trend_candles_threshold_help">Процент растущих/падающих свечей для тренда (70% = 21 из 30 свечей)</small>
-                        </div>
-                        
-                    </div>
-                    
-                    <div class="config-section-actions">
-                        <button class="btn btn-success config-section-save-btn" data-section="protective">
-                            <span data-translate="save_protective_section_btn">💾 Сохранить защитные механизмы</span>
-                        </button>
-                    </div>
-                </div>
-
                 <!-- 🧪 Настройки зрелости монет -->
                 <div class="config-section">
                     <div class="section-header">
@@ -2112,6 +2063,45 @@
                                 <span class="toggle-slider"></span>
                             </label>
                             <small class="config-help" data-translate="ai_master_help">Мастер-переключатель для всех AI функций</small>
+                        </div>
+                        
+                        <!-- AI подтверждение сигналов -->
+                        <div class="config-subsection">
+                            <h4>🤖 AI подтверждение сигналов</h4>
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">🤖</span>
+                                    <span class="label-text">AI подтверждение сигналов:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="autoBotAIEnabled" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help">Включите, чтобы AI подтверждал входы (модель signal_predictor.pkl + опционально SMC)</small>
+                            </div>
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">🎯</span>
+                                    <span class="label-text">Мин. уверенность AI:</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="aiMinConfidence" class="config-input"
+                                           min="0.1" max="0.99" step="0.05" value="0.7" placeholder="0.7">
+                                    <span class="input-unit">0‒1</span>
+                                </div>
+                                <small class="config-help">0.7 = 70% уверенности для подтверждения сигнала</small>
+                            </div>
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">🛑</span>
+                                    <span class="label-text">AI блокирует скрипт:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="aiOverrideOriginal" checked />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help">Отключите, чтобы AI был рекомендательным</small>
+                            </div>
                         </div>
                         
                         <!-- Anomaly Detection -->
@@ -2541,7 +2531,7 @@
                 </div>
 
             </div>
-            <!-- Кнопки сохранения -->
+            <!-- Кнопки сохранения и экспорт/импорт -->
             <div class="config-actions">
                 <button class="btn btn-primary config-save-btn" id="saveConfigBtn">
                     <span data-translate="save_config_btn">💾 Сохранить конфигурацию</span>
@@ -2549,6 +2539,13 @@
                 <button class="btn btn-secondary config-reset-btn" id="resetConfigBtn">
                     <span data-translate="reset_config_btn">🔄 Сбросить к умолчаниям</span>
                 </button>
+                <button class="btn btn-outline-success config-export-btn" id="exportConfigBtn" title="Скачать config.json">
+                    <span data-translate="export_config_btn">📤 Экспорт в config.json</span>
+                </button>
+                <button class="btn btn-outline-primary config-import-btn" id="importConfigBtn" title="Загрузить config.json">
+                    <span data-translate="import_config_btn">📥 Импорт из config.json</span>
+                </button>
+                <input type="file" id="importConfigFileInput" accept=".json,application/json" style="display: none;">
                 <button class="btn btn-info config-test-btn" id="testConfigBtn">
                     <span data-translate="test_config_btn">🧪 Тестировать настройки</span>
                 </button>
