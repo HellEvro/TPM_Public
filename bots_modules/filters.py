@@ -2534,27 +2534,32 @@ def process_auto_bot_signals(exchange_obj=None):
         rsi_short_threshold = bots_data['auto_bot_config'].get('rsi_short_threshold', 71)
         
         # Освобождаем слоты: боты без позиции, у которых монета уже вне зоны RSI — переводим в IDLE
-        # (чтобы справа были боты для монет с текущим сигналом слева, а не «зависшие» вне зоны)
+        # ⚡ Блокировку держим только для чтения списка и записи IDLE — расчёты RSI вне блокировки
+        from bot_engine.bot_config import get_rsi_from_coin_data
         with bots_data_lock:
-            from bot_engine.bot_config import get_rsi_from_coin_data
-            for symbol, bot_data in list(bots_data['bots'].items()):
-                status = bot_data.get('status')
-                if status in [BOT_STATUS['IDLE'], BOT_STATUS['PAUSED']]:
-                    continue
-                if status in [BOT_STATUS.get('IN_POSITION_LONG'), BOT_STATUS.get('IN_POSITION_SHORT')]:
-                    continue
-                if bot_data.get('entry_price') or bot_data.get('position_side'):
-                    continue
-                coin_data = coins_rsi_data.get('coins', {}).get(symbol)
-                if not coin_data:
-                    continue
-                rsi = get_rsi_from_coin_data(coin_data)
-                if rsi is None:
-                    continue
-                # Монета вне зоны входа: RSI между порогами (не LONG, не SHORT)
-                if rsi > rsi_long_threshold and rsi < rsi_short_threshold:
-                    logger.info(f" 🧹 {symbol}: бот без позиции, RSI={rsi:.1f} вне зоны ({rsi_long_threshold}/{rsi_short_threshold}) — переводим в IDLE")
-                    bot_data['status'] = BOT_STATUS['IDLE']
+            symbols_to_check = [
+                symbol for symbol, bot_data in bots_data['bots'].items()
+                if bot_data.get('status') not in [BOT_STATUS['IDLE'], BOT_STATUS['PAUSED'],
+                    BOT_STATUS.get('IN_POSITION_LONG'), BOT_STATUS.get('IN_POSITION_SHORT')]
+                and not bot_data.get('entry_price') and not bot_data.get('position_side')
+            ]
+        ids_to_idle = []
+        coins_map = coins_rsi_data.get('coins') or {}
+        for symbol in symbols_to_check:
+            coin_data = coins_map.get(symbol)
+            if not coin_data:
+                continue
+            rsi = get_rsi_from_coin_data(coin_data)
+            if rsi is None:
+                continue
+            if rsi_long_threshold < rsi < rsi_short_threshold:
+                logger.info(f" 🧹 {symbol}: бот без позиции, RSI={rsi:.1f} вне зоны ({rsi_long_threshold}/{rsi_short_threshold}) — переводим в IDLE")
+                ids_to_idle.append(symbol)
+        if ids_to_idle:
+            with bots_data_lock:
+                for symbol in ids_to_idle:
+                    if symbol in bots_data['bots']:
+                        bots_data['bots'][symbol]['status'] = BOT_STATUS['IDLE']
         
         current_active = sum(1 for bot in bots_data['bots'].values() 
                            if bot['status'] not in [BOT_STATUS['IDLE'], BOT_STATUS['PAUSED']])
@@ -2799,22 +2804,38 @@ def process_trading_signals_for_all_bots(exchange_obj=None):
                 # ✅ Используем таймфрейм бота для получения RSI и тренда
                 current_rsi = get_rsi_from_coin_data(rsi_data, timeframe=timeframe_to_use)
                 current_trend = get_trend_from_coin_data(rsi_data, timeframe=timeframe_to_use)
+                # Fallback: если RSI по ТФ бота нет (например, нет rsi1m в кэше), пробуем текущий системный ТФ
+                if current_rsi is None and timeframe_to_use:
+                    from bot_engine.bot_config import get_current_timeframe
+                    fallback_tf = get_current_timeframe()
+                    if fallback_tf != timeframe_to_use:
+                        current_rsi = get_rsi_from_coin_data(rsi_data, timeframe=fallback_tf)
+                        if current_rsi is not None:
+                            logger.warning(f"⚠️ {symbol}: RSI по ТФ {timeframe_to_use} нет, используем RSI по {fallback_tf} = {current_rsi} для проверки выхода")
+                if current_rsi is None:
+                    logger.warning(f"⚠️ {symbol}: RSI для проверки выхода не найден (ТФ={timeframe_to_use}) — пропускаем закрытие по RSI")
                 logger.info(f"✅ {symbol}: RSI={current_rsi} (ТФ={timeframe_to_use}), Trend={current_trend}, Проверяем условия закрытия...")
 
                 rsi_key = get_rsi_key(timeframe_to_use)
                 trend_key = get_trend_key(timeframe_to_use)
-                # ✅ КРИТИЧНО: Используем только trend по ТФ бота, БЕЗ fallback на trend6h
-                # Иначе бот на 1m может получить trend6h и работать "как на 6ч"
                 external_trend = rsi_data.get(trend_key) or current_trend
-                # ✅ Сигнал выхода по RSI — по выбранному ТФ бота (не системному)
                 position_side = bot_data.get('position_side') or (bot_data.get('position') or {}).get('side')
                 entry_trend = bot_data.get('entry_trend')
+                # ✅ Пороги выхода из конфига (тейки 65 RSI и т.д.), не хардкод 60/55
+                auto_config = bots_data.get('auto_bot_config', {})
+                individual_settings = get_individual_coin_settings(symbol)
+                exit_long_with = (individual_settings.get('rsi_exit_long_with_trend') if individual_settings else None) or auto_config.get('rsi_exit_long_with_trend') or RSI_EXIT_LONG_WITH_TREND
+                exit_long_against = (individual_settings.get('rsi_exit_long_against_trend') if individual_settings else None) or auto_config.get('rsi_exit_long_against_trend') or RSI_EXIT_LONG_AGAINST_TREND
+                exit_short_with = (individual_settings.get('rsi_exit_short_with_trend') if individual_settings else None) or auto_config.get('rsi_exit_short_with_trend') or RSI_EXIT_SHORT_WITH_TREND
+                exit_short_against = (individual_settings.get('rsi_exit_short_against_trend') if individual_settings else None) or auto_config.get('rsi_exit_short_against_trend') or RSI_EXIT_SHORT_AGAINST_TREND
                 if current_rsi is not None and position_side:
                     if position_side == 'LONG':
-                        thr = RSI_EXIT_LONG_WITH_TREND if entry_trend == 'UP' else RSI_EXIT_LONG_AGAINST_TREND
+                        thr = exit_long_with if entry_trend == 'UP' else exit_long_against
                         external_signal = 'EXIT_LONG' if current_rsi >= thr else (rsi_data.get('signal') or 'WAIT')
+                        if current_rsi >= thr:
+                            logger.info(f"🎯 {symbol}: EXIT_LONG по RSI {current_rsi:.1f} >= {thr} (тейк)")
                     elif position_side == 'SHORT':
-                        thr = RSI_EXIT_SHORT_WITH_TREND if entry_trend == 'DOWN' else RSI_EXIT_SHORT_AGAINST_TREND
+                        thr = exit_short_with if entry_trend == 'DOWN' else exit_short_against
                         external_signal = 'EXIT_SHORT' if current_rsi <= thr else (rsi_data.get('signal') or 'WAIT')
                     else:
                         external_signal = rsi_data.get('signal') or 'WAIT'

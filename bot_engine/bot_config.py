@@ -9,12 +9,12 @@ RSI_OVERBOUGHT = 71
 
 # ✅ RSI зоны для выходов - РАЗДЕЛЬНО для сделок ПО ТРЕНДУ и ПРОТИВ ТРЕНДА
 # По тренду - можно ждать большего движения
-RSI_EXIT_LONG_WITH_TREND = 60  # Выход из лонга при RSI >= 65 (вход был по UP тренду)
-RSI_EXIT_SHORT_WITH_TREND = 40  # Выход из шорта при RSI <= 35 (вход был по DOWN тренду)
+RSI_EXIT_LONG_WITH_TREND = 65  # Выход из лонга при RSI >= 65 (вход был по UP тренду)
+RSI_EXIT_SHORT_WITH_TREND = 35  # Выход из шорта при RSI <= 35 (вход был по DOWN тренду)
 
 # Против тренда - выходим раньше, безопаснее
-RSI_EXIT_LONG_AGAINST_TREND = 55  # Выход из лонга при RSI >= 60 (вход был против DOWN тренда)
-RSI_EXIT_SHORT_AGAINST_TREND = 45  # Выход из шорта при RSI <= 40 (вход был против UP тренда)
+RSI_EXIT_LONG_AGAINST_TREND = 60  # Выход из лонга при RSI >= 60 (вход был против DOWN тренда)
+RSI_EXIT_SHORT_AGAINST_TREND = 40  # Выход из шорта при RSI <= 40 (вход был против UP тренда)
 
 # ❌ СТАРЫЕ RSI_EXIT_LONG и RSI_EXIT_SHORT УДАЛЕНЫ - используйте новые WITH_TREND и AGAINST_TREND
 
@@ -43,54 +43,22 @@ TREND_REQUIRE_CANDLES = True # Требовать N свечей подряд (T
 
 # Таймфрейм для анализа
 # Поддерживаемые таймфреймы: '1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M'
-TIMEFRAME = '1m'
+TIMEFRAME = '6h'
 
 # Глобальная переменная для динамического изменения таймфрейма в runtime
 _current_timeframe = None
-
-# Список поддерживаемых таймфреймов (для валидации при чтении из БД)
-_SUPPORTED_TIMEFRAMES = ('1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M')
-
-# Флаг рекурсии: при логировании внутри get_bots_database() форматтер снова вызывает get_current_timeframe()
-_get_timeframe_loading = False
 
 # Функция для получения текущего таймфрейма
 def get_current_timeframe():
     """
     Возвращает текущий таймфрейм системы.
-    Порядок: 1) _current_timeframe (runtime), 2) БД (db_metadata.system_timeframe), 3) SystemConfig.SYSTEM_TIMEFRAME, 4) TIMEFRAME.
-    При рекурсивном вызове (из логгера при инициализации БД) БД не вызывается — только конфиг/TIMEFRAME.
+    Сначала проверяет глобальную переменную _current_timeframe (для runtime изменений),
+    затем возвращает TIMEFRAME из конфига.
+    Может быть переопределена для динамического получения из конфига или БД.
     """
-    global _current_timeframe, _get_timeframe_loading
+    global _current_timeframe
     if _current_timeframe is not None:
         return _current_timeframe
-    # Защита от рекурсии: форматтер логов -> get_current_timeframe -> get_bots_database -> logger.info -> форматтер -> ...
-    if _get_timeframe_loading:
-        try:
-            tf = getattr(SystemConfig, 'SYSTEM_TIMEFRAME', None)
-            if tf and tf in _SUPPORTED_TIMEFRAMES:
-                return tf
-        except Exception:
-            pass
-        return TIMEFRAME
-    try:
-        _get_timeframe_loading = True
-        try:
-            from bot_engine.bots_database import get_bots_database
-            db = get_bots_database()
-            tf = db.load_timeframe()
-            if tf and tf in _SUPPORTED_TIMEFRAMES:
-                return tf
-        finally:
-            _get_timeframe_loading = False
-    except Exception:
-        _get_timeframe_loading = False
-    try:
-        tf = getattr(SystemConfig, 'SYSTEM_TIMEFRAME', None)
-        if tf and tf in _SUPPORTED_TIMEFRAMES:
-            return tf
-    except Exception:
-        pass
     return TIMEFRAME
 
 # Функция для установки таймфрейма в runtime
@@ -106,7 +74,10 @@ def set_current_timeframe(timeframe: str):
     """
     global _current_timeframe
     
-    if timeframe not in _SUPPORTED_TIMEFRAMES:
+    # Список поддерживаемых таймфреймов
+    supported_timeframes = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M']
+    
+    if timeframe not in supported_timeframes:
         return False
     
     _current_timeframe = timeframe
@@ -252,10 +223,10 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'trading_enabled': True,    # Включить реальную торговлю
     'use_test_server': False,   # Использовать тестовый сервер
     # Защитные механизмы
-    'max_loss_percent': 35, # Максимальный убыток в % от входа (стоп-лосс)
+    'max_loss_percent': 15,   # Максимальный убыток в % от входа (стоп-лосс)
     'take_profit_percent': 70, # Защитный Take Profit в % от входа (рассчитывается как стоп-лосс)
-    'trailing_stop_activation': 2, # Процент прибыли, после которого активируется трейлинг
-    'trailing_stop_distance': 2, # Дистанция трейлинга от максимальной цены, %
+    'trailing_stop_activation': 10, # Процент прибыли, после которого активируется трейлинг
+    'trailing_stop_distance': 5,      # Дистанция трейлинга от максимальной цены, %
     'trailing_take_distance': 0.5,    # Резервный trailing-тейк (лимит) в %, когда процесс упадет
     'trailing_update_interval': 3,  # Минимальный интервал обновлений стопов/тейков (сек)
     'max_position_hours': 0,     # Максимальное время удержания позиции в часах (0 = отключено)
@@ -300,7 +271,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'anomaly_log_enabled': True,
     'auto_refresh_ui': True,
     'auto_retrain': True,
-    'auto_save_interval': 300,
+    'auto_save_interval': 30,
     'auto_train_enabled': True,
     'auto_update_data': True,
     'data_update_interval': 86400,
@@ -310,7 +281,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'enhanced_rsi_require_volume_confirmation': True,
     'enhanced_rsi_use_stoch_rsi': True,
     'inactive_bot_cleanup_interval': 600,
-    'inactive_bot_timeout': 600,
+    'inactive_bot_timeout': 60,
     'log_anomalies': True,
     'log_patterns': True,
     'log_predictions': True,
@@ -324,8 +295,8 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'pattern_enabled': True,
     'pattern_min_confidence': 0.6,
     'pattern_weight': 1.2,
-    'position_sync_interval': 1,
-    'refresh_interval': 1,
+    'position_sync_interval': 10,
+    'refresh_interval': 2,
     'retrain_hour': 3,
     'retrain_interval': 604800,
     'risk_management_enabled': True,
@@ -334,12 +305,11 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'rsi_extreme_overbought': 80,
     'rsi_extreme_oversold': 20,
     'rsi_extreme_zone_timeout': 3,
-    'rsi_update_interval': 60,
+    'rsi_update_interval': 30,
     'rsi_volume_confirmation_multiplier': 1.2,
     'self_learning_enabled': False,
-    'stop_loss_setup_interval': 60,
+    'stop_loss_setup_interval': 10,
     'system_timeframe': '1m',
-    'mini_chart_update_interval': 60,
 }
 
 # Настройки по умолчанию для отдельного бота
@@ -354,23 +324,21 @@ DEFAULT_BOT_CONFIG = {
 
 # Системные настройки
 class SystemConfig:
-    # Таймфрейм системы (сохраняется при переключении в UI; config_writer обновляет эту строку)
-    SYSTEM_TIMEFRAME = '1m'
     # Интервалы обновления (в секундах)
-    RSI_UPDATE_INTERVAL = 60 # 30 минут (рекомендуется для 6H RSI)
-    ACCOUNT_UPDATE_INTERVAL = 3  # 5 секунд
-    UI_REFRESH_INTERVAL = 1 # 3 секунды
-    AUTO_SAVE_INTERVAL = 300  # 30 секунд
+    RSI_UPDATE_INTERVAL = 30 # 30 минут (рекомендуется для 6H RSI)
+    ACCOUNT_UPDATE_INTERVAL = 5  # 5 секунд
+    UI_REFRESH_INTERVAL = 2 # 3 секунды
+    AUTO_SAVE_INTERVAL = 30  # 30 секунд
     BOT_STATUS_UPDATE_INTERVAL = 1  # 1 секунда - интервал обновления детальной информации о состоянии ботов (цена входа, SL, TP, ликвидация, PnL)
     INACTIVE_BOT_CLEANUP_INTERVAL = 600  # 10 минут - интервал проверки и удаления неактивных ботов
-    INACTIVE_BOT_TIMEOUT = 600 # 10 минут - время ожидания перед удалением бота без реальных позиций на бирже
-    STOP_LOSS_SETUP_INTERVAL = 60 # 5 минут - интервал установки недостающих стоп-лоссов
-    POSITION_SYNC_INTERVAL = 1 # 30 секунд - интервал синхронизации позиций с биржей
-    MINI_CHART_UPDATE_INTERVAL = 60  # 7 минут - интервал обновления миниграфиков RSI (в секундах)
+    INACTIVE_BOT_TIMEOUT = 60 # 10 минут - время ожидания перед удалением бота без реальных позиций на бирже
+    STOP_LOSS_SETUP_INTERVAL = 10 # 5 минут - интервал установки недостающих стоп-лоссов
+    POSITION_SYNC_INTERVAL = 10 # 30 секунд - интервал синхронизации позиций с биржей
+    MINI_CHART_UPDATE_INTERVAL = 420  # 7 минут - интервал обновления миниграфиков RSI (в секундах)
     
     # Умное обновление RSI
     SMART_RSI_UPDATE = True  # Учитывать время до закрытия свечи
-    RSI_CANDLE_CHECK_INTERVAL = 20  # 5 минут для проверки изменений текущей свечи
+    RSI_CANDLE_CHECK_INTERVAL = 300  # 5 минут для проверки изменений текущей свечи
     
     # Улучшенная система RSI
     ENHANCED_RSI_ENABLED = True # Включить улучшенную систему RSI для сильных трендов (ОТКЛЮЧЕНО для тестирования)
@@ -391,12 +359,12 @@ class SystemConfig:
     
     # ✅ RSI зоны для выходов - РАЗДЕЛЬНО для сделок ПО ТРЕНДУ и ПРОТИВ ТРЕНДА
     # По тренду - можно ждать большего движения
-    RSI_EXIT_LONG_WITH_TREND = 60  # Выход из лонга при RSI >= 65 (вход был по UP тренду)
-    RSI_EXIT_SHORT_WITH_TREND = 40  # Выход из шорта при RSI <= 35 (вход был по DOWN тренду)
+    RSI_EXIT_LONG_WITH_TREND = 65  # Выход из лонга при RSI >= 65 (вход был по UP тренду)
+    RSI_EXIT_SHORT_WITH_TREND = 35  # Выход из шорта при RSI <= 35 (вход был по DOWN тренду)
     
     # Против тренда - выходим раньше, безопаснее
-    RSI_EXIT_LONG_AGAINST_TREND = 55  # Выход из лонга при RSI >= 60 (вход был против DOWN тренда)
-    RSI_EXIT_SHORT_AGAINST_TREND = 45  # Выход из шорта при RSI <= 40 (вход был против UP тренда)
+    RSI_EXIT_LONG_AGAINST_TREND = 60  # Выход из лонга при RSI >= 60 (вход был против DOWN тренда)
+    RSI_EXIT_SHORT_AGAINST_TREND = 40  # Выход из шорта при RSI <= 40 (вход был против UP тренда)
     
     # ❌ СТАРЫЕ RSI_EXIT_LONG и RSI_EXIT_SHORT УДАЛЕНЫ - используйте новые WITH_TREND и AGAINST_TREND
     
@@ -420,11 +388,6 @@ class SystemConfig:
     BOTS_SERVICE_HOST = '0.0.0.0'  # Доступ из сети
     MAIN_APP_PORT = 5000
     MAIN_APP_HOST = '127.0.0.1'
-    # AI-сервис (ai.py --server): предсказания выполняются только в процессе ai.py
-    AI_SERVICE_PORT = 5002
-    AI_SERVICE_HOST = '127.0.0.1'
-    # True = bots.py получает предсказания по HTTP (без загрузки моделей в процесс ботов)
-    USE_AI_SERVICE = True
     REQUEST_TIMEOUT = 30
     
     # Настройки UI
@@ -515,10 +478,10 @@ class SystemConfig:
     CONSOLE_LOG_LEVELS = []  # По умолчанию все уровни разрешены
 
     # ========================================================================
-    # ОГРАНИЧЕНИЕ ОЗУ ДЛЯ AI И BOTS (ai.py, bots.py)
+    # ОГРАНИЧЕНИЕ ОЗУ ДЛЯ AI (ai.py)
     # ========================================================================
-    # 0 = выключено. Иначе ai.py и bots.py ограничивают потребление памяти:
-    # Linux/macOS — setrlimit(RLIMIT_AS); Windows — Job Object (ProcessMemoryLimit).
+    # 0 = выключено. Иначе ai.py ограничивает потребление памяти (на Linux/macOS — setrlimit,
+    # на Windows — только снижение нагрузки: меньше потоков/свечей).
     # По умолчанию: не более 30% ОЗУ и не более 4 ГБ (итог = min(30% ОЗУ, 4096 MB)).
     AI_MEMORY_PCT = 30       # Доля от общей ОЗУ системы, % (0 = не использовать)
     AI_MEMORY_LIMIT_MB = 4096  # Верхняя граница в MB, 4 ГБ (0 = без границы)
@@ -579,7 +542,7 @@ _patch_system_config_ai_memory()
 # Настройки риск-менеджмента
 class RiskConfig:
     # Стоп-лосс и защитные механизмы
-    STOP_LOSS_PERCENT = 5.0
+    STOP_LOSS_PERCENT = 15.0
     TRAILING_STOP_ACTIVATION = 20.0  # Процент прибыли для активации трейлинга
     TRAILING_STOP_DISTANCE = 150.0    # x1.5 от входа
     MAX_POSITION_TIME_HOURS = 48

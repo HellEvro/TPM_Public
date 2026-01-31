@@ -725,6 +725,31 @@ class BybitExchange(BaseExchange):
             logger.error(f"[BYBIT] ❌ Не удалось получить тикер {symbol}: {last_error}")
         return None
 
+    def get_tickers_batch(self, symbols):
+        """Один запрос тикеров для нескольких символов (оптимизация вместо N get_ticker)."""
+        if not symbols:
+            return {}
+        if len(symbols) == 1:
+            t = self.get_ticker(symbols[0])
+            return {symbols[0]: t} if t else {}
+        try:
+            response = self.client.get_tickers(category="linear")
+            if response.get('retCode') != 0 or not response.get('result', {}).get('list'):
+                return {s: self.get_ticker(s) for s in symbols}
+            need = {f"{s}USDT" for s in symbols}
+            out = {}
+            for item in response['result']['list']:
+                sym_full = item.get('symbol', '')
+                if sym_full not in need:
+                    continue
+                sym = sym_full.replace('USDT', '') if sym_full.endswith('USDT') else sym_full
+                price = float(item.get('lastPrice', 0) or 0)
+                out[sym] = {'last': price, 'last_price': price, 'symbol': sym}
+            return out
+        except Exception as e:
+            logger.warning(f"[BYBIT] get_tickers_batch fallback: {e}")
+            return {s: self.get_ticker(s) for s in symbols}
+
     def get_instruments_info(self, symbol):
         """Получает информацию об торговых правилах для символа"""
         try:
