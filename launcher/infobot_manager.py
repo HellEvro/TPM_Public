@@ -2221,20 +2221,12 @@ class InfoBotManager(tk.Tk):
             return False
 
     def _create_bot_config_file_from_example(self, silent: bool = False) -> bool:
-        """Создает bot_config.py из example файла, если он отсутствует."""
+        """Создает bot_config.py из bot_config.example.py, если он отсутствует. П.3 REVERTED_COMMITS_FIXES."""
         target = PROJECT_ROOT / "bot_engine" / "bot_config.py"
-        # Проверяем оба возможных названия example файла
-        example1 = PROJECT_ROOT / "bot_engine" / "bot_config.example.py"
-        example2 = PROJECT_ROOT / "bot_engine" / "example.bot_config.py"
+        example = PROJECT_ROOT / "bot_engine" / "bot_config.example.py"
         
-        example = None
-        if example1.exists():
-            example = example1
-        elif example2.exists():
-            example = example2
-        
-        if not example or not example.exists():
-            message = "Файл bot_engine/bot_config.example.py или bot_engine/example.bot_config.py не найден."
+        if not example.exists():
+            message = "Файл bot_engine/bot_config.example.py не найден."
             if silent:
                 self.log(message, channel="system")
             else:

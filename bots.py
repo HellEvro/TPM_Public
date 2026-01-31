@@ -38,28 +38,25 @@ try:
 except Exception:
     pass
 
-# 🔍 Проверка и создание bot_config.py из example.bot_config.py (если отсутствует)
+# 🔍 Проверка и создание bot_config.py из bot_config.example.py (если отсутствует) — п.3 REVERTED_COMMITS_FIXES
 # Также настраиваем git skip-worktree для игнорирования локальных изменений
 _bot_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bot_engine', 'bot_config.py')
-_example_bot_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bot_engine', 'example.bot_config.py')
+_example_bot_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bot_engine', 'bot_config.example.py')
 
 if not os.path.exists(_bot_config_path):
     if os.path.exists(_example_bot_config_path):
         try:
             import shutil
             shutil.copy2(_example_bot_config_path, _bot_config_path)
-            # Логгер еще не настроен, используем stderr
             import sys
-            sys.stderr.write(f"[INFO] ✅ Создан bot_engine/bot_config.py из example.bot_config.py\n")
+            sys.stderr.write(f"[INFO] ✅ Создан bot_engine/bot_config.py из bot_config.example.py\n")
         except Exception as e:
-            # Логгер еще не настроен, используем stderr
             import sys
             sys.stderr.write(f"[WARNING] Не удалось создать bot_config.py: {e}\n")
-            sys.stderr.write(f"[WARNING] Продолжаем с example.bot_config.py...\n")
+            sys.stderr.write(f"[WARNING] Продолжаем с bot_config.example.py...\n")
     else:
-        # Логгер еще не настроен, используем stderr
         import sys
-        sys.stderr.write(f"[WARNING] Файл example.bot_config.py не найден, bot_config.py не будет создан автоматически\n")
+        sys.stderr.write(f"[WARNING] Файл bot_config.example.py не найден, bot_config.py не будет создан автоматически\n")
 
 # Настройка git skip-worktree для игнорирования локальных изменений в bot_config.py
 # Это позволяет файлу оставаться в git, но локальные изменения не будут коммититься

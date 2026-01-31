@@ -38,7 +38,7 @@
 - **Строка 46**: `TIMEFRAME = '6h'` - дефолтное значение конфига
 - **Статус**: ✅ Нормально - это дефолт, может быть изменен через UI/API
 
-### 8. `bot_engine/bot_config.example.py`, `bot_engine/example.bot_config.py`
+### 8. `bot_engine/bot_config.example.py`
 - **Статус**: ✅ Нормально - примеры конфигов
 
 ## Документация (не критично)

@@ -137,11 +137,55 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'exit_scam_single_candle_percent': 15,  # Максимальный % изменения одной свечи (15% = блокировка)
     'exit_scam_multi_candle_count': 4,        # Количество свечей для суммарного анализа
     'exit_scam_multi_candle_percent': 50,   # Максимальный суммарный % за N свечей (50% = блокировка)
-    # 🤖 ИИ настройки (премиум функции)
+    # 🤖 ИИ настройки (премиум функции) — п.2 REVERTED_COMMITS_FIXES
     'ai_optimal_entry_enabled': False,  # ИИ определение оптимальной точки входа (выкл. по умолчанию)
-    'ai_enabled': True, # Включить подтверждение сигналов AI
+    'ai_enabled': True,                 # Включить подтверждение сигналов AI
     'ai_min_confidence': 0.7,          # Минимальная уверенность AI (0.0-1.0)
-    'ai_override_original': True,      # AI может блокировать решения скрипта
+    'ai_override_original': True,       # AI может блокировать решения скрипта
+    'anomaly_block_threshold': 0.7,     # Порог блокировки по аномалии (0.0-1.0)
+    'anomaly_detection_enabled': True,
+    'anomaly_log_enabled': True,
+    'auto_train_enabled': True,         # Включить автоматическое обучение
+    'retrain_interval': 604800,         # Интервал переобучения (сек, 7 дней)
+    'retrain_hour': 3,                  # Час запуска переобучения (ночью)
+    'enhanced_rsi_enabled': True,
+    'enhanced_rsi_require_divergence_confirmation': True,
+    'enhanced_rsi_require_volume_confirmation': True,
+    'enhanced_rsi_use_stoch_rsi': True,
+    'lstm_enabled': True,
+    'lstm_min_confidence': 0.6,
+    'lstm_weight': 1.5,
+    'pattern_enabled': True,
+    'pattern_min_confidence': 0.6,
+    'pattern_weight': 1.2,
+    'log_predictions': True,
+    'log_anomalies': True,
+    'log_patterns': True,
+    'risk_management_enabled': True,
+    'self_learning_enabled': False,
+    'refresh_interval': 2,
+    'rsi_update_interval': 30,
+    'risk_update_interval': 300,
+    'data_update_interval': 86400,
+    'auto_update_data': True,
+    'auto_refresh_ui': True,
+    'auto_retrain': True,
+    'auto_save_interval': 30,
+    'debug_mode': False,
+    'inactive_bot_cleanup_interval': 600,
+    'inactive_bot_timeout': 60,
+    'position_sync_interval': 10,
+    'stop_loss_setup_interval': 10,
+    'loss_reentry_protection': True,
+    'loss_reentry_candles': 3,
+    'loss_reentry_count': 1,
+    'min_volatility_threshold': 0.05,
+    'rsi_divergence_lookback': 10,
+    'rsi_extreme_oversold': 20,
+    'rsi_extreme_overbought': 80,
+    'rsi_extreme_zone_timeout': 3,
+    'rsi_volume_confirmation_multiplier': 1.2,
+    'system_timeframe': '1m',
 }
 
 # Настройки по умолчанию для отдельного бота
@@ -467,3 +511,26 @@ class AIConfig:
     AI_SELF_LEARNING_BUFFER_SIZE = 50    # Размер буфера для онлайн обучения (макс. сделок)
     AI_ADAPTATION_THRESHOLD = 0.1        # Порог изменения для адаптации к рынку (0.0-1.0)
     AI_PERFORMANCE_WINDOW = 50           # Окно сделок для оценки производительности
+
+    # Триггеры остановки непрерывного обучения (п.2 REVERTED_COMMITS_FIXES)
+    AI_STOP_TRAINING_ON_HIGH_ACCURACY = True  # Остановить обучение при достижении высокой точности
+    AI_HIGH_ACCURACY_THRESHOLD = 0.90    # Порог точности для остановки обучения (0.90 = 90%)
+    AI_STOP_TRAINING_ON_DEGRADATION = True  # Остановить обучение при ухудшении качества
+    AI_DEGRADATION_THRESHOLD = 0.05      # Порог ухудшения качества (0.05 = 5% снижения)
+    AI_MIN_TRAINING_ATTEMPTS = 3         # Минимальное количество попыток обучения перед проверкой качества
+
+    # Триггеры переобучения при ухудшении на реальных сделках
+    AI_RETRAIN_ON_REAL_PERFORMANCE_DEGRADATION = True
+    AI_REAL_WIN_RATE_THRESHOLD = 0.40    # Минимальный win_rate на реальных сделках (0.40 = 40%)
+    AI_REAL_AVG_PNL_THRESHOLD = -10.0    # Минимальный средний PnL на реальных сделках (USDT)
+    AI_REAL_VS_SIMULATED_DIFF_THRESHOLD = 0.30  # Макс. разница win_rate виртуальные/реальные (0.30 = 30%)
+    AI_REAL_PERFORMANCE_WINDOW = 20      # Окно реальных сделок для оценки
+
+    # Обучение на симуляциях + AI_USE_SAVED_SETTINGS_AS_BASE
+    AI_TRAIN_ON_SIMULATIONS = True       # Использовать симуляции когда реальных сделок мало
+    AI_SIMULATIONS_TARGET_WIN_RATE = 0.90  # Целевой win_rate для поиска оптимальных параметров
+    AI_SIMULATIONS_MAX_ITERATIONS = 1000  # Максимум симуляций для поиска параметров
+    AI_USE_SIMULATIONS_WHEN_REAL_LOW = True  # Автоматически симуляции при нехватке реальных сделок
+    AI_SIMULATIONS_PER_COIN = 20  # Симуляций с разными параметрами на монету
+    AI_SAVE_BEST_PARAMS_MIN_WIN_RATE = 0.90  # Минимальный win_rate для сохранения в индивидуальные настройки
+    AI_USE_SAVED_SETTINGS_AS_BASE = True  # Использовать сохранённые индивидуальные настройки как базу для симуляций
