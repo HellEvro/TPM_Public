@@ -48,8 +48,9 @@ def _check_scope(symbol: str, config: Dict[str, Any]) -> Tuple[bool, str]:
     scope = config.get('scope', 'all')
     whitelist = config.get('whitelist', []) or []
     blacklist = config.get('blacklist', []) or []
-    whitelist = [coin.upper() for coin in whitelist]
-    blacklist = [coin.upper() for coin in blacklist]
+    # Нормализуем: элементы могут быть строками или объектами { symbol, added_at, updated_at }
+    whitelist = [(item if isinstance(item, str) else item.get('symbol', '')).upper() for item in whitelist if item]
+    blacklist = [(item if isinstance(item, str) else item.get('symbol', '')).upper() for item in blacklist if item]
     symbol_up = symbol.upper()
 
     if scope == 'whitelist':

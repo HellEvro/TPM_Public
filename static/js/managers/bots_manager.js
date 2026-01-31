@@ -7456,14 +7456,16 @@ class BotsManager {
         }
     }
     
-    async saveTradingParameters() {
-        console.log('[BotsManager] 💾 Сохранение торговых параметров...');
+    /**
+     * Сохраняет весь блок: торговые параметры и RSI выходы (объединённая кнопка)
+     */
+    async saveTradingAndRsiExits() {
+        console.log('[BotsManager] 💾 Сохранение торговых параметров и RSI выходов...');
         try {
             const config = this.collectConfigurationData();
-            const tradingParams = {
+            const params = {
                 rsi_long_threshold: config.autoBot.rsi_long_threshold,
                 rsi_short_threshold: config.autoBot.rsi_short_threshold,
-                // ✅ Новые параметры RSI выхода с учетом тренда
                 rsi_exit_long_with_trend: config.autoBot.rsi_exit_long_with_trend,
                 rsi_exit_long_against_trend: config.autoBot.rsi_exit_long_against_trend,
                 rsi_exit_short_with_trend: config.autoBot.rsi_exit_short_with_trend,
@@ -7472,34 +7474,13 @@ class BotsManager {
                 default_position_mode: config.autoBot.default_position_mode,
                 leverage: config.autoBot.leverage,
                 check_interval: config.autoBot.check_interval,
-                // Торговые настройки (перенесены из отдельного блока)
                 trading_enabled: config.autoBot.trading_enabled,
                 use_test_server: config.autoBot.use_test_server
             };
-            
-            await this.sendConfigUpdate('auto-bot', tradingParams, 'Торговые параметры');
+            await this.sendConfigUpdate('auto-bot', params, 'Торговые параметры и RSI выходы');
         } catch (error) {
-            console.error('[BotsManager] ❌ Ошибка сохранения торговых параметров:', error);
-            this.showNotification('❌ Ошибка сохранения торговых параметров', 'error');
-        }
-    }
-    
-    async saveRsiExits() {
-        console.log('[BotsManager] 💾 Сохранение RSI выходов...');
-        try {
-            const config = this.collectConfigurationData();
-            const rsiExits = {
-                // ✅ Новые параметры RSI выхода с учетом тренда
-                rsi_exit_long_with_trend: config.autoBot.rsi_exit_long_with_trend,
-                rsi_exit_long_against_trend: config.autoBot.rsi_exit_long_against_trend,
-                rsi_exit_short_with_trend: config.autoBot.rsi_exit_short_with_trend,
-                rsi_exit_short_against_trend: config.autoBot.rsi_exit_short_against_trend
-            };
-            
-            await this.sendConfigUpdate('auto-bot', rsiExits, 'RSI выходы');
-        } catch (error) {
-            console.error('[BotsManager] ❌ Ошибка сохранения RSI выходов:', error);
-            this.showNotification('❌ Ошибка сохранения RSI выходов', 'error');
+            console.error('[BotsManager] ❌ Ошибка сохранения:', error);
+            this.showNotification('❌ Ошибка сохранения торговых параметров и RSI выходов', 'error');
         }
     }
     
@@ -8719,20 +8700,12 @@ class BotsManager {
             console.log('[BotsManager] ✅ Кнопка "Сохранить системные настройки" инициализирована');
         }
         
-        // Торговые параметры
-        const saveTradingBtn = document.querySelector('.config-section-save-btn[data-section="trading"]');
-        if (saveTradingBtn && !saveTradingBtn.hasAttribute('data-initialized')) {
-            saveTradingBtn.setAttribute('data-initialized', 'true');
-            saveTradingBtn.addEventListener('click', () => this.saveTradingParameters());
-            console.log('[BotsManager] ✅ Кнопка "Сохранить торговые параметры" инициализирована');
-        }
-        
-        // RSI выходы
-        const saveRsiExitsBtn = document.querySelector('.config-section-save-btn[data-section="rsi-exits"]');
-        if (saveRsiExitsBtn && !saveRsiExitsBtn.hasAttribute('data-initialized')) {
-            saveRsiExitsBtn.setAttribute('data-initialized', 'true');
-            saveRsiExitsBtn.addEventListener('click', () => this.saveRsiExits());
-            console.log('[BotsManager] ✅ Кнопка "Сохранить RSI выходы" инициализирована');
+        // Торговые параметры и RSI выходы (объединённая кнопка)
+        const saveTradingRsiBtn = document.querySelector('.config-section-save-btn[data-section="trading-rsi"]');
+        if (saveTradingRsiBtn && !saveTradingRsiBtn.hasAttribute('data-initialized')) {
+            saveTradingRsiBtn.setAttribute('data-initialized', 'true');
+            saveTradingRsiBtn.addEventListener('click', () => this.saveTradingAndRsiExits());
+            console.log('[BotsManager] ✅ Кнопка "Сохранить торговые параметры и RSI выходы" инициализирована');
         }
         
         // RSI временной фильтр

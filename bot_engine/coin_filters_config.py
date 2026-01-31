@@ -100,20 +100,34 @@ def run_coin_filters_migration_once() -> bool:
     path_json = _path_json()
     if path_json.exists():
         return False
-    # Файла нет — создаём: читаем из data/bots_data.db (symbol, added_at, updated_at), пишем в data/coin_filters.json.
+    
+    # Файла нет — создаём: сначала пробуем напрямую записать пустой файл (без импорта БД),
+    # затем пытаемся загрузить данные из БД если она доступна
     try:
         w, b, s = [], [], 'all'
+        
+        # Сначала создаём файл с пустыми списками (быстро, без зависаний)
+        data_dir = path_json.parent
         try:
-            from bot_engine.bots_database import get_bots_database
-            db = get_bots_database()
-            data = load_coin_filters_from_db_file(db.db_path)
-            w, b, s = data.get('whitelist', []), data.get('blacklist', []), data.get('scope', 'all')
-        except Exception as e:
-            logger.warning("Миграция: БД проекта data/bots_data.db недоступна: %s", e)
+            os.makedirs(data_dir, exist_ok=True)
+        except OSError:
+            pass
+        
+        # Пробуем загрузить из БД (но не блокируем если БД недоступна)
+        db_path = data_dir / 'bots_data.db'
+        if db_path.exists():
+            try:
+                data = load_coin_filters_from_db_file(str(db_path))
+                w, b, s = data.get('whitelist', []), data.get('blacklist', []), data.get('scope', 'all')
+            except Exception as e:
+                logger.debug("Миграция: не удалось прочитать data/bots_data.db: %s", e)
+        
+        # Записываем файл (даже если списки пустые)
         ok = save_coin_filters(whitelist=w, blacklist=b, scope=s)
         if not ok:
             logger.warning("Миграция: не удалось записать data/coin_filters.json — повторится при следующем запуске")
             return False
+        
         _path_sentinel().touch()
         if w or b or s != 'all':
             logger.info(

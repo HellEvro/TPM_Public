@@ -140,9 +140,9 @@ class AIContinuousLearning:
         whitelist = auto_config.get('whitelist', []) or []
         blacklist = auto_config.get('blacklist', []) or []
         
-        # Нормализуем списки (верхний регистр)
-        whitelist = [coin.upper() for coin in whitelist if coin]
-        blacklist = [coin.upper() for coin in blacklist if coin]
+        # Нормализуем списки: элементы могут быть строками или объектами { symbol, added_at, updated_at }
+        whitelist = [(item if isinstance(item, str) else item.get('symbol', '')).upper() for item in whitelist if item]
+        blacklist = [(item if isinstance(item, str) else item.get('symbol', '')).upper() for item in blacklist if item]
         
         # Если whitelist не пуст (независимо от scope), обучаемся только на монетах из whitelist
         if whitelist:

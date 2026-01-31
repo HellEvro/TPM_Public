@@ -1442,49 +1442,50 @@ def get_language():
 
 
 
-@app.route('/api/blacklist', methods=['POST'])
-def manage_blacklist():
-    """Управление черным списком"""
-    try:
-        data = request.get_json()
-        action = data.get('action')
-        symbol = data.get('symbol')
-        
-        if not action or not symbol:
-            return jsonify({
-                'success': False,
-                'error': 'Missing required parameters'
-            }), 400
-            
-        blacklist_file = 'data/blacklist.json'
-        os.makedirs('data', exist_ok=True)
-        
-        try:
-            with open(blacklist_file, 'r') as f:
-                blacklist = json.load(f)
-        except:
-            blacklist = []
-            
-        if action == 'add':
-            if symbol not in blacklist:
-                blacklist.append(symbol)
-        elif action == 'remove':
-            if symbol in blacklist:
-                blacklist.remove(symbol)
-                
-        with open(blacklist_file, 'w') as f:
-            json.dump(blacklist, f)
-            
-        return jsonify({
-            'success': True,
-            'blacklist': blacklist
-        })
-        
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+# УСТАРЕВШИЙ ENDPOINT - теперь фильтры управляются через /api/bots/auto-bot и coin_filters_config
+# @app.route('/api/blacklist', methods=['POST'])
+# def manage_blacklist():
+#     """Управление черным списком"""
+#     try:
+#         data = request.get_json()
+#         action = data.get('action')
+#         symbol = data.get('symbol')
+#         
+#         if not action or not symbol:
+#             return jsonify({
+#                 'success': False,
+#                 'error': 'Missing required parameters'
+#             }), 400
+#             
+#         blacklist_file = 'data/blacklist.json'
+#         os.makedirs('data', exist_ok=True)
+#         
+#         try:
+#             with open(blacklist_file, 'r') as f:
+#                 blacklist = json.load(f)
+#         except:
+#             blacklist = []
+#             
+#         if action == 'add':
+#             if symbol not in blacklist:
+#                 blacklist.append(symbol)
+#         elif action == 'remove':
+#             if symbol in blacklist:
+#                 blacklist.remove(symbol)
+#                 
+#         with open(blacklist_file, 'w') as f:
+#             json.dump(blacklist, f)
+#             
+#         return jsonify({
+#             'success': True,
+#             'blacklist': blacklist
+#         })
+#         
+#     except Exception as e:
+#         return jsonify({
+#             'success': False,
+#             'error': str(e)
+#         }), 500
 
 # Добавляем глобальные переменные для кэширования
 ticker_analysis_cache = {}
