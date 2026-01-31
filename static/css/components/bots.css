@@ -1262,6 +1262,48 @@ input:checked + .slider:before {
     pointer-events: none;
 }
 
+/* Кнопки +/- для числовых полей */
+.config-input-stepper {
+    gap: 6px;
+    padding-right: 0;
+}
+.config-input-stepper .config-input {
+    padding-right: 36px;
+    min-width: 60px;
+}
+.config-input-stepper .input-unit {
+    position: static;
+    margin-left: 2px;
+    flex-shrink: 0;
+}
+.config-step-btn {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--button-bg);
+    color: var(--text-color);
+    font-size: 1.1em;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, border-color 0.2s;
+    flex-shrink: 0;
+}
+.config-step-btn:hover {
+    background: var(--hover-bg, rgba(0, 123, 255, 0.15));
+    border-color: var(--blue-color);
+}
+.config-step-btn:active {
+    transform: scale(0.96);
+}
+.config-step-minus { line-height: 1; }
+.config-step-plus { line-height: 1; }
+
 /* Помощь по настройкам */
 .config-help {
     display: block;
@@ -1381,6 +1423,14 @@ input:checked + .slider:before {
     gap: 16px;
 }
 
+/* Сетка 3 колонки — как в «Улучшенная система RSI» */
+.config-grid-3col {
+    grid-template-columns: repeat(3, 1fr);
+}
+.config-item-fullwidth {
+    grid-column: 1 / -1;
+}
+
 .config-divider {
     grid-column: 1 / -1;
     height: 1px;
@@ -1416,6 +1466,49 @@ input:checked + .slider:before {
 .config-item:hover {
     border-color: var(--blue-color);
     box-shadow: 0 2px 8px rgba(79, 172, 254, 0.1);
+}
+
+/* Подсекции с горизонтальной сеткой: блоки в несколько колонок с переносом */
+.config-subsection-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    align-items: start;
+}
+.config-subsection-grid > h4 {
+    grid-column: 1 / -1;
+    margin: 0 0 4px 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+.config-subsection-grid .config-item {
+    min-width: 0;
+}
+
+/* Блоки AI: контейнер — колонка, каждый блок — горизонтальный ряд */
+.config-ai-blocks {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+.config-block-row {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 12px;
+}
+.config-block-row > h4 {
+    width: 100%;
+    margin: 0 0 8px 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 1rem;
+}
+.config-block-row > .config-item {
+    flex: 1 1 260px;
+    min-width: 260px;
+    max-width: 100%;
 }
 
 .config-row {
@@ -1847,6 +1940,18 @@ input:checked + .slider:before {
 }
 #configViewWrapper.config-view-list .config-subsection .config-item:last-child {
     border-bottom: none;
+}
+/* Подсекции с классом config-subsection-grid — сетка по строкам и колонкам */
+#configViewWrapper.config-view-list .config-subsection-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+}
+#configViewWrapper.config-view-list .config-subsection-grid > h4 {
+    grid-column: 1 / -1;
+}
+#configViewWrapper.config-view-list .config-subsection-grid .config-item {
+    margin-bottom: 0;
 }
 /* В списке подсекция не грид, а колонка строк */
 #configViewWrapper.config-view-list .config-subsection .config-grid {
@@ -2724,7 +2829,8 @@ input:checked + .toggle-slider:before {
         grid-template-columns: 1fr;
     }
     
-    .config-grid {
+    .config-grid,
+    .config-grid-3col {
         grid-template-columns: 1fr;
         gap: 12px;
     }

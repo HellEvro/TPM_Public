@@ -45,12 +45,11 @@ class BotsManager {
         // Флаг для предотвращения автосохранения при программном изменении полей
         this.isProgrammaticChange = false;
         
-        // URL сервиса ботов - используем тот же хост что и у приложения
-        // Fallback на 127.0.0.1 если hostname пустой или localhost
+        // URL сервиса ботов — всегда порт 5001 (сервис bots.py)
         const hostname = window.location.hostname || '127.0.0.1';
         const protocol = window.location.protocol || 'http:';
         this.BOTS_SERVICE_URL = `${protocol}//${hostname}:5001`;
-        this.apiUrl = `${protocol}//${hostname}:5001/api/bots`; // Для совместимости
+        this.apiUrl = this.BOTS_SERVICE_URL + '/api/bots';
         console.log('[BotsManager] 🔗 BOTS_SERVICE_URL:', this.BOTS_SERVICE_URL);
         
         // Уровень логирования: 'error' - только ошибки, 'info' - важные события, 'debug' - все
@@ -7944,8 +7943,8 @@ class BotsManager {
     }
 
     /**
-     * Экспорт полного конфига в config_<TF>.json (Auto Bot + System + AI с сервера).
-     * Имя файла по выбранному таймфрейму: config_1m.json, config_5m.json, config_1d.json, config_1w.json, config_1M.json и т.д.
+     * Экспорт полного конфига в InfoBot_Config_<TF>.json (Auto Bot + System + AI с сервера).
+     * Имя файла по выбранному таймфрейму: InfoBot_Config_1m.json, InfoBot_Config_5m.json, InfoBot_Config_15m.json и т.д.
      */
     async exportConfig() {
         try {
@@ -7964,10 +7963,10 @@ class BotsManager {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `config_${tf}.json`;
+            a.download = `InfoBot_Config_${tf}.json`;
             a.click();
             URL.revokeObjectURL(url);
-            this.showNotification(`✅ Конфигурация экспортирована в config_${tf}.json`, 'success');
+            this.showNotification(`✅ Конфигурация экспортирована в InfoBot_Config_${tf}.json`, 'success');
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка экспорта:', error);
             this.showNotification('❌ Ошибка экспорта: ' + error.message, 'error');
@@ -7975,7 +7974,7 @@ class BotsManager {
     }
 
     /**
-     * Импорт конфигурации из config_<TF>.json или config.json (файл File). Поддерживает autoBot, system и ai.
+     * Импорт конфигурации из InfoBot_Config_<TF>.json или config.json (файл File). Поддерживает autoBot, system и ai.
      */
     async importConfig(file) {
         try {
@@ -8790,27 +8789,23 @@ class BotsManager {
             
             input.setAttribute('data-autosave-initialized', 'true');
             
-            // Обработчик для полей ввода (input) - срабатывает при каждом изменении
-            if (input.type === 'number' || input.type === 'text') {
-                input.addEventListener('input', () => {
-                    if (!this.isProgrammaticChange) {
-                        this.scheduleAutoSave();
-                    }
-                });
-            }
-            
-            // Обработчик для checkbox и select - срабатывает при изменении
-            if (input.type === 'checkbox' || input.tagName === 'SELECT') {
-                input.addEventListener('change', () => {
-                    if (!this.isProgrammaticChange) {
-                        this.scheduleAutoSave();
-                    }
-                });
-            }
-            
-            // Также обрабатываем blur для полей ввода (когда пользователь покидает поле)
+            // Числа и текст: сохраняем только при blur (уход с поля) или Enter — не при каждом нажатии клавиши
             if (input.type === 'number' || input.type === 'text') {
                 input.addEventListener('blur', () => {
+                    if (!this.isProgrammaticChange) {
+                        this.scheduleAutoSave();
+                    }
+                });
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.target.blur(); // blur вызовет scheduleAutoSave
+                    }
+                });
+            }
+            
+            // Checkbox и select: сохраняем при изменении (нет проблемы «не успеваю ввести»)
+            if (input.type === 'checkbox' || input.tagName === 'SELECT') {
+                input.addEventListener('change', () => {
                     if (!this.isProgrammaticChange) {
                         this.scheduleAutoSave();
                     }
@@ -8819,6 +8814,68 @@ class BotsManager {
         });
         
         console.log(`[BotsManager] ✅ Обработчики автосохранения добавлены для ${inputs.length} полей`);
+    }
+    
+    /**
+     * Добавляет кнопки +/- к числовым полям конфигурации (изменение по step, с учётом min/max).
+     */
+    addStepperButtons() {
+        try {
+            const configTab = document.getElementById('configTab');
+            const aiSection = document.getElementById('aiConfigSection');
+            const containers = [configTab, aiSection].filter(Boolean);
+            let added = 0;
+            containers.forEach(container => {
+                if (!container || !container.querySelectorAll) return;
+                const inputs = container.querySelectorAll('.config-input-with-unit input[type="number"].config-input');
+                inputs.forEach((input) => {
+                    try {
+                        const parent = input.closest('.config-input-with-unit');
+                        if (!parent || parent.hasAttribute('data-stepper-initialized')) return;
+                        parent.setAttribute('data-stepper-initialized', 'true');
+                        parent.classList.add('config-input-stepper');
+                        const step = parseFloat(input.getAttribute('step')) || 1;
+                        const min = input.hasAttribute('min') ? parseFloat(input.getAttribute('min')) : null;
+                        const max = input.hasAttribute('max') ? parseFloat(input.getAttribute('max')) : null;
+                        const self = this;
+                        const applyValue = (val) => {
+                            if (min != null && val < min) val = min;
+                            if (max != null && val > max) val = max;
+                            input.value = val;
+                            input.dispatchEvent(new Event('input', { bubbles: true }));
+                            input.dispatchEvent(new Event('change', { bubbles: true }));
+                            if (!self.isProgrammaticChange) self.scheduleAutoSave();
+                        };
+                        const minusBtn = document.createElement('button');
+                        minusBtn.type = 'button';
+                        minusBtn.className = 'config-step-btn config-step-minus';
+                        minusBtn.setAttribute('aria-label', '-');
+                        minusBtn.textContent = '−';
+                        minusBtn.addEventListener('click', () => {
+                            const v = parseFloat(input.value) || 0;
+                            applyValue(v - step);
+                        });
+                        const plusBtn = document.createElement('button');
+                        plusBtn.type = 'button';
+                        plusBtn.className = 'config-step-btn config-step-plus';
+                        plusBtn.setAttribute('aria-label', '+');
+                        plusBtn.textContent = '+';
+                        plusBtn.addEventListener('click', () => {
+                            const v = parseFloat(input.value) || 0;
+                            applyValue(v + step);
+                        });
+                        parent.insertBefore(minusBtn, input);
+                        parent.insertBefore(plusBtn, input.nextSibling);
+                        added++;
+                    } catch (err) {
+                        console.warn('[BotsManager] addStepperButtons: ошибка для поля', input?.id, err);
+                    }
+                });
+            });
+            if (added > 0) console.log('[BotsManager] ✅ Кнопки +/- добавлены для', added, 'полей');
+        } catch (err) {
+            console.warn('[BotsManager] addStepperButtons:', err);
+        }
     }
     
     /**
@@ -11549,11 +11606,6 @@ class BotsManager {
         
         if (percentInput && !percentInput.hasAttribute('data-autosave-initialized')) {
             percentInput.setAttribute('data-autosave-initialized', 'true');
-            percentInput.addEventListener('input', () => {
-                if (!this.isProgrammaticChange) {
-                    this.scheduleAutoSave();
-                }
-            });
             percentInput.addEventListener('blur', () => {
                 if (!this.isProgrammaticChange) {
                     this.scheduleAutoSave();
@@ -11565,11 +11617,9 @@ class BotsManager {
             marginInput.setAttribute('data-autosave-initialized', 'true');
             const errorMsg = row.querySelector('.limit-order-margin-error');
             
-            // Валидация при вводе
+            // Валидация при вводе (только подсветка, без автосохранения)
             marginInput.addEventListener('input', () => {
                 const value = parseFloat(marginInput.value) || 0;
-                
-                // Показываем ошибку если значение меньше 5 (и не пустое)
                 if (value > 0 && value < 5) {
                     marginInput.style.borderColor = '#dc3545';
                     if (errorMsg) errorMsg.style.display = 'block';
@@ -11577,23 +11627,16 @@ class BotsManager {
                     marginInput.style.borderColor = '#404040';
                     if (errorMsg) errorMsg.style.display = 'none';
                 }
-                
-                if (!this.isProgrammaticChange) {
-                    this.scheduleAutoSave();
-                }
             });
             
             marginInput.addEventListener('blur', () => {
                 const value = parseFloat(marginInput.value) || 0;
-                
-                // При потере фокуса - если значение меньше 5, устанавливаем минимум
                 if (value > 0 && value < 5) {
                     marginInput.value = 5;
                     marginInput.style.borderColor = '#404040';
                     if (errorMsg) errorMsg.style.display = 'none';
                     this.showNotification('⚠️ Сумма лимитного ордера увеличена до минимума 5 USDT (требование биржи Bybit)', 'warning');
                 }
-                
                 if (!this.isProgrammaticChange) {
                     this.scheduleAutoSave();
                 }

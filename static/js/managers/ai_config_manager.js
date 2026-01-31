@@ -27,19 +27,20 @@ class AIConfigManager {
             // Загружаем конфигурацию и проверяем лицензию
             await this.loadAIConfig();
             
-            // Если лицензия валидна, показываем блок AI
+            // Блок AI всегда виден; при валидной лицензии — включаем сохранение и бейдж
             console.log('[AIConfigManager] 📊 Проверка лицензии:', this.licenseInfo);
+            this.showAIConfigSection(); // всегда показываем секцию, чтобы настройки были видны
+            this.bindEvents();
             if (this.licenseInfo && this.licenseInfo.valid) {
-                console.log('[AIConfigManager] ✅ Лицензия валидна - показываем AI блок');
-                this.showAIConfigSection();
-                this.bindEvents();
+                console.log('[AIConfigManager] ✅ Лицензия валидна');
             } else {
-                console.log('[AIConfigManager] ❌ AI недоступен (нет лицензии или невалидная лицензия)');
-                this.hideAIConfigSection();
+                console.log('[AIConfigManager] ⚠️ Лицензия не активна — запустите bots.py и активируйте премиум');
             }
         } catch (error) {
             console.error('[AIConfigManager] Ошибка инициализации:', error);
-            this.hideAIConfigSection();
+            this.showAIConfigSection(); // при ошибке (например сервис недоступен) всё равно показываем блок
+            this.licenseInfo = null;
+            this.updateLicenseBadge(); // показать «Запустите bots.py»
         }
     }
     
@@ -287,7 +288,11 @@ class AIConfigManager {
      */
     updateLicenseBadge() {
         const badge = document.getElementById('aiLicenseBadge');
-        if (!badge || !this.licenseInfo) return;
+        if (!badge) return;
+        if (!this.licenseInfo) {
+            badge.innerHTML = `<span class="badge badge-warning">⚠️ Запустите bots.py для проверки лицензии</span>`;
+            return;
+        }
         
         const isValid = this.licenseInfo.valid;
         const licenseType = this.licenseInfo.type;

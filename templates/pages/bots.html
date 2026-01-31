@@ -2081,8 +2081,8 @@
                 <!-- ❌ EMA параметры тренда - ПОЛНОСТЬЮ УДАЛЕНО (больше не используется) -->
 
                 <!-- ═══ БЛОК 6: AI Модули (Premium) ═══ -->
-                <h2 class="config-block-group-title" id="aiConfigBlockTitle" style="display: none;">🤖 AI Модули (Premium)</h2>
-                <div class="config-section" id="aiConfigSection" style="display: none;">
+                <h2 class="config-block-group-title" id="aiConfigBlockTitle">🤖 AI Модули (Premium)</h2>
+                <div class="config-section" id="aiConfigSection">
                     <div class="section-header">
                         <h3>🤖 <span data-translate="ai_modules_title">AI Модули (Premium)</span></h3>
                         <div class="section-description">
@@ -2093,7 +2093,7 @@
                         </div>
                     </div>
                     
-                    <div class="config-grid">
+                    <div class="config-ai-blocks" id="aiConfigGrid">
                         <!-- Мастер-переключатель AI -->
                         <div class="config-item config-item-highlight">
                             <label class="config-label">
@@ -2105,9 +2105,8 @@
                             </label>
                             <small class="config-help" data-translate="ai_master_help">Мастер-переключатель для всех AI функций</small>
                         </div>
-                        
-                        <!-- AI подтверждение сигналов -->
-                        <div class="config-subsection">
+
+                        <div class="config-block-row">
                             <h4>🤖 AI подтверждение сигналов</h4>
                             <div class="config-item">
                                 <label class="config-label">
@@ -2144,11 +2143,9 @@
                                 <small class="config-help">Отключите, чтобы AI был рекомендательным</small>
                             </div>
                         </div>
-                        
-                        <!-- Anomaly Detection -->
-                        <div class="config-subsection">
+
+                        <div class="config-block-row">
                             <h4>🛡️ <span data-translate="anomaly_detection_title">Anomaly Detection</span></h4>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-text" data-translate="anomaly_enabled_label">Обнаружение аномалий:</span>
@@ -2159,21 +2156,18 @@
                                 </label>
                                 <small class="config-help" data-translate="anomaly_enabled_help">Блокировать входы при обнаружении PUMP/DUMP</small>
                             </div>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-icon">⚠️</span>
                                     <span class="label-text" data-translate="anomaly_threshold_label">Порог блокировки:</span>
                                 </label>
                                 <div class="config-input-with-unit">
-                                    <input type="number" id="anomalyBlockThreshold" class="config-input" 
-                                           min="0.5" max="0.95" step="0.05" value="0.7"
-                                           placeholder="0.7">
+                                    <input type="number" id="anomalyBlockThreshold" class="config-input"
+                                           min="0.5" max="0.95" step="0.05" value="0.7" placeholder="0.7">
                                     <span class="input-unit">%</span>
                                 </div>
                                 <small class="config-help" data-translate="anomaly_threshold_help">Блокировать если severity > этого значения (0.7 = 70%)</small>
                             </div>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-text" data-translate="anomaly_log_label">Логировать аномалии:</span>
@@ -2185,11 +2179,9 @@
                                 <small class="config-help" data-translate="anomaly_log_help">Записывать обнаруженные аномалии в логи</small>
                             </div>
                         </div>
-                        
-                        <!-- Risk Management -->
-                        <div class="config-subsection">
+
+                        <div class="config-block-row">
                             <h4>⚖️ <span data-translate="risk_management_title">Risk Management</span></h4>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-text" data-translate="risk_enabled_label">Умное управление рисками:</span>
@@ -2200,26 +2192,22 @@
                                 </label>
                                 <small class="config-help" data-translate="risk_enabled_help">Адаптивные SL/TP и размер позиции</small>
                             </div>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-icon">⏰</span>
                                     <span class="label-text" data-translate="risk_update_interval_label">Интервал обновления:</span>
                                 </label>
                                 <div class="config-input-with-unit">
-                                    <input type="number" id="riskUpdateInterval" class="config-input" 
-                                           min="60" max="3600" step="60" value="300"
-                                           placeholder="300">
+                                    <input type="number" id="riskUpdateInterval" class="config-input"
+                                           min="60" max="3600" step="60" value="300" placeholder="300">
                                     <span class="input-unit" data-translate="seconds_unit">сек</span>
                                 </div>
                                 <small class="config-help" data-translate="risk_update_help">Частота мониторинга открытых позиций (рекомендуется 300 сек = 5 минут)</small>
                             </div>
                         </div>
-                        
-                        <!-- LSTM Predictor -->
-                        <div class="config-subsection">
+
+                        <div class="config-block-row">
                             <h4>🧠 <span data-translate="lstm_predictor_title">LSTM Predictor</span></h4>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-text" data-translate="lstm_enabled_label">LSTM предсказание цены:</span>
@@ -2230,40 +2218,34 @@
                                 </label>
                                 <small class="config-help" data-translate="lstm_enabled_help">Использовать нейронную сеть для предсказания движения цены</small>
                             </div>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-icon">🎯</span>
                                     <span class="label-text" data-translate="lstm_min_confidence_label">Минимальная уверенность:</span>
                                 </label>
                                 <div class="config-input-with-unit">
-                                    <input type="number" id="lstmMinConfidence" class="config-input" 
-                                           min="0.3" max="0.95" step="0.05" value="0.6"
-                                           placeholder="0.6">
+                                    <input type="number" id="lstmMinConfidence" class="config-input"
+                                           min="0.3" max="0.95" step="0.05" value="0.6" placeholder="0.6">
                                     <span class="input-unit">%</span>
                                 </div>
                                 <small class="config-help" data-translate="lstm_min_confidence_help">Минимальная уверенность LSTM для применения (0.6 = 60%)</small>
                             </div>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-icon">⚖️</span>
                                     <span class="label-text" data-translate="lstm_weight_label">Вес в голосовании:</span>
                                 </label>
                                 <div class="config-input-with-unit">
-                                    <input type="number" id="lstmWeight" class="config-input" 
-                                           min="0.5" max="3.0" step="0.1" value="1.5"
-                                           placeholder="1.5">
+                                    <input type="number" id="lstmWeight" class="config-input"
+                                           min="0.5" max="3.0" step="0.1" value="1.5" placeholder="1.5">
                                     <span class="input-unit">x</span>
                                 </div>
                                 <small class="config-help" data-translate="lstm_weight_help">Влияние LSTM на общее решение (1.5 = повышенный вес)</small>
                             </div>
                         </div>
-                        
-                        <!-- Pattern Recognition -->
-                        <div class="config-subsection">
+
+                        <div class="config-block-row">
                             <h4>📊 <span data-translate="pattern_recognition_title">Pattern Recognition</span></h4>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-text" data-translate="pattern_enabled_label">Распознавание паттернов:</span>
@@ -2274,40 +2256,34 @@
                                 </label>
                                 <small class="config-help" data-translate="pattern_enabled_help">Анализ классических графических паттернов (H&S, Double Top, и др.)</small>
                             </div>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-icon">🎯</span>
                                     <span class="label-text" data-translate="pattern_min_confidence_label">Минимальная уверенность:</span>
                                 </label>
                                 <div class="config-input-with-unit">
-                                    <input type="number" id="patternMinConfidence" class="config-input" 
-                                           min="0.3" max="0.95" step="0.05" value="0.6"
-                                           placeholder="0.6">
+                                    <input type="number" id="patternMinConfidence" class="config-input"
+                                           min="0.3" max="0.95" step="0.05" value="0.6" placeholder="0.6">
                                     <span class="input-unit">%</span>
                                 </div>
                                 <small class="config-help" data-translate="pattern_min_confidence_help">Минимальная уверенность паттернов для применения (0.6 = 60%)</small>
                             </div>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-icon">⚖️</span>
                                     <span class="label-text" data-translate="pattern_weight_label">Вес в голосовании:</span>
                                 </label>
                                 <div class="config-input-with-unit">
-                                    <input type="number" id="patternWeight" class="config-input" 
-                                           min="0.5" max="3.0" step="0.1" value="1.2"
-                                           placeholder="1.2">
+                                    <input type="number" id="patternWeight" class="config-input"
+                                           min="0.5" max="3.0" step="0.1" value="1.2" placeholder="1.2">
                                     <span class="input-unit">x</span>
                                 </div>
                                 <small class="config-help" data-translate="pattern_weight_help">Влияние паттернов на общее решение (1.2 = повышенный вес)</small>
                             </div>
                         </div>
-                        
-                        <!-- Auto Training -->
-                        <div class="config-subsection">
+
+                        <div class="config-block-row">
                             <h4>🔄 <span data-translate="auto_training_title">Auto Training</span></h4>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-text" data-translate="auto_train_enabled_label">Автоматическое обучение:</span>
@@ -2318,7 +2294,6 @@
                                 </label>
                                 <small class="config-help" data-translate="auto_train_help">Автоматическое обновление данных и переобучение модели</small>
                             </div>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-text" data-translate="auto_update_data_label">Обновление данных:</span>
@@ -2329,21 +2304,18 @@
                                 </label>
                                 <small class="config-help" data-translate="auto_update_help">Ежедневное обновление исторических данных</small>
                             </div>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-icon">📥</span>
                                     <span class="label-text" data-translate="data_update_interval_label">Интервал обновления данных:</span>
                                 </label>
                                 <div class="config-input-with-unit">
-                                    <input type="number" id="dataUpdateInterval" class="config-input" 
-                                           min="3600" max="604800" step="3600" value="86400"
-                                           placeholder="86400">
+                                    <input type="number" id="dataUpdateInterval" class="config-input"
+                                           min="3600" max="604800" step="3600" value="86400" placeholder="86400">
                                     <span class="input-unit" data-translate="hours_unit">часов</span>
                                 </div>
                                 <small class="config-help" data-translate="data_update_interval_help">24 часа (86400 сек) = ежедневное обновление</small>
                             </div>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-text" data-translate="auto_retrain_label">Автоматическое переобучение:</span>
@@ -2354,40 +2326,34 @@
                                 </label>
                                 <small class="config-help" data-translate="auto_retrain_help">Еженедельное переобучение модели</small>
                             </div>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-icon">🧠</span>
                                     <span class="label-text" data-translate="retrain_interval_label">Интервал переобучения:</span>
                                 </label>
                                 <div class="config-input-with-unit">
-                                    <input type="number" id="retrainInterval" class="config-input" 
-                                           min="86400" max="2592000" step="86400" value="604800"
-                                           placeholder="604800">
+                                    <input type="number" id="retrainInterval" class="config-input"
+                                           min="86400" max="2592000" step="86400" value="604800" placeholder="604800">
                                     <span class="input-unit" data-translate="days_unit">дней</span>
                                 </div>
                                 <small class="config-help" data-translate="retrain_interval_help">7 дней (604800 сек) = еженедельное переобучение</small>
                             </div>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-icon">⏰</span>
                                     <span class="label-text" data-translate="retrain_hour_label">Время переобучения:</span>
                                 </label>
                                 <div class="config-input-with-unit">
-                                    <input type="number" id="retrainHour" class="config-input" 
-                                           min="0" max="23" step="1" value="3"
-                                           placeholder="3">
+                                    <input type="number" id="retrainHour" class="config-input"
+                                           min="0" max="23" step="1" value="3" placeholder="3">
                                     <span class="input-unit" data-translate="hour_unit">час</span>
                                 </div>
                                 <small class="config-help" data-translate="retrain_hour_help">Час для запуска переобучения (3 = 3:00 AM, минимальная нагрузка)</small>
                             </div>
                         </div>
-                        
-                        <!-- Optimal Entry Detection -->
-                        <div class="config-subsection">
+
+                        <div class="config-block-row">
                             <h4>🎯 <span data-translate="optimal_entry_title">Optimal Entry Detection</span></h4>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-text" data-translate="optimal_entry_enabled_label">Определение оптимальной точки входа:</span>
@@ -2398,7 +2364,6 @@
                                 </label>
                                 <small class="config-help" data-translate="optimal_entry_enabled_help">ИИ определяет оптимальную цену входа и может отложить вход для лучшей цены</small>
                             </div>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-icon">📊</span>
@@ -2410,11 +2375,9 @@
                                 <small class="config-help" data-translate="data_collection_help">Данные о точках входа собираются автоматически даже при отключенной фильтрации</small>
                             </div>
                         </div>
-                        
-                        <!-- Логирование AI -->
-                        <div class="config-subsection">
+
+                        <div class="config-block-row">
                             <h4>📝 <span data-translate="ai_logging_title">Логирование AI</span></h4>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-text" data-translate="log_predictions_label">Логировать предсказания:</span>
@@ -2425,7 +2388,6 @@
                                 </label>
                                 <small class="config-help" data-translate="log_predictions_help">Записывать все AI решения в логи</small>
                             </div>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-text" data-translate="log_anomalies_label">Логировать аномалии:</span>
@@ -2436,7 +2398,6 @@
                                 </label>
                                 <small class="config-help" data-translate="log_anomalies_help">Записывать обнаруженные аномалии в логи</small>
                             </div>
-                            
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-text" data-translate="log_patterns_label">Логировать паттерны:</span>
@@ -2449,10 +2410,8 @@
                             </div>
                         </div>
 
-                        <!-- Самообучение AI (AISelfLearning) -->
-                        <div class="config-subsection">
+                        <div class="config-block-row">
                             <h4>🧠 <span data-translate="self_learning_title">Самообучение AI</span></h4>
-
                             <div class="config-item">
                                 <label class="config-label">
                                     <span class="label-text" data-translate="self_learning_enabled_label">Самообучение в реальном времени:</span>
@@ -2463,8 +2422,10 @@
                                 </label>
                                 <small class="config-help" data-translate="self_learning_enabled_help">AI обучается на каждой закрытой сделке для улучшения будущих решений</small>
                             </div>
+                        </div>
 
-                            <!-- Результаты самообучения -->
+                        <!-- Блоки на всю ширину: результаты, производительность, SMC -->
+                        <div class="config-item config-item-fullwidth">
                             <div class="ai-self-learning-results" id="aiSelfLearningResults">
                                 <div class="results-header">
                                     <h5>📊 <span data-translate="self_learning_results_title">Результаты самообучения</span></h5>
@@ -2472,7 +2433,6 @@
                                         <span data-translate="refresh_results_btn">🔄 Обновить</span>
                                     </button>
                                 </div>
-
                                 <div class="results-content" id="selfLearningResultsContent">
                                     <div class="loading-results">
                                         <div class="spinner-border spinner-border-sm" role="status">
@@ -2483,20 +2443,14 @@
                                 </div>
                             </div>
                         </div>
-                        
-                        <!-- AI Performance Monitoring -->
-                        <div class="config-subsection">
-                            <h4>📈 <span data-translate="ai_performance_title">AI Performance</span></h4>
-                            
+                        <div class="config-item config-item-fullwidth">
                             <div class="ai-performance-dashboard" id="aiPerformanceDashboard">
                                 <div class="performance-header">
                                     <button class="btn btn-sm btn-outline-primary" id="refreshAiPerformanceBtn">
                                         <span data-translate="refresh_performance_btn">🔄 Обновить</span>
                                     </button>
                                 </div>
-                                
                                 <div class="performance-cards" id="aiPerformanceCards">
-                                    <!-- Карточка точности -->
                                     <div class="perf-card">
                                         <div class="perf-card-icon">🎯</div>
                                         <div class="perf-card-content">
@@ -2504,8 +2458,6 @@
                                             <div class="perf-card-label" data-translate="ai_accuracy">Точность</div>
                                         </div>
                                     </div>
-                                    
-                                    <!-- Карточка предсказаний -->
                                     <div class="perf-card">
                                         <div class="perf-card-icon">📊</div>
                                         <div class="perf-card-content">
@@ -2513,8 +2465,6 @@
                                             <div class="perf-card-label" data-translate="ai_predictions">Предсказаний</div>
                                         </div>
                                     </div>
-                                    
-                                    <!-- Карточка уверенности -->
                                     <div class="perf-card">
                                         <div class="perf-card-icon">💪</div>
                                         <div class="perf-card-content">
@@ -2522,8 +2472,6 @@
                                             <div class="perf-card-label" data-translate="ai_avg_confidence">Уверенность</div>
                                         </div>
                                     </div>
-                                    
-                                    <!-- Карточка здоровья -->
                                     <div class="perf-card">
                                         <div class="perf-card-icon">💚</div>
                                         <div class="perf-card-content">
@@ -2532,24 +2480,18 @@
                                         </div>
                                     </div>
                                 </div>
-                                
-                                <!-- Рекомендации -->
                                 <div class="ai-recommendations" id="aiRecommendations" style="display: none;">
                                     <h5>💡 <span data-translate="ai_recommendations">Рекомендации</span></h5>
                                     <ul id="aiRecommendationsList"></ul>
                                 </div>
                             </div>
                         </div>
-                        
-                        <!-- Smart Money Concepts -->
-                        <div class="config-subsection">
-                            <h4>💰 <span data-translate="smc_title">Smart Money Concepts</span></h4>
-                            
+                        <div class="config-item config-item-fullwidth">
                             <div class="smc-info">
                                 <p class="smc-description" data-translate="smc_description">
                                     Институциональный анализ: Order Blocks, FVG, Liquidity Zones, BOS/CHoCH
                                 </p>
-                                <div class="config-item" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                                     <label class="toggle-switch">
                                         <input type="checkbox" id="smcEnabled" checked />
                                         <span class="toggle-slider"></span>
@@ -2580,11 +2522,11 @@
                 <button class="btn btn-secondary config-reset-btn" id="resetConfigBtn">
                     <span data-translate="reset_config_btn">🔄 Сбросить к умолчаниям</span>
                 </button>
-                <button class="btn btn-outline-success config-export-btn" id="exportConfigBtn" title="Скачать полный конфиг: config_1m.json, config_5m.json, config_1d.json, config_1w.json, config_1M.json (по текущему ТФ)">
-                    <span data-translate="export_config_btn">📤 Экспорт config_ТФ.json</span>
+                <button class="btn btn-outline-success config-export-btn" id="exportConfigBtn" title="Скачать полный конфиг: InfoBot_Config_1m.json, InfoBot_Config_5m.json, InfoBot_Config_15m.json и т.д. (по текущему ТФ)">
+                    <span data-translate="export_config_btn">📤 Экспорт InfoBot_Config_ТФ.json</span>
                 </button>
-                <button class="btn btn-outline-primary config-import-btn" id="importConfigBtn" title="Загрузить config_ТФ.json (autoBot + system + ai)">
-                    <span data-translate="import_config_btn">📥 Импорт config_ТФ.json</span>
+                <button class="btn btn-outline-primary config-import-btn" id="importConfigBtn" title="Загрузить InfoBot_Config_ТФ.json (autoBot + system + ai)">
+                    <span data-translate="import_config_btn">📥 Импорт InfoBot_Config_ТФ.json</span>
                 </button>
                 <input type="file" id="importConfigFileInput" accept=".json,application/json" style="display: none;">
                 <button class="btn btn-info config-test-btn" id="testConfigBtn">

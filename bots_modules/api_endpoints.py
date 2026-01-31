@@ -1739,12 +1739,8 @@ def timeframe_config():
         }), 500
 
 def _build_full_export_config():
-    """Собирает полный конфиг для экспорта: autoBot + system + ai + timeframe. Все ключи из bot_config."""
-    try:
-        load_auto_bot_config()
-        load_system_config()
-    except Exception as e:
-        logger.warning(f" export-config reload: {e}")
+    """Собирает полный конфиг для экспорта из текущего состояния в памяти (без перезагрузки с диска)."""
+    # Не вызываем load_auto_bot_config/load_system_config — иначе при экспорте память перезапишется с диска и конфиг «станет дефолтным»
     with bots_data_lock:
         auto_bot = deepcopy(bots_data.get('auto_bot_config', {}))
     system_cfg = get_system_config_snapshot()

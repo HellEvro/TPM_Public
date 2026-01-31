@@ -2440,6 +2440,10 @@ def load_all_coins_rsi():
 def _recalculate_signal_with_trend(rsi, trend, symbol):
     """Пересчитывает сигнал с учетом нового тренда"""
     try:
+        # ✅ Защита: при отсутствии RSI возвращаем WAIT (нельзя сравнивать None с int)
+        if rsi is None:
+            return 'WAIT'
+
         # Получаем настройки автобота
         auto_config = bots_data.get('auto_bot_config', {})
         # ✅ ИСПРАВЛЕНО: Используем False по умолчанию (как в bot_config.py), а не True

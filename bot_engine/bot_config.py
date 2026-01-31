@@ -210,13 +210,13 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'rsi_long_threshold': 22, # Вход в LONG при RSI <= 29
     'rsi_short_threshold': 78, # Вход в SHORT при RSI >= 71
     # ✅ Новые параметры RSI выхода с учетом тренда
-    'rsi_exit_long_with_trend': 60, # Выход из LONG при RSI >= 65 (вход по тренду)
+    'rsi_exit_long_with_trend': 65, # Выход из LONG при RSI >= 65 (вход по тренду)
     'rsi_exit_long_against_trend': 60,   # Выход из LONG при RSI >= 60 (вход против тренда)
-    'rsi_exit_short_with_trend': 40, # Выход из SHORT при RSI <= 35 (вход по тренду)
+    'rsi_exit_short_with_trend': 35, # Выход из SHORT при RSI <= 35 (вход по тренду)
     'rsi_exit_short_against_trend': 40,  # Выход из SHORT при RSI <= 40 (вход против тренда)
     'default_position_size': 5,          # Базовый размер позиции (в единицах согласно default_position_mode)
     'default_position_mode': 'percent', # Режим расчета: usdt | percent
-    'leverage': 10,                       # ✅ Кредитное плечо (1-125x)
+    'leverage': 100, # ✅ Кредитное плечо (1-125x)
     'check_interval': 10, # Интервал проверки в секундах (3 мин = 180 сек)
     'monitoring_interval': 10,  # Интервал мониторинга активных ботов в секундах
     # Торговые настройки
@@ -225,7 +225,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     # Защитные механизмы
     'max_loss_percent': 15,   # Максимальный убыток в % от входа (стоп-лосс)
     'take_profit_percent': 2, # Защитный Take Profit в % от входа (рассчитывается как стоп-лосс)
-    'trailing_stop_activation': 2, # Процент прибыли, после которого активируется трейлинг
+    'trailing_stop_activation': 0.5, # Процент прибыли, после которого активируется трейлинг
     'trailing_stop_distance': 1, # Дистанция трейлинга от максимальной цены, %
     'trailing_take_distance': 0.5,    # Резервный trailing-тейк (лимит) в %, когда процесс упадет
     'trailing_update_interval': 3,  # Минимальный интервал обновлений стопов/тейков (сек)
@@ -252,7 +252,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'rsi_time_filter_upper': 65,        # Верхняя граница спокойной зоны для SHORT
     'rsi_time_filter_lower': 35,        # Нижняя граница спокойной зоны для LONG
     # Набор позиций лимитными ордерами
-    'limit_orders_entry_enabled': False, # Включить набор позиций лимитными ордерами (False = рыночный вход)
+    'limit_orders_entry_enabled': True, # Включить набор позиций лимитными ордерами (False = рыночный вход)
     'limit_orders_percent_steps': [0, 0.5, 1, 1.5, 2], # Шаги в % от цены входа (0 = рыночный, далее лимитные с увеличивающимся отступом)
     'limit_orders_margin_amounts': [5, 5, 5, 5, 5], # Объем маржи в USDT для каждого ордера (минимум 5 USDT на бирже Bybit, иначе ордер будет отклонен)
     # --- РЕАЛЬНЫЕ ДВИЖЕНИЯ СВЕЧЕЙ (замеряй и подставляй в конфиг как есть) ---
@@ -315,7 +315,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'system_timeframe': '1m',
     'mini_chart_update_interval': 30,
     'smc_enabled': True,
-    'exit_scam_effective_multi_pct': 100,
+    'exit_scam_effective_multi_pct': 2,
     'exit_scam_effective_single_pct': 0.5,
     'exit_scam_timeframe': '1m',
 }

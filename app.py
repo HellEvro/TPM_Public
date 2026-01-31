@@ -1904,6 +1904,14 @@ def get_bots_pairs():
     status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
+@app.route('/api/status', methods=['GET'])
+def api_status_proxy():
+    """Прокси /api/status для проверки сервиса ботов (фронт при порте 5000 дергает этот URL)."""
+    result = call_bots_service('/api/status', timeout=5)
+    status_code = result.get('status_code', 200 if result.get('status') == 'online' else 503)
+    return jsonify(result), status_code
+
+
 @app.route('/api/bots/health', methods=['GET'])
 def get_bots_health():
     """Проверка состояния сервиса ботов"""
@@ -1926,11 +1934,14 @@ def create_bot():
     status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
-@app.route('/api/bots/auto-bot', methods=['POST'])
-def toggle_auto_bot():
-    """Переключить Auto Bot (прокси к сервису ботов)"""
-    data = request.get_json()
-    result = call_bots_service('/api/bots/auto-bot', method='POST', data=data)
+@app.route('/api/bots/auto-bot', methods=['GET', 'POST'])
+def auto_bot_proxy():
+    """Получить конфиг Auto Bot (GET) или обновить (POST) — прокси к сервису ботов."""
+    if request.method == 'GET':
+        result = call_bots_service('/api/bots/auto-bot', method='GET')
+    else:
+        data = request.get_json()
+        result = call_bots_service('/api/bots/auto-bot', method='POST', data=data)
     status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
@@ -1981,6 +1992,39 @@ def start_bot():
     result = call_bots_service('/api/bots/start', method='POST', data=data)
     status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
+
+
+@app.route('/api/bots/export-config', methods=['GET'])
+def export_config():
+    """Экспорт полного конфига InfoBot_Config_<TF>.json (прокси к сервису ботов)"""
+    result = call_bots_service('/api/bots/export-config', method='GET', timeout=15)
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
+
+@app.route('/api/bots/system-config', methods=['GET', 'POST'])
+def system_config():
+    """Системные настройки (прокси к сервису ботов)"""
+    if request.method == 'GET':
+        result = call_bots_service('/api/bots/system-config', method='GET')
+    else:
+        data = request.get_json()
+        result = call_bots_service('/api/bots/system-config', method='POST', data=data)
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
+
+@app.route('/api/ai/config', methods=['GET', 'POST'])
+def ai_config():
+    """Конфиг AI (прокси к сервису ботов)"""
+    if request.method == 'GET':
+        result = call_bots_service('/api/ai/config', method='GET')
+    else:
+        data = request.get_json()
+        result = call_bots_service('/api/ai/config', method='POST', data=data)
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
 
 chart_render_lock = threading.Lock()
 

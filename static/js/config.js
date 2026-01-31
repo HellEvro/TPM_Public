@@ -962,7 +962,32 @@ const TRANSLATIONS = {
         'bot_service_port_small': 'Сервис должен работать на порту 5001',
         'refresh_page': 'Обновить страницу',
         'bot_service_check': 'Проверить сервис',
-        'bot_service_launch_required': 'Для работы с ботами необходимо запустить сервис:'
+        'bot_service_launch_required': 'Для работы с ботами необходимо запустить сервис:',
+
+        // AI / самообучение / экспорт-импорт
+        'loading_results': 'Загрузка результатов...',
+        'ai_performance_title': 'Производительность AI',
+        'refresh_performance_btn': 'Обновить производительность',
+        'ai_accuracy': 'Точность AI',
+        'ai_predictions': 'Прогнозы AI',
+        'ai_avg_confidence': 'Средняя уверенность',
+        'ai_health': 'Состояние AI',
+        'ai_recommendations': 'Рекомендации AI',
+        'smc_title': 'SMC (Self-Model Correction)',
+        'smc_description': 'Коррекция модели на основе рыночных данных',
+        'smc_enabled_label': 'SMC включен',
+        'smc_active': 'SMC активен',
+        'export_config_btn': 'Экспорт InfoBot_Config_ТФ.json',
+        'import_config_btn': 'Импорт InfoBot_Config_ТФ.json',
+        'system_timeframe_label': 'Таймфрейм системы',
+        'system_timeframe_help': 'Базовый таймфрейм для анализа и торговли',
+        'mini_chart_update_interval_label': 'Интервал обновления миниграфиков (сек)',
+        'mini_chart_interval_help': 'Как часто обновлять миниграфики в правой панели',
+        'self_learning_title': 'Самообучение',
+        'self_learning_enabled_label': 'Самообучение включено',
+        'self_learning_enabled_help': 'Модель дообучается на новых данных',
+        'self_learning_results_title': 'Результаты самообучения',
+        'refresh_results_btn': 'Обновить результаты'
     },
     en: {
         theme: '🌓 Toggle Theme',
@@ -1925,7 +1950,32 @@ const TRANSLATIONS = {
         'bot_service_port_small': 'The service must be running on port 5001',
         'refresh_page': 'Refresh page',
         'bot_service_check': 'Check service',
-        'bot_service_launch_required': 'To work with bots, you need to launch the service:'
+        'bot_service_launch_required': 'To work with bots, you need to launch the service:',
+
+        // AI / self-learning / export-import
+        'loading_results': 'Loading results...',
+        'ai_performance_title': 'AI Performance',
+        'refresh_performance_btn': 'Refresh performance',
+        'ai_accuracy': 'AI Accuracy',
+        'ai_predictions': 'AI Predictions',
+        'ai_avg_confidence': 'Avg. Confidence',
+        'ai_health': 'AI Health',
+        'ai_recommendations': 'AI Recommendations',
+        'smc_title': 'SMC (Self-Model Correction)',
+        'smc_description': 'Model correction based on market data',
+        'smc_enabled_label': 'SMC enabled',
+        'smc_active': 'SMC active',
+        'export_config_btn': 'Export InfoBot_Config_TF.json',
+        'import_config_btn': 'Import InfoBot_Config_TF.json',
+        'system_timeframe_label': 'System timeframe',
+        'system_timeframe_help': 'Base timeframe for analysis and trading',
+        'mini_chart_update_interval_label': 'Mini chart update interval (sec)',
+        'mini_chart_interval_help': 'How often to refresh mini charts in the right panel',
+        'self_learning_title': 'Self-Learning',
+        'self_learning_enabled_label': 'Self-learning enabled',
+        'self_learning_enabled_help': 'Model retrains on new data',
+        'self_learning_results_title': 'Self-learning results',
+        'refresh_results_btn': 'Refresh results'
     }
 };
 
