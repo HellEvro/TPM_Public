@@ -1021,12 +1021,13 @@ class NewTradingBot:
                 logger.error(f"[RSI_CHECK_{symbol}] ❌ Неизвестная сторона позиции: {position_side}")
                 return False, None
             
+            # Вызов ВНЕ lock: get_individual_coin_settings сам берёт bots_data_lock — иначе дедлок
+            individual_settings = get_individual_coin_settings(symbol) or {}
             with bots_data_lock:
                 auto_config = bots_data.get('auto_bot_config', {})
                 bot_data = bots_data.get('bots', {}).get(symbol, {})
                 entry_trend = bot_data.get('entry_trend', None)
                 # Пороги: individual_settings → bot_data → auto_config → константы (п.1 REVERTED_COMMITS_FIXES)
-                individual_settings = get_individual_coin_settings(symbol) or {}
 
                 def _thresh(key, default):
                     return (individual_settings.get(key) or bot_data.get(key)

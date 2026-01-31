@@ -1559,87 +1559,89 @@ def update_bots_cache_data():
         return False
 
 def update_bot_positions_status():
-    """Обновляет статус позиций ботов (цена, PnL, ликвидация) каждые SystemConfig.BOT_STATUS_UPDATE_INTERVAL секунд"""
+    """Обновляет статус позиций ботов (цена, PnL, ликвидация) каждые SystemConfig.BOT_STATUS_UPDATE_INTERVAL секунд.
+    ⚡ Сетевые вызовы get_ticker() выполняются ВНЕ блокировки, чтобы auto_save_worker мог получить lock."""
     try:
         if not ensure_exchange_initialized():
             return False
         
+        # Под lock только быстрый снимок: какие боты в позиции и что им нужно обновить
         with bots_data_lock:
-            updated_count = 0
-            
+            to_update = []
             for symbol, bot_data in bots_data['bots'].items():
-                # Обновляем только ботов в позиции (НО НЕ остановленных!)
                 bot_status = bot_data.get('status')
                 if bot_status not in ['in_position_long', 'in_position_short']:
                     continue
-                
-                # ⚡ КРИТИЧНО: Не обновляем ботов на паузе!
                 if bot_status == BOT_STATUS['PAUSED']:
-                    pass
                     continue
-                
-                try:
-                    # Получаем текущую цену
-                    current_exchange = get_exchange()
-                    if not current_exchange:
-                        continue
-                    ticker_data = current_exchange.get_ticker(symbol)
-                    if not ticker_data or 'last_price' not in ticker_data:
-                        continue
-                    current_price = float(ticker_data['last_price'])
-                    
-                    entry_price = bot_data.get('entry_price')
-                    position_side = bot_data.get('position_side')
-                    
-                    if not entry_price or not position_side:
-                        continue
-                    
-                    # Рассчитываем PnL
-                    if position_side == 'LONG':
-                        pnl_percent = ((current_price - entry_price) / entry_price) * 100
-                    else:  # SHORT
-                        pnl_percent = ((entry_price - current_price) / entry_price) * 100
-                    
-                    # Обновляем данные бота
-                    old_pnl = bot_data.get('unrealized_pnl', 0)
-                    bot_data['unrealized_pnl'] = pnl_percent
-                    bot_data['current_price'] = current_price
-                    bot_data['last_update'] = datetime.now().isoformat()
-                    
-                    # Рассчитываем цену ликвидации (примерно)
-                    volume_value = bot_data.get('volume_value', 10)
-                    leverage = 10  # Предполагаем плечо 10x
-                    
-                    if position_side == 'LONG':
-                        # Для LONG: ликвидация при падении цены
-                        liquidation_price = entry_price * (1 - (100 / leverage) / 100)
-                    else:  # SHORT
-                        # Для SHORT: ликвидация при росте цены
-                        liquidation_price = entry_price * (1 + (100 / leverage) / 100)
-                    
-                    bot_data['liquidation_price'] = liquidation_price
-                    
-                    # Расстояние до ликвидации
-                    if position_side == 'LONG':
-                        distance_to_liq = ((current_price - liquidation_price) / liquidation_price) * 100
-                    else:  # SHORT
-                        distance_to_liq = ((liquidation_price - current_price) / liquidation_price) * 100
-                    
-                    bot_data['distance_to_liquidation'] = distance_to_liq
-                    
-                    updated_count += 1
-                    
-                    # Логируем только если PnL изменился значительно
-                    if abs(pnl_percent - old_pnl) > 0.1:
-                        logger.info(f"[POSITION_UPDATE] 📊 {symbol} {position_side}: ${current_price:.6f} | PnL: {pnl_percent:+.2f}% | Ликвидация: ${liquidation_price:.6f} ({distance_to_liq:.1f}%)")
-                
-                except Exception as e:
-                    logger.error(f"[POSITION_UPDATE] ❌ Ошибка обновления {symbol}: {e}")
+                entry_price = bot_data.get('entry_price')
+                position_side = bot_data.get('position_side')
+                if not entry_price or not position_side:
                     continue
-        
-        if updated_count > 0:
-            pass
-        
+                to_update.append({
+                    'symbol': symbol,
+                    'entry_price': entry_price,
+                    'position_side': position_side,
+                    'volume_value': bot_data.get('volume_value', 10),
+                    'old_pnl': bot_data.get('unrealized_pnl', 0),
+                })
+        if not to_update:
+            return True
+
+        # ВНЕ lock: сетевые вызовы и расчёты
+        current_exchange = get_exchange()
+        if not current_exchange:
+            return False
+        leverage = 10
+        results = []
+        for item in to_update:
+            try:
+                ticker_data = current_exchange.get_ticker(item['symbol'])
+                if not ticker_data or 'last_price' not in ticker_data:
+                    continue
+                current_price = float(ticker_data['last_price'])
+                entry_price = item['entry_price']
+                position_side = item['position_side']
+                if position_side == 'LONG':
+                    pnl_percent = ((current_price - entry_price) / entry_price) * 100
+                else:
+                    pnl_percent = ((entry_price - current_price) / entry_price) * 100
+                if position_side == 'LONG':
+                    liquidation_price = entry_price * (1 - (100 / leverage) / 100)
+                else:
+                    liquidation_price = entry_price * (1 + (100 / leverage) / 100)
+                if position_side == 'LONG':
+                    distance_to_liq = ((current_price - liquidation_price) / liquidation_price) * 100
+                else:
+                    distance_to_liq = ((liquidation_price - current_price) / liquidation_price) * 100
+                results.append({
+                    'symbol': item['symbol'],
+                    'current_price': current_price,
+                    'pnl_percent': pnl_percent,
+                    'liquidation_price': liquidation_price,
+                    'distance_to_liquidation': distance_to_liq,
+                    'old_pnl': item['old_pnl'],
+                })
+            except Exception as e:
+                logger.error(f"[POSITION_UPDATE] ❌ Ошибка обновления {item['symbol']}: {e}")
+
+        # Под lock только краткая запись результатов
+        if not results:
+            return True
+        with bots_data_lock:
+            now_iso = datetime.now().isoformat()
+            for r in results:
+                symbol = r['symbol']
+                if symbol not in bots_data['bots']:
+                    continue
+                bot_data = bots_data['bots'][symbol]
+                bot_data['unrealized_pnl'] = r['pnl_percent']
+                bot_data['current_price'] = r['current_price']
+                bot_data['last_update'] = now_iso
+                bot_data['liquidation_price'] = r['liquidation_price']
+                bot_data['distance_to_liquidation'] = r['distance_to_liquidation']
+                if abs(r['pnl_percent'] - r['old_pnl']) > 0.1:
+                    logger.info(f"[POSITION_UPDATE] 📊 {symbol} {bot_data.get('position_side')}: ${r['current_price']:.6f} | PnL: {r['pnl_percent']:+.2f}% | Ликвидация: ${r['liquidation_price']:.6f} ({r['distance_to_liquidation']:.1f}%)")
         return True
         
     except Exception as e:
