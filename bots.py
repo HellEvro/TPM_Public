@@ -702,7 +702,7 @@ if __name__ == '__main__':
 
             if AIConfig.AI_ENABLED:
                 logger.info("🤖 Инициализация AI модулей...")
-                from bot_engine.ai.ai_manager import get_ai_manager
+                from bot_engine.ai import get_ai_manager
                 ai_manager = get_ai_manager()
 
                 # ✅ Обучение перенесено в ai.py - здесь только проверка доступности модулей

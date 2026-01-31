@@ -303,6 +303,15 @@ class BotsManager {
             break;
             case 'filters':
                 this.loadFiltersData();
+                // Загружаем актуальные данные монет для вкладки «Фильтры монет»; после загрузки обновляем поиск при активном запросе
+                this.loadCoinsRsiData().then(() => {
+                    const searchInput = document.getElementById('coinSearchInput');
+                    const term = searchInput ? searchInput.value.trim() : '';
+                    if (term) {
+                        this.filterCoins(term);
+                        this.updateSmartFilterControls(term);
+                    }
+                });
                 break;
             case 'config':
                 console.log('[BotsManager] 🎛️ Переключение на вкладку КОНФИГУРАЦИЯ');

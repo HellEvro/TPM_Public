@@ -66,7 +66,7 @@ def register_ai_endpoints(app):
     def get_ai_status():
         """Получить статус ИИ системы"""
         try:
-            from bot_engine.ai.ai_manager import get_ai_manager
+            from bot_engine.ai import get_ai_manager
             from bot_engine.ai.auto_trainer import get_auto_trainer
             from bot_engine.bot_config import AIConfig, RiskConfig
 
@@ -120,7 +120,7 @@ def register_ai_endpoints(app):
         """Получить конфигурацию AI"""
         try:
             from bot_engine.bot_config import AIConfig, RiskConfig
-            from bot_engine.ai.ai_manager import get_ai_manager
+            from bot_engine.ai import get_ai_manager
 
             ai_manager = get_ai_manager()
 
@@ -189,7 +189,7 @@ def register_ai_endpoints(app):
     def save_ai_config():
         """Сохранить конфигурацию AI"""
         try:
-            from bot_engine.ai.ai_manager import get_ai_manager
+            from bot_engine.ai import get_ai_manager
 
             ai_manager = get_ai_manager()
 

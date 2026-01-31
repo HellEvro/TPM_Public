@@ -222,4 +222,25 @@
 
 ---
 
+## Очистка «зоопарка веток» в Git
+
+Если история веток запуталась (множество merge, detached HEAD, «14↑ 4↓») и нужно оставить только последнее состояние в одном линейном коммите:
+
+```batch
+scripts\fix_git_clean_history.bat
+scripts\fix_git_clean_history.bat \\EVROMINI\InfoBot
+REM или напрямую .cmd (без PowerShell):
+scripts\fix_git_clean_history.cmd \\EVROMINI\InfoBot
+```
+
+Скрипт:
+- Снимает `skip-worktree` с `bot_config.py`, делает резервную копию
+- Создаёт orphan-ветку с одним коммитом из текущего состояния
+- Заменяет `main` на линейную историю
+- Восстанавливает `bot_config.py` и `skip-worktree`
+
+После выполнения: `git push origin main --force` (осторожно — перезаписывает историю на сервере).
+
+---
+
 *Документ обновлён после hard reset к f0a0c509. Текущая база — f0a0c509.*
