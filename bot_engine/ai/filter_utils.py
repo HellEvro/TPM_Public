@@ -115,7 +115,7 @@ def run_exit_scam_filter(
         return True, 'ExitScam отключен'
 
     exit_scam_candles = int(config.get('exit_scam_candles', 10) or 10)
-    # Лимит как в конфиге: 0.5 = 0.5%, без пересчёта по таймфрейму
+    # Реальные % тела свечи: |C-O|/O*100. Конфиг как есть (25 = 25%, 100 = 100%).
     single_candle_percent = float(config.get('exit_scam_single_candle_percent', 15.0) or 15.0)
     multi_candle_count = int(config.get('exit_scam_multi_candle_count', 4) or 4)
     multi_candle_percent = float(config.get('exit_scam_multi_candle_percent', 50.0) or 50.0)

@@ -21,6 +21,13 @@ import pandas as pd
 logger = logging.getLogger('AI.Integration')
 
 
+def _confidence_01(value: float) -> float:
+    """Приводит уверенность к шкале 0–1. Конфиг и модель: значение как есть; если > 1 — считаем 0–100 и делим на 100 один раз."""
+    if value is None:
+        return 0.0
+    return (float(value) / 100.0) if float(value) > 1 else float(value)
+
+
 def _score_from_signal(signal: str, confidence: float) -> float:
     """Score -100..100 из signal + confidence."""
     if signal == 'LONG':
@@ -309,28 +316,29 @@ def apply_ai_prediction_to_signal(
         ai_confidence = ai_prediction.get('confidence', 0)
         ai_signal, ai_confidence, sentiment_used, onchain_used = _integrate_sentiment_onchain(symbol, ai_signal, ai_confidence)
 
-        min_confidence = config.get('ai_min_confidence', 0.7) if config else 0.7
+        min_confidence = _confidence_01(config.get('ai_min_confidence', 0.7) if config else 0.7)
+        ai_conf_01 = _confidence_01(ai_confidence)
 
-        if ai_confidence >= min_confidence:
-            return {
-                'signal': ai_signal,
-                'ai_used': True,
-                'ai_confidence': ai_confidence,
+        if ai_conf_01 >= min_confidence:
+        return {
+            'signal': ai_signal,
+            'ai_used': True,
+            'ai_confidence': ai_conf_01,
                 'ai_prediction': ai_prediction,
                 'original_signal': original_signal,
                 'sentiment_used': sentiment_used,
                 'onchain_used': onchain_used,
-                'reason': f'AI signal used (confidence: {ai_confidence:.2%})'
+                'reason': f'AI signal used (confidence: {ai_conf_01:.2%})'
             }
 
         return {
             'signal': original_signal,
             'ai_used': True,
-            'ai_confidence': ai_confidence,
+            'ai_confidence': ai_conf_01,
             'ai_prediction': ai_prediction,
             'sentiment_used': sentiment_used,
             'onchain_used': onchain_used,
-            'reason': f'Original signal used (AI confidence too low: {ai_confidence:.2%})'
+            'reason': f'Original signal used (AI confidence too low: {ai_conf_01:.2%})'
         }
         
     except Exception as e:
@@ -489,20 +497,21 @@ def should_open_position_with_ai(
         signal = prediction.get('signal')
         confidence = prediction.get('confidence', 0)
         signal, confidence, sentiment_used, onchain_used = _integrate_sentiment_onchain(symbol, signal, confidence)
+        ai_conf_01 = _confidence_01(confidence)
         result['ai_used'] = True
         result['ai_signal'] = signal
-        result['ai_confidence'] = confidence
+        result['ai_confidence'] = ai_conf_01
         result['sentiment_used'] = sentiment_used
         result['onchain_used'] = onchain_used
 
-        ai_confidence_threshold = config.get('ai_min_confidence', 0.65) if config else 0.65
-        
+        ai_confidence_threshold = _confidence_01(config.get('ai_min_confidence', 0.65) if config else 0.65)
+
         # === КОМБИНИРОВАННАЯ ЛОГИКА AI + SMC ===
         should_open = False
-        
+
         # Если и AI и SMC согласны - высокая уверенность
         if smc_signal:
-            ai_agrees = (direction == signal and confidence >= ai_confidence_threshold)
+            ai_agrees = (direction == signal and ai_conf_01 >= ai_confidence_threshold)
             smc_agrees = (
                 (direction == 'LONG' and smc_signal['signal'] == 'LONG') or
                 (direction == 'SHORT' and smc_signal['signal'] == 'SHORT')
@@ -532,27 +541,27 @@ def should_open_position_with_ai(
                 result['reason'] = f"Ни AI ни SMC не подтверждают {direction}"
         else:
             # Только AI (нет свечей для SMC)
-            if direction == 'LONG' and signal == 'LONG' and confidence >= ai_confidence_threshold:
+            if direction == 'LONG' and signal == 'LONG' and ai_conf_01 >= ai_confidence_threshold:
                 should_open = True
-                result['reason'] = f"AI подтверждает LONG (confidence: {confidence:.2%})"
-            elif direction == 'SHORT' and signal == 'SHORT' and confidence >= ai_confidence_threshold:
+                result['reason'] = f"AI подтверждает LONG (confidence: {ai_conf_01:.2%})"
+            elif direction == 'SHORT' and signal == 'SHORT' and ai_conf_01 >= ai_confidence_threshold:
                 should_open = True
-                result['reason'] = f"AI подтверждает SHORT (confidence: {confidence:.2%})"
+                result['reason'] = f"AI подтверждает SHORT (confidence: {ai_conf_01:.2%})"
             elif signal == 'WAIT':
                 should_open = False
                 result['reason'] = f"AI рекомендует WAIT"
-            elif confidence < ai_confidence_threshold:
+            elif ai_conf_01 < ai_confidence_threshold:
                 should_open = False
-                result['reason'] = f"AI confidence too low: {confidence:.2%}"
-        
+                result['reason'] = f"AI confidence too low: {ai_conf_01:.2%}"
+
         result['should_open'] = should_open
         result['model_used'] = 'signal_predictor.pkl + SMC' if smc_signal else 'signal_predictor.pkl'
-        
+
         # ВАЖНО: Сохраняем решение AI для отслеживания результатов торговли
         if should_open:
             try:
                 result['ai_decision_id'] = _track_ai_decision(
-                    symbol, direction, rsi, trend, price, signal, confidence, market_data
+                    symbol, direction, rsi, trend, price, signal, ai_conf_01, market_data
                 )
             except Exception as e:
                 pass

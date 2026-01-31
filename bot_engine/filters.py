@@ -246,7 +246,7 @@ def check_exit_scam_filter(symbol, coin_data, config, exchange_obj, ensure_excha
             close_price = float(candle.get('close', 0) or 0)
             if open_price <= 0:
                 continue
-            # ПРОЦЕНТ БЛОКИРОВКИ = тело одной свечи с биржи: |close-open|/open×100. open/close из API (get_chart_data).
+            # % тела свечи = (close-open)/open×100. 100% = цена удвоилась (close=2×open), 0.5% = close=1.005×open. open/close из API биржи.
             price_change = abs((close_price - open_price) / open_price) * 100
             if price_change > single_candle_percent:
                 num_from_end = len(recent_candles) - i

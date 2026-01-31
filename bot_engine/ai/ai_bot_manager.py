@@ -193,14 +193,26 @@ class AIBotManager:
             bots = self.get_bots_list()
             bot_symbols = {bot.get('symbol') for bot in bots}
 
+            def _conf_01(v):
+                if v is None:
+                    return 0.0
+                v = float(v)
+                return (v / 100.0) if v > 1 else v
+
+            min_conf_raw = 0.7
+            try:
+                from bot_engine.bot_config import AIConfig
+                min_conf_raw = getattr(AIConfig, 'AI_CONFIDENCE_THRESHOLD', 0.7)
+            except Exception:
+                pass
+            min_conf_01 = _conf_01(min_conf_raw)
+
             for symbol, prediction in predictions.items():
                 signal = prediction.get('signal')
                 confidence = prediction.get('confidence', 0)
+                conf_01 = _conf_01(confidence)
 
-                # Минимальная уверенность для действий
-                min_confidence = 0.7
-
-                if confidence < min_confidence:
+                if conf_01 < min_conf_01:
                     continue
 
                 bot_status = self.get_bot_status(symbol)
@@ -210,7 +222,7 @@ class AIBotManager:
                     if not bot_status or bot_status.get('status') == 'IDLE':
                         # Запускаем бота если его нет или он в IDLE
                         self.start_bot(symbol)
-                        logger.info(f"🤖 AI запустил бота {symbol} (сигнал: {signal}, уверенность: {confidence:.2%})")
+                        logger.info(f"🤖 AI запустил бота {symbol} (сигнал: {signal}, уверенность: {conf_01:.2%})")
 
                 elif signal == 'WAIT':
                     # Нужно закрыть позицию если открыта

@@ -255,18 +255,21 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'limit_orders_entry_enabled': False, # Включить набор позиций лимитными ордерами (False = рыночный вход)
     'limit_orders_percent_steps': [0, 0.5, 1, 1.5, 2], # Шаги в % от цены входа (0 = рыночный, далее лимитные с увеличивающимся отступом)
     'limit_orders_margin_amounts': [5, 5, 5, 5, 5], # Объем маржи в USDT для каждого ордера (минимум 5 USDT на бирже Bybit, иначе ордер будет отклонен)
+    # --- РЕАЛЬНЫЕ ДВИЖЕНИЯ СВЕЧЕЙ (замеряй и подставляй в конфиг как есть) ---
+    # Одна свеча:  % = |close - open| / open * 100  (тело свечи в %). Свечи могут расти/падать на 100%, 200%+.
+    # Суммарно за N свечей: % = |last_close - first_open| / first_open * 100. Значения в конфиге — те же % (25 = 25%, 100 = 100%).
     # ExitScam фильтр (защита от резких движений цены)
     'exit_scam_enabled': True, # Включить проверку на ExitScam
     'exit_scam_candles': 4, # Количество свечей для проверки (10 = 60 часов на 6H)
-    'exit_scam_single_candle_percent': 2, # Максимальный % изменения одной свечи (15% = блокировка)
+    'exit_scam_single_candle_percent': 25, # Макс. % тела одной свечи: |C-O|/O*100. 25 = блокировка при >25% (как замерил — так и ставишь).
     'exit_scam_multi_candle_count': 4,        # Количество свечей для суммарного анализа
-    'exit_scam_multi_candle_percent': 5, # Максимальный суммарный % за N свечей (50% = блокировка)
+    'exit_scam_multi_candle_percent': 100, # Макс. суммарный % за N свечей: |last_C - first_O|/first_O*100. 100 = блокировка при >100%.
     # 🤖 ИИ настройки (премиум функции)
     'ai_optimal_entry_enabled': True, # ИИ определение оптимальной точки входа (выкл. по умолчанию)
     'ai_enabled': True, # Включить подтверждение сигналов AI
     'ai_min_confidence': 0.7,          # Минимальная уверенность AI (0.0-1.0)
     'ai_override_original': True, # AI может блокировать решения скрипта,
-    'anomaly_block_threshold': 0.7,
+    'anomaly_block_threshold': 0.7,  # Порог блокировки по аномалии: 0–1 (0.7 = 70%). Severity в коде: 0–1; эвристика = max_change%/100 (100% хода = 1.0).
     'anomaly_detection_enabled': True,
     'anomaly_log_enabled': True,
     'auto_refresh_ui': True,
@@ -312,8 +315,8 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'system_timeframe': '1m',
     'mini_chart_update_interval': 30,
     'smc_enabled': True,
-    'exit_scam_effective_multi_pct': 0.33,
-    'exit_scam_effective_single_pct': 0.03,
+    'exit_scam_effective_multi_pct': 50,
+    'exit_scam_effective_single_pct': 25,
     'exit_scam_timeframe': '1m',
 }
 

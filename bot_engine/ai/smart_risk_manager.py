@@ -234,7 +234,14 @@ class SmartRiskManager:
         if self.anomaly_detector:
             try:
                 anomaly_score = self.anomaly_detector.detect(candles)
-                if anomaly_score.get('is_anomaly') and anomaly_score.get('severity', 0) > 0.7:
+                block_threshold = 0.7
+                try:
+                    from bot_engine.bot_config import AIConfig
+                    block_threshold = getattr(AIConfig, 'AI_ANOMALY_BLOCK_THRESHOLD', 0.7)
+                    block_threshold = (block_threshold / 100.0) if block_threshold > 1 else block_threshold
+                except Exception:
+                    pass
+                if anomaly_score.get('is_anomaly') and anomaly_score.get('severity', 0) > block_threshold:
                     logger.warning(f" ⚠️ {symbol}: Обнаружена аномалия в бэктесте!")
             except Exception as e:
                 pass

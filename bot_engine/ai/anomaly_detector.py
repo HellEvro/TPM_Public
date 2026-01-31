@@ -75,7 +75,7 @@ class AnomalyDetector:
         
         features = []
         
-        # 1. Резкие изменения цены (последние 19 свечей)
+        # 1. Резкие изменения цены (последние 19 свечей) — реальные %: (close - prev_close)/prev_close*100
         price_changes = []
         for i in range(1, len(recent)):
             change = (recent[i]['close'] - recent[i-1]['close']) / recent[i-1]['close'] * 100
@@ -167,8 +167,9 @@ class AnomalyDetector:
             is_anomaly = (prediction == -1)
             
             # Вычисляем severity (насколько сильная аномалия)
+            # Isolation Forest score_samples() даёт примерно [-0.5, 0.5]: чем отрицательнее — тем аномальнее.
+            # Формула: severity = 1.0 - (anomaly_score + 0.5) → шкала 0–1 (98% = очень сильная аномалия).
             anomaly_score = self.model.score_samples(features_scaled)[0]
-            # Нормализуем к 0-1 (чем меньше score, тем сильнее аномалия)
             severity = max(0.0, min(1.0, 1.0 - (anomaly_score + 0.5)))
             
         except Exception as e:
@@ -210,15 +211,15 @@ class AnomalyDetector:
         current_volume = volumes[-1]
         volume_spike = current_volume / avg_volume if avg_volume > 0 else 1.0
         
-        # Правила для обнаружения аномалий
+        # Правила для обнаружения аномалий (свечи могут расти/падать на 100%, 200%+ — шкала по %)
         is_anomaly = False
         severity = 0.0
         reason = []
         
-        # Правило 1: Резкое изменение цены (>10% за одну свечу)
+        # Правило 1: Резкое изменение цены (>10% за одну свечу). Severity по %: 100% хода = 100% severity, 200% = cap 100%
         if max_change > 10:
             is_anomaly = True
-            severity = max(severity, min(1.0, max_change / 20))
+            severity = max(severity, min(1.0, max_change / 100.0))
             reason.append(f"Резкое изменение цены: {max_change:.1f}%")
         
         # Правило 2: Объемный всплеск (>3x среднего)

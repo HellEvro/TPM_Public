@@ -40,6 +40,15 @@ _ai_available_cache = None
 _ai_cache_lock = threading.Lock()
 _delisted_cache = {'ts': 0.0, 'coins': {}}
 
+
+def _threshold_01(value):
+    """Порог в шкале 0–1: конфиг как есть; если > 1 — считаем 0–100 и делим на 100 один раз."""
+    if value is None:
+        return 0.0
+    v = float(value)
+    return (v / 100.0) if v > 1 else v
+
+
 def get_cached_ai_manager():
     """
     Получает закэшированный экземпляр AI Manager.
@@ -565,13 +574,14 @@ def _run_exit_scam_ai_detection(symbol, candles):
         if anomaly_result.get('is_anomaly'):
             severity = anomaly_result.get('severity', 0)
             anomaly_type = anomaly_result.get('anomaly_type', 'UNKNOWN')
-            if severity > AIConfig.AI_ANOMALY_BLOCK_THRESHOLD:
-                logger.info(f" 🛡️ AI Anomaly блокирует вход {symbol}: {anomaly_type} (severity {severity:.0%} > порог)")
+            block_threshold = _threshold_01(getattr(AIConfig, 'AI_ANOMALY_BLOCK_THRESHOLD', 0.7))
+            if severity > block_threshold:
+                logger.info(f" 🛡️ AI Anomaly блокирует вход {symbol}: {anomaly_type} (severity {severity:.0%} > порог {block_threshold:.0%})")
                 return False
             logger.warning(
                 f"{symbol}: ⚠️ ПРЕДУПРЕЖДЕНИЕ (AI): "
                 f"Аномалия {anomaly_type} "
-                f"(severity: {severity:.2%} - ниже порога {AIConfig.AI_ANOMALY_BLOCK_THRESHOLD:.2%})"
+                f"(severity: {severity:.2%} - ниже порога {block_threshold:.2%})"
             )
     except ImportError as exc:
         pass
@@ -763,10 +773,9 @@ def check_exit_scam_filter(symbol, coin_data):
         individual_settings = get_individual_coin_settings(symbol)
         
         if individual_settings:
-            # Объединяем глобальные настройки с индивидуальными (индивидуальные имеют приоритет)
-            for key in ['exit_scam_enabled', 'exit_scam_candles', 
-                       'exit_scam_single_candle_percent', 'exit_scam_multi_candle_count',
-                       'exit_scam_multi_candle_percent']:
+            for key in ['exit_scam_enabled', 'exit_scam_candles',
+                        'exit_scam_single_candle_percent', 'exit_scam_multi_candle_count',
+                        'exit_scam_multi_candle_percent']:
                 if key in individual_settings:
                     auto_config[key] = individual_settings[key]
         
@@ -1567,12 +1576,11 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
                     # Получаем конфиг с учетом индивидуальных настроек
                     auto_config = bots_data.get('auto_bot_config', {}).copy()
                     if individual_settings:
-                        for key in ['exit_scam_enabled', 'exit_scam_candles', 
-                                   'exit_scam_single_candle_percent', 'exit_scam_multi_candle_count',
-                                   'exit_scam_multi_candle_percent']:
+                        for key in ['exit_scam_enabled', 'exit_scam_candles',
+                                    'exit_scam_single_candle_percent', 'exit_scam_multi_candle_count',
+                                    'exit_scam_multi_candle_percent']:
                             if key in individual_settings:
                                 auto_config[key] = individual_settings[key]
-                    
                     exit_scam_enabled = auto_config.get('exit_scam_enabled', True)
                     exit_scam_candles = auto_config.get('exit_scam_candles', 10)
                     single_candle_percent = float(auto_config.get('exit_scam_single_candle_percent', 15.0) or 15.0)
@@ -3311,11 +3319,12 @@ def _legacy_check_exit_scam_filter(symbol, coin_data, individual_settings=None):
             close_price = float(candle.get('close', 0) or 0)
             if open_price <= 0:
                 continue
+            # Реальный % тела свечи: |C-O|/O*100. limit_single из конфига как есть (25 = 25%).
             price_change = abs((close_price - open_price) / open_price) * 100
             if price_change > limit_single:
                 return False
         
-        # 2. ПРОВЕРКА: N свечей суммарно превысили максимальный % изменения
+        # 2. ПРОВЕРКА: N свечей суммарно превысили максимальный % (|last_C-first_O|/first_O*100)
         if len(recent_candles) >= multi_candle_count:
             multi_candles = recent_candles[-multi_candle_count:]
             first_open = float(multi_candles[0].get('open', 0) or 0)
@@ -3353,17 +3362,15 @@ def _legacy_check_exit_scam_filter(symbol, coin_data, individual_settings=None):
                             if anomaly_result.get('is_anomaly'):
                                 severity = anomaly_result.get('severity', 0)
                                 anomaly_type = anomaly_result.get('anomaly_type', 'UNKNOWN')
-                                
-                                # Блокируем если severity > threshold
-                                if severity > AIConfig.AI_ANOMALY_BLOCK_THRESHOLD:
+                                block_threshold = _threshold_01(getattr(AIConfig, 'AI_ANOMALY_BLOCK_THRESHOLD', 0.7))
+                                if severity > block_threshold:
                                     logger.info(f" 🛡️ AI Anomaly блокирует {symbol}: {anomaly_type} (severity {severity:.0%})")
                                     return False
-                                else:
-                                    logger.warning(
-                                        f"{symbol}: ⚠️ ПРЕДУПРЕЖДЕНИЕ (AI): "
-                                        f"Аномалия {anomaly_type} "
-                                        f"(severity: {severity:.2%} - ниже порога {AIConfig.AI_ANOMALY_BLOCK_THRESHOLD:.2%})"
-                                    )
+                                logger.warning(
+                                    f"{symbol}: ⚠️ ПРЕДУПРЕЖДЕНИЕ (AI): "
+                                    f"Аномалия {anomaly_type} "
+                                    f"(severity: {severity:.2%} - ниже порога {block_threshold:.2%})"
+                                )
                             else:
                                 pass
                     
@@ -3442,7 +3449,9 @@ def get_lstm_prediction(symbol, signal, current_price):
                     logger.warning(f"{symbol}: ⏱️ LSTM prediction таймаут (5с)")
                     prediction = None  # Пропускаем AI проверку при таймауте
             
-            if prediction and prediction.get('confidence', 0) >= AIConfig.AI_LSTM_MIN_CONFIDENCE:
+            lstm_conf_01 = _threshold_01(prediction.get('confidence', 0) if prediction else 0)
+            min_lstm_01 = _threshold_01(getattr(AIConfig, 'AI_LSTM_MIN_CONFIDENCE', 0.6))
+            if prediction and lstm_conf_01 >= min_lstm_01:
                 # Проверяем совпадение направлений
                 lstm_direction = "LONG" if prediction['direction'] > 0 else "SHORT"
                 confidence = prediction['confidence']
