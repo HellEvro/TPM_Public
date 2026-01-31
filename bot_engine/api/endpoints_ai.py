@@ -174,7 +174,10 @@ def register_ai_endpoints(app):
                     # Logging
                     'log_predictions': AIConfig.AI_LOG_PREDICTIONS,
                     'log_anomalies': AIConfig.AI_LOG_ANOMALIES,
-                    'log_patterns': AIConfig.AI_LOG_PATTERNS
+                    'log_patterns': AIConfig.AI_LOG_PATTERNS,
+
+                    # Самообучение в реальном времени
+                    'self_learning_enabled': AIConfig.AI_SELF_LEARNING_ENABLED,
                 }
             })
 
@@ -249,6 +252,7 @@ def register_ai_endpoints(app):
                 'log_predictions': AIConfig.AI_LOG_PREDICTIONS,
                 'log_anomalies': AIConfig.AI_LOG_ANOMALIES,
                 'log_patterns': AIConfig.AI_LOG_PATTERNS,
+                'self_learning_enabled': AIConfig.AI_SELF_LEARNING_ENABLED,
             }
 
             # Читаем текущий файл bot_config.py
@@ -381,6 +385,12 @@ def register_ai_endpoints(app):
                         if log_ai_config_change('log_patterns', old_value, data['log_patterns']):
                             changes_count += 1
                         line = f"    AI_LOG_PATTERNS = {data['log_patterns']}\n"
+
+                    # Самообучение в реальном времени
+                    elif 'AI_SELF_LEARNING_ENABLED =' in line and 'self_learning_enabled' in data:
+                        if log_ai_config_change('self_learning_enabled', old_config['self_learning_enabled'], data['self_learning_enabled']):
+                            changes_count += 1
+                        line = f"    AI_SELF_LEARNING_ENABLED = {data['self_learning_enabled']}\n"
 
                 # Обновляем значения в RiskConfig
                 if in_risk_config and 'AI_OPTIMAL_ENTRY_ENABLED =' in line and 'optimal_entry_enabled' in data:

@@ -721,12 +721,13 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
 
 
 def check_exit_scam_filter(symbol, coin_data):
-    """Унифицированный exit-scam фильтр с AI-анализом и fallback."""
+    """Унифицированный exit-scam фильтр с AI-анализом и fallback.
+    Конфиг читается при каждой проверке — включение/выключение ExitScam в UI применяется на лету."""
     try:
         if engine_check_exit_scam_filter is None:
             raise RuntimeError('engine filters unavailable')
         
-        # ✅ Получаем конфиг с учетом индивидуальных настроек
+        # ✅ При каждой проверке читаем актуальный конфиг (вкл/выкл фильтра на лету)
         auto_config = bots_data.get('auto_bot_config', {}).copy()
         individual_settings = get_individual_coin_settings(symbol)
         
@@ -2476,9 +2477,9 @@ def get_effective_signal(coin):
     if coin.get('blocked_by_scope', False):
         return 'WAIT'
     
-    # Проверяем ExitScam фильтр
-    if coin.get('blocked_by_exit_scam', False):
-        # Убрано избыточное логирование
+    # Проверяем ExitScam фильтр (настройка читается при каждой проверке — включение/выключение на лету)
+    exit_scam_enabled = bots_data.get('auto_bot_config', {}).get('exit_scam_enabled', True)
+    if exit_scam_enabled and coin.get('blocked_by_exit_scam', False):
         return 'WAIT'
     
     # Проверяем RSI Time фильтр
@@ -2957,8 +2958,9 @@ def analyze_trends_for_signal_coins():
                         # Пересчитываем сигнал с учетом нового тренда
                         old_signal = coin_data.get('signal')
                         
-                        # ✅ КРИТИЧНО: НЕ пересчитываем сигнал если он WAIT из-за блокировки фильтров!
-                        blocked_by_exit_scam = coin_data.get('blocked_by_exit_scam', False)
+                        # ✅ КРИТИЧНО: НЕ пересчитываем сигнал если он WAIT из-за блокировки фильтров (конфиг — при каждой проверке)
+                        exit_scam_enabled = bots_data.get('auto_bot_config', {}).get('exit_scam_enabled', True)
+                        blocked_by_exit_scam = (coin_data.get('blocked_by_exit_scam', False) if exit_scam_enabled else False)
                         blocked_by_rsi_time = coin_data.get('blocked_by_rsi_time', False)
                         
                         if blocked_by_exit_scam or blocked_by_rsi_time:
