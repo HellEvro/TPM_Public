@@ -1990,12 +1990,9 @@ def get_symbol_chart(symbol):
     chart_logger = logging.getLogger('app')
     try:
         theme = request.args.get('theme', 'dark')
-        # Получаем текущий таймфрейм для логирования (fallback '6h' если в bot_config нет get_current_timeframe)
-        try:
-            from bot_engine.bot_config import get_current_timeframe
-            current_timeframe = get_current_timeframe()
-        except ImportError:
-            current_timeframe = '6h'
+        # Получаем текущий таймфрейм для логирования
+        from bot_engine.bot_config import get_current_timeframe
+        current_timeframe = get_current_timeframe()
         chart_logger.info(f"[CHART] Getting RSI {current_timeframe} chart for {symbol} with theme {theme}")
         
         # ✅ ИСПОЛЬЗУЕМ КЭШ ИЗ BOTS.PY вместо запроса к бирже

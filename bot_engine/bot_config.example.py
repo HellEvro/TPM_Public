@@ -53,141 +53,7 @@ TREND_REQUIRE_PRICE = True   # Требовать цену выше/ниже EMA
 TREND_REQUIRE_CANDLES = True # Требовать N свечей подряд (True = обязательный)
 
 # Таймфрейм для анализа
-# Поддерживаемые таймфреймы: '1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M'
 TIMEFRAME = '6h'
-
-# Глобальная переменная для динамического изменения таймфрейма в runtime
-_current_timeframe = None
-
-# Функция для получения текущего таймфрейма
-def get_current_timeframe():
-    """
-    Возвращает текущий таймфрейм системы.
-    Сначала проверяет глобальную переменную _current_timeframe (для runtime изменений),
-    затем возвращает TIMEFRAME из конфига.
-    Может быть переопределена для динамического получения из конфига или БД.
-    """
-    global _current_timeframe
-    if _current_timeframe is not None:
-        return _current_timeframe
-    return TIMEFRAME
-
-# Функция для установки таймфрейма в runtime
-def set_current_timeframe(timeframe: str):
-    """
-    Устанавливает текущий таймфрейм системы в runtime.
-    
-    Args:
-        timeframe: Новый таймфрейм (например, '1h', '4h', '6h', '1d')
-    
-    Returns:
-        True если таймфрейм установлен, False если таймфрейм не поддерживается
-    """
-    global _current_timeframe
-    
-    # Список поддерживаемых таймфреймов
-    supported_timeframes = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M']
-    
-    if timeframe not in supported_timeframes:
-        return False
-    
-    _current_timeframe = timeframe
-    return True
-
-# Функция для сброса таймфрейма к значению из конфига
-def reset_timeframe_to_config():
-    """
-    Сбрасывает текущий таймфрейм к значению из конфига (TIMEFRAME).
-    """
-    global _current_timeframe
-    _current_timeframe = None
-
-# Функции для получения ключей RSI/тренда с учетом таймфрейма
-def get_rsi_key(timeframe=None):
-    """
-    Возвращает ключ для хранения RSI данных с учетом таймфрейма.
-    Например: 'rsi6h', 'rsi1h', 'rsi1d'
-    """
-    if timeframe is None:
-        timeframe = get_current_timeframe()
-    return f'rsi{timeframe}'
-
-def get_trend_key(timeframe=None):
-    """
-    Возвращает ключ для хранения данных тренда с учетом таймфрейма.
-    Например: 'trend6h', 'trend1h', 'trend1d'
-    """
-    if timeframe is None:
-        timeframe = get_current_timeframe()
-    return f'trend{timeframe}'
-
-def get_timeframe_suffix(timeframe=None):
-    """
-    Возвращает суффикс таймфрейма для использования в ключах.
-    Например: '6h', '1h', '1d'
-    """
-    if timeframe is None:
-        timeframe = get_current_timeframe()
-    return timeframe
-
-def get_rsi_from_coin_data(coin_data, timeframe=None):
-    """
-    Получает значение RSI из данных монеты с учетом таймфрейма.
-    Поддерживает обратную совместимость с 'rsi6h' и 'rsi'.
-    
-    Args:
-        coin_data: Словарь с данными монеты
-        timeframe: Таймфрейм (если None - используется текущий)
-    
-    Returns:
-        Значение RSI или None
-    """
-    if timeframe is None:
-        timeframe = get_current_timeframe()
-    
-    rsi_key = get_rsi_key(timeframe)
-    
-    # Пробуем получить RSI по ключу текущего таймфрейма
-    rsi = coin_data.get(rsi_key)
-
-    # ⚠️ ВАЖНО: НЕ подмешиваем 6h RSI в другие ТФ.
-    # Иначе при работе системы на 1m/5m/15m бот может брать rsi6h и входить "как на 6ч".
-    # Обратную совместимость с rsi6h используем ТОЛЬКО когда реально работаем на 6h или timeframe не задан.
-    if rsi is None and (timeframe is None or timeframe == '6h'):
-        rsi = coin_data.get('rsi6h')  # Старый ключ для 6h
-    # Общий ключ 'rsi' используем только как самый общий fallback, когда таймфрейм не задан
-    if rsi is None and timeframe is None:
-        rsi = coin_data.get('rsi')
-    
-    return rsi
-
-def get_trend_from_coin_data(coin_data, timeframe=None):
-    """
-    Получает данные тренда из данных монеты с учетом таймфрейма.
-    Поддерживает обратную совместимость.
-    
-    Args:
-        coin_data: Словарь с данными монеты
-        timeframe: Таймфрейм (если None - используется текущий)
-    
-    Returns:
-        Словарь с данными тренда или None
-    """
-    if timeframe is None:
-        timeframe = get_current_timeframe()
-    
-    trend_key = get_trend_key(timeframe)
-    
-    # Пробуем получить тренд по ключу текущего таймфрейма
-    trend = coin_data.get(trend_key)
-    
-    # Обратная совместимость - только для 6h
-    if trend is None and (timeframe is None or timeframe == '6h'):
-        trend = coin_data.get('trend6h')
-    if trend is None and timeframe is None:
-        trend = coin_data.get('trend')
-    
-    return trend
 
 # Статусы бота
 class BotStatus:
@@ -601,26 +467,26 @@ class AIConfig:
     AI_SELF_LEARNING_BUFFER_SIZE = 50    # Размер буфера для онлайн обучения (макс. сделок)
     AI_ADAPTATION_THRESHOLD = 0.1        # Порог изменения для адаптации к рынку (0.0-1.0)
     AI_PERFORMANCE_WINDOW = 50           # Окно сделок для оценки производительности
-    
+
     # Триггеры остановки непрерывного обучения
-    AI_STOP_TRAINING_ON_HIGH_ACCURACY = True  # Остановить обучение при достижении высокой точности
-    AI_HIGH_ACCURACY_THRESHOLD = 0.90    # Порог точности для остановки обучения (0.90 = 90%)
-    AI_STOP_TRAINING_ON_DEGRADATION = True  # Остановить обучение при ухудшении качества
-    AI_DEGRADATION_THRESHOLD = 0.05      # Порог ухудшения качества (0.05 = 5% снижения)
-    AI_MIN_TRAINING_ATTEMPTS = 3         # Минимальное количество попыток обучения перед проверкой качества
-    
+    AI_STOP_TRAINING_ON_HIGH_ACCURACY = True
+    AI_HIGH_ACCURACY_THRESHOLD = 0.90
+    AI_STOP_TRAINING_ON_DEGRADATION = True
+    AI_DEGRADATION_THRESHOLD = 0.05
+    AI_MIN_TRAINING_ATTEMPTS = 3
+
     # Триггеры переобучения при ухудшении на реальных сделках
-    AI_RETRAIN_ON_REAL_PERFORMANCE_DEGRADATION = True  # Переобучать при ухудшении на реальных сделках
-    AI_REAL_WIN_RATE_THRESHOLD = 0.40    # Минимальный win_rate на реальных сделках (0.40 = 40%)
-    AI_REAL_AVG_PNL_THRESHOLD = -10.0    # Минимальный средний PnL на реальных сделках (USDT)
-    AI_REAL_VS_SIMULATED_DIFF_THRESHOLD = 0.30  # Максимальная разница win_rate между виртуальными и реальными (0.30 = 30%)
-    AI_REAL_PERFORMANCE_WINDOW = 20      # Окно реальных сделок для оценки производительности
-    
-    # Обучение на симуляциях с оптимизацией параметров
-    AI_TRAIN_ON_SIMULATIONS = True       # Использовать симуляции для обучения когда реальных сделок мало
-    AI_SIMULATIONS_TARGET_WIN_RATE = 0.90  # Целевой win_rate для поиска оптимальных параметров (0.90 = 90%)
-    AI_SIMULATIONS_MAX_ITERATIONS = 1000  # Максимальное количество симуляций для поиска оптимальных параметров
-    AI_USE_SIMULATIONS_WHEN_REAL_LOW = True  # Автоматически использовать симуляции когда реальных сделок < минимума
-    AI_SIMULATIONS_PER_COIN = 20  # Количество симуляций с разными параметрами для каждой монеты (для поиска лучших)
-    AI_SAVE_BEST_PARAMS_MIN_WIN_RATE = 0.90  # Минимальный win_rate для сохранения параметров в индивидуальные настройки (0.90 = 90%)
-    AI_USE_SAVED_SETTINGS_AS_BASE = True  # Использовать сохраненные индивидуальные настройки как базовые для симуляций
+    AI_RETRAIN_ON_REAL_PERFORMANCE_DEGRADATION = True
+    AI_REAL_WIN_RATE_THRESHOLD = 0.40
+    AI_REAL_AVG_PNL_THRESHOLD = -10.0
+    AI_REAL_VS_SIMULATED_DIFF_THRESHOLD = 0.30
+    AI_REAL_PERFORMANCE_WINDOW = 20
+
+    # Обучение на симуляциях
+    AI_TRAIN_ON_SIMULATIONS = True
+    AI_SIMULATIONS_TARGET_WIN_RATE = 0.90
+    AI_SIMULATIONS_MAX_ITERATIONS = 1000
+    AI_USE_SIMULATIONS_WHEN_REAL_LOW = True
+    AI_SIMULATIONS_PER_COIN = 20
+    AI_SAVE_BEST_PARAMS_MIN_WIN_RATE = 0.90
+    AI_USE_SAVED_SETTINGS_AS_BASE = True

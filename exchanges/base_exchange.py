@@ -75,10 +75,6 @@ class BaseExchange(ABC):
         """Получение текущих данных тикера"""
         pass
 
-    def get_tickers_batch(self, symbols):
-        """Тикеры для нескольких символов. По умолчанию — N вызовов get_ticker; биржа может переопределить одним запросом."""
-        return {s: self.get_ticker(s) for s in symbols}
-
     @abstractmethod
     def close_position(self, symbol, size, side, order_type="Limit"):
         """Закрытие позиции

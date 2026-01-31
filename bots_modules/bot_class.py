@@ -1027,10 +1027,8 @@ class NewTradingBot:
                     individual_settings = get_individual_coin_settings(symbol)
                 except Exception:
                     individual_settings = {}
-                
                 def _thresh(coin_key, config_key, default):
                     return (individual_settings.get(coin_key) if individual_settings else None) or bot_data.get(config_key) or auto_config.get(config_key, default)
-                
                 if position_side == 'LONG':
                     if entry_trend == 'UP':
                         config_key = 'rsi_exit_long_with_trend'
@@ -1038,19 +1036,16 @@ class NewTradingBot:
                     else:
                         config_key = 'rsi_exit_long_against_trend'
                         threshold = _thresh('rsi_exit_long_against_trend', config_key, 60)
-                    
-                    condition_func = lambda r, t: r >= t  # RSI >= порог для LONG
+                    condition_func = lambda r, t: r >= t
                     condition_str = ">="
-                    
-                else:  # SHORT
+                else:
                     if entry_trend == 'DOWN':
                         config_key = 'rsi_exit_short_with_trend'
                         threshold = _thresh('rsi_exit_short_with_trend', config_key, 35)
                     else:
                         config_key = 'rsi_exit_short_against_trend'
                         threshold = _thresh('rsi_exit_short_against_trend', config_key, 40)
-                    
-                    condition_func = lambda r, t: r <= t  # RSI <= порог для SHORT
+                    condition_func = lambda r, t: r <= t
                     condition_str = "<="
             
             # КРИТИЧНО: Если значение не найдено - это ОШИБКА КОНФИГУРАЦИИ!

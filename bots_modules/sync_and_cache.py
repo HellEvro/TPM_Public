@@ -716,27 +716,37 @@ def load_system_config():
         return False
 
 def save_bots_state():
-    """Сохраняет состояние всех ботов в БД. Без блокировки — быстрый снимок словаря (допустима минимальная рассинхронизация)."""
+    """Сохраняет состояние всех ботов в БД"""
     try:
-        # Снимок без lock: list(...) фиксирует ключи на момент вызова, копируем каждый bot dict
-        bots_ref = bots_data.get('bots')
-        if not bots_ref or not isinstance(bots_ref, dict):
-            auto_bot_config_to_save = {}
-            success = storage_save_bots_state({}, auto_bot_config_to_save)
-        else:
-            try:
-                items_snapshot = list(bots_ref.items())
-            except (RuntimeError, TypeError):
-                items_snapshot = []
+        # ✅ ИСПРАВЛЕНИЕ: Используем таймаут для блокировки чтобы не висеть при остановке
+        import threading
+        
+        requester = threading.current_thread().name
+        # Пытаемся захватить блокировку с таймаутом (увеличено до 5 секунд)
+        acquired = bots_data_lock.acquire(timeout=5.0)
+        if not acquired:
+            active_threads = [t.name for t in threading.enumerate()[:10]]
+            logger.warning(
+                "[SAVE_STATE] ⚠️ Не удалось получить блокировку за 5 секунд - пропускаем сохранение "
+                f"(thread={requester}, active_threads={active_threads})"
+            )
+            return False
+        
+        try:
+            # Собираем данные ботов
             bots_data_to_save = {}
-            for symbol, bot_data in items_snapshot:
-                try:
-                    if isinstance(bot_data, dict):
-                        bots_data_to_save[symbol] = dict(bot_data)
-                except (TypeError, RuntimeError):
-                    pass
+            for symbol, bot_data in bots_data['bots'].items():
+                bots_data_to_save[symbol] = bot_data
+            
+            # ✅ УБРАНО: auto_bot_config больше НЕ сохраняется в БД
+            # Настройки хранятся ТОЛЬКО в bot_engine/bot_config.py через config_writer
+            # Передаем пустой словарь, чтобы не сохранять в БД
             auto_bot_config_to_save = {}
-            success = storage_save_bots_state(bots_data_to_save, auto_bot_config_to_save)
+        finally:
+            bots_data_lock.release()
+        
+        # ✅ Сохраняем в БД через storage.py (только боты, без auto_bot_config)
+        success = storage_save_bots_state(bots_data_to_save, auto_bot_config_to_save)
         if not success:
             logger.error("[SAVE_STATE] ❌ Ошибка сохранения состояния в БД")
             return False
@@ -1549,70 +1559,86 @@ def update_bots_cache_data():
         return False
 
 def update_bot_positions_status():
-    """Обновляет статус позиций ботов (цена, PnL, ликвидация) каждые SystemConfig.BOT_STATUS_UPDATE_INTERVAL секунд.
-    ⚡ Блокировку держим только для копирования списка и записи результатов — запросы к бирже вне блокировки."""
+    """Обновляет статус позиций ботов (цена, PnL, ликвидация) каждые SystemConfig.BOT_STATUS_UPDATE_INTERVAL секунд"""
     try:
         if not ensure_exchange_initialized():
             return False
         
-        # 1) Под блокировкой только копируем список ботов в позиции (минимальное время)
         with bots_data_lock:
-            to_update = [
-                (symbol, bot_data.get('entry_price'), bot_data.get('position_side'), bot_data.get('volume_value', 10), bot_data.get('unrealized_pnl', 0))
-                for symbol, bot_data in bots_data['bots'].items()
-                if bot_data.get('status') in ['in_position_long', 'in_position_short']
-                and bot_data.get('status') != BOT_STATUS.get('PAUSED')
-                and bot_data.get('entry_price') and bot_data.get('position_side')
-            ]
-        
-        if not to_update:
-            return True
-        
-        current_exchange = get_exchange()
-        if not current_exchange:
-            return False
-        
-        # 2) Один запрос тикеров для всех символов (get_tickers_batch) — БЕЗ блокировки
-        symbols_list = [t[0] for t in to_update]
-        tickers_map = current_exchange.get_tickers_batch(symbols_list)
-        
-        results = []
-        for (symbol, entry_price, position_side, volume_value, old_pnl) in to_update:
-            try:
-                ticker_data = tickers_map.get(symbol)
-                if not ticker_data:
+            updated_count = 0
+            
+            for symbol, bot_data in bots_data['bots'].items():
+                # Обновляем только ботов в позиции (НО НЕ остановленных!)
+                bot_status = bot_data.get('status')
+                if bot_status not in ['in_position_long', 'in_position_short']:
                     continue
-                current_price = float(ticker_data.get('last_price') or ticker_data.get('last') or 0)
-                if not current_price:
+                
+                # ⚡ КРИТИЧНО: Не обновляем ботов на паузе!
+                if bot_status == BOT_STATUS['PAUSED']:
+                    pass
                     continue
-                leverage = 10
-                if position_side == 'LONG':
-                    pnl_percent = ((current_price - entry_price) / entry_price) * 100
-                    liquidation_price = entry_price * (1 - (100 / leverage) / 100)
-                    distance_to_liq = ((current_price - liquidation_price) / liquidation_price) * 100
-                else:
-                    pnl_percent = ((entry_price - current_price) / entry_price) * 100
-                    liquidation_price = entry_price * (1 + (100 / leverage) / 100)
-                    distance_to_liq = ((liquidation_price - current_price) / liquidation_price) * 100
-                results.append((symbol, current_price, pnl_percent, liquidation_price, distance_to_liq, old_pnl))
-            except Exception as e:
-                logger.error(f"[POSITION_UPDATE] ❌ Ошибка обновления {symbol}: {e}")
-        
-        # 3) Под блокировкой только записываем результаты (короткий участок)
-        if results:
-            with bots_data_lock:
-                now_iso = datetime.now().isoformat()
-                for symbol, current_price, pnl_percent, liquidation_price, distance_to_liq, old_pnl in results:
-                    bot_data = bots_data['bots'].get(symbol)
-                    if not bot_data:
+                
+                try:
+                    # Получаем текущую цену
+                    current_exchange = get_exchange()
+                    if not current_exchange:
                         continue
+                    ticker_data = current_exchange.get_ticker(symbol)
+                    if not ticker_data or 'last_price' not in ticker_data:
+                        continue
+                    current_price = float(ticker_data['last_price'])
+                    
+                    entry_price = bot_data.get('entry_price')
+                    position_side = bot_data.get('position_side')
+                    
+                    if not entry_price or not position_side:
+                        continue
+                    
+                    # Рассчитываем PnL
+                    if position_side == 'LONG':
+                        pnl_percent = ((current_price - entry_price) / entry_price) * 100
+                    else:  # SHORT
+                        pnl_percent = ((entry_price - current_price) / entry_price) * 100
+                    
+                    # Обновляем данные бота
+                    old_pnl = bot_data.get('unrealized_pnl', 0)
                     bot_data['unrealized_pnl'] = pnl_percent
                     bot_data['current_price'] = current_price
-                    bot_data['last_update'] = now_iso
+                    bot_data['last_update'] = datetime.now().isoformat()
+                    
+                    # Рассчитываем цену ликвидации (примерно)
+                    volume_value = bot_data.get('volume_value', 10)
+                    leverage = 10  # Предполагаем плечо 10x
+                    
+                    if position_side == 'LONG':
+                        # Для LONG: ликвидация при падении цены
+                        liquidation_price = entry_price * (1 - (100 / leverage) / 100)
+                    else:  # SHORT
+                        # Для SHORT: ликвидация при росте цены
+                        liquidation_price = entry_price * (1 + (100 / leverage) / 100)
+                    
                     bot_data['liquidation_price'] = liquidation_price
+                    
+                    # Расстояние до ликвидации
+                    if position_side == 'LONG':
+                        distance_to_liq = ((current_price - liquidation_price) / liquidation_price) * 100
+                    else:  # SHORT
+                        distance_to_liq = ((liquidation_price - current_price) / liquidation_price) * 100
+                    
                     bot_data['distance_to_liquidation'] = distance_to_liq
+                    
+                    updated_count += 1
+                    
+                    # Логируем только если PnL изменился значительно
                     if abs(pnl_percent - old_pnl) > 0.1:
-                        logger.info(f"[POSITION_UPDATE] 📊 {symbol} {bot_data.get('position_side')}: ${current_price:.6f} | PnL: {pnl_percent:+.2f}% | Ликвидация: ${liquidation_price:.6f} ({distance_to_liq:.1f}%)")
+                        logger.info(f"[POSITION_UPDATE] 📊 {symbol} {position_side}: ${current_price:.6f} | PnL: {pnl_percent:+.2f}% | Ликвидация: ${liquidation_price:.6f} ({distance_to_liq:.1f}%)")
+                
+                except Exception as e:
+                    logger.error(f"[POSITION_UPDATE] ❌ Ошибка обновления {symbol}: {e}")
+                    continue
+        
+        if updated_count > 0:
+            pass
         
         return True
         
