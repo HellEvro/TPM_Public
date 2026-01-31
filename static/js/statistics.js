@@ -161,7 +161,7 @@ class StatisticsManager {
         if (isTradeCount) {
             element.textContent = Math.round(value);
         } else {
-            element.textContent = `${formatUtils.formatNumber(value)} USDT`;
+            element.textContent = `${formatUtils.formatUsdt(value)} USDT`;
         }
 
         if (useSign) {
@@ -187,7 +187,7 @@ class StatisticsManager {
                         ${pos.symbol}
                     </a>
                     <span style="margin-left: 10px;">
-                        ${formatUtils.formatNumber(pnlValue)} USDT
+                        ${formatUtils.formatUsdt(pnlValue)} USDT
                     </span>
                 </div>
             `;

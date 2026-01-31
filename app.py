@@ -401,7 +401,7 @@ def format_positions(positions):
     for pos in positions:
         result.append(
             f"Symbol: {pos['symbol']}\n"
-            f"PnL: {pos['pnl']:.2f} USDT\n"
+            f"PnL: {pos['pnl']:.3f} USDT\n"
             f"ROI: {pos['roi']:.2f}%\n"
         )
     return "\n".join(result)
@@ -409,9 +409,9 @@ def format_positions(positions):
 def format_stats(stats):
     """Форматирует стаику для записи в лог"""
     return (
-        f"Total PnL: {stats['total_pnl']:.2f} USDT\n"
-        f"Total profit: {stats['total_profit']:.2f} USDT\n"
-        f"Total loss: {stats['total_loss']:.2f} USDT\n"
+        f"Total PnL: {stats['total_pnl']:.3f} USDT\n"
+        f"Total profit: {stats['total_profit']:.3f} USDT\n"
+        f"Total loss: {stats['total_loss']:.3f} USDT\n"
         f"Number of high-profitable positions: {stats['high_profitable_count']}\n"
         f"Number of profitable positions: {stats['profitable_count']}\n"
         f"Number of losing positions: {stats['losing_count']}\n"

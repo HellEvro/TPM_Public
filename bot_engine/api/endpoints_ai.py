@@ -178,6 +178,9 @@ def register_ai_endpoints(app):
 
                     # Самообучение в реальном времени
                     'self_learning_enabled': AIConfig.AI_SELF_LEARNING_ENABLED,
+
+                    # Smart Money Concepts (можно выключить на минутках)
+                    'smc_enabled': getattr(AIConfig, 'AI_SMC_ENABLED', True),
                 }
             })
 
@@ -253,6 +256,7 @@ def register_ai_endpoints(app):
                 'log_anomalies': AIConfig.AI_LOG_ANOMALIES,
                 'log_patterns': AIConfig.AI_LOG_PATTERNS,
                 'self_learning_enabled': AIConfig.AI_SELF_LEARNING_ENABLED,
+                'smc_enabled': getattr(AIConfig, 'AI_SMC_ENABLED', True),
             }
 
             # Читаем текущий файл bot_config.py
@@ -391,6 +395,12 @@ def register_ai_endpoints(app):
                         if log_ai_config_change('self_learning_enabled', old_config['self_learning_enabled'], data['self_learning_enabled']):
                             changes_count += 1
                         line = f"    AI_SELF_LEARNING_ENABLED = {data['self_learning_enabled']}\n"
+
+                    # Smart Money Concepts (вкл/выкл — на минутках может мешать)
+                    elif 'AI_SMC_ENABLED =' in line and 'smc_enabled' in data:
+                        if log_ai_config_change('smc_enabled', old_config.get('smc_enabled', True), data['smc_enabled']):
+                            changes_count += 1
+                        line = f"    AI_SMC_ENABLED = {data['smc_enabled']}\n"
 
                 # Обновляем значения в RiskConfig
                 if in_risk_config and 'AI_OPTIMAL_ENTRY_ENABLED =' in line and 'optimal_entry_enabled' in data:

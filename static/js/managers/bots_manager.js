@@ -7025,6 +7025,31 @@ class BotsManager {
             autoBotConfig.limit_orders_entry_enabled = enabled;
             console.log('[BotsManager] 🔄 Обновлен limit_orders_entry_enabled:', enabled);
         }
+        // ✅ ExitScam: всегда берём из DOM, чтобы после перезапуска сервера сохранялось отключение
+        const exitScamEnabledEl = document.getElementById('exitScamEnabled');
+        const exitScamCandlesEl = document.getElementById('exitScamCandles');
+        const exitScamSingleEl = document.getElementById('exitScamSingleCandlePercent');
+        const exitScamMultiCountEl = document.getElementById('exitScamMultiCandleCount');
+        const exitScamMultiPercentEl = document.getElementById('exitScamMultiCandlePercent');
+        if (exitScamEnabledEl) {
+            autoBotConfig.exit_scam_enabled = exitScamEnabledEl.checked;
+        }
+        if (exitScamCandlesEl && exitScamCandlesEl.value !== '') {
+            const v = parseInt(exitScamCandlesEl.value, 10);
+            if (!isNaN(v)) autoBotConfig.exit_scam_candles = v;
+        }
+        if (exitScamSingleEl && exitScamSingleEl.value !== '') {
+            const v = parseFloat(exitScamSingleEl.value);
+            if (!isNaN(v)) autoBotConfig.exit_scam_single_candle_percent = v;
+        }
+        if (exitScamMultiCountEl && exitScamMultiCountEl.value !== '') {
+            const v = parseInt(exitScamMultiCountEl.value, 10);
+            if (!isNaN(v)) autoBotConfig.exit_scam_multi_candle_count = v;
+        }
+        if (exitScamMultiPercentEl && exitScamMultiPercentEl.value !== '') {
+            const v = parseFloat(exitScamMultiPercentEl.value);
+            if (!isNaN(v)) autoBotConfig.exit_scam_multi_candle_percent = v;
+        }
         
         const limitOrderRows = document.querySelectorAll('.limit-order-row');
         if (limitOrderRows.length > 0) {
@@ -7362,15 +7387,21 @@ class BotsManager {
     async saveExitScamFilter() {
         console.log('[BotsManager] 💾 Сохранение ExitScam фильтра...');
         try {
+            // ✅ Читаем значения напрямую из DOM, чтобы после перезапуска сервера сохранялось то, что в UI
+            const exitScamEnabledEl = document.getElementById('exitScamEnabled');
+            const exitScamCandlesEl = document.getElementById('exitScamCandles');
+            const exitScamSingleEl = document.getElementById('exitScamSingleCandlePercent');
+            const exitScamMultiCountEl = document.getElementById('exitScamMultiCandleCount');
+            const exitScamMultiPercentEl = document.getElementById('exitScamMultiCandlePercent');
             const config = this.collectConfigurationData();
             const exitScamFilter = {
-                exit_scam_enabled: config.autoBot.exit_scam_enabled,
-                exit_scam_candles: config.autoBot.exit_scam_candles,
-                exit_scam_single_candle_percent: config.autoBot.exit_scam_single_candle_percent,
-                exit_scam_multi_candle_count: config.autoBot.exit_scam_multi_candle_count,
-                exit_scam_multi_candle_percent: config.autoBot.exit_scam_multi_candle_percent
+                exit_scam_enabled: exitScamEnabledEl ? exitScamEnabledEl.checked : (config.autoBot.exit_scam_enabled !== false),
+                exit_scam_candles: exitScamCandlesEl && exitScamCandlesEl.value !== '' ? parseInt(exitScamCandlesEl.value, 10) : (config.autoBot.exit_scam_candles ?? 8),
+                exit_scam_single_candle_percent: exitScamSingleEl && exitScamSingleEl.value !== '' ? parseFloat(exitScamSingleEl.value) : (config.autoBot.exit_scam_single_candle_percent ?? 15),
+                exit_scam_multi_candle_count: exitScamMultiCountEl && exitScamMultiCountEl.value !== '' ? parseInt(exitScamMultiCountEl.value, 10) : (config.autoBot.exit_scam_multi_candle_count ?? 4),
+                exit_scam_multi_candle_percent: exitScamMultiPercentEl && exitScamMultiPercentEl.value !== '' ? parseFloat(exitScamMultiPercentEl.value) : (config.autoBot.exit_scam_multi_candle_percent ?? 50)
             };
-            
+            console.log('[BotsManager] 🔍 ExitScam из UI:', exitScamFilter.exit_scam_enabled, exitScamFilter.exit_scam_candles);
             await this.sendConfigUpdate('auto-bot', exitScamFilter, 'ExitScam фильтр');
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка сохранения ExitScam фильтра:', error);

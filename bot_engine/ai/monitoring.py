@@ -330,26 +330,38 @@ class ModelHealthChecker:
             'confidence_too_low': np.mean(confidences) < 40
         }
 
+    def _get_model_paths(self) -> List[tuple]:
+        """Возвращает список (имя для отображения, полный путь) из AIConfig."""
+        root = _project_root()
+        paths = []
+        try:
+            from bot_engine.bot_config import AIConfig
+            lstm_path = getattr(AIConfig, 'AI_LSTM_MODEL_PATH', 'data/ai/models/lstm_predictor.keras')
+            paths.append((os.path.basename(lstm_path), os.path.join(root, lstm_path)))
+            pattern_path = getattr(AIConfig, 'AI_PATTERN_MODEL_PATH', 'data/ai/models/pattern_detector.pkl')
+            paths.append((os.path.basename(pattern_path), os.path.join(root, pattern_path)))
+        except Exception:
+            paths = [
+                ('lstm_predictor.keras', os.path.join(self.models_path, 'lstm_predictor.keras')),
+                ('pattern_detector.pkl', os.path.join(self.models_path, 'pattern_detector.pkl')),
+            ]
+        # Transformer: путь из ai_trainer (пока не в AIConfig)
+        trans_path = os.path.join(root, 'data', 'ai', 'models', 'transformer_predictor.pth')
+        paths.append(('transformer_predictor.pth', trans_path))
+        return paths
+
     def get_recommendations(self) -> List[str]:
-        """Возвращает рекомендации по улучшению"""
+        """Возвращает рекомендации по улучшению (проверяет реальные пути из AIConfig)."""
         recommendations = []
 
-        # Проверяем модели
-        model_files = [
-            'lstm_predictor.pth',
-            'transformer_predictor.pth',
-            'pattern_detector.pkl'
-        ]
-
-        for model_file in model_files:
-            path = os.path.join(self.models_path, model_file)
+        for model_name, path in self._get_model_paths():
             staleness = self.check_model_staleness(path)
 
             if not staleness['exists']:
-                recommendations.append(f"Model {model_file} not found - consider training")
+                recommendations.append(f"Model {model_name} not found - consider training")
             elif staleness['is_stale']:
                 recommendations.append(
-                    f"Model {model_file} is {staleness['age_days']:.1f} days old - consider retraining"
+                    f"Model {model_name} is {staleness['age_days']:.1f} days old - consider retraining"
                 )
 
         return recommendations
@@ -369,20 +381,17 @@ def get_performance_api_data() -> Dict:
 
 def get_health_api_data() -> Dict:
     """
-    Возвращает данные для API /api/ai/health
+    Возвращает данные для API /api/ai/health (пути моделей из AIConfig).
     """
     checker = ModelHealthChecker()
-
     models_health = {}
-    models_dir = checker.models_path
-    for model in ['lstm_predictor.pth', 'transformer_predictor.pth', 'pattern_detector.pkl']:
-        path = os.path.join(models_dir, model)
-        models_health[model] = checker.check_model_staleness(path)
+    for model_name, path in checker._get_model_paths():
+        models_health[model_name] = checker.check_model_staleness(path)
 
     return {
         'models': models_health,
         'recommendations': checker.get_recommendations(),
-        'overall_status': 'healthy' if not any(m['is_stale'] for m in models_health.values()) else 'needs_attention',
+        'overall_status': 'healthy' if not any(m.get('is_stale') for m in models_health.values()) else 'needs_attention',
         'timestamp': datetime.now().isoformat()
     }
 

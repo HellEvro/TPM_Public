@@ -257,17 +257,17 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'limit_orders_margin_amounts': [5, 5, 5, 5, 5], # Объем маржи в USDT для каждого ордера (минимум 5 USDT на бирже Bybit, иначе ордер будет отклонен)
     # ExitScam фильтр (защита от резких движений цены)
     'exit_scam_enabled': False, # Включить проверку на ExitScam
-    'exit_scam_candles': 8,            # Количество свечей для проверки (10 = 60 часов на 6H)
-    'exit_scam_single_candle_percent': 25, # Максимальный % изменения одной свечи (15% = блокировка)
+    'exit_scam_candles': 4, # Количество свечей для проверки (10 = 60 часов на 6H)
+    'exit_scam_single_candle_percent': 50, # Максимальный % изменения одной свечи (15% = блокировка)
     'exit_scam_multi_candle_count': 4,        # Количество свечей для суммарного анализа
-    'exit_scam_multi_candle_percent': 50,   # Максимальный суммарный % за N свечей (50% = блокировка)
+    'exit_scam_multi_candle_percent': 100, # Максимальный суммарный % за N свечей (50% = блокировка)
     # 🤖 ИИ настройки (премиум функции)
     'ai_optimal_entry_enabled': True, # ИИ определение оптимальной точки входа (выкл. по умолчанию)
     'ai_enabled': True, # Включить подтверждение сигналов AI
     'ai_min_confidence': 0.7,          # Минимальная уверенность AI (0.0-1.0)
     'ai_override_original': True,      # AI может блокировать решения скрипта,
     'anomaly_block_threshold': 0.7,
-    'anomaly_detection_enabled': True,
+    'anomaly_detection_enabled': False,
     'anomaly_log_enabled': True,
     'auto_refresh_ui': True,
     'auto_retrain': True,
@@ -311,6 +311,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'stop_loss_setup_interval': 10,
     'system_timeframe': '1m',
     'mini_chart_update_interval': 30,
+    'smc_enabled': False,
 }
 
 # Настройки по умолчанию для отдельного бота
@@ -637,6 +638,9 @@ class AIConfig:
     AI_LOG_PREDICTIONS = True
     AI_LOG_ANOMALIES = True
     AI_LOG_PATTERNS = True
+    
+    # Smart Money Concepts (Order Blocks, FVG, BOS/CHoCH) — на минутках может давать шум
+    AI_SMC_ENABLED = True  # Выключить, если SMC мешает на младших таймфреймах
     
     # ==========================================
     # АВТОМАТИЧЕСКОЕ ОБУЧЕНИЕ

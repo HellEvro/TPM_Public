@@ -490,8 +490,8 @@ class PositionsManager {
                         ` : ''}
                     </div>
                     <div class="${pos.pnl > 1000 ? CSS_CLASSES.HIGH_PNL : ''}">
-                        ${formatUtils.formatNumber(pos.pnl)} USDT 
-                        <span class="max-value">(Max: ${formatUtils.formatNumber(pos.pnl > 0 ? pos.max_profit : pos.max_loss)})</span>
+                        ${formatUtils.formatUsdt(pos.pnl)} USDT 
+                        <span class="max-value">(Max: ${formatUtils.formatUsdt(pos.pnl > 0 ? pos.max_profit : pos.max_loss)})</span>
                     </div>
                     ${positionFooter}
                 </div>
@@ -552,9 +552,9 @@ class PositionsManager {
                     ${pos.symbol}
                 </a>
                 <div class="growth-ratio">
-                    x${formatUtils.formatNumber(pos.growth_ratio, 1)} (${formatUtils.formatNumber(pos.current_pnl)} USDT)
+                    x${formatUtils.formatNumber(pos.growth_ratio, 1)} (${formatUtils.formatUsdt(pos.current_pnl)} USDT)
                     <div style="font-size: 0.8em; color: #888;">
-                        ${languageUtils.translate('from')} ${formatUtils.formatNumber(pos.start_pnl)} ${languageUtils.translate('to')} ${formatUtils.formatNumber(pos.current_pnl)} USDT
+                        ${languageUtils.translate('from')} ${formatUtils.formatUsdt(pos.start_pnl)} ${languageUtils.translate('to')} ${formatUtils.formatUsdt(pos.current_pnl)} USDT
                     </div>
                 </div>
             </div>

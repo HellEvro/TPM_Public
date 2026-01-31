@@ -97,6 +97,11 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
         logger.info(f"  break_even_trigger: {config.get('break_even_trigger')}")
         logger.info(f"  avoid_down_trend: {config.get('avoid_down_trend')}")
         logger.info(f"  avoid_up_trend: {config.get('avoid_up_trend')}")
+        logger.info(f"  exit_scam_enabled: {config.get('exit_scam_enabled')}")
+        logger.info(f"  exit_scam_candles: {config.get('exit_scam_candles')}")
+        logger.info(f"  exit_scam_single_candle_percent: {config.get('exit_scam_single_candle_percent')}")
+        logger.info(f"  exit_scam_multi_candle_count: {config.get('exit_scam_multi_candle_count')}")
+        logger.info(f"  exit_scam_multi_candle_percent: {config.get('exit_scam_multi_candle_percent')}")
         
         # Обновляем значения в блоке конфигурации
         updated_lines = lines[:start_idx + 1]  # Все строки до начала блока + строка с DEFAULT_AUTO_BOT_CONFIG
@@ -160,11 +165,18 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
                     
                     # Всегда добавляем запятую перед комментарием
                     updated_line = f"{indent}'{key}': {new_value_str},{comment_str}\n"
-                    # ✅ Логируем ключевые изменения (включая основные настройки)
-                    if key in ('enabled', 'max_concurrent', 'risk_cap_percent', 'scope', 'whitelist', 'blacklist', 'ai_enabled', 'ai_min_confidence', 'ai_override_original', 'leverage', 'trailing_stop_activation', 'trailing_stop_distance', 'break_even_trigger', 'avoid_down_trend', 'avoid_up_trend', 'limit_orders_entry_enabled', 'limit_orders_percent_steps', 'limit_orders_margin_amounts'):
+                    # ✅ Логируем ключевые изменения (включая основные настройки и ExitScam)
+                    log_keys = (
+                        'enabled', 'max_concurrent', 'risk_cap_percent', 'scope', 'whitelist', 'blacklist',
+                        'ai_enabled', 'ai_min_confidence', 'ai_override_original', 'leverage',
+                        'trailing_stop_activation', 'trailing_stop_distance', 'break_even_trigger',
+                        'avoid_down_trend', 'avoid_up_trend', 'limit_orders_entry_enabled',
+                        'limit_orders_percent_steps', 'limit_orders_margin_amounts',
+                        'exit_scam_enabled', 'exit_scam_candles', 'exit_scam_single_candle_percent',
+                        'exit_scam_multi_candle_count', 'exit_scam_multi_candle_percent',
+                    )
+                    if key in log_keys:
                         logger.info(f"[CONFIG_WRITER] ✏️ {key}: {old_normalized[:50] if len(old_normalized) <= 50 else old_normalized[:50] + '...'} → {new_normalized[:50] if len(new_normalized) <= 50 else new_normalized[:50] + '...'}")
-                    else:
-                        pass
             
             updated_lines.append(updated_line)
         

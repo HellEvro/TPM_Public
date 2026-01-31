@@ -108,6 +108,10 @@ class AIConfigManager {
 
         // Самообучение AI
         this.setCheckbox('selfLearningEnabled', config.self_learning_enabled);
+
+        // Smart Money Concepts (можно выключить на минутках)
+        this.setCheckbox('smcEnabled', config.smc_enabled !== false);
+        this.updateSmcStatusText();
         
         // Auto Training
         this.setCheckbox('autoTrainEnabled', config.auto_train_enabled);
@@ -161,6 +165,9 @@ class AIConfigManager {
 
                 // Самообучение AI
                 self_learning_enabled: this.getCheckbox('selfLearningEnabled'),
+
+                // Smart Money Concepts
+                smc_enabled: this.getCheckbox('smcEnabled'),
                 
                 // Auto Training
                 auto_train_enabled: this.getCheckbox('autoTrainEnabled'),
@@ -277,6 +284,19 @@ class AIConfigManager {
     }
     
     /**
+     * Обновить подпись статуса SMC (активен/выключен)
+     */
+    updateSmcStatusText() {
+        const statusText = document.getElementById('smcStatusText');
+        const indicator = document.querySelector('#smcStatus .status-indicator');
+        const checkbox = document.getElementById('smcEnabled');
+        if (!statusText || !checkbox) return;
+        const enabled = checkbox.checked;
+        statusText.textContent = enabled ? 'SMC модуль активен' : 'SMC модуль выключен';
+        if (indicator) indicator.textContent = enabled ? '✅' : '❌';
+    }
+
+    /**
      * Привязка событий
      */
     bindEvents() {
@@ -287,6 +307,12 @@ class AIConfigManager {
                 await this.saveAIConfig();
             });
             console.log('[AIConfigManager] ✅ События привязаны');
+        }
+
+        // SMC: обновлять подпись при переключении
+        const smcCheckbox = document.getElementById('smcEnabled');
+        if (smcCheckbox) {
+            smcCheckbox.addEventListener('change', () => this.updateSmcStatusText());
         }
 
         // События для самообучения AI

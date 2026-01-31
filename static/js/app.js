@@ -453,9 +453,9 @@ class App {
                 // Обновляем данные о балансе (общий баланс и доступные средства всегда актуальные)
                 if (data.wallet_data) {
                     document.getElementById('totalBalance').textContent = 
-                        `${data.wallet_data.total_balance.toFixed(2)} USDT`;
+                        `${formatUtils.formatUsdt(data.wallet_data.total_balance)} USDT`;
                     document.getElementById('availableBalance').textContent = 
-                        `${data.wallet_data.available_balance.toFixed(2)} USDT`;
+                        `${formatUtils.formatUsdt(data.wallet_data.available_balance)} USDT`;
                     // ВАЖНО: НЕ используем data.wallet_data.realized_pnl для обновления realizedPnL
                     // так как это общий P&L за всё время, а не за выбранный период
                 }
@@ -510,7 +510,7 @@ class App {
         }
 
         if (!closedPnlData || closedPnlData.length === 0) {
-            realizedPnLElement.textContent = '0.00 USDT';
+            realizedPnLElement.textContent = '0.000 USDT';
             realizedPnLElement.style.color = ''; // Сбрасываем цвет
             return;
         }
@@ -521,7 +521,7 @@ class App {
         }, 0);
 
         // Обновляем отображение
-        const formattedPnL = totalPnL.toFixed(2);
+        const formattedPnL = formatUtils.formatUsdt(totalPnL);
         const sign = totalPnL >= 0 ? '+' : '';
         realizedPnLElement.textContent = `${sign}${formattedPnL} USDT`;
         
@@ -619,7 +619,7 @@ class App {
                     <td>${parseFloat(pnl.entry_price).toFixed(5)}</td>
                     <td>${parseFloat(pnl.exit_price).toFixed(5)}</td>
                     <td class="${isProfit ? 'positive-pnl' : 'negative-pnl'}">
-                        ${isProfit ? '+' : ''}${pnlValue.toFixed(2)} USDT
+                        ${isProfit ? '+' : ''}${formatUtils.formatUsdt(pnlValue)} USDT
                     </td>
                     <td>${pnl.close_time}</td>
                 </tr>

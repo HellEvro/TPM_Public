@@ -142,7 +142,7 @@ class PositionsManager {
                     <div class="position-header">
                         <span class="position-symbol">${position.symbol}</span>
                         <span class="position-pnl ${position.unrealizedPnl >= 0 ? 'positive' : 'negative'}">
-                            ${formatUtils.formatNumber(position.unrealizedPnl)} USDT
+                            ${formatUtils.formatUsdt(position.unrealizedPnl)} USDT
                         </span>
                     </div>
                     <div class="position-details">

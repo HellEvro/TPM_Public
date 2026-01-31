@@ -3,6 +3,10 @@ const formatUtils = {
     formatNumber: (number, decimals = 2) => {
         return Number(number).toFixed(decimals);
     },
+    /** Суммы в USDT — всегда 3 знака после запятой */
+    formatUsdt: (number) => {
+        return Number(number).toFixed(3);
+    },
     
     formatTime: (date) => {
         return date.toLocaleTimeString([], CHART_CONFIG.TIME_FORMAT);

@@ -339,12 +339,12 @@ class PositionCloser {
             successfulCloses.forEach(r => {
                 console.log('Processing successful close:', r);
                 const priceStr = r.price ? formatUtils.formatNumber(r.price) : 'Market';
-                const pnlStr = r.pnl >= 0 ? `+${formatUtils.formatNumber(r.pnl)}` : formatUtils.formatNumber(r.pnl);
+                const pnlStr = r.pnl >= 0 ? `+${formatUtils.formatUsdt(r.pnl)}` : formatUtils.formatUsdt(r.pnl);
                 message += `${r.symbol}: ${r.size} @ ${priceStr} USDT (PnL: ${pnlStr} USDT)\n`;
             });
             const totalPnlStr = results.totalPnl >= 0 ? 
-                `+${formatUtils.formatNumber(results.totalPnl)}` : 
-                formatUtils.formatNumber(results.totalPnl);
+                `+${formatUtils.formatUsdt(results.totalPnl)}` : 
+                formatUtils.formatUsdt(results.totalPnl);
             message += `${this.getTranslation('total_pnl')}: ${totalPnlStr} USDT\n`;
         }
         

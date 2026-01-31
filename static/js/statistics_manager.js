@@ -123,7 +123,7 @@ class StatisticsManager {
 
         element.textContent = isTradeCount ? 
             Math.round(value) : 
-            `${formatUtils.formatNumber(value)} USDT`;
+            `${formatUtils.formatUsdt(value)} USDT`;
 
         if (useSign) {
             element.className = `stats-value ${value >= 0 ? 'positive' : 'negative'}`;
@@ -148,7 +148,7 @@ class StatisticsManager {
                         ${pos.symbol}
                     </a>
                     <span style="margin-left: 10px;">
-                        ${formatUtils.formatNumber(pnlValue)} USDT
+                        ${formatUtils.formatUsdt(pnlValue)} USDT
                     </span>
                 </div>
             `;

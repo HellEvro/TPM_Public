@@ -2516,9 +2516,16 @@
                                 <p class="smc-description" data-translate="smc_description">
                                     Институциональный анализ: Order Blocks, FVG, Liquidity Zones, BOS/CHoCH
                                 </p>
+                                <div class="config-item" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="smcEnabled" checked />
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <span class="smc-toggle-label" data-translate="smc_enabled_label">Включить SMC (на минутках может давать шум)</span>
+                                </div>
                                 <div class="smc-status" id="smcStatus">
                                     <span class="status-indicator">✅</span>
-                                    <span data-translate="smc_active">SMC модуль активен</span>
+                                    <span id="smcStatusText" data-translate="smc_active">SMC модуль активен</span>
                                 </div>
                             </div>
                         </div>

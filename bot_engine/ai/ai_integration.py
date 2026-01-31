@@ -374,6 +374,27 @@ def _is_ai_process() -> bool:
     return os.environ.get('INFOBOT_AI_PROCESS', '').strip().lower() in ('1', 'true', 'yes')
 
 
+def _smc_enabled_from_config() -> bool:
+    """Читает AI_SMC_ENABLED из bot_config.py с диска, чтобы процесс ботов видел сохранённое значение без перезапуска."""
+    try:
+        from bot_engine.bot_config import AIConfig
+        return getattr(AIConfig, 'AI_SMC_ENABLED', True)
+    except Exception:
+        pass
+    try:
+        import bot_engine.bot_config as _bc
+        _path = getattr(_bc, '__file__', None) or os.path.join(os.path.dirname(__file__), '..', 'bot_config.py')
+        if os.path.isfile(_path):
+            with open(_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if 'AI_SMC_ENABLED' in line and '=' in line:
+                        val = line.split('=', 1)[-1].strip().upper()
+                        return 'FALSE' not in val or val.startswith('TRUE')
+    except Exception:
+        pass
+    return True
+
+
 def should_open_position_with_ai(
     symbol: str,
     direction: str,
@@ -399,9 +420,10 @@ def should_open_position_with_ai(
             'timestamp': datetime.now().isoformat()
         }
         
-        # === SMC АНАЛИЗ (если есть свечи) ===
+        # === SMC АНАЛИЗ (если включён и есть свечи) ===
         smc_signal = None
-        if candles and len(candles) >= 10:
+        smc_enabled = _smc_enabled_from_config()
+        if smc_enabled and candles and len(candles) >= 10:
             smc_signal = get_smc_signal(candles, price)
             
             if smc_signal:
