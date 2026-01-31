@@ -4842,6 +4842,52 @@ class BotsManager {
         }
     }
 
+    async clearWhitelist() {
+        const whitelist = this.filtersData?.whitelist || [];
+        if (whitelist.length === 0) {
+            this.showNotification('ℹ️ Белый список уже пуст', 'info');
+            return;
+        }
+        
+        const currentLang = document.documentElement.lang || 'ru';
+        const confirmMsg = TRANSLATIONS[currentLang]?.clear_whitelist_confirm || `Удалить все ${whitelist.length} монет из белого списка?`;
+        
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+        
+        try {
+            await this.updateFilters({ whitelist: [] });
+            this.showNotification(`✅ Белый список очищен (${whitelist.length} монет удалено)`, 'success');
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка очистки белого списка:', error);
+            this.showNotification('❌ Ошибка очистки белого списка', 'error');
+        }
+    }
+
+    async clearBlacklist() {
+        const blacklist = this.filtersData?.blacklist || [];
+        if (blacklist.length === 0) {
+            this.showNotification('ℹ️ Черный список уже пуст', 'info');
+            return;
+        }
+        
+        const currentLang = document.documentElement.lang || 'ru';
+        const confirmMsg = TRANSLATIONS[currentLang]?.clear_blacklist_confirm || `Удалить все ${blacklist.length} монет из черного списка?`;
+        
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+        
+        try {
+            await this.updateFilters({ blacklist: [] });
+            this.showNotification(`✅ Черный список очищен (${blacklist.length} монет удалено)`, 'success');
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка очистки черного списка:', error);
+            this.showNotification('❌ Ошибка очистки черного списка', 'error');
+        }
+    }
+
     async updateFilters(updates) {
         // Убеждаемся что filtersData инициализирован
         if (!this.filtersData) {

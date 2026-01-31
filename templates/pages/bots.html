@@ -1001,6 +1001,9 @@
                     <div class="filter-header">
                         <h3 data-translate="white_list_title">🟢 Белый список</h3>
                         <span class="filter-count" id="whitelistCount">0</span>
+                        <button type="button" class="btn btn-danger btn-sm filter-clear-btn" id="clearWhitelistBtn" onclick="window.botsManager.clearWhitelist()" data-translate="clear_all_list" title="Удалить все монеты из белого списка">
+                            🗑️ Удалить все
+                        </button>
                     </div>
                     <div class="filter-description">
                         <span data-translate="white_list_coins_priority">Монеты из белого списка будут приоритетными для Auto Bot</span>
@@ -1018,6 +1021,9 @@
                     <div class="filter-header">
                         <h3 data-translate="black_list_title">🔴 Черный список</h3>
                         <span class="filter-count" id="blacklistCount">0</span>
+                        <button type="button" class="btn btn-danger btn-sm filter-clear-btn" id="clearBlacklistBtn" onclick="window.botsManager.clearBlacklist()" data-translate="clear_all_list" title="Удалить все монеты из черного списка">
+                            🗑️ Удалить все
+                        </button>
                     </div>
                     <div class="filter-description">
                         <span data-translate="black_list_coins_excluded">Монеты из черного списка будут исключены из Auto Bot</span>
