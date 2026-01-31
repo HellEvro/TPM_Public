@@ -716,46 +716,27 @@ def load_system_config():
         return False
 
 def save_bots_state():
-    """Сохраняет состояние всех ботов в БД"""
+    """Сохраняет состояние всех ботов в БД. Без блокировки — быстрый снимок словаря (допустима минимальная рассинхронизация)."""
     try:
-        # ✅ ИСПРАВЛЕНИЕ: Используем таймаут для блокировки чтобы не висеть при остановке
-        import threading
-        
-        requester = threading.current_thread().name
-        acquired = bots_data_lock.acquire(timeout=5.0)
-        if not acquired:
-            active_threads = [t.name for t in threading.enumerate()[:10]]
-            # Логируем WARNING не чаще раза в 5 минут, иначе DEBUG (без спама)
-            _last = getattr(save_bots_state, '_last_lock_warn', 0)
-            now = time.time()
-            if now - _last >= 300:
-                save_bots_state._last_lock_warn = now
-                logger.warning(
-                    "[SAVE_STATE] ⚠️ Не удалось получить блокировку за 5 секунд - пропускаем сохранение "
-                    f"(thread={requester}, active_threads={active_threads})"
-                )
-            else:
-                logger.debug(
-                    "[SAVE_STATE] Пропуск сохранения (блокировка занята)"
-                    f" thread={requester}"
-                )
-            return False
-        
-        try:
-            # Собираем данные ботов
-            bots_data_to_save = {}
-            for symbol, bot_data in bots_data['bots'].items():
-                bots_data_to_save[symbol] = bot_data
-            
-            # ✅ УБРАНО: auto_bot_config больше НЕ сохраняется в БД
-            # Настройки хранятся ТОЛЬКО в bot_engine/bot_config.py через config_writer
-            # Передаем пустой словарь, чтобы не сохранять в БД
+        # Снимок без lock: list(...) фиксирует ключи на момент вызова, копируем каждый bot dict
+        bots_ref = bots_data.get('bots')
+        if not bots_ref or not isinstance(bots_ref, dict):
             auto_bot_config_to_save = {}
-        finally:
-            bots_data_lock.release()
-        
-        # ✅ Сохраняем в БД через storage.py (только боты, без auto_bot_config)
-        success = storage_save_bots_state(bots_data_to_save, auto_bot_config_to_save)
+            success = storage_save_bots_state({}, auto_bot_config_to_save)
+        else:
+            try:
+                items_snapshot = list(bots_ref.items())
+            except (RuntimeError, TypeError):
+                items_snapshot = []
+            bots_data_to_save = {}
+            for symbol, bot_data in items_snapshot:
+                try:
+                    if isinstance(bot_data, dict):
+                        bots_data_to_save[symbol] = dict(bot_data)
+                except (TypeError, RuntimeError):
+                    pass
+            auto_bot_config_to_save = {}
+            success = storage_save_bots_state(bots_data_to_save, auto_bot_config_to_save)
         if not success:
             logger.error("[SAVE_STATE] ❌ Ошибка сохранения состояния в БД")
             return False

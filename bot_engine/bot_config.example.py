@@ -53,7 +53,141 @@ TREND_REQUIRE_PRICE = True   # Требовать цену выше/ниже EMA
 TREND_REQUIRE_CANDLES = True # Требовать N свечей подряд (True = обязательный)
 
 # Таймфрейм для анализа
+# Поддерживаемые таймфреймы: '1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M'
 TIMEFRAME = '6h'
+
+# Глобальная переменная для динамического изменения таймфрейма в runtime
+_current_timeframe = None
+
+# Функция для получения текущего таймфрейма
+def get_current_timeframe():
+    """
+    Возвращает текущий таймфрейм системы.
+    Сначала проверяет глобальную переменную _current_timeframe (для runtime изменений),
+    затем возвращает TIMEFRAME из конфига.
+    Может быть переопределена для динамического получения из конфига или БД.
+    """
+    global _current_timeframe
+    if _current_timeframe is not None:
+        return _current_timeframe
+    return TIMEFRAME
+
+# Функция для установки таймфрейма в runtime
+def set_current_timeframe(timeframe: str):
+    """
+    Устанавливает текущий таймфрейм системы в runtime.
+    
+    Args:
+        timeframe: Новый таймфрейм (например, '1h', '4h', '6h', '1d')
+    
+    Returns:
+        True если таймфрейм установлен, False если таймфрейм не поддерживается
+    """
+    global _current_timeframe
+    
+    # Список поддерживаемых таймфреймов
+    supported_timeframes = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M']
+    
+    if timeframe not in supported_timeframes:
+        return False
+    
+    _current_timeframe = timeframe
+    return True
+
+# Функция для сброса таймфрейма к значению из конфига
+def reset_timeframe_to_config():
+    """
+    Сбрасывает текущий таймфрейм к значению из конфига (TIMEFRAME).
+    """
+    global _current_timeframe
+    _current_timeframe = None
+
+# Функции для получения ключей RSI/тренда с учетом таймфрейма
+def get_rsi_key(timeframe=None):
+    """
+    Возвращает ключ для хранения RSI данных с учетом таймфрейма.
+    Например: 'rsi6h', 'rsi1h', 'rsi1d'
+    """
+    if timeframe is None:
+        timeframe = get_current_timeframe()
+    return f'rsi{timeframe}'
+
+def get_trend_key(timeframe=None):
+    """
+    Возвращает ключ для хранения данных тренда с учетом таймфрейма.
+    Например: 'trend6h', 'trend1h', 'trend1d'
+    """
+    if timeframe is None:
+        timeframe = get_current_timeframe()
+    return f'trend{timeframe}'
+
+def get_timeframe_suffix(timeframe=None):
+    """
+    Возвращает суффикс таймфрейма для использования в ключах.
+    Например: '6h', '1h', '1d'
+    """
+    if timeframe is None:
+        timeframe = get_current_timeframe()
+    return timeframe
+
+def get_rsi_from_coin_data(coin_data, timeframe=None):
+    """
+    Получает значение RSI из данных монеты с учетом таймфрейма.
+    Поддерживает обратную совместимость с 'rsi6h' и 'rsi'.
+    
+    Args:
+        coin_data: Словарь с данными монеты
+        timeframe: Таймфрейм (если None - используется текущий)
+    
+    Returns:
+        Значение RSI или None
+    """
+    if timeframe is None:
+        timeframe = get_current_timeframe()
+    
+    rsi_key = get_rsi_key(timeframe)
+    
+    # Пробуем получить RSI по ключу текущего таймфрейма
+    rsi = coin_data.get(rsi_key)
+
+    # ⚠️ ВАЖНО: НЕ подмешиваем 6h RSI в другие ТФ.
+    # Иначе при работе системы на 1m/5m/15m бот может брать rsi6h и входить "как на 6ч".
+    # Обратную совместимость с rsi6h используем ТОЛЬКО когда реально работаем на 6h или timeframe не задан.
+    if rsi is None and (timeframe is None or timeframe == '6h'):
+        rsi = coin_data.get('rsi6h')  # Старый ключ для 6h
+    # Общий ключ 'rsi' используем только как самый общий fallback, когда таймфрейм не задан
+    if rsi is None and timeframe is None:
+        rsi = coin_data.get('rsi')
+    
+    return rsi
+
+def get_trend_from_coin_data(coin_data, timeframe=None):
+    """
+    Получает данные тренда из данных монеты с учетом таймфрейма.
+    Поддерживает обратную совместимость.
+    
+    Args:
+        coin_data: Словарь с данными монеты
+        timeframe: Таймфрейм (если None - используется текущий)
+    
+    Returns:
+        Словарь с данными тренда или None
+    """
+    if timeframe is None:
+        timeframe = get_current_timeframe()
+    
+    trend_key = get_trend_key(timeframe)
+    
+    # Пробуем получить тренд по ключу текущего таймфрейма
+    trend = coin_data.get(trend_key)
+    
+    # Обратная совместимость - только для 6h
+    if trend is None and (timeframe is None or timeframe == '6h'):
+        trend = coin_data.get('trend6h')
+    if trend is None and timeframe is None:
+        trend = coin_data.get('trend')
+    
+    return trend
 
 # Статусы бота
 class BotStatus:
