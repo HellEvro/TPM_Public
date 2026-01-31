@@ -4543,6 +4543,26 @@ def get_ai_self_learning_stats():
         })
 
 
+def _json_safe(obj):
+    """Приводит объект к типам, сериализуемым в JSON (numpy.bool_, numpy.float64 и т.д. -> bool/float)."""
+    try:
+        import numpy as np
+        # numpy scalar types (np.bool_ deprecated in 1.20+, но isinstance всё ещё работает)
+        if isinstance(obj, dict):
+            return {k: _json_safe(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [_json_safe(v) for v in obj]
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if type(obj).__module__ == 'numpy' and hasattr(obj, 'item'):
+            return obj.item()  # numpy scalar -> Python scalar
+        if isinstance(obj, (bool, int, float, str, type(None))):
+            return obj
+    except Exception:
+        pass
+    return obj
+
+
 @bots_app.route('/api/ai/self-learning/performance', methods=['GET'])
 def get_ai_self_learning_performance():
     """Получить метрики производительности AI (доступно с любой лицензией)"""
@@ -4571,6 +4591,10 @@ def get_ai_self_learning_performance():
                 logger.warning(f"Ошибка получения сделок из БД: {db_error}")
                 performance = {'error': f'Ошибка базы данных: {str(db_error)}'}
                 trends = {'error': f'Ошибка базы данных: {str(db_error)}'}
+
+            # Приводим к типам, сериализуемым в JSON (numpy.bool_/float64 и т.д.)
+            performance = _json_safe(performance)
+            trends = _json_safe(trends)
 
             return jsonify({
                 'success': True,

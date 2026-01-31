@@ -115,10 +115,22 @@ def register_ai_endpoints(app):
                 'error': str(e)
             }), 500
 
+    def _get_ai_config_path():
+        """Абсолютный путь к bot_config.py (не зависит от cwd)."""
+        import os
+        try:
+            import bot_engine.bot_config as _bc
+            return os.path.abspath(getattr(_bc, '__file__', 'bot_engine/bot_config.py'))
+        except Exception:
+            return os.path.abspath('bot_engine/bot_config.py')
+
     @app.route('/api/ai/config', methods=['GET'])
     def get_ai_config():
-        """Получить конфигурацию AI"""
+        """Получить конфигурацию AI (всегда из файла — перезагружаем модуль перед ответом)."""
         try:
+            import importlib
+            import bot_engine.bot_config
+            importlib.reload(bot_engine.bot_config)
             from bot_engine.bot_config import AIConfig, RiskConfig
             from bot_engine.ai import get_ai_manager
 
@@ -230,6 +242,18 @@ def register_ai_endpoints(app):
 
             logger.info(f"[AI_CONFIG] Получены данные: {data}")
 
+            # Нормализуем булевы значения (чтобы в файл всегда писались True/False)
+            _BOOL_KEYS = (
+                'ai_enabled', 'anomaly_detection_enabled', 'anomaly_log_enabled',
+                'lstm_enabled', 'pattern_enabled', 'risk_management_enabled',
+                'optimal_entry_enabled', 'auto_train_enabled', 'auto_update_data', 'auto_retrain',
+                'log_predictions', 'log_anomalies', 'log_patterns',
+                'self_learning_enabled', 'smc_enabled'
+            )
+            for k in _BOOL_KEYS:
+                if k in data and data[k] is not None:
+                    data[k] = bool(data[k])
+
             # Получаем текущие значения для сравнения
             from bot_engine.bot_config import AIConfig, RiskConfig
             old_config = {
@@ -259,8 +283,8 @@ def register_ai_endpoints(app):
                 'smc_enabled': getattr(AIConfig, 'AI_SMC_ENABLED', True),
             }
 
-            # Читаем текущий файл bot_config.py
-            config_path = 'bot_engine/bot_config.py'
+            # Читаем текущий файл bot_config.py (абсолютный путь — не зависит от cwd)
+            config_path = _get_ai_config_path()
 
             with open(config_path, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
