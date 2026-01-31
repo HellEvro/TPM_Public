@@ -1217,6 +1217,30 @@ input:checked + .slider:before {
     margin: 0 auto;
 }
 
+/* Заголовки групп блоков (основные разделы страницы настроек) */
+.config-block-group-title {
+    margin: 28px 0 12px 0;
+    padding-bottom: 8px;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--text-color);
+    border-bottom: 2px solid var(--border-color);
+}
+.config-block-group-title:first-of-type {
+    margin-top: 0;
+}
+
+/* Подзаголовок внутри секции (дочерняя группа настроек) */
+.config-subblock-title {
+    margin: 20px 0 12px 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+.config-subblock {
+    margin-top: 4px;
+}
+
 /* Поля ввода с единицами измерения */
 .config-input-with-unit {
     display: flex;

@@ -1045,17 +1045,16 @@
             
             <div class="config-sections">
                 
-                <!-- Основные настройки Auto Bot -->
+                <!-- ═══ БЛОК 1: Основные настройки Auto Bot ═══ -->
                 <div class="config-section">
                     <div class="section-header">
                         <h3 data-translate="basic_settings_title">🤖 Основные настройки</h3>
                         <div class="section-description" data-translate="basic_settings_desc">
-                            Базовые параметры работы автоматического бота
+                            Лимиты ботов, риск и область действия
                         </div>
                     </div>
                     
                     <div class="config-grid">
-
                         <div class="config-item">
                             <label class="config-label">
                                 <span class="label-icon">🔢</span>
@@ -1063,7 +1062,6 @@
                             </label>
                             <input type="number" id="autoBotMaxConcurrent" value="5" min="1" max="20" class="config-input" />
                         </div>
-                        
                         <div class="config-item">
                             <label class="config-label">
                                 <span class="label-icon">📊</span>
@@ -1071,7 +1069,6 @@
                             </label>
                             <input type="number" id="autoBotRiskCap" value="10" min="1" max="50" step="0.1" class="config-input" />
                         </div>
-                        
                         <div class="config-item">
                             <label class="config-label">
                                 <span class="label-icon">🎯</span>
@@ -1090,7 +1087,10 @@
                             </div>
                             <input type="hidden" id="autoBotScope" value="all">
                         </div>
+                    </div>
 
+                    <h4 class="config-subblock-title">🤖 AI подтверждение сигналов</h4>
+                    <div class="config-grid config-subblock">
                         <div class="config-item">
                             <label class="config-label">
                                 <span class="label-icon">🤖</span>
@@ -1100,9 +1100,8 @@
                                 <input type="checkbox" id="autoBotAIEnabled" />
                                 <span class="toggle-slider"></span>
                             </label>
-                            <small class="config-help">Включите, чтобы AI подтверждал входы и фиксировал решения в истории</small>
+                            <small class="config-help">Включите, чтобы AI подтверждал входы (модель signal_predictor.pkl + опционально SMC)</small>
                         </div>
-
                         <div class="config-item">
                             <label class="config-label">
                                 <span class="label-icon">🎯</span>
@@ -1115,7 +1114,6 @@
                             </div>
                             <small class="config-help">0.7 = 70% уверенности для подтверждения сигнала</small>
                         </div>
-
                         <div class="config-item">
                             <label class="config-label">
                                 <span class="label-icon">🛑</span>
@@ -1125,7 +1123,7 @@
                                 <input type="checkbox" id="aiOverrideOriginal" checked />
                                 <span class="toggle-slider"></span>
                             </label>
-                            <small class="config-help">Отключите, чтобы AI был рекомендательным (скрипты будут открывать сделки даже при предупреждениях AI)</small>
+                            <small class="config-help">Отключите, чтобы AI был рекомендательным</small>
                         </div>
                     </div>
                     
@@ -1139,7 +1137,8 @@
                     </div>
                 </div>
 
-                <!-- Системные настройки -->
+                <!-- ═══ БЛОК 2: Система и таймфрейм ═══ -->
+                <h2 class="config-block-group-title">⚙️ Система и таймфрейм</h2>
                 <div class="config-section">
                     <div class="section-header">
                         <h3 data-translate="system_settings_title">⚙️ Системные настройки</h3>
@@ -1315,12 +1314,13 @@
                     </div>
                 </div>
 
-                <!-- Торговые параметры -->
+                <!-- ═══ БЛОК 3: Торговля (объём и вход) ═══ -->
+                <h2 class="config-block-group-title">📈 Торговля: объём и вход</h2>
                 <div class="config-section">
                     <div class="section-header">
                         <h3 data-translate="trading_params_title">📈 Торговые параметры</h3>
                         <div class="section-description" data-translate="trading_params_desc">
-                            Настройки RSI, управления позициями, реальной торговли и управления рисками
+                            Зоны входа (RSI), размер позиции, плечо, интервалы, реальная торговля
                         </div>
                     </div>
                     
@@ -1425,12 +1425,11 @@
                     </div>
                 </div>
 
-                <!-- Набор позиций лимитными ордерами -->
                 <div class="config-section">
                     <div class="section-header">
                         <h3>📊 Набор позиций лимитными ордерами</h3>
                         <div class="section-description">
-                            Настройка входа в позицию через набор лимитных ордеров вместо рыночного входа
+                            Вход лимитными ордерами вместо рыночного (дочерняя настройка к торговле)
                         </div>
                     </div>
                     
@@ -1475,7 +1474,8 @@
                     </div>
                 </div>
 
-                <!-- RSI выходы из позиций -->
+                <!-- ═══ БЛОК 4: RSI — выходы и фильтры ═══ -->
+                <h2 class="config-block-group-title">🎯 RSI: выходы и фильтры</h2>
                 <div class="config-section">
                     <div class="section-header">
                         <h3 data-translate="rsi_exits_title">🎯 RSI выходы из позиций</h3>
@@ -1605,7 +1605,8 @@
                     </div>
                 </div>
 
-                <!-- ExitScam фильтр -->
+                <!-- ═══ БЛОК 5: Защита и фильтры риска ═══ -->
+                <h2 class="config-block-group-title">🛡️ Защита и фильтры риска</h2>
                 <div class="config-section">
                     <div class="section-header">
                         <h3 data-translate="exit_scam_filter_title">🛡️ ExitScam фильтр</h3>
@@ -2087,7 +2088,8 @@
 
                 <!-- ❌ EMA параметры тренда - ПОЛНОСТЬЮ УДАЛЕНО (больше не используется) -->
 
-                <!-- 🤖 AI Модули (Premium) - показывается только если есть лицензия -->
+                <!-- ═══ БЛОК 6: AI Модули (Premium) ═══ -->
+                <h2 class="config-block-group-title" id="aiConfigBlockTitle" style="display: none;">🤖 AI Модули (Premium)</h2>
                 <div class="config-section" id="aiConfigSection" style="display: none;">
                     <div class="section-header">
                         <h3>🤖 <span data-translate="ai_modules_title">AI Модули (Premium)</span></h3>

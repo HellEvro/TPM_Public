@@ -207,8 +207,8 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'whitelist': [],
     'blacklist': [],
     # RSI параметры согласно ТЗ
-    'rsi_long_threshold': 29,   # Вход в LONG при RSI <= 29
-    'rsi_short_threshold': 71,  # Вход в SHORT при RSI >= 71
+    'rsi_long_threshold': 25, # Вход в LONG при RSI <= 29
+    'rsi_short_threshold': 75, # Вход в SHORT при RSI >= 71
     # ✅ Новые параметры RSI выхода с учетом тренда
     'rsi_exit_long_with_trend': 65,      # Выход из LONG при RSI >= 65 (вход по тренду)
     'rsi_exit_long_against_trend': 60,   # Выход из LONG при RSI >= 60 (вход против тренда)
@@ -217,7 +217,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'default_position_size': 5,          # Базовый размер позиции (в единицах согласно default_position_mode)
     'default_position_mode': 'percent', # Режим расчета: usdt | percent
     'leverage': 10,                       # ✅ Кредитное плечо (1-125x)
-    'check_interval': 30, # Интервал проверки в секундах (3 мин = 180 сек)
+    'check_interval': 10, # Интервал проверки в секундах (3 мин = 180 сек)
     'monitoring_interval': 10,  # Интервал мониторинга активных ботов в секундах
     # Торговые настройки
     'trading_enabled': True,    # Включить реальную торговлю
@@ -267,7 +267,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'ai_min_confidence': 0.7,          # Минимальная уверенность AI (0.0-1.0)
     'ai_override_original': True,      # AI может блокировать решения скрипта,
     'anomaly_block_threshold': 0.7,
-    'anomaly_detection_enabled': True,
+    'anomaly_detection_enabled': False,
     'anomaly_log_enabled': True,
     'auto_refresh_ui': True,
     'auto_retrain': True,
@@ -600,7 +600,7 @@ class AIConfig:
     AI_CONFIDENCE_THRESHOLD = 0.65  # Минимальная уверенность для применения рекомендации ИИ (0.0-1.0)
     
     # Anomaly Detection - обнаружение аномалий (pump/dump)
-    AI_ANOMALY_DETECTION_ENABLED = True
+    AI_ANOMALY_DETECTION_ENABLED = False
     AI_ANOMALY_MODEL_PATH = 'data/ai/models/anomaly_detector.pkl'
     AI_ANOMALY_SCALER_PATH = 'data/ai/models/anomaly_scaler.pkl'
     AI_ANOMALY_BLOCK_THRESHOLD = 0.7
@@ -640,7 +640,7 @@ class AIConfig:
     AI_LOG_PATTERNS = True
     
     # Smart Money Concepts (Order Blocks, FVG, BOS/CHoCH) — на минутках может давать шум
-    AI_SMC_ENABLED = True  # Выключить, если SMC мешает на младших таймфреймах
+    AI_SMC_ENABLED = False
     
     # ==========================================
     # АВТОМАТИЧЕСКОЕ ОБУЧЕНИЕ

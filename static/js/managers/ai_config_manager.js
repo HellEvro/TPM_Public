@@ -255,13 +255,11 @@ class AIConfigManager {
      */
     showAIConfigSection() {
         const section = document.getElementById('aiConfigSection');
-        if (section) {
-            section.style.display = 'block';
-            console.log('[AIConfigManager] ✅ AI блок показан');
-
-            // Автоматически загружаем результаты самообучения
-            this.loadSelfLearningOnShow();
-        }
+        const blockTitle = document.getElementById('aiConfigBlockTitle');
+        if (section) section.style.display = 'block';
+        if (blockTitle) blockTitle.style.display = 'block';
+        console.log('[AIConfigManager] ✅ AI блок показан');
+        this.loadSelfLearningOnShow();
     }
     
     /**
@@ -269,10 +267,10 @@ class AIConfigManager {
      */
     hideAIConfigSection() {
         const section = document.getElementById('aiConfigSection');
-        if (section) {
-            section.style.display = 'none';
-            console.log('[AIConfigManager] ℹ️ AI блок скрыт (нет лицензии)');
-        }
+        const blockTitle = document.getElementById('aiConfigBlockTitle');
+        if (section) section.style.display = 'none';
+        if (blockTitle) blockTitle.style.display = 'none';
+        console.log('[AIConfigManager] ℹ️ AI блок скрыт (нет лицензии)');
     }
     
     /**
