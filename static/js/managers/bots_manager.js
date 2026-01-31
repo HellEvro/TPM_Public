@@ -6607,6 +6607,11 @@ class BotsManager {
             exitScamMultiCandlePercentEl.value = autoBotConfig.exit_scam_multi_candle_percent || 50.0;
             console.log('[BotsManager] 📊 ExitScam суммарный лимит:', exitScamMultiCandlePercentEl.value);
         }
+        const exitScamTimeframeEl = document.getElementById('exitScamTimeframe');
+        if (exitScamTimeframeEl) {
+            const tf = autoBotConfig.exit_scam_timeframe || '1m';
+            exitScamTimeframeEl.value = tf;
+        }
         const exitScamEffectiveScaleEl = document.getElementById('exitScamEffectiveScale');
         if (exitScamEffectiveScaleEl) {
             const single = autoBotConfig.exit_scam_effective_single_pct ?? autoBotConfig.exit_scam_single_candle_percent ?? 15;
@@ -6980,6 +6985,7 @@ class BotsManager {
             'exitScamSingleCandlePercent': 'exit_scam_single_candle_percent',
             'exitScamMultiCandleCount': 'exit_scam_multi_candle_count',
             'exitScamMultiCandlePercent': 'exit_scam_multi_candle_percent',
+            'exitScamTimeframe': 'exit_scam_timeframe',
             'tradingEnabled': 'trading_enabled',
             'useTestServer': 'use_test_server',
             'enhancedRsiEnabled': 'enhanced_rsi_enabled',
@@ -7431,13 +7437,15 @@ class BotsManager {
             const exitScamSingleEl = document.getElementById('exitScamSingleCandlePercent');
             const exitScamMultiCountEl = document.getElementById('exitScamMultiCandleCount');
             const exitScamMultiPercentEl = document.getElementById('exitScamMultiCandlePercent');
+            const exitScamTimeframeEl = document.getElementById('exitScamTimeframe');
             const config = this.collectConfigurationData();
             const exitScamFilter = {
                 exit_scam_enabled: exitScamEnabledEl ? exitScamEnabledEl.checked : (config.autoBot.exit_scam_enabled !== false),
                 exit_scam_candles: exitScamCandlesEl && exitScamCandlesEl.value !== '' ? parseInt(exitScamCandlesEl.value, 10) : (config.autoBot.exit_scam_candles ?? 8),
                 exit_scam_single_candle_percent: exitScamSingleEl && exitScamSingleEl.value !== '' ? parseFloat(exitScamSingleEl.value) : (config.autoBot.exit_scam_single_candle_percent ?? 15),
                 exit_scam_multi_candle_count: exitScamMultiCountEl && exitScamMultiCountEl.value !== '' ? parseInt(exitScamMultiCountEl.value, 10) : (config.autoBot.exit_scam_multi_candle_count ?? 4),
-                exit_scam_multi_candle_percent: exitScamMultiPercentEl && exitScamMultiPercentEl.value !== '' ? parseFloat(exitScamMultiPercentEl.value) : (config.autoBot.exit_scam_multi_candle_percent ?? 50)
+                exit_scam_multi_candle_percent: exitScamMultiPercentEl && exitScamMultiPercentEl.value !== '' ? parseFloat(exitScamMultiPercentEl.value) : (config.autoBot.exit_scam_multi_candle_percent ?? 50),
+                exit_scam_timeframe: exitScamTimeframeEl && exitScamTimeframeEl.value ? exitScamTimeframeEl.value : (config.autoBot.exit_scam_timeframe || '1m')
             };
             console.log('[BotsManager] 🔍 ExitScam из UI:', exitScamFilter.exit_scam_enabled, exitScamFilter.exit_scam_candles);
             await this.sendConfigUpdate('auto-bot', exitScamFilter, 'ExitScam фильтр');
@@ -7936,32 +7944,30 @@ class BotsManager {
     }
 
     /**
-     * Экспорт конфигурации в config.json (Auto Bot + System с сервера)
+     * Экспорт полного конфига в config_<TF>.json (Auto Bot + System + AI с сервера).
+     * Имя файла по выбранному таймфрейму: config_1m.json, config_5m.json, config_1d.json, config_1w.json, config_1M.json и т.д.
      */
     async exportConfig() {
         try {
-            const [autoBotRes, systemRes] = await Promise.all([
-                fetch(`${this.BOTS_SERVICE_URL}/api/bots/auto-bot`),
-                fetch(`${this.BOTS_SERVICE_URL}/api/bots/system-config`)
-            ]);
-            if (!autoBotRes.ok || !systemRes.ok) throw new Error('Не удалось загрузить конфигурацию');
-            const autoBotData = await autoBotRes.json();
-            const systemData = await systemRes.json();
-            if (!autoBotData.success || !systemData.success) throw new Error(autoBotData.error || systemData.error || 'Ошибка API');
+            const res = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/export-config`);
+            if (!res.ok) throw new Error('Не удалось загрузить конфигурацию');
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || 'Ошибка API');
+            const tf = (data.timeframe || '1m').replace(/\s/g, '');
             const payload = {
-                autoBot: autoBotData.config || {},
-                system: systemData.config || {},
+                ...(data.config || {}),
                 exportedAt: new Date().toISOString(),
+                timeframe: tf,
                 version: 1
             };
             const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'config.json';
+            a.download = `config_${tf}.json`;
             a.click();
             URL.revokeObjectURL(url);
-            this.showNotification('✅ Конфигурация экспортирована в config.json', 'success');
+            this.showNotification(`✅ Конфигурация экспортирована в config_${tf}.json`, 'success');
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка экспорта:', error);
             this.showNotification('❌ Ошибка экспорта: ' + error.message, 'error');
@@ -7969,7 +7975,7 @@ class BotsManager {
     }
 
     /**
-     * Импорт конфигурации из config.json (файл File)
+     * Импорт конфигурации из config_<TF>.json или config.json (файл File). Поддерживает autoBot, system и ai.
      */
     async importConfig(file) {
         try {
@@ -7978,7 +7984,8 @@ class BotsManager {
             if (!data || typeof data !== 'object') throw new Error('Неверный формат JSON');
             const hasAutoBot = data.autoBot && typeof data.autoBot === 'object';
             const hasSystem = data.system && typeof data.system === 'object';
-            if (!hasAutoBot && !hasSystem) throw new Error('В файле должны быть autoBot и/или system');
+            const hasAi = data.ai && typeof data.ai === 'object';
+            if (!hasAutoBot && !hasSystem && !hasAi) throw new Error('В файле должны быть autoBot, system и/или ai');
             if (!confirm('Применить загруженную конфигурацию? Текущие настройки будут перезаписаны.')) return;
             if (hasAutoBot) {
                 const res = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/auto-bot`, {
@@ -7998,8 +8005,17 @@ class BotsManager {
                 const result = await res.json();
                 if (!result.success) throw new Error('System: ' + (result.error || 'ошибка'));
             }
+            if (hasAi) {
+                const res = await fetch(`${this.BOTS_SERVICE_URL}/api/ai/config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data.ai)
+                });
+                const result = await res.json();
+                if (!result.success) throw new Error('AI: ' + (result.error || 'ошибка'));
+            }
             await this.loadConfigurationData();
-            this.showNotification('✅ Конфигурация импортирована из config.json', 'success');
+            this.showNotification('✅ Конфигурация импортирована', 'success');
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка импорта:', error);
             this.showNotification('❌ Ошибка импорта: ' + error.message, 'error');

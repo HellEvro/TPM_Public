@@ -111,12 +111,10 @@ def get_rsi_cache() -> Optional[Dict[str, Any]]:
 
 def get_auto_bot_config() -> Optional[Dict[str, Any]]:
     """
-    Получает конфигурацию Auto Bot из bots.py.
-    При отдельном запуске ai.py (без bots) — fallback на whitelist/blacklist/scope из БД,
-    чтобы обучение ИИ учитывало белый список монет.
-    
-    Returns:
-        Словарь с конфигурацией (whitelist, blacklist, scope и др.) или None
+    Получает конфигурацию Auto Bot — единый источник для bots.py и ai.py.
+    - При запуске bots.py: из bots_data (загружено из bot_engine/bot_config.py).
+    - При отдельном запуске ai.py: fallback на БД (фильтры), затем на bot_engine/bot_config.py
+      (DEFAULT_AUTO_BOT_CONFIG), чтобы ExitScam, AI пороги и прочие настройки совпадали с ботами.
     """
     try:
         from bots_modules.imports_and_globals import bots_data, bots_data_lock
@@ -128,8 +126,8 @@ def get_auto_bot_config() -> Optional[Dict[str, Any]]:
         pass
     except Exception as e:
         pass
-    
-    # Fallback при отдельном запуске ai.py: загружаем whitelist/blacklist/scope из БД
+
+    # Fallback при отдельном запуске ai.py: загружаем из БД (фильтры)
     try:
         from bot_engine.bots_database import get_bots_database
         db = get_bots_database()
@@ -138,7 +136,15 @@ def get_auto_bot_config() -> Optional[Dict[str, Any]]:
             return filters
     except Exception as e:
         pass
-    
+
+    # Fallback: конфиг из bot_config.py (тот же источник, что и у bots.py)
+    try:
+        from copy import deepcopy
+        from bot_engine.bot_config import DEFAULT_AUTO_BOT_CONFIG
+        return deepcopy(DEFAULT_AUTO_BOT_CONFIG)
+    except Exception as e:
+        pass
+
     return None
 
 

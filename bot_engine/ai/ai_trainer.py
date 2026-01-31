@@ -81,7 +81,8 @@ def _get_existing_coin_settings(symbol: str) -> Optional[Dict[str, Any]]:
 
 def _get_config_snapshot(symbol: Optional[str] = None) -> Dict[str, Any]:
     """
-    Унифицированный способ получить настройки (глобальные + индивидуальные) даже без запущенного bots.py.
+    Унифицированный способ получить настройки (глобальные + индивидуальные).
+    Один и тот же конфиг для bots.py и ai.py: ExitScam, AI пороги, RSI и т.д. из bot_config.py.
     """
     try:
         from bots_modules.imports_and_globals import get_config_snapshot  # noqa: WPS433,E402
@@ -89,12 +90,17 @@ def _get_config_snapshot(symbol: Optional[str] = None) -> Dict[str, Any]:
         return get_config_snapshot(symbol)
     except Exception as exc:
         pass
+        # Fallback при запуске только ai.py: конфиг из bot_config (get_auto_bot_config → DEFAULT_AUTO_BOT_CONFIG)
         try:
-            from bot_engine.bot_config import DEFAULT_AUTO_BOT_CONFIG  # noqa: WPS433,E402
-
-            global_config = deepcopy(DEFAULT_AUTO_BOT_CONFIG)
+            from bot_engine.ai.bots_data_helper import get_auto_bot_config
+            base = get_auto_bot_config()
+            global_config = deepcopy(base) if base else {}
         except Exception:
-            global_config = {}
+            try:
+                from bot_engine.bot_config import DEFAULT_AUTO_BOT_CONFIG  # noqa: WPS433,E402
+                global_config = deepcopy(DEFAULT_AUTO_BOT_CONFIG)
+            except Exception:
+                global_config = {}
         individual_config = _get_existing_coin_settings(symbol) if symbol else None
         merged_config = deepcopy(global_config)
         if individual_config:

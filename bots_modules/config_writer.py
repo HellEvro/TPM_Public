@@ -182,6 +182,7 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
                         'limit_orders_percent_steps', 'limit_orders_margin_amounts',
                         'exit_scam_enabled', 'exit_scam_candles', 'exit_scam_single_candle_percent',
                         'exit_scam_multi_candle_count', 'exit_scam_multi_candle_percent',
+                        'exit_scam_timeframe',
                     )
                     if key in log_keys:
                         logger.info(f"[CONFIG_WRITER] ✏️ {key}: {old_normalized[:50] if len(old_normalized) <= 50 else old_normalized[:50] + '...'} → {new_normalized[:50] if len(new_normalized) <= 50 else new_normalized[:50] + '...'}")

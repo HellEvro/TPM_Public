@@ -1838,6 +1838,30 @@
                             </div>
                             <small class="config-help" data-translate="exit_scam_multi_percent_help">Лимит в % как есть. Суммарное изменение за N свечей: |last_close−first_open|/first_open×100%</small>
                         </div>
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">⏱️</span>
+                                <span class="label-text">Таймфрейм для ExitScam:</span>
+                            </label>
+                            <select id="exitScamTimeframe" class="config-input" style="width: 100%; padding: 8px;">
+                                <option value="1m">1m</option>
+                                <option value="3m">3m</option>
+                                <option value="5m">5m</option>
+                                <option value="15m">15m</option>
+                                <option value="30m">30m</option>
+                                <option value="1h">1h</option>
+                                <option value="2h">2h</option>
+                                <option value="4h">4h</option>
+                                <option value="6h">6h</option>
+                                <option value="8h">8h</option>
+                                <option value="12h">12h</option>
+                                <option value="1d">1d</option>
+                                <option value="3d">3d</option>
+                                <option value="1w">1w</option>
+                                <option value="1M">1M</option>
+                            </select>
+                            <small class="config-help">Обычно совпадает с таймфреймом системы</small>
+                        </div>
                     </div>
                     
                     <div class="config-section-actions">
@@ -2556,11 +2580,11 @@
                 <button class="btn btn-secondary config-reset-btn" id="resetConfigBtn">
                     <span data-translate="reset_config_btn">🔄 Сбросить к умолчаниям</span>
                 </button>
-                <button class="btn btn-outline-success config-export-btn" id="exportConfigBtn" title="Скачать config.json">
-                    <span data-translate="export_config_btn">📤 Экспорт в config.json</span>
+                <button class="btn btn-outline-success config-export-btn" id="exportConfigBtn" title="Скачать полный конфиг: config_1m.json, config_5m.json, config_1d.json, config_1w.json, config_1M.json (по текущему ТФ)">
+                    <span data-translate="export_config_btn">📤 Экспорт config_ТФ.json</span>
                 </button>
-                <button class="btn btn-outline-primary config-import-btn" id="importConfigBtn" title="Загрузить config.json">
-                    <span data-translate="import_config_btn">📥 Импорт из config.json</span>
+                <button class="btn btn-outline-primary config-import-btn" id="importConfigBtn" title="Загрузить config_ТФ.json (autoBot + system + ai)">
+                    <span data-translate="import_config_btn">📥 Импорт config_ТФ.json</span>
                 </button>
                 <input type="file" id="importConfigFileInput" accept=".json,application/json" style="display: none;">
                 <button class="btn btn-info config-test-btn" id="testConfigBtn">

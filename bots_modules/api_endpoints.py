@@ -1738,6 +1738,74 @@ def timeframe_config():
             'error': str(e)
         }), 500
 
+def _build_full_export_config():
+    """Собирает полный конфиг для экспорта: autoBot + system + ai + timeframe. Все ключи из bot_config."""
+    try:
+        load_auto_bot_config()
+        load_system_config()
+    except Exception as e:
+        logger.warning(f" export-config reload: {e}")
+    with bots_data_lock:
+        auto_bot = deepcopy(bots_data.get('auto_bot_config', {}))
+    system_cfg = get_system_config_snapshot()
+    try:
+        from bot_engine.bot_config import get_current_timeframe
+        tf = get_current_timeframe() or '1m'
+    except Exception:
+        tf = '1m'
+    system_cfg = dict(system_cfg) if system_cfg else {}
+    system_cfg['timeframe'] = tf
+    ai_cfg = {}
+    try:
+        from bot_engine.bot_config import AIConfig, RiskConfig
+        ai_cfg = {
+            'ai_enabled': getattr(AIConfig, 'AI_ENABLED', False),
+            'ai_confidence_threshold': getattr(AIConfig, 'AI_CONFIDENCE_THRESHOLD', 0.65),
+            'anomaly_detection_enabled': getattr(AIConfig, 'AI_ANOMALY_DETECTION_ENABLED', True),
+            'anomaly_block_threshold': getattr(AIConfig, 'AI_ANOMALY_BLOCK_THRESHOLD', 0.7),
+            'anomaly_log_enabled': getattr(AIConfig, 'AI_LOG_ANOMALIES', True),
+            'risk_management_enabled': getattr(AIConfig, 'AI_RISK_MANAGEMENT_ENABLED', True),
+            'risk_update_interval': getattr(AIConfig, 'AI_RISK_UPDATE_INTERVAL', 300),
+            'optimal_entry_enabled': getattr(RiskConfig, 'AI_OPTIMAL_ENTRY_ENABLED', True),
+            'lstm_enabled': getattr(AIConfig, 'AI_LSTM_ENABLED', True),
+            'lstm_min_confidence': getattr(AIConfig, 'AI_LSTM_MIN_CONFIDENCE', 0.6),
+            'lstm_weight': getattr(AIConfig, 'AI_LSTM_WEIGHT', 1.5),
+            'pattern_enabled': getattr(AIConfig, 'AI_PATTERN_ENABLED', True),
+            'pattern_min_confidence': getattr(AIConfig, 'AI_PATTERN_MIN_CONFIDENCE', 0.6),
+            'pattern_weight': getattr(AIConfig, 'AI_PATTERN_WEIGHT', 1.2),
+            'auto_train_enabled': getattr(AIConfig, 'AI_AUTO_TRAIN_ENABLED', True),
+            'auto_update_data': getattr(AIConfig, 'AI_AUTO_UPDATE_DATA', True),
+            'auto_retrain': getattr(AIConfig, 'AI_AUTO_RETRAIN', True),
+            'data_update_interval': getattr(AIConfig, 'AI_DATA_UPDATE_INTERVAL', 86400),
+            'retrain_interval': getattr(AIConfig, 'AI_RETRAIN_INTERVAL', 604800),
+            'retrain_hour': getattr(AIConfig, 'AI_RETRAIN_HOUR', 3),
+            'update_coins_count': getattr(AIConfig, 'AI_UPDATE_COINS_COUNT', 50),
+            'log_predictions': getattr(AIConfig, 'AI_LOG_PREDICTIONS', True),
+            'log_anomalies': getattr(AIConfig, 'AI_LOG_ANOMALIES', True),
+            'log_patterns': getattr(AIConfig, 'AI_LOG_PATTERNS', True),
+            'self_learning_enabled': getattr(AIConfig, 'AI_SELF_LEARNING_ENABLED', True),
+            'smc_enabled': getattr(AIConfig, 'AI_SMC_ENABLED', True),
+        }
+    except Exception as e:
+        logger.warning(f" export-config AI: {e}")
+    return {'autoBot': auto_bot, 'system': system_cfg, 'ai': ai_cfg}, tf
+
+
+@bots_app.route('/api/bots/export-config', methods=['GET'])
+def export_full_config():
+    """Полный конфиг для экспорта в JSON: autoBot + system + ai. Имя файла: config_<timeframe>.json."""
+    try:
+        full_config, timeframe = _build_full_export_config()
+        return jsonify({
+            'success': True,
+            'config': full_config,
+            'timeframe': timeframe or '1m'
+        })
+    except Exception as e:
+        logger.exception("export-config")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @bots_app.route('/api/bots/system-config', methods=['GET', 'POST'])
 def system_config():
     """Получить или обновить системные настройки"""

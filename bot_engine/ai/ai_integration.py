@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Модуль интеграции AI в bots.py
+Модуль интеграции AI. Одна и та же логика для bots.py и ai.py.
 
-Два разных кода предсказаний:
-- В bots.py (реальные сделки): используется ai_inference — только загрузка signal_predictor.pkl/scaler.pkl
-  и инференс. Никакого ai.py, trainer, обучения.
-- В ai.py (обучение, виртуальные сделки): используется get_ai_system() и trainer.predict_signal().
-SMC (Smart Money Concepts) общий; логика «открывать или нет» — в should_open_position_with_ai.
+- bots.py (реальные сделки): ai_inference (signal_predictor.pkl/scaler.pkl), конфиг из auto_bot_config.
+- ai.py (обучение, виртуальные сделки): get_ai_system() и trainer.predict_signal(), конфиг из bot_config.py.
+Пороги (ai_min_confidence и т.д.) в шкале 0–1, без пересчёта; конфиг передаётся вызывающим кодом из одного источника.
+SMC общий; решение «открывать или нет» — should_open_position_with_ai.
 """
 
 import os

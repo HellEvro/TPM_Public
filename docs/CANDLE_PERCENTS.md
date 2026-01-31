@@ -2,6 +2,11 @@
 
 Все проценты в конфиге привязаны к **реальным движениям цены**. Никаких виртуальных шкал и пересчётов по таймфрейму — замерил свечи в %, подставил в конфиг.
 
+## bots.py и ai.py — одна логика
+
+- **bots.py**: фильтры (ExitScam, anomaly, LSTM пороги) и AI (should_open_position_with_ai) берут конфиг из `auto_bot_config` (загружается из `bot_engine/bot_config.py`). Формулы и пороги — те же, что ниже.
+- **ai.py**: при обучении и симуляциях конфиг берётся из того же источника: при запуске без bots — из `bot_engine/bot_config.py` (DEFAULT_AUTO_BOT_CONFIG) через `bots_data_helper.get_auto_bot_config()`. ExitScam и остальные фильтры в симуляциях считаются по тем же формулам (см. `bot_engine/ai/filter_utils.py`: `run_exit_scam_filter` — тело свечи `|C-O|/O*100`, конфиг как есть).
+
 ---
 
 ## Как замерить движения свечей

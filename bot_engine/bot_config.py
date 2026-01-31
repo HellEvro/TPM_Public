@@ -261,9 +261,9 @@ DEFAULT_AUTO_BOT_CONFIG = {
     # ExitScam фильтр (защита от резких движений цены)
     'exit_scam_enabled': True, # Включить проверку на ExitScam
     'exit_scam_candles': 4, # Количество свечей для проверки (10 = 60 часов на 6H)
-    'exit_scam_single_candle_percent': 25, # Макс. % тела одной свечи: |C-O|/O*100. 25 = блокировка при >25% (как замерил — так и ставишь).
+    'exit_scam_single_candle_percent': 0.5, # Макс. % тела одной свечи: |C-O|/O*100. 25 = блокировка при >25% (как замерил — так и ставишь).
     'exit_scam_multi_candle_count': 4,        # Количество свечей для суммарного анализа
-    'exit_scam_multi_candle_percent': 100, # Макс. суммарный % за N свечей: |last_C - first_O|/first_O*100. 100 = блокировка при >100%.
+    'exit_scam_multi_candle_percent': 2, # Макс. суммарный % за N свечей: |last_C - first_O|/first_O*100. 100 = блокировка при >100%.
     # 🤖 ИИ настройки (премиум функции)
     'ai_optimal_entry_enabled': True, # ИИ определение оптимальной точки входа (выкл. по умолчанию)
     'ai_enabled': True, # Включить подтверждение сигналов AI
@@ -315,8 +315,8 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'system_timeframe': '1m',
     'mini_chart_update_interval': 30,
     'smc_enabled': True,
-    'exit_scam_effective_multi_pct': 50,
-    'exit_scam_effective_single_pct': 25,
+    'exit_scam_effective_multi_pct': 100,
+    'exit_scam_effective_single_pct': 0.5,
     'exit_scam_timeframe': '1m',
 }
 
