@@ -267,7 +267,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'ai_min_confidence': 0.7,          # Минимальная уверенность AI (0.0-1.0)
     'ai_override_original': True,      # AI может блокировать решения скрипта,
     'anomaly_block_threshold': 0.7,
-    'anomaly_detection_enabled': False,
+    'anomaly_detection_enabled': True,
     'anomaly_log_enabled': True,
     'auto_refresh_ui': True,
     'auto_retrain': True,
