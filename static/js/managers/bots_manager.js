@@ -302,6 +302,7 @@ class BotsManager {
             this.loadDuplicateSettings(); // Загружаем дублированные настройки
             break;
             case 'filters':
+                this.loadCoinsRsiData(); // нужен для поиска монет на вкладке
                 this.loadFiltersData();
                 break;
             case 'config':
@@ -733,8 +734,14 @@ class BotsManager {
                     
                     // Преобразуем словарь в массив для совместимости с UI
                     this.logDebug('[BotsManager] 🔍 Данные от API:', data);
-                    this.logDebug('[BotsManager] 🔍 Ключи coins:', Object.keys(data.coins));
-                    this.coinsRsiData = Object.values(data.coins);
+                    const coinsRaw = data.coins;
+                    if (!coinsRaw || typeof coinsRaw !== 'object') {
+                        this.logDebug('[BotsManager] ⚠️ Нет data.coins, используем пустой массив');
+                        this.coinsRsiData = [];
+                    } else {
+                        this.coinsRsiData = Array.isArray(coinsRaw) ? coinsRaw : Object.values(coinsRaw);
+                        this.logDebug('[BotsManager] 🔍 Загружено монет:', this.coinsRsiData.length);
+                    }
                     
                     // Получаем список ручных позиций
                     const manualPositions = data.manual_positions || [];
@@ -781,6 +788,13 @@ class BotsManager {
                         this.filterCoins(actualSearchTerm);
                         this.updateSmartFilterControls(actualSearchTerm);
                         this.updateClearButtonVisibility(actualSearchTerm);
+                    }
+                    
+                    // Если открыта вкладка «Фильтры монет» и в поиске есть текст — обновляем результаты
+                    const filtersTabActive = document.getElementById('filtersTab')?.classList?.contains('active');
+                    const filtersSearchInput = document.getElementById('filtersSearchInput');
+                    if (filtersTabActive && filtersSearchInput && filtersSearchInput.value.trim().length >= 2) {
+                        this.performFiltersSearch(filtersSearchInput.value.trim());
                     }
                     
                     // Обновляем статус
