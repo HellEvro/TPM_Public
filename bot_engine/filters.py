@@ -198,7 +198,7 @@ def check_rsi_time_filter(candles, rsi, signal, config, calculate_rsi_history_fu
         return {'allowed': False, 'reason': f'Ошибка анализа: {str(e)}', 'last_extreme_candles_ago': None, 'calm_candles': 0}
 
 def _exit_scam_timeframe_minutes():
-    """Длительность одной свечи в минутах для текущего таймфрейма. Порог «50% на одну свечу» на 1h = 50%, на 1m = 50*(1/60)%."""
+    """Длительность одной свечи в минутах. Строго по выбранному ТФ из конфига; '1m' только при сбое get_current_timeframe()."""
     try:
         from .bot_config import get_current_timeframe
         tf = get_current_timeframe() or '1m'

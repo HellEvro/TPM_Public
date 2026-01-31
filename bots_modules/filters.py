@@ -673,9 +673,9 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
                 '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600, '8h': 28800,
                 '12h': 43200, '1d': 86400, '3d': 259200, '1w': 604800, '1M': 2592000
             }
-            CANDLE_INTERVAL_SECONDS = timeframe_to_seconds.get(current_timeframe, 60)  # По умолчанию 1m (текущий ТФ из конфига)
+            CANDLE_INTERVAL_SECONDS = timeframe_to_seconds.get(current_timeframe, 60)  # Строго по выбранному ТФ; 60 только если ключ ТФ отсутствует в карте
         except Exception:
-            CANDLE_INTERVAL_SECONDS = 60  # Fallback: 1 минута
+            CANDLE_INTERVAL_SECONDS = 60  # Только при сбое get_current_timeframe(); в норме — строго выбранный ТФ
         
         if not candles or len(candles) == 0:
             return None  # Нет свечей - не показываем фильтр
@@ -746,7 +746,7 @@ _EXIT_SCAM_TF_MINUTES = {
 
 
 def _exit_scam_timeframe_minutes():
-    """Длительность одной свечи в минутах для текущего таймфрейма из конфига (не 6h)."""
+    """Длительность одной свечи в минутах. Строго по выбранному ТФ из конфига; '1m' только при сбое get_current_timeframe()."""
     try:
         from bot_engine.bot_config import get_current_timeframe
         tf = get_current_timeframe() or '1m'
@@ -757,8 +757,8 @@ def _exit_scam_timeframe_minutes():
 
 def get_exit_scam_effective_limits(single_pct, multi_count, multi_pct):
     """
-    Единый источник истины: эффективные пороги ExitScam для текущего таймфрейма.
-    Настройки в конфиге заданы в «% за 1h-свечу»; для 1m это 50*(1/60)%, для 6h — 50%.
+    Эффективные пороги ExitScam строго по выбранному таймфрейму из конфига (дефолта нет).
+    Настройки заданы в «% за 1h-свечу»; для текущего ТФ пересчёт: 1m → 50*(1/60)%, 6h → 50%.
     Возвращает: (current_tf, tf_min, effective_single_pct, effective_multi_pct).
     """
     try:
