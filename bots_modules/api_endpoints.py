@@ -1084,6 +1084,14 @@ def create_bot_endpoint():
         if not has_existing_position:
             def enter_position_async():
                 try:
+                    # ✅ Перечитываем конфиг с диска перед решением о входе — пороги RSI из UI учитываются
+                    try:
+                        from bots_modules.imports_and_globals import load_auto_bot_config
+                        if hasattr(load_auto_bot_config, '_last_mtime'):
+                            load_auto_bot_config._last_mtime = 0
+                        load_auto_bot_config()
+                    except Exception:
+                        pass
                     direction = None
                     if force_manual_entry and manual_direction:
                         direction = manual_direction

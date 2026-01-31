@@ -806,6 +806,17 @@ def load_auto_bot_config():
             bots_data['auto_bot_config'] = merged_config
             # ✅ Логирование leverage убрано (было слишком много спама) - логируется только при загрузке из файла
         
+        # ✅ RSI пороги входа/выхода — логируем при перезагрузке, чтобы убедиться что боты используют настройки из UI
+        if reloaded or not getattr(load_auto_bot_config, '_rsi_logged_once', False):
+            load_auto_bot_config._rsi_logged_once = True
+            rl = merged_config.get('rsi_long_threshold')
+            rs = merged_config.get('rsi_short_threshold')
+            elw = merged_config.get('rsi_exit_long_with_trend')
+            ela = merged_config.get('rsi_exit_long_against_trend')
+            esw = merged_config.get('rsi_exit_short_with_trend')
+            esa = merged_config.get('rsi_exit_short_against_trend')
+            logger.info(f"[CONFIG] 📊 RSI пороги из конфига (используются ботами): вход LONG≤{rl} SHORT≥{rs}, выход LONG(with={elw}, against={ela}) SHORT(with={esw}, against={esa})")
+        
         # Конфигурация загружена и обновлена в bots_data
             
     except Exception as e:

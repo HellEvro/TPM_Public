@@ -386,6 +386,14 @@ def positions_monitor_worker():
 
             if time_since_rsi_check >= refresh_interval:
                 try:
+                    # ✅ Перечитываем конфиг с диска — пороги RSI выхода из UI учитываются при закрытии
+                    try:
+                        from bots_modules.imports_and_globals import load_auto_bot_config
+                        if hasattr(load_auto_bot_config, '_last_mtime'):
+                            load_auto_bot_config._last_mtime = 0
+                        load_auto_bot_config()
+                    except Exception:
+                        pass
                     # ✅ КРИТИЧНО: Проверяем, загружены ли RSI данные перед проверкой
                     from bots_modules.imports_and_globals import bots_data, bots_data_lock, coins_rsi_data
                     from bots_modules.bot_class import NewTradingBot

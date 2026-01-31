@@ -105,6 +105,8 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
         logger.info(f"  exit_scam_single_candle_percent: {config.get('exit_scam_single_candle_percent')}")
         logger.info(f"  exit_scam_multi_candle_count: {config.get('exit_scam_multi_candle_count')}")
         logger.info(f"  exit_scam_multi_candle_percent: {config.get('exit_scam_multi_candle_percent')}")
+        logger.info(f"  rsi_long_threshold: {config.get('rsi_long_threshold')}, rsi_short_threshold: {config.get('rsi_short_threshold')}")
+        logger.info(f"  rsi_exit: LONG with={config.get('rsi_exit_long_with_trend')}, against={config.get('rsi_exit_long_against_trend')}, SHORT with={config.get('rsi_exit_short_with_trend')}, against={config.get('rsi_exit_short_against_trend')}")
         
         # Обновляем значения в блоке конфигурации
         updated_lines = lines[:start_idx + 1]  # Все строки до начала блока + строка с DEFAULT_AUTO_BOT_CONFIG
@@ -168,9 +170,12 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
                     
                     # Всегда добавляем запятую перед комментарием
                     updated_line = f"{indent}'{key}': {new_value_str},{comment_str}\n"
-                    # ✅ Логируем ключевые изменения (включая основные настройки и ExitScam)
+                    # ✅ Логируем ключевые изменения (включая RSI вход/выход и ExitScam)
                     log_keys = (
                         'enabled', 'max_concurrent', 'risk_cap_percent', 'scope', 'whitelist', 'blacklist',
+                        'rsi_long_threshold', 'rsi_short_threshold',
+                        'rsi_exit_long_with_trend', 'rsi_exit_long_against_trend',
+                        'rsi_exit_short_with_trend', 'rsi_exit_short_against_trend',
                         'ai_enabled', 'ai_min_confidence', 'ai_override_original', 'leverage',
                         'trailing_stop_activation', 'trailing_stop_distance', 'break_even_trigger',
                         'avoid_down_trend', 'avoid_up_trend', 'limit_orders_entry_enabled',
