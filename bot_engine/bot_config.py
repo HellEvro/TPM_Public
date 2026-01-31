@@ -256,14 +256,14 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'limit_orders_percent_steps': [0, 0.5, 1, 1.5, 2], # Шаги в % от цены входа (0 = рыночный, далее лимитные с увеличивающимся отступом)
     'limit_orders_margin_amounts': [5, 5, 5, 5, 5], # Объем маржи в USDT для каждого ордера (минимум 5 USDT на бирже Bybit, иначе ордер будет отклонен)
     # ExitScam фильтр (защита от резких движений цены)
-    'exit_scam_enabled': False, # Включить проверку на ExitScam
+    'exit_scam_enabled': True, # Включить проверку на ExitScam
     'exit_scam_candles': 4, # Количество свечей для проверки (10 = 60 часов на 6H)
     'exit_scam_single_candle_percent': 50, # Максимальный % изменения одной свечи (15% = блокировка)
     'exit_scam_multi_candle_count': 4,        # Количество свечей для суммарного анализа
     'exit_scam_multi_candle_percent': 100, # Максимальный суммарный % за N свечей (50% = блокировка)
     # 🤖 ИИ настройки (премиум функции)
     'ai_optimal_entry_enabled': True, # ИИ определение оптимальной точки входа (выкл. по умолчанию)
-    'ai_enabled': False, # Включить подтверждение сигналов AI
+    'ai_enabled': True, # Включить подтверждение сигналов AI
     'ai_min_confidence': 0.7,          # Минимальная уверенность AI (0.0-1.0)
     'ai_override_original': True, # AI может блокировать решения скрипта,
     'anomaly_block_threshold': 0.7,
@@ -596,7 +596,7 @@ class AIConfig:
     """
     
     # Общие настройки
-    AI_ENABLED = False
+    AI_ENABLED = True
     AI_CONFIDENCE_THRESHOLD = 0.65  # Минимальная уверенность для применения рекомендации ИИ (0.0-1.0)
     
     # Anomaly Detection - обнаружение аномалий (pump/dump)

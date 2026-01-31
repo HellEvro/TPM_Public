@@ -1962,6 +1962,40 @@ input:checked + .slider:before {
     font-size: 24px;
 }
 
+/* Фильтры вкладки "Боты в работе" */
+.active-bots-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.active-bots-filter-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.active-bots-filter-btn:hover {
+    background: var(--hover-bg);
+    border-color: var(--blue-color);
+}
+
+.active-bots-filter-btn.active {
+    background: var(--blue-color);
+    color: white;
+    border-color: var(--blue-color);
+}
+
 .bots-stats {
     display: flex;
     gap: 20px;
@@ -1984,6 +2018,127 @@ input:checked + .slider:before {
 .active-bots-list {
     flex: 1;
     overflow-y: auto;
+}
+
+/* Карточки ботов в работе — адаптивная сетка по ширине экрана (3, 4, 5+ в ряд) */
+.active-bots-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+    align-items: stretch;
+}
+
+/* Карточки одинаковой высоты в ряду — flex с фиксированной структурой */
+.active-bots-cards-grid .active-bot-item {
+    margin: 0;
+    min-height: 145px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.active-bots-cards-grid .active-bot-item .bot-header {
+    flex-shrink: 0;
+}
+
+.active-bots-cards-grid .active-bot-item .bot-details {
+    flex: 1;
+    min-height: 0;
+}
+
+.active-bots-cards-grid .active-bot-item .bot-controls {
+    flex-shrink: 0;
+}
+
+/* Компактные детали карточки (всегда раскрыты) */
+.bot-details-compact {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 6px;
+}
+
+.bot-details-compact .compact-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 4px;
+    background: var(--input-bg);
+    border-radius: 3px;
+    min-height: 16px;
+}
+
+.bot-details-compact .compact-lbl {
+    color: var(--text-muted);
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.bot-exchange-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    color: var(--blue-color);
+    font-size: 16px;
+    text-decoration: none;
+    border-radius: 4px;
+    transition: opacity 0.2s;
+}
+
+.bot-exchange-link:hover {
+    opacity: 0.8;
+}
+
+.bot-controls .bot-icon-btn {
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
+}
+
+.bot-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    margin-left: 4px;
+    border: none;
+    border-radius: 2px;
+    font-size: 10px;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+    opacity: 0.85;
+}
+
+.bot-icon-stop {
+    color: #f44336;
+}
+
+.bot-icon-start {
+    color: #4caf50;
+}
+
+.bot-icon-delete {
+    color: #9e9e9e;
+}
+
+.bot-icon-btn:hover {
+    opacity: 1;
+}
+
+.bot-details-compact .compact-val {
+    color: var(--text-color);
+    font-weight: 600;
+    font-size: 12px;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .empty-bots-state {

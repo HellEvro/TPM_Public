@@ -4,10 +4,10 @@
     <!-- Навигация по табам -->
     <div class="bots-tabs">
         <button class="bots-tab-btn active" data-tab="management">🎮 <span data-translate="management">Управление</span></button>
-        <button class="bots-tab-btn" data-tab="filters">🔧 <span data-translate="coin_filters">Фильтры монет</span></button>
-        <button class="bots-tab-btn" data-tab="config">⚙️ <span data-translate="configuration">Конфигурация</span></button>
         <button class="bots-tab-btn" data-tab="active-bots">🚀 <span data-translate="active_bots">Боты в работе</span></button>
         <button class="bots-tab-btn" data-tab="history">📊 <span data-translate="bot_history">История</span></button>
+        <button class="bots-tab-btn" data-tab="filters">🔧 <span data-translate="coin_filters">Фильтры монет</span></button>
+        <button class="bots-tab-btn" data-tab="config">⚙️ <span data-translate="configuration">Конфигурация</span></button>
     </div>
 
     <!-- Таб 1: Управление -->
@@ -2572,13 +2572,19 @@
                 <h2 data-translate="active_bots_header">Активные боты</h2>
                 <div class="bots-stats">
                     <span class="stat-item"><span data-translate="total_label">Всего:</span> <span id="totalBotsCount">0</span></span>
-                    <span class="stat-item"><span data-translate="active_label">Активных:</span> <span id="activeBotsCount">0</span></span>
-                    <span class="stat-item"><span data-translate="in_position_label">В позиции:</span> <span id="inPositionBotsCount">0</span></span>
                     <span class="stat-item"><span data-translate="total_pnl_label">Общий PnL:</span> <span id="totalBotsePnL">$0</span></span>
                 </div>
             </div>
             
-            <div class="active-bots-list" id="activeBotsDetailsList">
+            <div class="active-bots-filters">
+                <button class="active-bots-filter-btn active" data-filter="all">🌐 <span data-translate="active_bots_filter_all">Все</span> (<span id="activeBotsFilterAllCount">0</span>)</button>
+                <button class="active-bots-filter-btn" data-filter="long">📈 <span data-translate="active_bots_filter_long">Лонг</span> (<span id="activeBotsFilterLongCount">0</span>)</button>
+                <button class="active-bots-filter-btn" data-filter="short">📉 <span data-translate="active_bots_filter_short">Шорт</span> (<span id="activeBotsFilterShortCount">0</span>)</button>
+                <button class="active-bots-filter-btn" data-filter="profitable">🟢 <span data-translate="active_bots_filter_profitable">Прибыльные</span> (<span id="activeBotsFilterProfitableCount">0</span>)</button>
+                <button class="active-bots-filter-btn" data-filter="loss">🔴 <span data-translate="active_bots_filter_loss">Убыточные</span> (<span id="activeBotsFilterLossCount">0</span>)</button>
+            </div>
+            
+            <div class="active-bots-list active-bots-cards-grid" id="activeBotsDetailsList">
                 <div class="empty-bots-state">
                     <p data-translate="no_active_bots">Активные боты отсутствуют</p>
                     <small data-translate="create_bots_for_trading">Создайте ботов во вкладке "Управление"</small>

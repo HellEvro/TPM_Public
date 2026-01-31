@@ -11,6 +11,8 @@ class BotsManager {
         this.updateInterval = null;
         this.accountUpdateInterval = null;
         this.currentRsiFilter = 'all'; // Отслеживание текущего фильтра
+        this.activeBotsFilter = 'all'; // Фильтр вкладки "Боты в работе": all, long, short, profitable, loss
+        this._lastActiveBotsFilter = 'all'; // Для определения необходимости перерисовки при смене фильтра
         
         // RSI пороговые значения из конфигурации
         this.rsiLongThreshold = 29;
@@ -206,6 +208,9 @@ class BotsManager {
         
         // Инициализируем кнопки загрузки RSI
         this.initializeRSILoadingButtons();
+        
+        // Инициализируем фильтры вкладки "Боты в работе"
+        this.initActiveBotsFilters();
         
         console.log('[BotsManager] ✅ Интерфейс инициализирован');
     }
@@ -489,6 +494,51 @@ class BotsManager {
         this.updateTrendFilterLabels();
         
         console.log(`[BotsManager] 🔄 Обновлены кнопки фильтров RSI: ≤${this.rsiLongThreshold}, ≥${this.rsiShortThreshold}`);
+    }
+
+    initActiveBotsFilters() {
+        document.querySelectorAll('.active-bots-filter-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const clickedBtn = e.currentTarget;
+                const filter = clickedBtn.dataset.filter;
+                this.activeBotsFilter = filter;
+                document.querySelectorAll('.active-bots-filter-btn').forEach(b => b.classList.remove('active'));
+                clickedBtn.classList.add('active');
+                this.renderActiveBotsDetails();
+            });
+        });
+    }
+
+    getFilteredActiveBotsForDetails() {
+        const bots = Array.isArray(this.activeBots) ? this.activeBots : [];
+        if (this.activeBotsFilter === 'all') return bots;
+        return bots.filter(bot => {
+            const pnl = bot.unrealized_pnl_usdt ?? bot.unrealized_pnl ?? 0;
+            const pnlVal = Number.parseFloat(pnl) || 0;
+            switch (this.activeBotsFilter) {
+                case 'long': return bot.status === 'in_position_long';
+                case 'short': return bot.status === 'in_position_short';
+                case 'profitable': return pnlVal >= 0;
+                case 'loss': return pnlVal < 0;
+                default: return true;
+            }
+        });
+    }
+
+    updateActiveBotsFilterCounts() {
+        const bots = Array.isArray(this.activeBots) ? this.activeBots : [];
+        const counts = {
+            all: bots.length,
+            long: bots.filter(b => b.status === 'in_position_long').length,
+            short: bots.filter(b => b.status === 'in_position_short').length,
+            profitable: bots.filter(b => ((b.unrealized_pnl_usdt ?? b.unrealized_pnl ?? 0) || 0) >= 0).length,
+            loss: bots.filter(b => ((b.unrealized_pnl_usdt ?? b.unrealized_pnl ?? 0) || 0) < 0).length
+        };
+        const idMap = { all: 'All', long: 'Long', short: 'Short', profitable: 'Profitable', loss: 'Loss' };
+        Object.keys(counts).forEach(key => {
+            const el = document.getElementById(`activeBotsFilter${idMap[key]}Count`);
+            if (el) el.textContent = counts[key];
+        });
     }
     
     updateTrendFilterLabels() {
@@ -4272,26 +4322,25 @@ class BotsManager {
         }
     }
 
-    getBotControlButtonsHtml(bot) {
-        // Бот активен если running, idle, или в позиции
+    getBotStopButtonHtml(bot) {
         const isRunning = bot.status === 'running' || bot.status === 'idle' || 
                          bot.status === 'in_position_long' || bot.status === 'in_position_short';
         const isStopped = bot.status === 'stopped' || bot.status === 'paused';
-        
-        let buttons = [];
-        
         if (isRunning) {
-            // Если бот работает - показываем кнопку СТОП
-            buttons.push(`<button onclick="window.app.botsManager.stopBot('${bot.symbol}')" style="padding: 4px 8px; background: #f44336; border: none; border-radius: 3px; color: white; cursor: pointer; font-size: 10px;">⏹️ ${window.languageUtils.translate('stop_btn')}</button>`);
-        } else if (isStopped) {
-            // Если бот остановлен - показываем кнопку СТАРТ
-            buttons.push(`<button onclick="window.app.botsManager.startBot('${bot.symbol}')" style="padding: 4px 8px; background: #4caf50; border: none; border-radius: 3px; color: white; cursor: pointer; font-size: 10px;">▶️ ${window.languageUtils.translate('start_btn') || 'Старт'}</button>`);
+            return `<span onclick="event.stopPropagation(); window.app.botsManager.stopBot('${bot.symbol}')" title="${window.languageUtils.translate('stop_btn')}" class="bot-icon-btn bot-icon-stop">&#x2298;</span>`;
         }
-        
-        // Кнопка удаления всегда доступна
-        buttons.push(`<button onclick="window.app.botsManager.deleteBot('${bot.symbol}')" style="padding: 4px 8px; background: #9e9e9e; border: none; border-radius: 3px; color: white; cursor: pointer; font-size: 10px;">🗑️ ${window.languageUtils.translate('delete_btn')}</button>`);
-        
-        return buttons.join('');
+        if (isStopped) {
+            return `<span onclick="event.stopPropagation(); window.app.botsManager.startBot('${bot.symbol}')" title="${window.languageUtils.translate('start_btn') || 'Старт'}" class="bot-icon-btn bot-icon-start">&#x25B6;</span>`;
+        }
+        return '';
+    }
+
+    getBotDeleteButtonHtml(bot) {
+        return `<span onclick="event.stopPropagation(); window.app.botsManager.deleteBot('${bot.symbol}')" title="${window.languageUtils.translate('delete_btn')}" class="bot-icon-btn bot-icon-delete">🗑</span>`;
+    }
+
+    getBotControlButtonsHtml(bot) {
+        return (this.getBotStopButtonHtml(bot) || '') + this.getBotDeleteButtonHtml(bot);
     }
 
     getBotDetailButtonsHtml(bot) {
@@ -4303,15 +4352,11 @@ class BotsManager {
         let buttons = [];
         
         if (isRunning) {
-            // Если бот работает - показываем кнопку СТОП
-            buttons.push(`<button onclick="window.app.botsManager.stopBot('${bot.symbol}')" style="padding: 5px 10px; background: #f44336; border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 12px;">⏹️ ${window.languageUtils.translate('stop_btn')}</button>`);
+            buttons.push(`<button onclick="window.app.botsManager.stopBot('${bot.symbol}')" title="${window.languageUtils.translate('stop_btn')}" style="padding: 5px 10px; background: #f44336; border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 14px;">&#x2298;</button>`);
         } else if (isStopped) {
-            // Если бот остановлен - показываем кнопку СТАРТ  
-            buttons.push(`<button onclick="window.app.botsManager.startBot('${bot.symbol}')" style="padding: 5px 10px; background: #4caf50; border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 12px;">▶️ ${window.languageUtils.translate('start_btn') || 'Старт'}</button>`);
+            buttons.push(`<button onclick="window.app.botsManager.startBot('${bot.symbol}')" title="${window.languageUtils.translate('start_btn') || 'Старт'}" style="padding: 5px 10px; background: #4caf50; border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 14px;">&#x25B6;</button>`);
         }
-        
-        // Кнопка удаления
-        buttons.push(`<button onclick="window.app.botsManager.deleteBot('${bot.symbol}')" style="padding: 5px 10px; background: #9e9e9e; border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 12px;">🗑️ ${window.languageUtils.translate('delete_btn')}</button>`);
+        buttons.push(`<button onclick="window.app.botsManager.deleteBot('${bot.symbol}')" title="${window.languageUtils.translate('delete_btn')}" style="padding: 5px 10px; background: #9e9e9e; border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 14px;">🗑</button>`);
         
         return buttons.join('');
     }
@@ -5444,12 +5489,20 @@ class BotsManager {
 
         const hasActiveBots = this.activeBots && this.activeBots.length > 0;
         
+        // Обновляем счётчики фильтров вкладки "Боты в работе"
+        this.updateActiveBotsFilterCounts();
+        
         // Проверяем, нужно ли полностью перерисовывать HTML
         const existingBots = scrollListElement ? Array.from(scrollListElement.querySelectorAll('.active-bot-item')).map(item => item.dataset.symbol) : [];
         const currentBots = hasActiveBots ? this.activeBots.map(bot => bot.symbol) : [];
         const needsFullRedraw = JSON.stringify(existingBots.sort()) !== JSON.stringify(currentBots.sort());
+        const filteredBots = this.getFilteredActiveBotsForDetails();
+        const existingDetailsBots = detailsElement ? Array.from(detailsElement.querySelectorAll('.active-bot-item')).map(i => i.dataset.symbol).sort() : [];
+        const filteredBotSymbols = filteredBots.map(b => b.symbol).sort();
+        const needsDetailsRedraw = needsFullRedraw || (this.activeBotsFilter !== this._lastActiveBotsFilter) ||
+            JSON.stringify(filteredBotSymbols) !== JSON.stringify(existingDetailsBots);
         
-        console.log(`[DEBUG] Проверка перерисовки:`, { existingBots, currentBots, needsFullRedraw });
+        console.log(`[DEBUG] Проверка перерисовки:`, { existingBots, currentBots, needsFullRedraw, needsDetailsRedraw });
 
         // Обновляем правую панель (вкладка "Управление")
         if (emptyStateElement && scrollListElement) {
@@ -5480,32 +5533,25 @@ class BotsManager {
                     
                     const positionInfo = this.getBotPositionInfo(bot);
                     const timeInfo = this.getBotTimeInfo(bot);
-                    
-                    console.log(`[DEBUG] timeInfo для ${bot.symbol}:`, timeInfo);
-                    
                     const htmlResult = `
-                        <div class="active-bot-item clickable-bot-item" data-symbol="${bot.symbol}" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin: 8px 0; background: var(--section-bg); cursor: pointer;" onmouseover="this.style.backgroundColor='var(--hover-bg, var(--button-bg))'" onmouseout="this.style.backgroundColor='var(--section-bg)'">
+                        <div class="active-bot-item clickable-bot-item active-bot-sidebar-item" data-symbol="${bot.symbol}" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; margin: 8px 0; background: var(--section-bg); cursor: pointer;" onmouseover="this.style.backgroundColor='var(--hover-bg, var(--button-bg))'" onmouseout="this.style.backgroundColor='var(--section-bg)'">
                             <div class="bot-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                                 <div style="display: flex; align-items: center; gap: 8px;">
-                                    <span style="color: var(--text-color); font-weight: bold; font-size: 16px;">${bot.symbol}</span>
+                                    <span style="color: var(--text-color); font-weight: bold; font-size: 14px;">${bot.symbol}</span>
                                     <span style="background: ${statusColor}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 10px;">${statusText}</span>
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 8px;">
-                                    <div style="text-align: right;">
-                                        <div style="color: ${(bot.unrealized_pnl || bot.unrealized_pnl_usdt || 0) >= 0 ? 'var(--green-color)' : 'var(--red-color)'}; font-weight: bold; font-size: 14px;">$${(bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0).toFixed(3)}</div>
-                                    </div>
-                                    <button class="collapse-btn" onclick="event.stopPropagation(); const details = this.parentElement.parentElement.parentElement.querySelector('.bot-details'); const isCurrentlyCollapsed = details.style.display === 'none'; details.style.display = isCurrentlyCollapsed ? 'block' : 'none'; this.textContent = isCurrentlyCollapsed ? '▲' : '▼'; window.botsManager && window.botsManager.saveCollapseState(this.parentElement.parentElement.parentElement.dataset.symbol, !isCurrentlyCollapsed);" style="background: none; border: none; color: var(--text-muted); font-size: 12px; cursor: pointer; padding: 4px;">▼</button>
+                                    <div style="color: ${(bot.unrealized_pnl || bot.unrealized_pnl_usdt || 0) >= 0 ? 'var(--green-color)' : 'var(--red-color)'}; font-weight: bold; font-size: 12px;">$${(bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0).toFixed(3)}</div>
+                                    <button class="collapse-btn" onclick="event.stopPropagation(); const details = this.closest('.active-bot-sidebar-item').querySelector('.bot-details'); const isCollapsed = details.style.display === 'none'; details.style.display = isCollapsed ? 'block' : 'none'; this.textContent = isCollapsed ? '▲' : '▼'; window.botsManager && window.botsManager.saveCollapseState(this.closest('.active-bot-sidebar-item').dataset.symbol, !isCollapsed);" style="background: none; border: none; color: var(--text-muted); font-size: 11px; cursor: pointer; padding: 2px;">▼</button>
                                 </div>
                             </div>
-                                
-                            <div class="bot-details" style="font-size: 12px; color: var(--text-color); margin-bottom: 8px; display: none;">
+                            <div class="bot-details" style="font-size: 11px; color: var(--text-color); margin-bottom: 8px; display: none;">
                                 <div style="margin-bottom: 4px;">💰 ${this.getTranslation('position_volume')} ${parseFloat(((bot.position_size || 0) * (bot.entry_price || 0)).toFixed(2))} USDT</div>
                                 ${positionInfo}
                                 ${timeInfo}
                             </div>
-                            
-                            <div class="bot-controls" style="display: flex; gap: 8px; justify-content: center;">
-                                ${this.getBotControlButtonsHtml(bot)}
+                            <div class="bot-controls" style="display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;">
+                                ${this.getBotDetailButtonsHtml(bot)}
                             </div>
                         </div>
                     `;
@@ -5518,10 +5564,7 @@ class BotsManager {
                 console.log(`[DEBUG] Элемент для вставки:`, scrollListElement);
                 
                 scrollListElement.innerHTML = rightPanelHtml;
-                
-                // Восстанавливаем состояние сворачивания ПОСЛЕ обновления HTML
                 this.preserveCollapseState(scrollListElement);
-                
                     // Добавляем обработчики кликов для плашек ботов
                     scrollListElement.querySelectorAll('.clickable-bot-item').forEach(item => {
                         item.addEventListener('click', (e) => {
@@ -5541,40 +5584,28 @@ class BotsManager {
                     this.activeBots.forEach(bot => {
                         const botItem = scrollListElement.querySelector(`.active-bot-item[data-symbol="${bot.symbol}"]`);
                         if (botItem) {
-                            // Обновляем статус бота
-                            const statusElement = botItem.querySelector('.bot-header .bot-status');
                             const statusBadge = botItem.querySelector('.bot-header span[style*="background"]');
                             if (statusBadge) {
-                                const isActive = bot.status === 'running' || bot.status === 'idle' || 
-                                                bot.status === 'in_position_long' || bot.status === 'in_position_short' ||
-                                                bot.status === 'armed_up' || bot.status === 'armed_down';
+                                const isActive = bot.status === 'running' || bot.status === 'idle' || bot.status === 'in_position_long' || bot.status === 'in_position_short' || bot.status === 'armed_up' || bot.status === 'armed_down';
                                 const statusColor = isActive ? '#4caf50' : '#ff5722';
                                 const statusText = isActive ? window.languageUtils.translate('active_status') : (bot.status === 'paused' ? window.languageUtils.translate('paused_status') : (bot.status === 'idle' ? window.languageUtils.translate('waiting_status') : window.languageUtils.translate('stopped_status')));
                                 statusBadge.style.background = statusColor;
                                 statusBadge.textContent = statusText;
                             }
-                            
-                            // Обновляем кнопки управления
-                            const controlsDiv = botItem.querySelector('.bot-controls');
-                            if (controlsDiv) {
-                                controlsDiv.innerHTML = this.getBotControlButtonsHtml(bot);
-                            }
-                            
-                            // Обновляем PnL
-                            const pnlElement = botItem.querySelector('.bot-header > div:last-child > div > div:first-child');
+                            const pnlElement = botItem.querySelector('.bot-header > div:last-child > div:first-child');
                             if (pnlElement) {
                                 const pnlValue = (bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0);
                                 pnlElement.textContent = `$${pnlValue.toFixed(3)}`;
                                 pnlElement.style.color = pnlValue >= 0 ? '#4caf50' : '#f44336';
                             }
-                            
-                            // Обновляем данные в деталях (если развернуто)
+                            const controlsDiv = botItem.querySelector('.bot-controls');
+                            if (controlsDiv) controlsDiv.innerHTML = this.getBotDetailButtonsHtml(bot);
                             const details = botItem.querySelector('.bot-details');
                             if (details && details.style.display !== 'none') {
-                                const positionInfo = this.getBotPositionInfo(bot);
-                                const timeInfo = this.getBotTimeInfo(bot);
-                                // Обновляем только изменяемые части, не трогая структуру
-                                // TODO: можно оптимизировать дальше, обновляя только конкретные значения
+                                const posInfo = this.getBotPositionInfo(bot);
+                                const tInfo = this.getBotTimeInfo(bot);
+                                const volHtml = `💰 ${this.getTranslation('position_volume')} ${parseFloat(((bot.position_size || 0) * (bot.entry_price || 0)).toFixed(2))} USDT`;
+                                details.innerHTML = `<div style="margin-bottom: 4px;">${volHtml}</div>${posInfo}${tInfo}`;
                             }
                         }
                     });
@@ -5585,9 +5616,10 @@ class BotsManager {
             }
         }
 
-        // Обновляем вкладку "Боты в работе"
+        // Обновляем вкладку "Боты в работе" (используем отфильтрованный список)
         if (detailsElement) {
-            if (!hasActiveBots) {
+            const hasFilteredBots = filteredBots.length > 0;
+            if (!hasFilteredBots) {
                 const currentLang = document.documentElement.lang || 'ru';
                 const noActiveBotsText = TRANSLATIONS[currentLang]['no_active_bots'] || 'Нет активных ботов';
                 const createBotsText = TRANSLATIONS[currentLang]['create_bots_for_trading'] || 'Создайте ботов для торговли';
@@ -5596,15 +5628,16 @@ class BotsManager {
                     <div class="empty-bots-state" style="text-align: center; padding: 20px; color: #888;">
                         <div style="font-size: 48px; margin-bottom: 10px;">🤖</div>
                         <p style="margin: 10px 0; font-size: 16px;">${noActiveBotsText}</p>
-                        <small style="color: #666;">${createBotsText}</small>
+                        <small style="color: #666;">${hasActiveBots ? (window.languageUtils?.translate('active_bots_filter_no_results') || 'Нет ботов по выбранному фильтру') : createBotsText}</small>
                     </div>
                 `;
             } else {
-                // Если список ботов изменился - полная перерисовка
-                if (needsFullRedraw) {
+                // Если список или фильтр изменился - полная перерисовка
+                if (needsDetailsRedraw) {
+                    this._lastActiveBotsFilter = this.activeBotsFilter;
                     console.log(`[DEBUG] Полная перерисовка вкладки "Боты в работе"`);
                     
-                    const rightPanelHtml = this.activeBots.map(bot => {
+                    const rightPanelHtml = filteredBots.map(bot => {
                     // Определяем статус бота (активен если running, idle, или в позиции)
                     const isActive = bot.status === 'running' || bot.status === 'idle' || 
                                     bot.status === 'in_position_long' || bot.status === 'in_position_short' ||
@@ -5621,39 +5654,31 @@ class BotsManager {
                         rsi_data: bot.rsi_data
                     });
                     
-                    const positionInfo = this.getBotPositionInfo(bot);
-                    const timeInfo = this.getBotTimeInfo(bot);
-                    
-                    console.log(`[DEBUG] timeInfo для ${bot.symbol}:`, timeInfo);
-                    
+                    const d = this.getCompactCardData(bot);
+                    const t = k => window.languageUtils?.translate(k) || this.getTranslation(k);
+                    const exchangeUrl = this.getExchangeLink(bot.symbol, 'bybit');
+                    const isLong = (bot.position_side || '').toUpperCase() === 'LONG';
+                    const cardBg = isLong ? 'rgba(76, 175, 80, 0.08)' : 'rgba(244, 67, 54, 0.08)';
                     const htmlResult = `
-                        <div class="active-bot-item clickable-bot-item" data-symbol="${bot.symbol}" style="border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin: 12px 0; background: var(--section-bg); cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" onmouseover="this.style.backgroundColor='var(--hover-bg, var(--button-bg))'; this.style.borderColor='var(--border-color)'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="this.style.backgroundColor='var(--section-bg)'; this.style.borderColor='var(--border-color)'; this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)'">
-                            <div class="bot-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border-color);">
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <span style="color: var(--text-color); font-weight: bold; font-size: 18px;">${bot.symbol}</span>
-                                    <span style="background: ${statusColor}; color: white; padding: 4px 10px; border-radius: 16px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">${statusText}</span>
+                        <div class="active-bot-item clickable-bot-item active-bot-card" data-symbol="${bot.symbol}" data-exchange-url="${exchangeUrl}" data-card-bg="${cardBg.replace(/"/g, '&quot;')}" style="border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; background: ${cardBg}; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" onmouseover="this.style.backgroundColor='var(--hover-bg, var(--button-bg))'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="var b=this.dataset.cardBg; this.style.backgroundColor=b||'var(--section-bg)'; this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)'">
+                            <div class="bot-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; gap: 6px;">
+                                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                                    <span style="color: var(--text-color); font-weight: bold; font-size: 17px;">${bot.symbol}</span>
+                                    <span style="background: ${statusColor}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;">${statusText}</span>
+                                    <span class="bot-direction" style="color: ${d.positionColor}; font-weight: 600; font-size: 12px;">${d.position}</span>
+                                    <a href="${exchangeUrl}" target="_blank" class="bot-exchange-link" title="Открыть на бирже" onclick="event.stopPropagation();">↗</a>
                                 </div>
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <div style="text-align: right;">
-                                        <div style="color: ${(bot.unrealized_pnl || bot.unrealized_pnl_usdt || 0) >= 0 ? 'var(--green-color)' : 'var(--red-color)'}; font-weight: bold; font-size: 16px;">$${(bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0).toFixed(3)}</div>
-                                        <div style="color: var(--text-muted); font-size: 10px; margin-top: 2px;">PnL</div>
-                                    </div>
-                                    <button class="collapse-btn" onclick="event.stopPropagation(); const details = this.parentElement.parentElement.parentElement.querySelector('.bot-details'); const isCurrentlyCollapsed = details.style.display === 'none'; details.style.display = isCurrentlyCollapsed ? 'grid' : 'none'; this.textContent = isCurrentlyCollapsed ? '▲' : '▼'; window.botsManager && window.botsManager.saveCollapseState(this.parentElement.parentElement.parentElement.dataset.symbol, !isCurrentlyCollapsed);" style="background: none; border: none; color: var(--text-muted); font-size: 14px; cursor: pointer; padding: 4px;">▼</button>
-                                </div>
+                                <div style="color: ${(bot.unrealized_pnl || bot.unrealized_pnl_usdt || 0) >= 0 ? 'var(--green-color)' : 'var(--red-color)'}; font-weight: bold; font-size: 15px;">$${(bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0).toFixed(3)}</div>
                             </div>
-                            
-                            <div class="bot-details" style="display: none; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13px; color: var(--text-color); margin-bottom: 16px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: var(--input-bg); border-radius: 6px;">
-                                    <span style="color: var(--text-muted);">💰 ${window.languageUtils.translate('position_volume')}</span>
-                                    <span style="color: var(--text-color); font-weight: 600;">${bot.position_size || bot.volume_value} ${(bot.volume_mode || 'USDT').toUpperCase()}</span>
-                                </div>
-                                
-                                ${positionInfo}
-                                ${timeInfo}
+                            <div class="bot-details bot-details-compact" style="margin-bottom: 8px;">
+                                <div class="compact-row"><span class="compact-lbl">${t('position_volume')}</span><span class="compact-val">${d.volume}</span></div>
+                                <div class="compact-row"><span class="compact-lbl">${t('entry_label')}</span><span class="compact-val">${d.entry}</span></div>
+                                <div class="compact-row"><span class="compact-lbl">${t('take_profit_label_detailed')}</span><span class="compact-val" style="color: var(--green-color)">${d.takeProfit}</span></div>
+                                <div class="compact-row"><span class="compact-lbl">${t('current_label')}</span><span class="compact-val" style="color: var(--blue-color)">${d.currentPrice}</span></div>
+                                <div class="compact-row"><span class="compact-lbl">${t('stop_loss_label_detailed')}</span><span class="compact-val" style="color: var(--red-color)">${d.stopLoss}</span></div>
                             </div>
-                            
-                            <div class="bot-controls" style="display: flex; gap: 8px; justify-content: center; padding-top: 12px; border-top: 1px solid var(--border-color);">
-                                ${this.getBotControlButtonsHtml(bot)}
+                            <div class="bot-card-controls" style="display: flex; gap: 6px; justify-content: flex-end; padding-top: 6px; border-top: 1px solid var(--border-color);">
+                                ${this.getBotDetailButtonsHtml(bot)}
                             </div>
                         </div>
                     `;
@@ -5664,22 +5689,41 @@ class BotsManager {
 
                     console.log(`[DEBUG] Вставляем ПОЛНЫЙ HTML в detailsElement:`, rightPanelHtml);
                     detailsElement.innerHTML = rightPanelHtml;
-                    
-                    // Восстанавливаем состояние сворачивания ПОСЛЕ обновления HTML
-                    this.preserveCollapseState(detailsElement);
+                    detailsElement.querySelectorAll('.clickable-bot-item').forEach(item => {
+                        item.addEventListener('click', (e) => {
+                            if (e.target.closest('.bot-icon-btn') || e.target.closest('.bot-card-controls') || e.target.closest('.bot-exchange-link')) return;
+                            const url = item.dataset.exchangeUrl;
+                            if (url) window.open(url, '_blank');
+                        });
+                    });
                 } else {
                     // Обновляем только данные в существующих карточках
                     console.log(`[DEBUG] Обновление данных в "Боты в работе" без перерисовки`);
-                    this.activeBots.forEach(bot => {
+                    filteredBots.forEach(bot => {
                         const botItem = detailsElement.querySelector(`.active-bot-item[data-symbol="${bot.symbol}"]`);
                         if (botItem) {
-                            // Обновляем PnL
-                            const pnlElement = botItem.querySelector('.bot-header > div:last-child > div > div:first-child');
+                            const pnlValue = (bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0);
+                            const pnlElement = botItem.querySelector('.bot-header > div:last-child');
                             if (pnlElement) {
-                                const pnlValue = (bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0);
                                 pnlElement.textContent = `$${pnlValue.toFixed(3)}`;
                                 pnlElement.style.color = pnlValue >= 0 ? '#4caf50' : '#f44336';
                             }
+                            const d = this.getCompactCardData(bot);
+                            const dirEl = botItem.querySelector('.bot-direction');
+                            if (dirEl) {
+                                dirEl.textContent = d.position;
+                                dirEl.style.color = d.positionColor;
+                            }
+                            const rows = botItem.querySelectorAll('.compact-row');
+                            if (rows.length >= 5) {
+                                rows[0].querySelector('.compact-val').textContent = d.volume;
+                                rows[1].querySelector('.compact-val').textContent = d.entry;
+                                rows[2].querySelector('.compact-val').textContent = d.takeProfit;
+                                rows[3].querySelector('.compact-val').textContent = d.currentPrice;
+                                rows[4].querySelector('.compact-val').textContent = d.stopLoss;
+                            }
+                            const cardControls = botItem.querySelector('.bot-card-controls');
+                            if (cardControls) cardControls.innerHTML = this.getBotDetailButtonsHtml(bot);
                         }
                     });
                 }
@@ -5730,20 +5774,6 @@ class BotsManager {
             totalBotsElement.textContent = bots.length;
         } else {
             this.logDebug('[BotsManager] ⚠️ Элемент totalBotsCount не найден');
-        }
-
-        const activeBotsElement = document.getElementById('activeBotsCount');
-        if (activeBotsElement) {
-            activeBotsElement.textContent = activeCount;
-        } else {
-            this.logDebug('[BotsManager] ⚠️ Элемент activeBotsCount не найден');
-        }
-
-        const inPositionElement = document.getElementById('inPositionBotsCount');
-        if (inPositionElement) {
-            inPositionElement.textContent = inPositionCount;
-        } else {
-            this.logDebug('[BotsManager] ⚠️ Элемент inPositionBotsCount не найден');
         }
 
         const totalPnLElement = document.getElementById('totalPnLValue');
@@ -9189,6 +9219,35 @@ class BotsManager {
         return changes;
     }
     
+    /** Возвращает компактные данные для карточки бота: объём, позиция, вход, тейк, стоп, текущая цена */
+    getCompactCardData(bot) {
+        const entryPrice = parseFloat(bot.entry_price) || 0;
+        const currentPrice = parseFloat(bot.current_price || bot.mark_price) || 0;
+        let stopLoss = bot.exchange_position?.stop_loss || bot.stop_loss || bot.stop_loss_price || '';
+        let takeProfit = bot.exchange_position?.take_profit || bot.take_profit || bot.take_profit_price || bot.trailing_take_profit_price || '';
+        if (!stopLoss && entryPrice) {
+            const pct = (bot.config?.max_loss_percent ?? bot.max_loss_percent) || 15.0;
+            stopLoss = bot.position_side === 'LONG' ? entryPrice * (1 - pct / 100) : entryPrice * (1 + pct / 100);
+        }
+        if (!takeProfit && entryPrice) {
+            const tpPct = (bot.config?.take_profit_percent ?? bot.take_profit_percent) || 20.0;
+            takeProfit = bot.position_side === 'LONG' ? entryPrice * (1 + tpPct / 100) : entryPrice * (1 - tpPct / 100);
+        }
+        const volMode = (bot.volume_mode || 'USDT').toUpperCase();
+        const volVal = bot.volume_value ?? (entryPrice > 0 ? (bot.position_size || 0) * entryPrice : 0);
+        const volStr = volMode === 'PERCENT' ? `${parseFloat(volVal || 0).toFixed(2)} ${volMode}` : `${parseFloat(volVal || 0).toFixed(2)} ${volMode}`;
+        const sideColor = bot.position_side === 'LONG' ? 'var(--green-color)' : 'var(--red-color)';
+        return {
+            volume: volStr,
+            position: bot.position_side || '-',
+            positionColor: sideColor,
+            entry: entryPrice ? `$${entryPrice.toFixed(6)}` : '-',
+            takeProfit: takeProfit ? `$${parseFloat(takeProfit).toFixed(6)}` : '-',
+            stopLoss: stopLoss ? `$${parseFloat(stopLoss).toFixed(6)}` : '-',
+            currentPrice: currentPrice ? `$${currentPrice.toFixed(6)}` : '-'
+        };
+    }
+
     getBotPositionInfo(bot) {
         // Проверяем, есть ли активная позиция
         if (!bot.position_side || !bot.entry_price) {
