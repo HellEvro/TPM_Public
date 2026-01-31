@@ -639,15 +639,17 @@ class AIDatabase:
                 print("⚠️ КРИТИЧНО: Нехватка памяти, пропускаем исправление БД")
                 return False
             
-            # Пытаемся создать резервную копию перед исправлением
-            try:
-                backup_path = self._backup_database(max_retries=3)
-                backup_created = backup_path is not None
-            except MemoryError:
-                # Нехватка памяти - пропускаем создание резервной копии
-                print("⚠️ Нехватка памяти при создании резервной копии, пропускаем...")
-                backup_created = False
-            
+            # В процессе ai.py бэкапы создаёт планировщик в app.py — не создаём здесь,
+            # иначе при частых ошибках БД (locked/I/O) получаются сотни бэкапов в секунду
+            backup_created = False
+            if os.environ.get('INFOBOT_AI_PROCESS') != 'true':
+                try:
+                    backup_path = self._backup_database(max_retries=3)
+                    backup_created = backup_path is not None
+                except MemoryError:
+                    print("⚠️ Нехватка памяти при создании резервной копии, пропускаем...")
+                    backup_created = False
+
             if not backup_created:
                 try:
                     logger.warning("⚠️ Не удалось создать резервную копию перед исправлением (файл может быть заблокирован)")

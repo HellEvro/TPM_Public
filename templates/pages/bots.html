@@ -1029,6 +1029,21 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Выгрузка / загрузка списков в JSON -->
+                <div class="filter-export-import-section">
+                    <h3 data-translate="export_import_filters_title">📁 Выгрузка и загрузка списков</h3>
+                    <p class="filter-export-import-desc" data-translate="export_import_filters_desc">Сохраните списки в файл или загрузите из ранее выгруженного JSON</p>
+                    <div class="filter-export-import-btns">
+                        <button type="button" id="exportFiltersJsonBtn" class="btn btn-secondary filter-export-btn" data-translate="export_filters_json" title="Скачать whitelist и blacklist в JSON файл">
+                            📤 Выгрузить в JSON
+                        </button>
+                        <button type="button" id="importFiltersJsonBtn" class="btn btn-secondary filter-import-btn" data-translate="import_filters_json" title="Загрузить списки из JSON файла">
+                            📥 Загрузить из JSON
+                        </button>
+                        <input type="file" id="importFiltersJsonInput" accept=".json,application/json" class="filter-import-file-input" style="display: none;" />
+                    </div>
+                </div>
             </div>
 
             <!-- Здесь раньше была конфигурация Auto Bot - перенесена в отдельную вкладку -->

@@ -127,11 +127,10 @@ def get_auto_bot_config() -> Optional[Dict[str, Any]]:
     except Exception as e:
         pass
 
-    # Fallback при отдельном запуске ai.py: загружаем из БД (фильтры)
+    # Fallback при отдельном запуске ai.py: загружаем фильтры из файлов data/
     try:
-        from bot_engine.bots_database import get_bots_database
-        db = get_bots_database()
-        filters = db.load_coin_filters()
+        from bot_engine.coin_filters_config import load_coin_filters
+        filters = load_coin_filters()
         if filters:
             return filters
     except Exception as e:

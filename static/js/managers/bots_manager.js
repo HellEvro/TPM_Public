@@ -4589,7 +4589,8 @@ class BotsManager {
             if (data.success && data.config) {
                 this.filtersData = {
                     whitelist: data.config.whitelist || [],
-                    blacklist: data.config.blacklist || []
+                    blacklist: data.config.blacklist || [],
+                    scope: data.config.scope || 'all'
                 };
                 
                 this.renderFilters();
@@ -4675,6 +4676,71 @@ class BotsManager {
             filtersSearchInput.addEventListener('input', (e) => {
                 this.performFiltersSearch(e.target.value);
             });
+        }
+        // Выгрузка / загрузка списков в JSON
+        const exportBtn = document.getElementById('exportFiltersJsonBtn');
+        const importBtn = document.getElementById('importFiltersJsonBtn');
+        const importInput = document.getElementById('importFiltersJsonInput');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', () => this.exportFiltersToJson());
+        }
+        if (importBtn && importInput) {
+            importBtn.addEventListener('click', () => importInput.click());
+            importInput.addEventListener('change', (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (file) {
+                    this.importFiltersFromJson(file);
+                    e.target.value = '';
+                }
+            });
+        }
+    }
+
+    /**
+     * Выгружает списки фильтров (белый, чёрный) и scope в JSON файл и предлагает скачать.
+     */
+    exportFiltersToJson() {
+        const w = this.filtersData?.whitelist || [];
+        const b = this.filtersData?.blacklist || [];
+        const scope = this.filtersData?.scope || 'all';
+        const payload = { whitelist: w, blacklist: b, scope };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const iso = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-');
+        a.download = `coin_filters_${iso}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        if (window.toastManager) {
+            const msg = this.translate('export_filters_success') || `Выгружено: белый ${w.length}, чёрный ${b.length}`;
+            this.showNotification(msg, 'success');
+        }
+    }
+
+    /**
+     * Загружает списки фильтров из выбранного JSON файла и отправляет на сервер.
+     * @param {File} file - файл .json с полями whitelist, blacklist, scope (опционально)
+     */
+    async importFiltersFromJson(file) {
+        try {
+            const text = await file.text();
+            const data = JSON.parse(text);
+            const whitelist = Array.isArray(data.whitelist) ? data.whitelist : [];
+            const blacklist = Array.isArray(data.blacklist) ? data.blacklist : [];
+            const scope = ['all', 'whitelist', 'blacklist'].includes(data.scope) ? data.scope : 'all';
+            await this.updateFilters({ whitelist, blacklist, scope });
+            if (window.toastManager) {
+                const msg = this.translate('import_filters_success') || `Загружено: белый ${whitelist.length}, чёрный ${blacklist.length}`;
+                this.showNotification(msg, 'success');
+            }
+        } catch (err) {
+            console.error('[BotsManager] Ошибка загрузки JSON фильтров:', err);
+            if (window.toastManager) {
+                this.showNotification(this.translate('import_filters_error') || 'Неверный формат JSON файла', 'error');
+            } else {
+                alert(this.translate('import_filters_error') || 'Неверный формат JSON файла');
+            }
         }
     }
     async addToWhitelist() {
@@ -4764,7 +4830,7 @@ class BotsManager {
     async updateFilters(updates) {
         // Убеждаемся что filtersData инициализирован
         if (!this.filtersData) {
-            this.filtersData = { whitelist: [], blacklist: [] };
+            this.filtersData = { whitelist: [], blacklist: [], scope: 'all' };
         }
         
         // Обновляем локальные данные
@@ -4773,6 +4839,9 @@ class BotsManager {
         }
         if (updates.blacklist !== undefined) {
             this.filtersData.blacklist = updates.blacklist;
+        }
+        if (updates.scope !== undefined) {
+            this.filtersData.scope = updates.scope;
         }
         
         // Отправляем на сервер

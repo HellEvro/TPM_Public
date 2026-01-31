@@ -761,30 +761,23 @@ def load_auto_bot_config():
         if leverage_from_file is None:
             logger.error(f"[CONFIG] ❌ КРИТИЧЕСКАЯ ОШИБКА: leverage отсутствует в DEFAULT_AUTO_BOT_CONFIG!")
         
-        # ✅ Загружаем фильтры (whitelist, blacklist) из БД, но scope загружается из файла!
-        # ✅ КРИТИЧЕСКИ ВАЖНО: scope теперь хранится ТОЛЬКО в файле, не в БД
-        # whitelist и blacklist хранятся в БД, но scope - в файле вместе с другими настройками
+        # ✅ Однократная миграция при следующем запуске bots.py: списки из БД → data/coin_filters.json
         try:
-            from bot_engine.bots_database import get_bots_database
-            db = get_bots_database()
-            filters_data = db.load_coin_filters()
-            
-            # Объединяем только whitelist и blacklist из БД (scope НЕ перезаписываем из БД!)
+            from bot_engine.coin_filters_config import load_coin_filters, run_coin_filters_migration_once
+            run_coin_filters_migration_once()
+            filters_data = load_coin_filters()
             if 'whitelist' in filters_data:
                 merged_config['whitelist'] = filters_data['whitelist']
             if 'blacklist' in filters_data:
                 merged_config['blacklist'] = filters_data['blacklist']
-            # ✅ scope НЕ загружаем из БД - он должен быть в файле!
-            # Если scope нет в файле, используем значение по умолчанию 'all'
+            if 'scope' in filters_data:
+                merged_config['scope'] = filters_data['scope']
             if 'scope' not in merged_config:
                 merged_config['scope'] = 'all'
-            
-            # ✅ Логируем только при первой загрузке или при реальных изменениях (не при каждом вызове)
             if not hasattr(load_auto_bot_config, '_filters_logged_once'):
                 load_auto_bot_config._filters_logged_once = True
         except Exception as e:
-            logger.error(f"❌ Ошибка загрузки фильтров из БД: {e}")
-            # Устанавливаем значения по умолчанию если загрузка не удалась
+            logger.error(f"❌ Ошибка загрузки фильтров из файлов: {e}")
             if 'whitelist' not in merged_config:
                 merged_config['whitelist'] = []
             if 'blacklist' not in merged_config:

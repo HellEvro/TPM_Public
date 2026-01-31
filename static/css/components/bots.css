@@ -1097,6 +1097,44 @@
     font-size: 12px;
 }
 
+/* Выгрузка / загрузка списков фильтров в JSON */
+.filter-export-import-section {
+    grid-column: 1 / -1;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.filter-export-import-section h3 {
+    margin: 0 0 8px 0;
+    font-size: 18px;
+    color: var(--text-color);
+}
+
+.filter-export-import-desc {
+    margin: 0 0 16px 0;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.filter-export-import-btns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.filter-export-import-btns .btn {
+    min-width: 160px;
+}
+
+.filter-import-file-input {
+    position: absolute;
+    width: 0;
+    height: 0;
+    opacity: 0;
+}
+
 /* AUTO BOT КОНФИГУРАЦИЯ */
 .auto-bot-config {
     background: var(--bg-secondary);

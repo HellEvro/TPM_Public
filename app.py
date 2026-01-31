@@ -101,6 +101,7 @@ _DATABASE_BACKUP_DEFAULTS = {
     'BOTS_ENABLED': True,
     'BACKUP_DIR': None,
     'MAX_RETRIES': 3,
+    'KEEP_COUNT': 5,  # для каждой БД хранить только последние N бэкапов, остальные удалять
 }
 
 if 'DATABASE_BACKUP' not in globals() or not isinstance(globals().get('DATABASE_BACKUP'), dict):
@@ -468,6 +469,20 @@ def _run_backup_job(backup_service, backup_config):
 
     for warning_msg in result.get('errors', []):
         backup_logger.warning(f"[Backup] {warning_msg}")
+
+    # Оставляем для каждой БД только последние KEEP_COUNT бэкапов
+    keep_count = backup_config.get('KEEP_COUNT', 5)
+    try:
+        prune_result = backup_service.cleanup_old_backups(keep_count=keep_count)
+        if prune_result.get('total', 0) > 0:
+            backup_logger.info(
+                "[Backup] Очистка: удалено %s бэкапов (ai_data: %s, bots_data: %s)",
+                prune_result['total'],
+                prune_result.get('ai_data', 0),
+                prune_result.get('bots_data', 0),
+            )
+    except Exception as prune_exc:
+        backup_logger.warning("[Backup] Ошибка очистки старых бэкапов: %s", prune_exc)
 
 
 def backup_scheduler_loop():
