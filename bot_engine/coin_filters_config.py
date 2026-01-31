@@ -59,9 +59,8 @@ def run_coin_filters_migration_once() -> bool:
         b = db_filters.get('blacklist') or []
         s = db_filters.get('scope', 'all')
         if not w and not b and s == 'all':
-            # В БД пусто — просто создаём маркер, чтобы не запускать миграцию снова
-            data_dir = _get_data_dir()
-            data_dir.mkdir(parents=True, exist_ok=True)
+            # В БД пусто — создаём пустой coin_filters.json и маркер, чтобы файл всегда был после первого запуска
+            save_coin_filters(whitelist=[], blacklist=[], scope='all')
             _path_sentinel().touch()
             return False
         ok = save_coin_filters(whitelist=w, blacklist=b, scope=s)
