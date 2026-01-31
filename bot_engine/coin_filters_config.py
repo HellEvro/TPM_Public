@@ -58,19 +58,17 @@ def run_coin_filters_migration_once() -> bool:
         w = db_filters.get('whitelist') or []
         b = db_filters.get('blacklist') or []
         s = db_filters.get('scope', 'all')
-        if not w and not b and s == 'all':
-            # В БД пусто — создаём пустой coin_filters.json и маркер, чтобы файл всегда был после первого запуска
-            save_coin_filters(whitelist=[], blacklist=[], scope='all')
-            _path_sentinel().touch()
-            return False
+        # Всегда записываем в файл то, что в БД (пусто или нет). Маркер ставим только после успешной записи.
         ok = save_coin_filters(whitelist=w, blacklist=b, scope=s)
         if not ok:
+            logger.warning("Миграция: не удалось записать data/coin_filters.json — повторится при следующем запуске")
             return False
         _path_sentinel().touch()
-        logger.info(
-            "✅ Миграция фильтров монет: списки перенесены из БД в data/coin_filters.json (whitelist=%s, blacklist=%s, scope=%s)",
-            len(w), len(b), s,
-        )
+        if w or b or s != 'all':
+            logger.info(
+                "✅ Миграция фильтров монет: списки перенесены из БД в data/coin_filters.json (whitelist=%s, blacklist=%s, scope=%s)",
+                len(w), len(b), s,
+            )
         return True
     except Exception as e:
         logger.warning("Миграция фильтров из БД в JSON пропущена: %s", e)
