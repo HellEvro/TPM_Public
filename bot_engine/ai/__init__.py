@@ -132,7 +132,16 @@ def _load_pyc_module(module_name, module_import_name):
         _logger.error(f"[AI] Ошибка загрузки {module_name}: {e}")
         return None
 
-# Пытаемся загрузить ai_manager из версионированной директории
+def _stub_get_ai_manager():
+    """Заглушка, когда ai_manager.py/.pyc недоступен — возвращает объект с is_available()=False."""
+    class _StubAIManager:
+        def is_available(self):
+            return False
+        def get_status(self):
+            return {'available': False, 'error': 'ai_manager module not loaded', 'license_type': None, 'expires_at': None, 'features': {}}
+    return _StubAIManager()
+
+# Пытаемся загрузить ai_manager из .pyc или .py
 try:
     ai_manager_module = _load_pyc_module('ai_manager', 'bot_engine.ai.ai_manager')
     if ai_manager_module is not None:
@@ -141,27 +150,30 @@ try:
         __all__ = ['AIManager', 'get_ai_manager']
     else:
         # Fallback к обычному импорту (для обратной совместимости)
-        from .ai_manager import AIManager, get_ai_manager
-        __all__ = ['AIManager', 'get_ai_manager']
+        try:
+            from .ai_manager import AIManager, get_ai_manager
+            __all__ = ['AIManager', 'get_ai_manager']
+        except ImportError:
+            get_ai_manager = _stub_get_ai_manager
+            __all__ = ['get_ai_manager']
 except ImportError as e:
     err_msg = str(e).lower()
     if "bad magic number" in err_msg or "bad magic" in err_msg:
-        # Если .pyc несовместим - сообщаем пользователю
         python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
         _logger.error(f"[AI] [ERROR] ai_manager.pyc несовместим с текущей версией Python: {python_version}")
         _logger.error("[AI] [ERROR] Модуль был скомпилирован под другую версию Python.")
-        _logger.error("[AI] [ERROR] Обратитесь к разработчику для получения правильной версии модулей.")
-        __all__ = []
+        get_ai_manager = _stub_get_ai_manager
+        __all__ = ['get_ai_manager']
     else:
-        # Модули еще не созданы - это нормально на этапе разработки
-        __all__ = []
+        get_ai_manager = _stub_get_ai_manager
+        __all__ = ['get_ai_manager']
 except Exception as e:
-    # Другие ошибки - пробуем обычный импорт
     try:
         from .ai_manager import AIManager, get_ai_manager
         __all__ = ['AIManager', 'get_ai_manager']
-    except:
-        __all__ = []
+    except ImportError:
+        get_ai_manager = _stub_get_ai_manager
+        __all__ = ['get_ai_manager']
 
 # Экспорт главного модуля AI системы (новый модуль)
 # ai.py находится в корне проекта

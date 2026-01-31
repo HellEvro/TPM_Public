@@ -673,7 +673,7 @@ class TradingBot:
             try:
                 from bot_engine.bot_config import AIConfig
                 if AIConfig.AI_ENABLED and AIConfig.AI_RISK_MANAGEMENT_ENABLED:
-                    from bot_engine.ai.ai_manager import get_ai_manager
+                    from bot_engine.ai import get_ai_manager
                     ai_manager = get_ai_manager()
                     
                     if ai_manager and ai_manager.risk_manager and self.volume_mode == VolumeMode.FIXED_USDT:
@@ -902,7 +902,7 @@ class TradingBot:
                     try:
                         from bot_engine.bot_config import AIConfig
                         if AIConfig.AI_ENABLED and AIConfig.AI_RISK_MANAGEMENT_ENABLED:
-                            from bot_engine.ai.ai_manager import get_ai_manager
+                            from bot_engine.ai import get_ai_manager
                             ai_manager = get_ai_manager()
                             
                             if ai_manager and ai_manager.risk_manager:

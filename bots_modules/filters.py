@@ -56,7 +56,7 @@ def get_cached_ai_manager():
         try:
             from bot_engine.bot_config import AIConfig
             if AIConfig.AI_ENABLED:
-                from bot_engine.ai.ai_manager import get_ai_manager
+                from bot_engine.ai import get_ai_manager
                 _ai_manager_cache = get_ai_manager()
                 _ai_available_cache = _ai_manager_cache.is_available() if _ai_manager_cache else False
             else:

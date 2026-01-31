@@ -897,7 +897,7 @@ class AutoTrainer:
     def _reload_models(self):
         """Перезагружает все модели в AI Manager без перезапуска бота"""
         try:
-            from bot_engine.ai.ai_manager import get_ai_manager
+            from bot_engine.ai import get_ai_manager
             
             ai_manager = get_ai_manager()
             
