@@ -4601,6 +4601,11 @@ class BotsManager {
         }
     }
 
+    /** Элемент whitelist/blacklist — строка или объект { symbol, added_at?, updated_at? }. */
+    getFilterSymbol(item) {
+        return (item && (typeof item === 'string' ? item : item.symbol)) || '';
+    }
+
     renderFilters() {
         this.renderWhitelist();
         this.renderBlacklist();
@@ -4626,14 +4631,18 @@ class BotsManager {
             </div>
         `;
         } else {
-            container.innerHTML = whitelist.map(symbol => `
+            container.innerHTML = whitelist.map(item => {
+                const symbol = this.getFilterSymbol(item);
+                const dateStr = (item.added_at || item.updated_at) ? ` <span class="filter-item-date">${item.added_at || item.updated_at || ''}</span>` : '';
+                return `
                 <div class="filter-item" data-symbol="${symbol}">
-                <span class="filter-item-symbol">${symbol}</span>
+                <span class="filter-item-symbol">${symbol}</span>${dateStr}
                     <button class="filter-item-remove" onclick="window.botsManager.removeFromWhitelist('${symbol}')">
                         ❌ Удалить
                     </button>
             </div>
-        `).join('');
+        `;
+            }).join('');
         }
     }
 
@@ -4658,14 +4667,18 @@ class BotsManager {
             </div>
         `;
         } else {
-            container.innerHTML = blacklist.map(symbol => `
+            container.innerHTML = blacklist.map(item => {
+                const symbol = this.getFilterSymbol(item);
+                const dateStr = (item.added_at || item.updated_at) ? ` <span class="filter-item-date">${item.added_at || item.updated_at || ''}</span>` : '';
+                return `
                 <div class="filter-item" data-symbol="${symbol}">
-                    <span class="filter-item-symbol">${symbol}</span>
+                    <span class="filter-item-symbol">${symbol}</span>${dateStr}
                     <button class="filter-item-remove" onclick="window.botsManager.removeFromBlacklist('${symbol}')">
                         ❌ Удалить
                     </button>
             </div>
-        `).join('');
+        `;
+            }).join('');
         }
     }
 
@@ -4758,13 +4771,14 @@ class BotsManager {
         
         // Проверяем что монеты еще нет в списке
         const whitelist = this.filtersData?.whitelist || [];
-        if (whitelist.includes(symbol)) {
+        if (whitelist.some(x => this.getFilterSymbol(x) === symbol)) {
             this.showNotification('⚠️ Монета уже в белом списке', 'warning');
             return;
         }
         
         try {
-            whitelist.push(symbol);
+            const now = new Date().toISOString();
+            whitelist.push({ symbol, added_at: now, updated_at: now });
             await this.updateFilters({ whitelist });
             input.value = '';
             this.showNotification(`✅ ${symbol} добавлена в белый список`, 'success');
@@ -4789,13 +4803,14 @@ class BotsManager {
 
         // Проверяем что монеты еще нет в списке
         const blacklist = this.filtersData?.blacklist || [];
-        if (blacklist.includes(symbol)) {
+        if (blacklist.some(x => this.getFilterSymbol(x) === symbol)) {
             this.showNotification('⚠️ Монета уже в черном списке', 'warning');
             return;
         }
 
         try {
-            blacklist.push(symbol);
+            const now = new Date().toISOString();
+            blacklist.push({ symbol, added_at: now, updated_at: now });
             await this.updateFilters({ blacklist });
         input.value = '';
             this.showNotification(`✅ ${symbol} добавлена в черный список`, 'success');
@@ -4807,7 +4822,7 @@ class BotsManager {
 
     async removeFromWhitelist(symbol) {
         try {
-            const whitelist = (this.filtersData?.whitelist || []).filter(s => s !== symbol);
+            const whitelist = (this.filtersData?.whitelist || []).filter(x => this.getFilterSymbol(x) !== symbol);
             await this.updateFilters({ whitelist });
             this.showNotification(`✅ ${symbol} удалена из белого списка`, 'success');
         } catch (error) {
@@ -4818,7 +4833,7 @@ class BotsManager {
 
     async removeFromBlacklist(symbol) {
         try {
-            const blacklist = (this.filtersData?.blacklist || []).filter(s => s !== symbol);
+            const blacklist = (this.filtersData?.blacklist || []).filter(x => this.getFilterSymbol(x) !== symbol);
             await this.updateFilters({ blacklist });
             this.showNotification(`✅ ${symbol} удалена из черного списка`, 'success');
         } catch (error) {
@@ -4984,10 +4999,10 @@ class BotsManager {
 
         statusText.className = 'filter-status-text';
 
-        if (blacklist.includes(symbol)) {
+        if (blacklist.some(x => this.getFilterSymbol(x) === symbol)) {
             statusText.textContent = '🔴 В черном списке';
             statusText.classList.add('in-blacklist');
-        } else if (whitelist.includes(symbol)) {
+        } else if (whitelist.some(x => this.getFilterSymbol(x) === symbol)) {
             statusText.textContent = '🟢 В белом списке';
             statusText.classList.add('in-whitelist');
         } else {
@@ -5009,17 +5024,19 @@ class BotsManager {
         const whitelist = this.filtersData?.whitelist || [];
         const blacklist = this.filtersData?.blacklist || [];
 
-        // Если уже в белом списке - подсвечиваем
-        if (whitelist.includes(symbol)) {
+        // Если уже в белом списке — сообщаем и подсвечиваем
+        if (whitelist.some(x => this.getFilterSymbol(x) === symbol)) {
+            this.showNotification('⚠️ Монета уже в белом списке', 'warning');
             this.highlightFilterStatus(symbol, 'whitelist');
             return;
         }
 
         try {
-            whitelist.push(symbol);
+            const now = new Date().toISOString();
+            whitelist.push({ symbol, added_at: now, updated_at: now });
             
             // УБИРАЕМ ИЗ ЧЕРНОГО СПИСКА если там была
-            const newBlacklist = blacklist.filter(s => s !== symbol);
+            const newBlacklist = blacklist.filter(x => this.getFilterSymbol(x) !== symbol);
             
             await this.updateFilters({ 
                 whitelist: whitelist,
@@ -5046,17 +5063,19 @@ class BotsManager {
         const whitelist = this.filtersData?.whitelist || [];
         const blacklist = this.filtersData?.blacklist || [];
 
-        // Если уже в черном списке - подсвечиваем
-        if (blacklist.includes(symbol)) {
+        // Если уже в черном списке — сообщаем и подсвечиваем
+        if (blacklist.some(x => this.getFilterSymbol(x) === symbol)) {
+            this.showNotification('⚠️ Монета уже в черном списке', 'warning');
             this.highlightFilterStatus(symbol, 'blacklist');
             return;
         }
 
         try {
-            blacklist.push(symbol);
+            const now = new Date().toISOString();
+            blacklist.push({ symbol, added_at: now, updated_at: now });
             
             // УБИРАЕМ ИЗ БЕЛОГО СПИСКА если там была
-            const newWhitelist = whitelist.filter(s => s !== symbol);
+            const newWhitelist = whitelist.filter(x => this.getFilterSymbol(x) !== symbol);
             
             await this.updateFilters({ 
                 whitelist: newWhitelist,
@@ -5085,8 +5104,8 @@ class BotsManager {
 
         try {
             // Удаляем из обоих списков
-            const newWhitelist = whitelist.filter(s => s !== symbol);
-            const newBlacklist = blacklist.filter(s => s !== symbol);
+            const newWhitelist = whitelist.filter(x => this.getFilterSymbol(x) !== symbol);
+            const newBlacklist = blacklist.filter(x => this.getFilterSymbol(x) !== symbol);
             
             await this.updateFilters({ 
                 whitelist: newWhitelist,
@@ -5145,14 +5164,15 @@ class BotsManager {
             const whitelist = this.filtersData?.whitelist || [];
             const newCoins = this.foundCoins
                 .map(coin => coin.symbol)
-                .filter(symbol => !whitelist.includes(symbol));
+                .filter(symbol => !whitelist.some(x => this.getFilterSymbol(x) === symbol));
 
             if (newCoins.length === 0) {
                 this.showNotification('⚠️ Все найденные монеты уже в белом списке', 'warning');
                 return;
             }
 
-            whitelist.push(...newCoins);
+            const now = new Date().toISOString();
+            newCoins.forEach(sym => whitelist.push({ symbol: sym, added_at: now, updated_at: now }));
             await this.updateFilters({ whitelist });
             
             // Очищаем поиск
@@ -5178,14 +5198,15 @@ class BotsManager {
             const blacklist = this.filtersData?.blacklist || [];
             const newCoins = this.foundCoins
                 .map(coin => coin.symbol)
-                .filter(symbol => !blacklist.includes(symbol));
+                .filter(symbol => !blacklist.some(x => this.getFilterSymbol(x) === symbol));
 
             if (newCoins.length === 0) {
                 this.showNotification('⚠️ Все найденные монеты уже в черном списке', 'warning');
                 return;
             }
 
-            blacklist.push(...newCoins);
+            const now = new Date().toISOString();
+            newCoins.forEach(sym => blacklist.push({ symbol: sym, added_at: now, updated_at: now }));
             await this.updateFilters({ blacklist });
             
             // Очищаем поиск
@@ -5249,8 +5270,8 @@ class BotsManager {
         const blacklist = this.filtersData?.blacklist || [];
 
         const resultsHtml = coins.map(coin => {
-            const inWhitelist = whitelist.includes(coin.symbol);
-            const inBlacklist = blacklist.includes(coin.symbol);
+            const inWhitelist = whitelist.some(x => this.getFilterSymbol(x) === coin.symbol);
+            const inBlacklist = blacklist.some(x => this.getFilterSymbol(x) === coin.symbol);
             const inAnyList = inWhitelist || inBlacklist;
             
             let statusHtml = '';
@@ -5302,17 +5323,19 @@ class BotsManager {
         const whitelist = this.filtersData?.whitelist || [];
         const blacklist = this.filtersData?.blacklist || [];
 
-        // Если уже в белом списке - подсвечиваем
-        if (whitelist.includes(symbol)) {
+        // Если уже в белом списке — сообщаем и подсвечиваем
+        if (whitelist.some(x => this.getFilterSymbol(x) === symbol)) {
+            this.showNotification('⚠️ Монета уже в белом списке', 'warning');
             this.highlightStatus(symbol, 'whitelist');
             return;
         }
 
         try {
-            whitelist.push(symbol);
+            const now = new Date().toISOString();
+            whitelist.push({ symbol, added_at: now, updated_at: now });
             
             // УБИРАЕМ ИЗ ЧЕРНОГО СПИСКА если там была
-            const newBlacklist = blacklist.filter(s => s !== symbol);
+            const newBlacklist = blacklist.filter(x => this.getFilterSymbol(x) !== symbol);
             
             await this.updateFilters({ 
                 whitelist: whitelist,
@@ -5341,17 +5364,19 @@ class BotsManager {
         const whitelist = this.filtersData?.whitelist || [];
         const blacklist = this.filtersData?.blacklist || [];
 
-        // Если уже в черном списке - подсвечиваем
-        if (blacklist.includes(symbol)) {
+        // Если уже в черном списке — сообщаем и подсвечиваем
+        if (blacklist.some(x => this.getFilterSymbol(x) === symbol)) {
+            this.showNotification('⚠️ Монета уже в черном списке', 'warning');
             this.highlightStatus(symbol, 'blacklist');
             return;
         }
 
         try {
-            blacklist.push(symbol);
+            const now = new Date().toISOString();
+            blacklist.push({ symbol, added_at: now, updated_at: now });
             
             // УБИРАЕМ ИЗ БЕЛОГО СПИСКА если там была
-            const newWhitelist = whitelist.filter(s => s !== symbol);
+            const newWhitelist = whitelist.filter(x => this.getFilterSymbol(x) !== symbol);
             
             await this.updateFilters({ 
                 whitelist: newWhitelist,
@@ -5386,15 +5411,15 @@ class BotsManager {
 
         try {
             // Удаляем из белого списка если там есть
-            if (whitelist.includes(symbol)) {
-                const newWhitelist = whitelist.filter(s => s !== symbol);
+            if (whitelist.some(x => this.getFilterSymbol(x) === symbol)) {
+                const newWhitelist = whitelist.filter(x => this.getFilterSymbol(x) !== symbol);
                 await this.updateFilters({ whitelist: newWhitelist });
                 removed = true;
                 listType = 'белого списка';
             }
             // Удаляем из черного списка если там есть  
-            else if (blacklist.includes(symbol)) {
-                const newBlacklist = blacklist.filter(s => s !== symbol);
+            else if (blacklist.some(x => this.getFilterSymbol(x) === symbol)) {
+                const newBlacklist = blacklist.filter(x => this.getFilterSymbol(x) !== symbol);
                 await this.updateFilters({ blacklist: newBlacklist });
                 removed = true;
                 listType = 'черного списка';

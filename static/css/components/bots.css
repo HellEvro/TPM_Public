@@ -994,6 +994,12 @@
     background: #c0392b;
 }
 
+.filter-item-date {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: 8px;
+}
+
 .empty-filter-state {
     text-align: center;
     padding: 24px;

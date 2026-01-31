@@ -212,8 +212,8 @@ DEFAULT_AUTO_BOT_CONFIG = {
     # ✅ Новые параметры RSI выхода с учетом тренда
     'rsi_exit_long_with_trend': 65, # Выход из LONG при RSI >= 65 (вход по тренду)
     'rsi_exit_long_against_trend': 60,   # Выход из LONG при RSI >= 60 (вход против тренда)
-    'rsi_exit_short_with_trend': 35, # Выход из SHORT при RSI <= 35 (вход по тренду)
-    'rsi_exit_short_against_trend': 40,  # Выход из SHORT при RSI <= 40 (вход против тренда)
+    'rsi_exit_short_with_trend': 45, # Выход из SHORT при RSI <= 35 (вход по тренду)
+    'rsi_exit_short_against_trend': 45, # Выход из SHORT при RSI <= 40 (вход против тренда)
     'default_position_size': 5,          # Базовый размер позиции (в единицах согласно default_position_mode)
     'default_position_mode': 'percent', # Режим расчета: usdt | percent
     'leverage': 100, # ✅ Кредитное плечо (1-125x)
