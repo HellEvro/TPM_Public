@@ -2812,6 +2812,66 @@ def reset_all_individual_settings():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+def _patch_ai_config_after_auto_bot_save(data):
+    """После сохранения auto-bot подмешивает AI-ключи в RiskConfig/AIConfig в bot_config.py."""
+    ai_keys = {
+        'ai_optimal_entry_enabled': ('RiskConfig', 'AI_OPTIMAL_ENTRY_ENABLED'),
+        'self_learning_enabled': ('AIConfig', 'AI_SELF_LEARNING_ENABLED'),
+        'log_predictions': ('AIConfig', 'AI_LOG_PREDICTIONS'),
+        'log_anomalies': ('AIConfig', 'AI_LOG_ANOMALIES'),
+        'log_patterns': ('AIConfig', 'AI_LOG_PATTERNS'),
+    }
+    updates = {}
+    for key, (cls_name, attr) in ai_keys.items():
+        if key not in data:
+            continue
+        val = data[key]
+        if isinstance(val, str) and val.lower() in ('false', '0', 'no', 'off'):
+            val = False
+        elif isinstance(val, str) and val.lower() in ('true', '1', 'yes', 'on'):
+            val = True
+        updates[(cls_name, attr)] = bool(val) if isinstance(val, (bool, int, float)) else val
+    if not updates:
+        return
+    config_path = os.path.join('bot_engine', 'bot_config.py')
+    if not os.path.exists(config_path):
+        return
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        in_risk, in_ai = False, False
+        new_lines = []
+        for line in lines:
+            if 'class RiskConfig:' in line:
+                in_risk, in_ai = True, False
+            elif 'class AIConfig:' in line:
+                in_risk, in_ai = False, True
+            elif line.strip() and not line.strip().startswith('#'):
+                if line.strip().startswith('class '):
+                    in_risk, in_ai = False, False
+            if in_risk and ('RiskConfig', 'AI_OPTIMAL_ENTRY_ENABLED') in updates:
+                if 'AI_OPTIMAL_ENTRY_ENABLED =' in line:
+                    line = f"    AI_OPTIMAL_ENTRY_ENABLED = {updates[('RiskConfig', 'AI_OPTIMAL_ENTRY_ENABLED')]}\n"
+                    del updates[('RiskConfig', 'AI_OPTIMAL_ENTRY_ENABLED')]
+            if in_ai:
+                for (c, attr), val in list(updates.items()):
+                    if c != 'AIConfig':
+                        continue
+                    if f'{attr} =' in line:
+                        line = f"    {attr} = {val}\n"
+                        updates.pop((c, attr), None)
+                        break
+            new_lines.append(line)
+        with open(config_path, 'w', encoding='utf-8') as f:
+            f.writelines(new_lines)
+        if 'bot_engine.bot_config' in sys.modules:
+            import bot_engine.bot_config
+            importlib.reload(bot_engine.bot_config)
+        logger.debug("[API] AI-настройки синхронизированы в RiskConfig/AIConfig")
+    except Exception as e:
+        logger.warning(f"[API] Синхронизация AI в bot_config: {e}")
+
+
 @bots_app.route('/api/bots/auto-bot', methods=['GET', 'POST'])
 def auto_bot_config():
     """Получить или обновить конфигурацию Auto Bot"""
@@ -2867,6 +2927,18 @@ def auto_bot_config():
                         # Другие типы -> False по умолчанию
                         config['avoid_up_trend'] = False
                     logger.warning(f" ✅ avoid_up_trend преобразовано в: {config['avoid_up_trend']} (тип: {type(config['avoid_up_trend']).__name__})")
+                
+                # ✅ Синхронизация AI-настроек: они сохраняются в RiskConfig/AIConfig (POST /api/ai/config),
+                # а DEFAULT_AUTO_BOT_CONFIG в файле не обновляется — подмешиваем актуальные значения из bot_config
+                try:
+                    from bot_engine.bot_config import RiskConfig, AIConfig
+                    config['ai_optimal_entry_enabled'] = getattr(RiskConfig, 'AI_OPTIMAL_ENTRY_ENABLED', config.get('ai_optimal_entry_enabled', False))
+                    config['self_learning_enabled'] = getattr(AIConfig, 'AI_SELF_LEARNING_ENABLED', config.get('self_learning_enabled', False))
+                    config['log_predictions'] = getattr(AIConfig, 'AI_LOG_PREDICTIONS', config.get('log_predictions', False))
+                    config['log_anomalies'] = getattr(AIConfig, 'AI_LOG_ANOMALIES', config.get('log_anomalies', False))
+                    config['log_patterns'] = getattr(AIConfig, 'AI_LOG_PATTERNS', config.get('log_patterns', False))
+                except Exception as _ai_merge_err:
+                    logger.debug(f" AI-merge в auto-bot: {_ai_merge_err}")
                 
                 # ✅ Фильтры уже загружены в load_auto_bot_config() выше и находятся в bots_data['auto_bot_config']
                 # Не нужно повторно загружать их из БД - используем уже загруженные значения
@@ -3019,6 +3091,8 @@ def auto_bot_config():
                 logger.info(f"[API] ✅ Есть изменения, вызываем save_auto_bot_config()")
                 save_result = save_auto_bot_config(changed_data=changed_data)
                 logger.info(f"✅ Auto Bot: изменено параметров: {changes_count}, конфигурация сохранена и перезагружена")
+                # Синхронизация AI-настроек в RiskConfig/AIConfig (они пишутся в DEFAULT_AUTO_BOT_CONFIG, но UI читает из RiskConfig/AIConfig)
+                _patch_ai_config_after_auto_bot_save(data)
             else:
                 # Нет изменений - не сохраняем и не перезагружаем
                 logger.info(f"[API] ⏭️ Нет изменений, НЕ вызываем save_auto_bot_config()")
@@ -4443,27 +4517,8 @@ def create_demo_history():
 
 @bots_app.route('/api/ai/self-learning/stats', methods=['GET'])
 def get_ai_self_learning_stats():
-    """Получить статистику самообучения AI"""
+    """Получить статистику самообучения AI (доступно с любой лицензией)"""
     try:
-        # Проверяем премиум лицензию
-        is_premium = False
-        try:
-            from bot_engine.ai import check_license
-            license_result = check_license()
-            is_premium = license_result.get('valid', False) and license_result.get('type', '').lower() == 'premium'
-        except Exception as e:
-            logger.warning(f" Не удалось проверить лицензию: {e}")
-            is_premium = False
-
-        if not is_premium:
-            return jsonify({
-                'success': False,
-                'error': 'Premium license required',
-                'license_required': True,
-                'message': 'Самообучение AI доступно только с премиум лицензией'
-            })
-
-        # Получаем статистику самообучения
         try:
             from bot_engine.ai.ai_self_learning import get_self_learning_system
             self_learning = get_self_learning_system()
@@ -4490,27 +4545,8 @@ def get_ai_self_learning_stats():
 
 @bots_app.route('/api/ai/self-learning/performance', methods=['GET'])
 def get_ai_self_learning_performance():
-    """Получить метрики производительности AI"""
+    """Получить метрики производительности AI (доступно с любой лицензией)"""
     try:
-        # Проверяем премиум лицензию
-        is_premium = False
-        try:
-            from bot_engine.ai import check_license
-            license_result = check_license()
-            is_premium = license_result.get('valid', False) and license_result.get('type', '').lower() == 'premium'
-        except Exception as e:
-            logger.warning(f" Не удалось проверить лицензию: {e}")
-            is_premium = False
-
-        if not is_premium:
-            return jsonify({
-                'success': False,
-                'error': 'Premium license required',
-                'license_required': True,
-                'message': 'Метрики производительности AI доступны только с премиум лицензией'
-            })
-
-        # Получаем метрики производительности
         try:
             from bot_engine.ai.ai_self_learning import get_self_learning_system
             self_learning = get_self_learning_system()

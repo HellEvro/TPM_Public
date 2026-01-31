@@ -19,6 +19,13 @@ import numpy as np
 
 logger = logging.getLogger('AI.Monitoring')
 
+# Корень проекта (bot_engine/ai/monitoring.py -> вверх на 2 уровня)
+def _project_root() -> str:
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+def _default_models_path() -> str:
+    return os.path.join(_project_root(), 'data', 'ai', 'models')
+
 @dataclass
 class PredictionRecord:
     """Запись предсказания"""
@@ -249,8 +256,8 @@ class ModelHealthChecker:
     - Аномалии в уверенности
     """
 
-    def __init__(self, models_path: str = "data/ai/models"):
-        self.models_path = models_path
+    def __init__(self, models_path: Optional[str] = None):
+        self.models_path = models_path if models_path is not None else _default_models_path()
 
     def check_model_staleness(
         self,
@@ -367,8 +374,9 @@ def get_health_api_data() -> Dict:
     checker = ModelHealthChecker()
 
     models_health = {}
+    models_dir = checker.models_path
     for model in ['lstm_predictor.pth', 'transformer_predictor.pth', 'pattern_detector.pkl']:
-        path = f"data/ai/models/{model}"
+        path = os.path.join(models_dir, model)
         models_health[model] = checker.check_model_staleness(path)
 
     return {

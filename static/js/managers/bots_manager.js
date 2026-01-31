@@ -6058,6 +6058,16 @@ class BotsManager {
                     this.updateTimeframeInUI(config.system.timeframe);
                 }
                 
+                // Обновляем блок AI из /api/ai/config, чтобы переключатели показывали сохранённые значения
+                // (они пишутся в RiskConfig/AIConfig, а не в auto-bot)
+                if (window.aiConfigManager && typeof window.aiConfigManager.loadAIConfig === 'function') {
+                    try {
+                        await window.aiConfigManager.loadAIConfig();
+                    } catch (aiErr) {
+                        console.warn('[BotsManager] Обновление AI-блока:', aiErr);
+                    }
+                }
+                
                 console.log('[BotsManager] ✅ Конфигурация загружена и применена');
                 return config;
             } else {

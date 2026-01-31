@@ -338,7 +338,11 @@ class AIConfigManager {
             const perfData = await perfResponse.json();
 
             if (statsData.success && perfData.success) {
-                this.displaySelfLearningResults(statsData.stats, perfData.performance, perfData.trends);
+                if (statsData.license_required || perfData.license_required) {
+                    this.displaySelfLearningPremiumRequired(statsData.message || perfData.message || 'Доступно с премиум лицензией');
+                } else {
+                    this.displaySelfLearningResults(statsData.stats, perfData.performance, perfData.trends);
+                }
                 console.log('[AIConfigManager] ✅ Результаты самообучения загружены');
             } else {
                 const errorMsg = statsData.error || perfData.error || 'Неизвестная ошибка';
@@ -493,6 +497,22 @@ class AIConfigManager {
                 <div class="no-results-icon">⚠️</div>
                 <p>Ошибка загрузки данных</p>
                 <small>${errorMsg}</small>
+            </div>
+        `;
+    }
+
+    /**
+     * Отображение блока «доступно с премиум лицензией» (без ошибки)
+     */
+    displaySelfLearningPremiumRequired(message) {
+        const resultsContent = document.getElementById('selfLearningResultsContent');
+        if (!resultsContent) return;
+
+        resultsContent.innerHTML = `
+            <div class="no-results" style="border-color: var(--border-color, #444);">
+                <div class="no-results-icon">🔒</div>
+                <p>Результаты самообучения</p>
+                <small>${message}</small>
             </div>
         `;
     }
