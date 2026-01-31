@@ -806,9 +806,12 @@ def load_auto_bot_config():
             bots_data['auto_bot_config'] = merged_config
             # ✅ Логирование leverage убрано (было слишком много спама) - логируется только при загрузке из файла
         
-        # ✅ RSI пороги входа/выхода — логируем при перезагрузке, чтобы убедиться что боты используют настройки из UI
-        if reloaded or not getattr(load_auto_bot_config, '_rsi_logged_once', False):
+        # ✅ RSI пороги — логируем не чаще раза в 5 минут (при каждом цикле конфиг перезагружается → без throttle спам)
+        _now = time.time()
+        _last = getattr(load_auto_bot_config, '_rsi_log_last_time', 0)
+        if (reloaded or not getattr(load_auto_bot_config, '_rsi_logged_once', False)) and (_now - _last >= 300):
             load_auto_bot_config._rsi_logged_once = True
+            load_auto_bot_config._rsi_log_last_time = _now
             rl = merged_config.get('rsi_long_threshold')
             rs = merged_config.get('rsi_short_threshold')
             elw = merged_config.get('rsi_exit_long_with_trend')

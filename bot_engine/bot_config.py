@@ -258,9 +258,9 @@ DEFAULT_AUTO_BOT_CONFIG = {
     # ExitScam фильтр (защита от резких движений цены)
     'exit_scam_enabled': True, # Включить проверку на ExitScam
     'exit_scam_candles': 4, # Количество свечей для проверки (10 = 60 часов на 6H)
-    'exit_scam_single_candle_percent': 50, # Максимальный % изменения одной свечи (15% = блокировка)
+    'exit_scam_single_candle_percent': 15, # Максимальный % изменения одной свечи (15% = блокировка)
     'exit_scam_multi_candle_count': 4,        # Количество свечей для суммарного анализа
-    'exit_scam_multi_candle_percent': 100, # Максимальный суммарный % за N свечей (50% = блокировка)
+    'exit_scam_multi_candle_percent': 50, # Максимальный суммарный % за N свечей (50% = блокировка)
     # 🤖 ИИ настройки (премиум функции)
     'ai_optimal_entry_enabled': True, # ИИ определение оптимальной точки входа (выкл. по умолчанию)
     'ai_enabled': True, # Включить подтверждение сигналов AI
