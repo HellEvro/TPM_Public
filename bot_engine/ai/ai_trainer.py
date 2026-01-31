@@ -142,7 +142,7 @@ def _should_train_on_symbol(symbol: str) -> bool:
     except ImportError:
         auto_config = {}
     if not auto_config:
-        # Fallback при отдельном запуске ai.py: whitelist/blacklist/scope из БД
+        # Fallback при отдельном запуске ai.py: whitelist/blacklist/scope из data/coin_filters.json
         try:
             from bot_engine.ai.bots_data_helper import get_auto_bot_config
             auto_config = get_auto_bot_config() or {}
