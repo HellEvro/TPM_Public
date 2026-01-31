@@ -8,6 +8,10 @@ class AIConfigManager {
         this.BOTS_SERVICE_URL = `${window.location.protocol}//${window.location.hostname}:5001`;
         this.aiConfig = null;
         this.licenseInfo = null;
+        // Автосохранение при изменении (как на странице конфига Auto Bot)
+        this.autoSaveTimer = null;
+        this.autoSaveDelay = 2000;
+        this.isProgrammaticChange = false;
         
         console.log('[AIConfigManager] Инициализация...');
         console.log('[AIConfigManager] BOTS_SERVICE_URL:', this.BOTS_SERVICE_URL);
@@ -59,8 +63,10 @@ class AIConfigManager {
                 console.log('[AIConfigManager] ✅ AI конфигурация загружена');
                 console.log('[AIConfigManager] Лицензия:', this.licenseInfo);
                 
-                // Заполняем форму
+                // Заполняем форму (без срабатывания автосохранения)
+                this.isProgrammaticChange = true;
                 this.populateForm();
+                this.isProgrammaticChange = false;
                 
                 // Обновляем badge лицензии
                 this.updateLicenseBadge();
@@ -131,10 +137,15 @@ class AIConfigManager {
     
     /**
      * Сохранение AI конфигурации
+     * @param {boolean} isAutoSave - true при автосохранении (другое уведомление)
      */
-    async saveAIConfig() {
+    async saveAIConfig(isAutoSave = false) {
         try {
-            console.log('[AIConfigManager] 💾 Сохранение AI конфигурации...');
+            if (!isAutoSave && this.autoSaveTimer) {
+                clearTimeout(this.autoSaveTimer);
+                this.autoSaveTimer = null;
+            }
+            console.log('[AIConfigManager] 💾 Сохранение AI конфигурации' + (isAutoSave ? ' (авто)' : '') + '...');
             
             // Собираем данные из формы
             const configData = {
@@ -202,13 +213,21 @@ class AIConfigManager {
             if (data.success) {
                 console.log('[AIConfigManager] ✅ AI конфигурация сохранена');
                 
-                // Показываем уведомление
-                if (window.showToast) {
+                if (!isAutoSave && window.showToast) {
                     window.showToast('✅ AI конфигурация сохранена', 'success');
                 }
+                if (isAutoSave && window.toastManager) {
+                    if (!window.toastManager.container) window.toastManager.init();
+                    window.toastManager.success('✅ AI настройки автоматически сохранены', 3000);
+                } else if (isAutoSave && window.showToast) {
+                    window.showToast('✅ AI настройки автоматически сохранены', 'success');
+                }
                 
-                // Перезагружаем конфигурацию
-                await this.loadAIConfig();
+                if (!isAutoSave) {
+                    this.isProgrammaticChange = true;
+                    await this.loadAIConfig();
+                    this.isProgrammaticChange = false;
+                }
                 
                 return true;
             } else {
@@ -297,6 +316,30 @@ class AIConfigManager {
     }
 
     /**
+     * Планирует автосохранение AI конфигурации (debounce), как на странице конфига Auto Bot
+     */
+    scheduleAutoSave() {
+        if (this.isProgrammaticChange) return;
+        const self = this;
+        if (this.autoSaveTimer) {
+            clearTimeout(this.autoSaveTimer);
+            this.autoSaveTimer = null;
+        }
+        this.autoSaveTimer = setTimeout(async () => {
+            try {
+                await self.saveAIConfig(true);
+                self.autoSaveTimer = null;
+            } catch (e) {
+                console.error('[AIConfigManager] Ошибка автосохранения:', e);
+                if (window.toastManager) {
+                    window.toastManager.error('Ошибка автосохранения: ' + e.message, 5000);
+                }
+                self.autoSaveTimer = null;
+            }
+        }, this.autoSaveDelay);
+    }
+
+    /**
      * Привязка событий
      */
     bindEvents() {
@@ -304,7 +347,7 @@ class AIConfigManager {
         const saveBtn = document.querySelector('.config-section-save-btn[data-section="ai"]');
         if (saveBtn) {
             saveBtn.addEventListener('click', async () => {
-                await this.saveAIConfig();
+                await this.saveAIConfig(false);
             });
             console.log('[AIConfigManager] ✅ События привязаны');
         }
@@ -312,7 +355,28 @@ class AIConfigManager {
         // SMC: обновлять подпись при переключении
         const smcCheckbox = document.getElementById('smcEnabled');
         if (smcCheckbox) {
-            smcCheckbox.addEventListener('change', () => this.updateSmcStatusText());
+            smcCheckbox.addEventListener('change', () => {
+                this.updateSmcStatusText();
+                this.scheduleAutoSave();
+            });
+        }
+
+        // Автосохранение при изменении любых полей в блоке AI конфигурации
+        const section = document.getElementById('aiConfigSection');
+        if (section) {
+            const inputs = section.querySelectorAll('input, select');
+            inputs.forEach(el => {
+                if (el.id === 'smcEnabled') return; // уже обработан выше
+                if (el.getAttribute('data-autosave-bound')) return;
+                el.setAttribute('data-autosave-bound', 'true');
+                el.addEventListener('change', () => {
+                    if (!this.isProgrammaticChange) this.scheduleAutoSave();
+                });
+                el.addEventListener('input', () => {
+                    if (!this.isProgrammaticChange) this.scheduleAutoSave();
+                });
+            });
+            console.log('[AIConfigManager] ✅ Автосохранение при изменении полей включено');
         }
 
         // События для самообучения AI
