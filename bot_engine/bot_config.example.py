@@ -467,26 +467,3 @@ class AIConfig:
     AI_SELF_LEARNING_BUFFER_SIZE = 50    # Размер буфера для онлайн обучения (макс. сделок)
     AI_ADAPTATION_THRESHOLD = 0.1        # Порог изменения для адаптации к рынку (0.0-1.0)
     AI_PERFORMANCE_WINDOW = 50           # Окно сделок для оценки производительности
-
-    # Триггеры остановки непрерывного обучения
-    AI_STOP_TRAINING_ON_HIGH_ACCURACY = True
-    AI_HIGH_ACCURACY_THRESHOLD = 0.90
-    AI_STOP_TRAINING_ON_DEGRADATION = True
-    AI_DEGRADATION_THRESHOLD = 0.05
-    AI_MIN_TRAINING_ATTEMPTS = 3
-
-    # Триггеры переобучения при ухудшении на реальных сделках
-    AI_RETRAIN_ON_REAL_PERFORMANCE_DEGRADATION = True
-    AI_REAL_WIN_RATE_THRESHOLD = 0.40
-    AI_REAL_AVG_PNL_THRESHOLD = -10.0
-    AI_REAL_VS_SIMULATED_DIFF_THRESHOLD = 0.30
-    AI_REAL_PERFORMANCE_WINDOW = 20
-
-    # Обучение на симуляциях
-    AI_TRAIN_ON_SIMULATIONS = True
-    AI_SIMULATIONS_TARGET_WIN_RATE = 0.90
-    AI_SIMULATIONS_MAX_ITERATIONS = 1000
-    AI_USE_SIMULATIONS_WHEN_REAL_LOW = True
-    AI_SIMULATIONS_PER_COIN = 20
-    AI_SAVE_BEST_PARAMS_MIN_WIN_RATE = 0.90
-    AI_USE_SAVED_SETTINGS_AS_BASE = True

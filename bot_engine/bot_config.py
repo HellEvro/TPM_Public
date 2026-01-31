@@ -43,7 +43,7 @@ TREND_REQUIRE_CANDLES = True # Требовать N свечей подряд (T
 
 # Таймфрейм для анализа
 # Поддерживаемые таймфреймы: '1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M'
-TIMEFRAME = '1m'
+TIMEFRAME = '6h'
 
 # Глобальная переменная для динамического изменения таймфрейма в runtime
 _current_timeframe = None
@@ -225,8 +225,8 @@ DEFAULT_AUTO_BOT_CONFIG = {
     # Защитные механизмы
     'max_loss_percent': 15,   # Максимальный убыток в % от входа (стоп-лосс)
     'take_profit_percent': 70, # Защитный Take Profit в % от входа (рассчитывается как стоп-лосс)
-    'trailing_stop_activation': 2, # Процент прибыли, после которого активируется трейлинг
-    'trailing_stop_distance': 2, # Дистанция трейлинга от максимальной цены, %
+    'trailing_stop_activation': 10, # Процент прибыли, после которого активируется трейлинг
+    'trailing_stop_distance': 5,      # Дистанция трейлинга от максимальной цены, %
     'trailing_take_distance': 0.5,    # Резервный trailing-тейк (лимит) в %, когда процесс упадет
     'trailing_update_interval': 3,  # Минимальный интервал обновлений стопов/тейков (сек)
     'max_position_hours': 0,     # Максимальное время удержания позиции в часах (0 = отключено)
@@ -280,7 +280,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'enhanced_rsi_require_divergence_confirmation': True,
     'enhanced_rsi_require_volume_confirmation': True,
     'enhanced_rsi_use_stoch_rsi': True,
-    'inactive_bot_cleanup_interval': 60,
+    'inactive_bot_cleanup_interval': 600,
     'inactive_bot_timeout': 60,
     'log_anomalies': True,
     'log_patterns': True,
@@ -310,7 +310,6 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'self_learning_enabled': False,
     'stop_loss_setup_interval': 10,
     'system_timeframe': '1m',
-    'mini_chart_update_interval': 10,
 }
 
 # Настройки по умолчанию для отдельного бота
@@ -331,11 +330,11 @@ class SystemConfig:
     UI_REFRESH_INTERVAL = 2 # 3 секунды
     AUTO_SAVE_INTERVAL = 30  # 30 секунд
     BOT_STATUS_UPDATE_INTERVAL = 1  # 1 секунда - интервал обновления детальной информации о состоянии ботов (цена входа, SL, TP, ликвидация, PnL)
-    INACTIVE_BOT_CLEANUP_INTERVAL = 60 # 10 минут - интервал проверки и удаления неактивных ботов
+    INACTIVE_BOT_CLEANUP_INTERVAL = 600  # 10 минут - интервал проверки и удаления неактивных ботов
     INACTIVE_BOT_TIMEOUT = 60 # 10 минут - время ожидания перед удалением бота без реальных позиций на бирже
     STOP_LOSS_SETUP_INTERVAL = 10 # 5 минут - интервал установки недостающих стоп-лоссов
     POSITION_SYNC_INTERVAL = 10 # 30 секунд - интервал синхронизации позиций с биржей
-    MINI_CHART_UPDATE_INTERVAL = 10 # 7 минут - интервал обновления миниграфиков RSI (в секундах)
+    MINI_CHART_UPDATE_INTERVAL = 420  # 7 минут - интервал обновления миниграфиков RSI (в секундах)
     
     # Умное обновление RSI
     SMART_RSI_UPDATE = True  # Учитывать время до закрытия свечи

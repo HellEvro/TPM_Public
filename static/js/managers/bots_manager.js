@@ -302,7 +302,6 @@ class BotsManager {
             this.loadDuplicateSettings(); // Загружаем дублированные настройки
             break;
             case 'filters':
-                this.loadCoinsRsiData(); // Подгрузка монет при открытии вкладки «Фильтры монет»
                 this.loadFiltersData();
                 break;
             case 'config':
@@ -722,14 +721,6 @@ class BotsManager {
             const data = await response.json();
             
             if (data.success) {
-                    // Проверка наличия data.coins (защита от неполного ответа API)
-                    if (!data.coins || typeof data.coins !== 'object') {
-                        this.logDebug('[BotsManager] ⚠️ Ответ API без data.coins, используем пустой список');
-                        this.coinsRsiData = [];
-                        this.renderCoinsList();
-                        this.updateCoinsCounter();
-                        return;
-                    }
                     // ✅ ОПТИМИЗАЦИЯ: Проверяем версию данных - обновляем UI только при изменениях
                     const currentDataVersion = data.data_version || 0;
                     if (currentDataVersion === this.lastDataVersion && this.coinsRsiData.length > 0) {

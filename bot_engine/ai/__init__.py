@@ -104,35 +104,6 @@ def _get_module_pyc_path(module_name):
         return pyc_path
     return None
 
-def _stub_get_ai_manager():
-    """Заглушка get_ai_manager, когда ai_manager.py/.pyc недоступен."""
-    return _STUB_AI_MANAGER
-
-
-class _StubAIManager:
-    """Заглушка AI Manager при отсутствии ai_manager модуля."""
-
-    anomaly_detector = None
-    lstm_predictor = None
-    pattern_detector = None
-    risk_manager = None
-
-    def is_available(self):
-        return False
-
-    def get_status(self):
-        return {'valid': False, 'available': False}
-
-    def analyze_coin(self, symbol, coin_data, candles):
-        return {}
-
-    def get_final_recommendation(self, symbol, system_signal, ai_analysis):
-        return None
-
-
-_STUB_AI_MANAGER = _StubAIManager()
-
-
 def _load_pyc_module(module_name, module_import_name):
     """Загружает .pyc модуль используя importlib."""
     import importlib.util
@@ -180,20 +151,17 @@ except ImportError as e:
         _logger.error(f"[AI] [ERROR] ai_manager.pyc несовместим с текущей версией Python: {python_version}")
         _logger.error("[AI] [ERROR] Модуль был скомпилирован под другую версию Python.")
         _logger.error("[AI] [ERROR] Обратитесь к разработчику для получения правильной версии модулей.")
-        get_ai_manager = _stub_get_ai_manager
-        __all__ = ['get_ai_manager']
+        __all__ = []
     else:
         # Модули еще не созданы - это нормально на этапе разработки
-        get_ai_manager = _stub_get_ai_manager
-        __all__ = ['get_ai_manager']
+        __all__ = []
 except Exception as e:
     # Другие ошибки - пробуем обычный импорт
     try:
         from .ai_manager import AIManager, get_ai_manager
         __all__ = ['AIManager', 'get_ai_manager']
-    except Exception:
-        get_ai_manager = _stub_get_ai_manager
-        __all__ = ['get_ai_manager']
+    except:
+        __all__ = []
 
 # Экспорт главного модуля AI системы (новый модуль)
 # ai.py находится в корне проекта

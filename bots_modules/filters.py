@@ -56,7 +56,7 @@ def get_cached_ai_manager():
         try:
             from bot_engine.bot_config import AIConfig
             if AIConfig.AI_ENABLED:
-                from bot_engine.ai import get_ai_manager
+                from bot_engine.ai.ai_manager import get_ai_manager
                 _ai_manager_cache = get_ai_manager()
                 _ai_available_cache = _ai_manager_cache.is_available() if _ai_manager_cache else False
             else:
@@ -2796,6 +2796,13 @@ def process_trading_signals_for_all_bots(exchange_obj=None):
                     RSI_EXIT_LONG_WITH_TREND, RSI_EXIT_LONG_AGAINST_TREND,
                     RSI_EXIT_SHORT_WITH_TREND, RSI_EXIT_SHORT_AGAINST_TREND,
                 )
+                # Пороги выхода по RSI из конфига: individual_settings → auto_config → константы (п.1 REVERTED_COMMITS_FIXES)
+                auto_config = bots_data.get('auto_bot_config', {})
+                individual_settings = get_individual_coin_settings(symbol) or {}
+                exit_long_with = individual_settings.get('rsi_exit_long_with_trend') or auto_config.get('rsi_exit_long_with_trend') or RSI_EXIT_LONG_WITH_TREND
+                exit_long_against = individual_settings.get('rsi_exit_long_against_trend') or auto_config.get('rsi_exit_long_against_trend') or RSI_EXIT_LONG_AGAINST_TREND
+                exit_short_with = individual_settings.get('rsi_exit_short_with_trend') or auto_config.get('rsi_exit_short_with_trend') or RSI_EXIT_SHORT_WITH_TREND
+                exit_short_against = individual_settings.get('rsi_exit_short_against_trend') or auto_config.get('rsi_exit_short_against_trend') or RSI_EXIT_SHORT_AGAINST_TREND
                 # ✅ Используем таймфрейм бота для получения RSI и тренда
                 current_rsi = get_rsi_from_coin_data(rsi_data, timeframe=timeframe_to_use)
                 current_trend = get_trend_from_coin_data(rsi_data, timeframe=timeframe_to_use)
@@ -2803,16 +2810,12 @@ def process_trading_signals_for_all_bots(exchange_obj=None):
 
                 rsi_key = get_rsi_key(timeframe_to_use)
                 trend_key = get_trend_key(timeframe_to_use)
+                # ✅ КРИТИЧНО: Используем только trend по ТФ бота, БЕЗ fallback на trend6h
+                # Иначе бот на 1m может получить trend6h и работать "как на 6ч"
                 external_trend = rsi_data.get(trend_key) or current_trend
+                # ✅ Сигнал выхода по RSI — пороги из конфига (п.1)
                 position_side = bot_data.get('position_side') or (bot_data.get('position') or {}).get('side')
                 entry_trend = bot_data.get('entry_trend')
-                # Пороги выхода из конфига (auto_bot_config + individual), не только константы
-                auto_config = bots_data.get('auto_bot_config', {})
-                individual_settings = get_individual_coin_settings(symbol)
-                exit_long_with = (individual_settings.get('rsi_exit_long_with_trend') if individual_settings else None) or auto_config.get('rsi_exit_long_with_trend') or RSI_EXIT_LONG_WITH_TREND
-                exit_long_against = (individual_settings.get('rsi_exit_long_against_trend') if individual_settings else None) or auto_config.get('rsi_exit_long_against_trend') or RSI_EXIT_LONG_AGAINST_TREND
-                exit_short_with = (individual_settings.get('rsi_exit_short_with_trend') if individual_settings else None) or auto_config.get('rsi_exit_short_with_trend') or RSI_EXIT_SHORT_WITH_TREND
-                exit_short_against = (individual_settings.get('rsi_exit_short_against_trend') if individual_settings else None) or auto_config.get('rsi_exit_short_against_trend') or RSI_EXIT_SHORT_AGAINST_TREND
                 if current_rsi is not None and position_side:
                     if position_side == 'LONG':
                         thr = exit_long_with if entry_trend == 'UP' else exit_long_against
