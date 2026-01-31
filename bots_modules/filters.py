@@ -739,6 +739,10 @@ def check_exit_scam_filter(symbol, coin_data):
                 if key in individual_settings:
                     auto_config[key] = individual_settings[key]
         
+        # ✅ Если фильтр выключен — сразу разрешаем (на лету, без вызова движка)
+        if not auto_config.get('exit_scam_enabled', True):
+            return True
+        
         exchange_obj = get_exchange()
         if not exchange_obj:
             return False

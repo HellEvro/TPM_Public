@@ -630,6 +630,53 @@ class AISelfLearning:
         self.adaptive_learning_enabled = enabled
         logger.info(f"{'✅' if enabled else '❌'} Адаптивное обучение {'включено' if enabled else 'выключено'}")
 
+    def _get_continuous_learning(self):
+        """Ленивая загрузка AIContinuousLearning для оценки производительности"""
+        if not hasattr(self, '_continuous_learning') or self._continuous_learning is None:
+            try:
+                from bot_engine.ai.ai_continuous_learning import AIContinuousLearning
+                self._continuous_learning = AIContinuousLearning()
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось подключить AIContinuousLearning: {e}")
+                self._continuous_learning = None
+        return self._continuous_learning
+
+    def evaluate_ai_performance(self, trades: List[Dict]) -> Dict:
+        """
+        Оценивает производительность AI на основе сделок (делегирует в AIContinuousLearning)
+
+        Args:
+            trades: Список сделок с результатами
+
+        Returns:
+            Словарь с метриками производительности AI
+        """
+        continuous = self._get_continuous_learning()
+        if continuous:
+            return continuous.evaluate_ai_performance(trades)
+        # Fallback: базовая оценка через PerformanceTracker
+        if not trades:
+            return {'error': 'Нет данных о сделках'}
+        for t in trades:
+            self.performance_tracker.add_trade_result(t)
+        return {
+            'total_trades': len(trades),
+            'performance_score': self.performance_tracker.get_performance_score(),
+            'evaluation_timestamp': datetime.now().isoformat()
+        }
+
+    def get_performance_trends(self) -> Dict:
+        """
+        Анализирует тренды производительности AI со временем (делегирует в AIContinuousLearning)
+
+        Returns:
+            Словарь с трендами производительности
+        """
+        continuous = self._get_continuous_learning()
+        if continuous:
+            return continuous.get_performance_trends()
+        return {'error': 'AIContinuousLearning недоступен для анализа трендов'}
+
 
 class PerformanceTracker:
     """Трекер производительности AI"""
