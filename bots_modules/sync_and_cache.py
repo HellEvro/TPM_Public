@@ -2489,26 +2489,48 @@ def check_missing_stop_losses():
                                 break
                         
                         if not direct_check:
-                            # Пробуем найти с учетом возможных вариантов символа
-                            logger.error(f" ❌ Позиция {symbol} не найдена на бирже после прямой проверки")
-                            
-                            # Пробуем найти варианты: symbol, symbolUSDT, USDTsymbol
+                            # Символ не найден с size > 0: либо позиция закрыта, либо её нет на бирже
+                            # Проверяем, есть ли символ в сыром списке с size=0 (закрытая позиция)
+                            symbol_on_exchange_with_zero = False
+                            symbol_on_exchange_with_positive = False
                             possible_symbols = [symbol, f"{symbol}USDT", f"USDT{symbol}"]
-                            found_variants = []
                             for raw_pos in _raw_positions_for_check:
                                 raw_symbol = raw_pos.get('symbol', '')
                                 position_size = abs(float(raw_pos.get('size', 0) or 0))
-                                if position_size > 0 and raw_symbol in possible_symbols:
-                                    found_variants.append(f"raw='{raw_symbol}' (size={position_size})")
-                            
-                            if found_variants:
-                                logger.warning(f" ⚠️ Найдены варианты символа {symbol} на бирже: {found_variants}")
-                                logger.warning(f" ⚠️ Возможно, проблема в нормализации символов!")
-                            
-                            logger.error(f" ❌ Доступные позиции на бирже (normalized): {sorted([normalize_symbol(p.get('symbol', '')) for p in _raw_positions_for_check if abs(float(p.get('size', 0) or 0)) > 0])}")
-                            logger.error(f" ❌ Доступные позиции на бирже (raw): {sorted([p.get('symbol', '') for p in _raw_positions_for_check if abs(float(p.get('size', 0) or 0)) > 0])}")
-                            # НЕ УДАЛЯЕМ бота, если не уверены - просто пропускаем
-                            logger.warning(f" ⚠️ Пропускаем бота {symbol} - позиция не найдена, но не удаляем для безопасности")
+                                normalized_raw = normalize_symbol(raw_symbol)
+                                if normalized_raw != symbol and raw_symbol not in possible_symbols:
+                                    continue
+                                if position_size > 0:
+                                    symbol_on_exchange_with_positive = True
+                                    break
+                                symbol_on_exchange_with_zero = True
+                            if symbol_on_exchange_with_positive:
+                                # Есть активная позиция по символу, но не совпала нормализация — не удаляем
+                                logger.warning(f" ⚠️ Найдена активная позиция по варианту символа {symbol}, возможна проблема нормализации — пропускаем удаление")
+                                continue
+                            # Позиции на бирже нет или только с size=0 — считаем закрытой, удаляем бота
+                            logger.info(f" ✅ Позиция {symbol} отсутствует на бирже или закрыта (size=0) — удаляем бота из реестра")
+                            try:
+                                from bots_modules.imports_and_globals import unregister_bot_position
+                                order_id = None
+                                position = bot_snapshot.get('position')
+                                if position and position.get('order_id'):
+                                    order_id = position['order_id']
+                                elif bot_snapshot.get('restoration_order_id'):
+                                    order_id = bot_snapshot['restoration_order_id']
+                                if order_id:
+                                    unregister_bot_position(order_id)
+                                    logger.info(f" ✅ Позиция {symbol} (order_id={order_id}) удалена из реестра")
+                                bot_removed = False
+                                with bots_data_lock:
+                                    if symbol in bots_data['bots']:
+                                        del bots_data['bots'][symbol]
+                                        logger.info(f" ✅ Бот {symbol} удален из системы")
+                                        bot_removed = True
+                                if bot_removed:
+                                    save_bots_state()
+                            except Exception as cleanup_error:
+                                logger.error(f" ❌ Ошибка удаления бота {symbol}: {cleanup_error}")
                             continue
                     except Exception as check_error:
                         logger.error(f" ❌ Ошибка прямой проверки позиции {symbol}: {check_error}")

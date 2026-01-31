@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 import numpy as np
 from bot_engine.bot_config import AIConfig
+from bot_engine.config_live import reload_bot_config_if_changed, get_ai_config_attr
 
 logger = logging.getLogger('AI.AutoTrainer')
 
@@ -337,6 +338,8 @@ class AutoTrainer:
         
         while self.running:
             try:
+                # На лету: подхватываем изменения конфига из UI без перезапуска
+                reload_bot_config_if_changed()
                 current_time = time.time()
                 
                 # 1. Проверяем нужно ли обновить данные
@@ -344,7 +347,7 @@ class AutoTrainer:
                 if self._should_update_data(current_time) and not self._data_update_in_progress:
                     data_updated = self._update_data()
                 
-                if getattr(AIConfig, 'AI_DRIFT_DETECTION_ENABLED', True):
+                if get_ai_config_attr('AI_DRIFT_DETECTION_ENABLED', True):
                     self._check_drift_and_trigger_retrain()
 
                 if (self._should_retrain(current_time) or self._drift_retrain_requested) and not self._training_in_progress:
@@ -430,7 +433,7 @@ class AutoTrainer:
         else:
             logger.warning("[AutoTrainer] ⚠️ Модель не найдена, требуется первичное обучение")
             
-            if AIConfig.AI_AUTO_TRAIN_ON_STARTUP:
+            if get_ai_config_attr('AI_AUTO_TRAIN_ON_STARTUP', False):
                 logger.info("[AutoTrainer] 🚀 Запускаем первичное обучение...")
                 self._initial_setup()
     
@@ -476,7 +479,7 @@ class AutoTrainer:
     
     def _should_update_data(self, current_time: float) -> bool:
         """Проверяет нужно ли обновить данные"""
-        if not AIConfig.AI_AUTO_UPDATE_DATA:
+        if not get_ai_config_attr('AI_AUTO_UPDATE_DATA', True):
             return False
         
         # При первом запуске НЕ обновляем сразу (данные уже есть)
@@ -485,7 +488,7 @@ class AutoTrainer:
             return False
         
         elapsed = current_time - self.last_data_update
-        return elapsed >= AIConfig.AI_DATA_UPDATE_INTERVAL
+        return elapsed >= get_ai_config_attr('AI_DATA_UPDATE_INTERVAL', 86400)
     
     def _should_retrain(self, current_time: float) -> bool:
         """Проверяет нужно ли переобучить модель
@@ -494,7 +497,7 @@ class AutoTrainer:
         - Останавливается при достижении высокой точности (90%+)
         - Останавливается при ухудшении качества
         """
-        if not AIConfig.AI_AUTO_RETRAIN:
+        if not get_ai_config_attr('AI_AUTO_RETRAIN', True):
             return False
         
         # Если обучение уже идет, не запускаем новое
@@ -511,7 +514,7 @@ class AutoTrainer:
             return False
         
         # Проверяем качество модели перед запуском обучения
-        if self._training_attempts >= AIConfig.AI_MIN_TRAINING_ATTEMPTS:
+        if self._training_attempts >= get_ai_config_attr('AI_MIN_TRAINING_ATTEMPTS', 3):
             should_stop = self._check_should_stop_training()
             if should_stop:
                 if not self._training_stopped:
@@ -545,11 +548,11 @@ class AutoTrainer:
             # Определяем количество монет
             if initial:
                 # Первичная настройка - собираем больше данных
-                limit = AIConfig.AI_INITIAL_COINS_COUNT
+                limit = get_ai_config_attr('AI_INITIAL_COINS_COUNT', 100)
                 days = 730  # 2 года для первичной настройки
             else:
                 # Обновление
-                limit = AIConfig.AI_UPDATE_COINS_COUNT
+                limit = get_ai_config_attr('AI_UPDATE_COINS_COUNT', 50)
                 days = 30  # Обновляем только последние 30 дней
             
             # Запускаем скрипт сбора данных
@@ -645,7 +648,7 @@ class AutoTrainer:
             models_trained = 0
             
             # 1. Обучаем Anomaly Detector
-            if AIConfig.AI_ANOMALY_DETECTION_ENABLED:
+            if get_ai_config_attr('AI_ANOMALY_DETECTION_ENABLED', True):
                 logger.info("[AutoTrainer] 📊 Обучение Anomaly Detector...")
                 success = self._train_model(
                     self.train_anomaly_script,
@@ -687,7 +690,7 @@ class AutoTrainer:
                     trainer.train_on_history()
             
             # 3. Обучаем LSTM Predictor
-            if AIConfig.AI_LSTM_ENABLED:
+            if get_ai_config_attr('AI_LSTM_ENABLED', True):
                 logger.info("[AutoTrainer] 🧠 Обучение LSTM Predictor...")
                 success = self._train_model(
                     self.train_lstm_script,
@@ -699,7 +702,7 @@ class AutoTrainer:
                     all_success = False
             
             # 4. Обучаем Pattern Detector
-            if AIConfig.AI_PATTERN_ENABLED:
+            if get_ai_config_attr('AI_PATTERN_ENABLED', True):
                 logger.info("[AutoTrainer] 📊 Обучение Pattern Detector...")
                 success = self._train_model(
                     self.train_pattern_script,
@@ -725,7 +728,7 @@ class AutoTrainer:
                 tracker.end_run('FINISHED')
                 
                 self._check_model_quality_after_training()
-                if getattr(AIConfig, 'AI_DRIFT_DETECTION_ENABLED', True):
+                if get_ai_config_attr('AI_DRIFT_DETECTION_ENABLED', True):
                     self._save_drift_reference_after_retrain()
                 self._reload_models()
                 return True
@@ -771,7 +774,7 @@ class AutoTrainer:
             return None
 
     def _check_drift_and_trigger_retrain(self) -> None:
-        if not getattr(AIConfig, 'AI_DRIFT_DETECTION_ENABLED', True) or not _DRIFT_DETECTOR_AVAILABLE:
+        if not get_ai_config_attr('AI_DRIFT_DETECTION_ENABLED', True) or not _DRIFT_DETECTOR_AVAILABLE:
             return
         try:
             from bot_engine.ai.ai_database import get_ai_database
@@ -805,7 +808,7 @@ class AutoTrainer:
             pass
 
     def _save_drift_reference_after_retrain(self) -> None:
-        if not getattr(AIConfig, 'AI_DRIFT_DETECTION_ENABLED', True):
+        if not get_ai_config_attr('AI_DRIFT_DETECTION_ENABLED', True):
             return
         try:
             from bot_engine.ai.ai_database import get_ai_database
@@ -1083,7 +1086,7 @@ class AutoTrainer:
         Если модель показывает 90%+ на виртуальных сделках, но на реальных сделках результаты отрицательные,
         запускается переобучение на реальных данных.
         """
-        if not AIConfig.AI_RETRAIN_ON_REAL_PERFORMANCE_DEGRADATION:
+        if not get_ai_config_attr('AI_RETRAIN_ON_REAL_PERFORMANCE_DEGRADATION', False):
             return
         
         try:
@@ -1104,7 +1107,8 @@ class AutoTrainer:
             win_rate_diff = comp_data.get('win_rate_diff', 0)
             
             # Проверяем, достаточно ли реальных сделок для оценки
-            if real_count < AIConfig.AI_REAL_PERFORMANCE_WINDOW:
+            real_window = get_ai_config_attr('AI_REAL_PERFORMANCE_WINDOW', 20)
+            if real_count < real_window:
                 pass
                 return
             
@@ -1114,21 +1118,24 @@ class AutoTrainer:
             logger.info(f"   Разница win_rate: {win_rate_diff:.2%}")
             
             # Триггер 1: Низкий win_rate на реальных сделках
-            if real_win_rate < AIConfig.AI_REAL_WIN_RATE_THRESHOLD:
-                logger.warning(f"[AutoTrainer] ⚠️ Низкий win_rate на реальных сделках: {real_win_rate:.2%} < {AIConfig.AI_REAL_WIN_RATE_THRESHOLD:.2%}")
+            real_wr_threshold = get_ai_config_attr('AI_REAL_WIN_RATE_THRESHOLD', 0.45)
+            if real_win_rate < real_wr_threshold:
+                logger.warning(f"[AutoTrainer] ⚠️ Низкий win_rate на реальных сделках: {real_win_rate:.2%} < {real_wr_threshold:.2%}")
                 logger.warning(f"[AutoTrainer] 🔄 Запуск переобучения на реальных данных...")
                 self._trigger_retrain_on_real_trades()
                 return
             
             # Триггер 2: Отрицательный средний PnL на реальных сделках
-            if real_avg_pnl < AIConfig.AI_REAL_AVG_PNL_THRESHOLD:
-                logger.warning(f"[AutoTrainer] ⚠️ Отрицательный avg_pnl на реальных сделках: {real_avg_pnl:.2f} < {AIConfig.AI_REAL_AVG_PNL_THRESHOLD:.2f} USDT")
+            real_pnl_threshold = get_ai_config_attr('AI_REAL_AVG_PNL_THRESHOLD', -1.0)
+            if real_avg_pnl < real_pnl_threshold:
+                logger.warning(f"[AutoTrainer] ⚠️ Отрицательный avg_pnl на реальных сделках: {real_avg_pnl:.2f} < {real_pnl_threshold:.2f} USDT")
                 logger.warning(f"[AutoTrainer] 🔄 Запуск переобучения на реальных данных...")
                 self._trigger_retrain_on_real_trades()
                 return
             
             # Триггер 3: Большая разница между виртуальными и реальными сделками
-            if win_rate_diff > AIConfig.AI_REAL_VS_SIMULATED_DIFF_THRESHOLD:
+            diff_threshold = get_ai_config_attr('AI_REAL_VS_SIMULATED_DIFF_THRESHOLD', 0.15)
+            if win_rate_diff > diff_threshold:
                 logger.warning(f"[AutoTrainer] ⚠️ Большая разница win_rate: виртуальные {sim_win_rate:.2%} vs реальные {real_win_rate:.2%} (разница: {win_rate_diff:.2%})")
                 logger.warning(f"[AutoTrainer] 🔄 Запуск переобучения на реальных данных...")
                 self._trigger_retrain_on_real_trades()
@@ -1166,7 +1173,7 @@ class AutoTrainer:
         Returns:
             True если обучение должно быть остановлено
         """
-        if not AIConfig.AI_STOP_TRAINING_ON_HIGH_ACCURACY and not AIConfig.AI_STOP_TRAINING_ON_DEGRADATION:
+        if not get_ai_config_attr('AI_STOP_TRAINING_ON_HIGH_ACCURACY', False) and not get_ai_config_attr('AI_STOP_TRAINING_ON_DEGRADATION', False):
             return False
         
         try:
@@ -1194,16 +1201,18 @@ class AutoTrainer:
                 return False  # Нет данных о качестве
             
             # Триггер 1: Высокая точность (90%+)
-            if AIConfig.AI_STOP_TRAINING_ON_HIGH_ACCURACY:
-                if max_accuracy >= AIConfig.AI_HIGH_ACCURACY_THRESHOLD:
-                    logger.info(f"[AutoTrainer] 🎯 Достигнута высокая точность: {max_accuracy:.2%} >= {AIConfig.AI_HIGH_ACCURACY_THRESHOLD:.2%}")
+            high_acc_threshold = get_ai_config_attr('AI_HIGH_ACCURACY_THRESHOLD', 0.90)
+            if get_ai_config_attr('AI_STOP_TRAINING_ON_HIGH_ACCURACY', False):
+                if max_accuracy >= high_acc_threshold:
+                    logger.info(f"[AutoTrainer] 🎯 Достигнута высокая точность: {max_accuracy:.2%} >= {high_acc_threshold:.2%}")
                     logger.info(f"[AutoTrainer] 🛑 Остановка непрерывного обучения: модель достигла целевой точности")
                     return True
             
             # Триггер 2: Ухудшение качества
-            if AIConfig.AI_STOP_TRAINING_ON_DEGRADATION and self._last_model_accuracy is not None:
+            deg_threshold = get_ai_config_attr('AI_DEGRADATION_THRESHOLD', 0.05)
+            if get_ai_config_attr('AI_STOP_TRAINING_ON_DEGRADATION', False) and self._last_model_accuracy is not None:
                 accuracy_diff = self._last_model_accuracy - max_accuracy
-                if accuracy_diff >= AIConfig.AI_DEGRADATION_THRESHOLD:
+                if accuracy_diff >= deg_threshold:
                     logger.warning(f"[AutoTrainer] ⚠️ Обнаружено ухудшение качества: {accuracy_diff:.2%}")
                     logger.warning(f"[AutoTrainer] 🛑 Остановка непрерывного обучения: качество модели ухудшилось")
                     return True
@@ -1255,21 +1264,22 @@ class AutoTrainer:
         Returns:
             Словарь со статусом
         """
+        data_interval = get_ai_config_attr('AI_DATA_UPDATE_INTERVAL', 86400)
         return {
             'running': self.running,
             'last_data_update': datetime.fromtimestamp(self.last_data_update).isoformat() if self.last_data_update else None,
             'last_training': datetime.fromtimestamp(self.last_training).isoformat() if self.last_training else None,
-            'next_data_update': datetime.fromtimestamp(self.last_data_update + AIConfig.AI_DATA_UPDATE_INTERVAL).isoformat() if self.last_data_update else None,
+            'next_data_update': datetime.fromtimestamp(self.last_data_update + data_interval).isoformat() if self.last_data_update else None,
             'next_training': 'continuous' if self.last_training and not self._training_stopped else None,  # Непрерывное обучение - сразу после завершения предыдущего
             'training_mode': 'continuous',
             'training_stopped': self._training_stopped,  # Остановлено ли обучение триггерами
             'training_attempts': self._training_attempts,  # Количество попыток обучения
             'last_model_accuracy': self._last_model_accuracy,  # Последняя точность модели
             'stop_triggers': {
-                'high_accuracy_enabled': AIConfig.AI_STOP_TRAINING_ON_HIGH_ACCURACY,
-                'high_accuracy_threshold': AIConfig.AI_HIGH_ACCURACY_THRESHOLD,
-                'degradation_enabled': AIConfig.AI_STOP_TRAINING_ON_DEGRADATION,
-                'degradation_threshold': AIConfig.AI_DEGRADATION_THRESHOLD,
+                'high_accuracy_enabled': get_ai_config_attr('AI_STOP_TRAINING_ON_HIGH_ACCURACY', False),
+                'high_accuracy_threshold': get_ai_config_attr('AI_HIGH_ACCURACY_THRESHOLD', 0.90),
+                'degradation_enabled': get_ai_config_attr('AI_STOP_TRAINING_ON_DEGRADATION', False),
+                'degradation_threshold': get_ai_config_attr('AI_DEGRADATION_THRESHOLD', 0.05),
             }
         }
 
@@ -1295,7 +1305,7 @@ def get_auto_trainer() -> AutoTrainer:
 
 def start_auto_trainer():
     """Запускает автоматический тренер"""
-    if AIConfig.AI_AUTO_TRAIN_ENABLED:
+    if get_ai_config_attr('AI_AUTO_TRAIN_ENABLED', True):
         trainer = get_auto_trainer()
         trainer.start()
     else:

@@ -2524,6 +2524,12 @@ def get_effective_signal(coin):
 def process_auto_bot_signals(exchange_obj=None):
     """Новая логика автобота согласно требованиям"""
     try:
+        # ✅ На лету: перечитываем конфиг с диска (если файл меняли в UI — подхватим без перезапуска)
+        try:
+            from bots_modules.imports_and_globals import load_auto_bot_config
+            load_auto_bot_config()
+        except Exception as _reload_err:
+            pass
         # Проверяем, включен ли автобот
         # ⚡ БЕЗ БЛОКИРОВКИ: конфиг не меняется, чтение безопасно
         auto_bot_enabled = bots_data['auto_bot_config']['enabled']
