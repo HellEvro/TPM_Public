@@ -1724,6 +1724,164 @@ input:checked + .slider:before {
     padding: 8px 0;
 }
 
+/* Переключатель вида настроек (Карточки / Списком) */
+.config-view-switcher {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    padding: 10px 0 16px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 12px;
+}
+.config-view-switcher-label {
+    font-size: 14px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+.config-view-btns {
+    display: flex;
+    gap: 8px;
+}
+.config-view-btn {
+    padding: 8px 16px;
+    font-size: 13px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    color: var(--text-color);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.config-view-btn:hover {
+    border-color: var(--blue-color);
+    background: rgba(79, 172, 254, 0.08);
+    color: var(--blue-color);
+}
+.config-view-btn.active {
+    border-color: var(--blue-color);
+    background: rgba(79, 172, 254, 0.15);
+    color: var(--blue-color);
+    font-weight: 600;
+}
+
+/* Вариант 2: вид «Списком» — строчка на настройку, переключатель справа, блоки групп */
+#configViewWrapper.config-view-list .config-section {
+    margin-bottom: 24px;
+    padding: 0;
+    background: transparent;
+    border: none;
+}
+#configViewWrapper.config-view-list .section-header {
+    margin-bottom: 12px;
+}
+#configViewWrapper.config-view-list .config-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    grid-template-columns: unset;
+}
+#configViewWrapper.config-view-list .config-item {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    margin: 0;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 0;
+    background: var(--bg-secondary);
+    min-height: auto;
+}
+#configViewWrapper.config-view-list .config-item:last-child {
+    border-bottom: none;
+}
+#configViewWrapper.config-view-list .config-item:hover {
+    background: rgba(79, 172, 254, 0.06);
+    box-shadow: none;
+}
+#configViewWrapper.config-view-list .config-item .config-label {
+    margin-bottom: 0;
+    flex: 1;
+    min-width: 0;
+}
+#configViewWrapper.config-view-list .config-item .config-help {
+    flex-basis: 100%;
+    margin-top: 4px;
+    margin-left: 0;
+    order: 3;
+}
+#configViewWrapper.config-view-list .config-item .toggle-switch,
+#configViewWrapper.config-view-list .config-item .config-input-with-unit,
+#configViewWrapper.config-view-list .config-item .config-input,
+#configViewWrapper.config-view-list .config-item .config-select,
+#configViewWrapper.config-view-list .config-item .config-row,
+#configViewWrapper.config-view-list .config-item .config-scope-buttons {
+    flex-shrink: 0;
+}
+/* Подсекции в виде блоков с заголовком */
+#configViewWrapper.config-view-list .config-subsection {
+    margin-top: 20px;
+    padding: 16px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    border-left: 4px solid var(--blue-color);
+}
+#configViewWrapper.config-view-list .config-subsection:first-child {
+    margin-top: 0;
+}
+#configViewWrapper.config-view-list .config-subsection h4 {
+    margin: 0 0 12px 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+#configViewWrapper.config-view-list .config-subsection .config-item {
+    background: var(--bg-secondary);
+}
+#configViewWrapper.config-view-list .config-subsection .config-item:last-child {
+    border-bottom: none;
+}
+/* В списке подсекция не грид, а колонка строк */
+#configViewWrapper.config-view-list .config-subsection .config-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+#configViewWrapper.config-view-list .config-subsection .config-item {
+    border-radius: 6px;
+    margin-bottom: 4px;
+}
+#configViewWrapper.config-view-list .config-subsection .config-item:last-child {
+    margin-bottom: 0;
+}
+/* Спецблоки: scope buttons, break-even и т.д. в списке — на всю ширину строки */
+#configViewWrapper.config-view-list .config-item .config-scope-buttons {
+    width: 100%;
+    justify-content: flex-start;
+}
+#configViewWrapper.config-view-list .config-divider {
+    height: 1px;
+    margin: 12px 0;
+    grid-column: unset;
+}
+#configViewWrapper.config-view-list .config-subsection-title {
+    margin: 12px 0 8px 0;
+    padding-top: 8px;
+    grid-column: unset;
+}
+#configViewWrapper.config-view-list .config-section-actions {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+}
+
 .config-actions {
     display: flex;
     justify-content: center;

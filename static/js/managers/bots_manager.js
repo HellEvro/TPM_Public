@@ -315,6 +315,7 @@ class BotsManager {
                 break;
             case 'config':
                 console.log('[BotsManager] 🎛️ Переключение на вкладку КОНФИГУРАЦИЯ');
+                if (typeof this.applyConfigViewMode === 'function') this.applyConfigViewMode();
                 // Применяем стили при открытии конфигурации
                 setTimeout(() => this.applyReadabilityStyles(), 100);
                 // БЕЗ БЛОКИРОВКИ: Загружаем конфигурацию асинхронно
@@ -8464,6 +8465,38 @@ class BotsManager {
             deleteAllBtn.addEventListener('click', () => this.deleteAllBots());
         }
     }
+
+    /** Применить сохранённый вид настроек (Карточки / Списком) */
+    applyConfigViewMode() {
+        const wrapper = document.getElementById('configViewWrapper');
+        const mode = (typeof localStorage !== 'undefined' && localStorage.getItem('configViewMode')) || 'cards';
+        if (!wrapper) return;
+        wrapper.classList.remove('config-view-cards', 'config-view-list');
+        wrapper.classList.add(mode === 'list' ? 'config-view-list' : 'config-view-cards');
+        document.querySelectorAll('.config-view-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.view === mode);
+        });
+    }
+
+    /** Инициализация переключателя вида настроек (Карточки / Списком) */
+    _initConfigViewSwitcher() {
+        const wrapper = document.getElementById('configViewWrapper');
+        const btns = document.querySelectorAll('.config-view-btn');
+        if (!wrapper || !btns.length) return;
+        this.applyConfigViewMode();
+        btns.forEach(btn => {
+            if (btn.hasAttribute('data-initialized')) return;
+            btn.setAttribute('data-initialized', 'true');
+            btn.addEventListener('click', () => {
+                const view = btn.dataset.view;
+                if (typeof localStorage !== 'undefined') localStorage.setItem('configViewMode', view);
+                wrapper.classList.remove('config-view-cards', 'config-view-list');
+                wrapper.classList.add(view === 'list' ? 'config-view-list' : 'config-view-cards');
+                btns.forEach(b => b.classList.toggle('active', b.dataset.view === view));
+            });
+        });
+    }
+
     initializeConfigurationButtons() {
         console.log('[BotsManager] ⚙️ Инициализация кнопок конфигурации...');
         
@@ -8510,6 +8543,9 @@ class BotsManager {
                 e.target.value = '';
             });
         }
+
+        // Переключатель вида настроек (Карточки / Списком)
+        this._initConfigViewSwitcher();
         
         // ✅ ОБРАБОТЧИКИ ДЛЯ КНОПОК СОХРАНЕНИЯ ОТДЕЛЬНЫХ БЛОКОВ
         

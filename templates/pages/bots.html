@@ -1043,7 +1043,19 @@
                 <p data-translate="configure_auto_trading_params">Настройте параметры автоматической торговли</p>
             </div>
             
-            <div class="config-sections">
+            <div class="config-view-switcher">
+                <span class="config-view-switcher-label">Вид настроек:</span>
+                <div class="config-view-btns">
+                    <button type="button" class="config-view-btn" data-view="cards" title="Карточки (таблички по блокам)">
+                        <span>📋 Карточки</span>
+                    </button>
+                    <button type="button" class="config-view-btn" data-view="list" title="Списком (строчка — переключатель справа)">
+                        <span>📝 Списком</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="config-sections config-view-cards" id="configViewWrapper">
                 
                 <!-- ═══ БЛОК 1: Основные настройки Auto Bot ═══ -->
                 <div class="config-section">

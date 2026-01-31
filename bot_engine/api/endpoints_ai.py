@@ -254,6 +254,18 @@ def register_ai_endpoints(app):
                 if k in data and data[k] is not None:
                     data[k] = bool(data[k])
 
+            # Мастер-переключатель «Включить AI модули» выключает все AI-настройки
+            if data.get('ai_enabled') is False:
+                _AI_CHILD_FLAGS = (
+                    'anomaly_detection_enabled', 'anomaly_log_enabled', 'lstm_enabled', 'pattern_enabled',
+                    'risk_management_enabled', 'optimal_entry_enabled', 'auto_train_enabled', 'auto_update_data',
+                    'auto_retrain', 'log_predictions', 'log_anomalies', 'log_patterns',
+                    'self_learning_enabled', 'smc_enabled'
+                )
+                for k in _AI_CHILD_FLAGS:
+                    data[k] = False
+                logger.info("[AI_CONFIG] ai_enabled=False → все дочерние AI флаги принудительно выключены")
+
             # Получаем текущие значения для сравнения
             from bot_engine.bot_config import AIConfig, RiskConfig
             old_config = {

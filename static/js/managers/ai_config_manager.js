@@ -90,49 +90,76 @@ class AIConfigManager {
         // Основные настройки
         this.setCheckbox('aiEnabled', config.ai_enabled);
         
-        // Anomaly Detection
-        this.setCheckbox('anomalyDetectionEnabled', config.anomaly_detection_enabled);
-        this.setValue('anomalyBlockThreshold', config.anomaly_block_threshold);
-        this.setCheckbox('anomalyLogEnabled', config.anomaly_log_enabled);
+        const masterOn = Boolean(config.ai_enabled);
+        const childCheckboxIds = this.getChildAICheckboxIds();
         
-        // LSTM Predictor
-        this.setCheckbox('lstmEnabled', config.lstm_enabled);
-        this.setValue('lstmMinConfidence', config.lstm_min_confidence);
-        this.setValue('lstmWeight', config.lstm_weight);
+        if (!masterOn) {
+            // Мастер выключен — в UI показываем все дочерние как выключенные
+            childCheckboxIds.forEach(id => this.setCheckbox(id, false));
+            this.setChildAIInputsEnabled(false);
+        } else {
+            this.setChildAIInputsEnabled(true);
+            // Anomaly Detection
+            this.setCheckbox('anomalyDetectionEnabled', config.anomaly_detection_enabled);
+            this.setValue('anomalyBlockThreshold', config.anomaly_block_threshold);
+            this.setCheckbox('anomalyLogEnabled', config.anomaly_log_enabled);
+            
+            // LSTM Predictor
+            this.setCheckbox('lstmEnabled', config.lstm_enabled);
+            this.setValue('lstmMinConfidence', config.lstm_min_confidence);
+            this.setValue('lstmWeight', config.lstm_weight);
+            
+            // Pattern Recognition
+            this.setCheckbox('patternEnabled', config.pattern_enabled);
+            this.setValue('patternMinConfidence', config.pattern_min_confidence);
+            this.setValue('patternWeight', config.pattern_weight);
+            
+            // Risk Management
+            this.setCheckbox('riskManagementEnabled', config.risk_management_enabled);
+            this.setValue('riskUpdateInterval', config.risk_update_interval);
+            
+            // Optimal Entry Detection
+            this.setCheckbox('optimalEntryEnabled', config.optimal_entry_enabled);
+            // Самообучение AI
+            this.setCheckbox('selfLearningEnabled', config.self_learning_enabled);
+            // Smart Money Concepts
+            this.setCheckbox('smcEnabled', config.smc_enabled !== false);
+            this.updateSmcStatusText();
+            // Auto Training
+            this.setCheckbox('autoTrainEnabled', config.auto_train_enabled);
+            this.setCheckbox('autoUpdateData', config.auto_update_data);
+            this.setValue('dataUpdateInterval', config.data_update_interval);
+            this.setCheckbox('autoRetrain', config.auto_retrain);
+            this.setValue('retrainInterval', config.retrain_interval);
+            this.setValue('retrainHour', config.retrain_hour);
+            // Logging
+            this.setCheckbox('logPredictions', config.log_predictions);
+            this.setCheckbox('logAnomalies', config.log_anomalies);
+            this.setCheckbox('logPatterns', config.log_patterns);
+        }
         
-        // Pattern Recognition
-        this.setCheckbox('patternEnabled', config.pattern_enabled);
-        this.setValue('patternMinConfidence', config.pattern_min_confidence);
-        this.setValue('patternWeight', config.pattern_weight);
-        
-        // Risk Management
-        this.setCheckbox('riskManagementEnabled', config.risk_management_enabled);
-        this.setValue('riskUpdateInterval', config.risk_update_interval);
-        
-        // Optimal Entry Detection
-        this.setCheckbox('optimalEntryEnabled', config.optimal_entry_enabled);
-
-        // Самообучение AI
-        this.setCheckbox('selfLearningEnabled', config.self_learning_enabled);
-
-        // Smart Money Concepts (можно выключить на минутках)
-        this.setCheckbox('smcEnabled', config.smc_enabled !== false);
-        this.updateSmcStatusText();
-        
-        // Auto Training
-        this.setCheckbox('autoTrainEnabled', config.auto_train_enabled);
-        this.setCheckbox('autoUpdateData', config.auto_update_data);
-        this.setValue('dataUpdateInterval', config.data_update_interval);
-        this.setCheckbox('autoRetrain', config.auto_retrain);
-        this.setValue('retrainInterval', config.retrain_interval);
-        this.setValue('retrainHour', config.retrain_hour);
-        
-        // Logging
-        this.setCheckbox('logPredictions', config.log_predictions);
-        this.setCheckbox('logAnomalies', config.log_anomalies);
-        this.setCheckbox('logPatterns', config.log_patterns);
+        if (masterOn) {
+            this.updateSmcStatusText();
+        }
         
         console.log('[AIConfigManager] ✅ Форма заполнена');
+    }
+    
+    /** ID чекбоксов дочерних AI-настроек (все выключаются при выключении мастер-переключателя) */
+    getChildAICheckboxIds() {
+        return [
+            'anomalyDetectionEnabled', 'anomalyLogEnabled', 'lstmEnabled', 'patternEnabled',
+            'riskManagementEnabled', 'optimalEntryEnabled', 'selfLearningEnabled', 'smcEnabled',
+            'autoTrainEnabled', 'autoUpdateData', 'autoRetrain', 'logPredictions', 'logAnomalies', 'logPatterns'
+        ];
+    }
+    
+    /** Включить/выключить поля ввода в блоке AI (кроме мастер-переключателя) */
+    setChildAIInputsEnabled(enabled) {
+        const section = document.getElementById('aiConfigSection');
+        if (!section) return;
+        const inputs = section.querySelectorAll('input:not(#aiEnabled), select');
+        inputs.forEach(el => { el.disabled = !enabled; });
     }
     
     /**
@@ -147,51 +174,33 @@ class AIConfigManager {
             }
             console.log('[AIConfigManager] 💾 Сохранение AI конфигурации' + (isAutoSave ? ' (авто)' : '') + '...');
             
-            // Собираем данные из формы
+            const masterOn = this.getCheckbox('aiEnabled');
+            // При выключенном мастер-переключателе все AI-флаги отправляем как false
             const configData = {
-                // Основные
-                ai_enabled: this.getCheckbox('aiEnabled'),
-                
-                // Anomaly Detection
-                anomaly_detection_enabled: this.getCheckbox('anomalyDetectionEnabled'),
+                ai_enabled: masterOn,
+                anomaly_detection_enabled: masterOn && this.getCheckbox('anomalyDetectionEnabled'),
                 anomaly_block_threshold: parseFloat(this.getValue('anomalyBlockThreshold')),
-                anomaly_log_enabled: this.getCheckbox('anomalyLogEnabled'),
-                
-                // LSTM Predictor
-                lstm_enabled: this.getCheckbox('lstmEnabled'),
+                anomaly_log_enabled: masterOn && this.getCheckbox('anomalyLogEnabled'),
+                lstm_enabled: masterOn && this.getCheckbox('lstmEnabled'),
                 lstm_min_confidence: parseFloat(this.getValue('lstmMinConfidence')),
                 lstm_weight: parseFloat(this.getValue('lstmWeight')),
-                
-                // Pattern Recognition
-                pattern_enabled: this.getCheckbox('patternEnabled'),
+                pattern_enabled: masterOn && this.getCheckbox('patternEnabled'),
                 pattern_min_confidence: parseFloat(this.getValue('patternMinConfidence')),
                 pattern_weight: parseFloat(this.getValue('patternWeight')),
-                
-                // Risk Management
-                risk_management_enabled: this.getCheckbox('riskManagementEnabled'),
+                risk_management_enabled: masterOn && this.getCheckbox('riskManagementEnabled'),
                 risk_update_interval: parseInt(this.getValue('riskUpdateInterval')),
-                
-                // Optimal Entry Detection
-                optimal_entry_enabled: this.getCheckbox('optimalEntryEnabled'),
-
-                // Самообучение AI
-                self_learning_enabled: this.getCheckbox('selfLearningEnabled'),
-
-                // Smart Money Concepts
-                smc_enabled: this.getCheckbox('smcEnabled'),
-                
-                // Auto Training
-                auto_train_enabled: this.getCheckbox('autoTrainEnabled'),
-                auto_update_data: this.getCheckbox('autoUpdateData'),
+                optimal_entry_enabled: masterOn && this.getCheckbox('optimalEntryEnabled'),
+                self_learning_enabled: masterOn && this.getCheckbox('selfLearningEnabled'),
+                smc_enabled: masterOn && this.getCheckbox('smcEnabled'),
+                auto_train_enabled: masterOn && this.getCheckbox('autoTrainEnabled'),
+                auto_update_data: masterOn && this.getCheckbox('autoUpdateData'),
                 data_update_interval: parseInt(this.getValue('dataUpdateInterval')),
-                auto_retrain: this.getCheckbox('autoRetrain'),
+                auto_retrain: masterOn && this.getCheckbox('autoRetrain'),
                 retrain_interval: parseInt(this.getValue('retrainInterval')),
                 retrain_hour: parseInt(this.getValue('retrainHour')),
-                
-                // Logging
-                log_predictions: this.getCheckbox('logPredictions'),
-                log_anomalies: this.getCheckbox('logAnomalies'),
-                log_patterns: this.getCheckbox('logPatterns')
+                log_predictions: masterOn && this.getCheckbox('logPredictions'),
+                log_anomalies: masterOn && this.getCheckbox('logAnomalies'),
+                log_patterns: masterOn && this.getCheckbox('logPatterns')
             };
             
             console.log('[AIConfigManager] Данные для сохранения:', configData);
@@ -341,6 +350,25 @@ class AIConfigManager {
      * Привязка событий
      */
     bindEvents() {
+        // Мастер-переключатель «Включить AI модули»: при выключении — сброс всех дочерних и блокировка полей
+        const masterToggle = document.getElementById('aiEnabled');
+        if (masterToggle) {
+            masterToggle.addEventListener('change', () => {
+                if (this.isProgrammaticChange) return;
+                const masterOn = masterToggle.checked;
+                this.setChildAIInputsEnabled(masterOn);
+                if (!masterOn) {
+                    this.isProgrammaticChange = true;
+                    this.getChildAICheckboxIds().forEach(id => this.setCheckbox(id, false));
+                    this.updateSmcStatusText();
+                    this.isProgrammaticChange = false;
+                    this.scheduleAutoSave();
+                } else {
+                    this.scheduleAutoSave();
+                }
+            });
+        }
+
         // Кнопка сохранения AI настроек
         const saveBtn = document.querySelector('.config-section-save-btn[data-section="ai"]');
         if (saveBtn) {
