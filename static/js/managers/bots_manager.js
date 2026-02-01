@@ -3372,7 +3372,7 @@ class BotsManager {
                 btn.disabled = true;
                 btn.innerHTML = '<span>⏳ Расчёт для всех монет...</span>';
             }
-            this.showNotification('🧠 Расчёт ExitScam для всех монет...', 'info');
+            this.showNotification('🧠 Расчёт индивидуального ExitScam для всех монет...', 'info');
             const exitScamTfEl = document.getElementById('exitScamTimeframe');
             const currentTf = exitScamTfEl?.value || this.cachedAutoBotConfig?.exit_scam_timeframe || '6h';
             const response = await fetch(
@@ -3388,7 +3388,7 @@ class BotsManager {
                 const u = data.updated_count || 0;
                 const f = data.failed_count || 0;
                 this.showNotification(
-                    `✅ ExitScam для всех: обновлено ${u} монет, без данных/ошибок: ${f}`,
+                    `✅ Индивидуальный ExitScam для всех: обновлено ${u} монет, без данных/ошибок: ${f}`,
                     'success'
                 );
             } else {
@@ -4216,7 +4216,7 @@ class BotsManager {
         if (learnExitScamBtn) {
             learnExitScamBtn.addEventListener('click', () => this.learnExitScamForCoin());
         }
-        // Кнопка «ExitScam для всех монет» — расчёт по всем монетам вручную
+        // Кнопка «Индивидуальный ExitScam для всех монет» — расчёт по истории для каждой монеты
         const learnExitScamAllBtn = document.getElementById('learnExitScamForAllCoinsBtn');
         if (learnExitScamAllBtn) {
             learnExitScamAllBtn.addEventListener('click', () => this.learnExitScamForAllCoins());
