@@ -42,6 +42,8 @@ class BotsManager {
         // Автосохранение конфигурации - таймер для debounce
         this.autoSaveTimer = null;
         this.autoSaveDelay = 2000; // 2 секунды
+        this.toggleAutoSaveTimer = null;
+        this.toggleAutoSaveDelay = 400;
         // Флаг для предотвращения автосохранения при программном изменении полей
         this.isProgrammaticChange = false;
         this.aiConfigDirty = false;
@@ -6105,7 +6107,7 @@ class BotsManager {
                 console.log('[BotsManager] 🎯 Область действия изменена на:', value, '(было:', oldValue + ')');
                 console.log('[BotsManager] 🔍 Проверка: autoBotScope.value =', scopeInput.value);
                 
-                if (oldValue !== value) this.updateFloatingSaveButtonVisibility();
+                if (oldValue !== value) this.scheduleToggleAutoSave(scopeInput);
             });
         });
         
@@ -8879,12 +8881,37 @@ class BotsManager {
         if (limitOrdersToggle && !limitOrdersToggle.hasAttribute('data-autosave-initialized')) {
             limitOrdersToggle.setAttribute('data-autosave-initialized', 'true');
             limitOrdersToggle.addEventListener('change', () => {
-                if (!this.isProgrammaticChange) this.updateFloatingSaveButtonVisibility();
+                if (!this.isProgrammaticChange) this.scheduleToggleAutoSave(limitOrdersToggle);
             });
             console.log('[BotsManager] ✅ Обработчик автосохранения добавлен для toggle лимитных ордеров');
         }
     }
     
+    /**
+     * Автосохранение при изменении переключателя (checkbox/select) — без нажатия кнопки
+     */
+    scheduleToggleAutoSave(input) {
+        if (this.toggleAutoSaveTimer) clearTimeout(this.toggleAutoSaveTimer);
+        const self = this;
+        this.toggleAutoSaveTimer = setTimeout(async () => {
+            self.toggleAutoSaveTimer = null;
+            try {
+                if (input && input.closest('#aiConfigSection')) {
+                    if (window.aiConfigManager && typeof window.aiConfigManager.saveAIConfig === 'function') {
+                        await window.aiConfigManager.saveAIConfig(false, false);
+                    }
+                    self.aiConfigDirty = false;
+                } else {
+                    await self.saveConfiguration(false, false);
+                }
+                self.updateFloatingSaveButtonVisibility();
+            } catch (err) {
+                console.error('[BotsManager] Ошибка автосохранения переключателя:', err);
+                self.showNotification('❌ Ошибка сохранения: ' + err.message, 'error');
+            }
+        }, this.toggleAutoSaveDelay);
+    }
+
     /**
      * Добавляет обработчики автосохранения для списка полей
      */
@@ -8918,8 +8945,7 @@ class BotsManager {
             if (input.type === 'checkbox' || input.tagName === 'SELECT') {
                 input.addEventListener('change', () => {
                     if (!this.isProgrammaticChange) {
-                        if (input.closest('#aiConfigSection')) this.aiConfigDirty = true;
-                        this.updateFloatingSaveButtonVisibility();
+                        this.scheduleToggleAutoSave(input);
                     }
                 });
             }

@@ -372,8 +372,7 @@ class AIConfigManager {
                     this.isProgrammaticChange = false;
                 }
                 if (window.botsManager) {
-                    window.botsManager.aiConfigDirty = true;
-                    window.botsManager.updateFloatingSaveButtonVisibility();
+                    window.botsManager.scheduleToggleAutoSave(masterToggle);
                 }
             });
         }
@@ -393,8 +392,7 @@ class AIConfigManager {
             smcCheckbox.addEventListener('change', () => {
                 this.updateSmcStatusText();
                 if (window.botsManager) {
-                    window.botsManager.aiConfigDirty = true;
-                    window.botsManager.updateFloatingSaveButtonVisibility();
+                    window.botsManager.scheduleToggleAutoSave(smcCheckbox);
                 }
             });
         }
@@ -409,8 +407,12 @@ class AIConfigManager {
                 el.setAttribute('data-autosave-bound', 'true');
                 el.addEventListener('change', () => {
                     if (!this.isProgrammaticChange && window.botsManager) {
-                        window.botsManager.aiConfigDirty = true;
-                        window.botsManager.updateFloatingSaveButtonVisibility();
+                        if (el.type === 'checkbox' || el.tagName === 'SELECT') {
+                            window.botsManager.scheduleToggleAutoSave(el);
+                        } else {
+                            window.botsManager.aiConfigDirty = true;
+                            window.botsManager.updateFloatingSaveButtonVisibility();
+                        }
                     }
                 });
                 el.addEventListener('input', () => {
