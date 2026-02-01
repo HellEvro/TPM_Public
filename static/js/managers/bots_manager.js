@@ -4590,7 +4590,7 @@ class BotsManager {
                 this.filtersData = {
                     whitelist: data.config.whitelist || [],
                     blacklist: data.config.blacklist || [],
-                    scope: data.config.scope || 'all'
+                    scope: ['all', 'whitelist', 'blacklist'].includes(data.config.scope) ? data.config.scope : 'all'
                 };
                 
                 this.renderFilters();
@@ -4599,11 +4599,6 @@ class BotsManager {
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка загрузки фильтров:', error);
         }
-    }
-
-    /** Элемент whitelist/blacklist — строка или объект { symbol, added_at?, updated_at? }. */
-    getFilterSymbol(item) {
-        return (item && (typeof item === 'string' ? item : item.symbol)) || '';
     }
 
     renderFilters() {
@@ -4631,18 +4626,14 @@ class BotsManager {
             </div>
         `;
         } else {
-            container.innerHTML = whitelist.map(item => {
-                const symbol = this.getFilterSymbol(item);
-                const dateStr = (item.added_at || item.updated_at) ? ` <span class="filter-item-date">${item.added_at || item.updated_at || ''}</span>` : '';
-                return `
+            container.innerHTML = whitelist.map(symbol => `
                 <div class="filter-item" data-symbol="${symbol}">
-                <span class="filter-item-symbol">${symbol}</span>${dateStr}
+                <span class="filter-item-symbol">${symbol}</span>
                     <button class="filter-item-remove" onclick="window.botsManager.removeFromWhitelist('${symbol}')">
                         ❌ Удалить
                     </button>
             </div>
-        `;
-            }).join('');
+        `).join('');
         }
     }
 
@@ -4667,94 +4658,30 @@ class BotsManager {
             </div>
         `;
         } else {
-            container.innerHTML = blacklist.map(item => {
-                const symbol = this.getFilterSymbol(item);
-                const dateStr = (item.added_at || item.updated_at) ? ` <span class="filter-item-date">${item.added_at || item.updated_at || ''}</span>` : '';
-                return `
+            container.innerHTML = blacklist.map(symbol => `
                 <div class="filter-item" data-symbol="${symbol}">
-                    <span class="filter-item-symbol">${symbol}</span>${dateStr}
+                    <span class="filter-item-symbol">${symbol}</span>
                     <button class="filter-item-remove" onclick="window.botsManager.removeFromBlacklist('${symbol}')">
                         ❌ Удалить
                     </button>
             </div>
-        `;
-            }).join('');
+        `).join('');
         }
     }
 
     initializeFilterControls() {
-        // Новый поиск на вкладке фильтров
         const filtersSearchInput = document.getElementById('filtersSearchInput');
         if (filtersSearchInput) {
             filtersSearchInput.addEventListener('input', (e) => {
                 this.performFiltersSearch(e.target.value);
             });
         }
-        // Выгрузка / загрузка списков в JSON
-        const exportBtn = document.getElementById('exportFiltersJsonBtn');
-        const importBtn = document.getElementById('importFiltersJsonBtn');
-        const importInput = document.getElementById('importFiltersJsonInput');
-        if (exportBtn) {
-            exportBtn.addEventListener('click', () => this.exportFiltersToJson());
-        }
-        if (importBtn && importInput) {
-            importBtn.addEventListener('click', () => importInput.click());
-            importInput.addEventListener('change', (e) => {
-                const file = e.target.files && e.target.files[0];
-                if (file) {
-                    this.importFiltersFromJson(file);
-                    e.target.value = '';
-                }
-            });
-        }
-    }
-
-    /**
-     * Выгружает списки фильтров (белый, чёрный) и scope в JSON файл и предлагает скачать.
-     */
-    exportFiltersToJson() {
-        const w = this.filtersData?.whitelist || [];
-        const b = this.filtersData?.blacklist || [];
-        const scope = this.filtersData?.scope || 'all';
-        const payload = { whitelist: w, blacklist: b, scope };
-        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        const iso = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-');
-        a.download = `coin_filters_${iso}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        if (window.toastManager) {
-            const msg = this.translate('export_filters_success') || `Выгружено: белый ${w.length}, чёрный ${b.length}`;
-            this.showNotification(msg, 'success');
-        }
-    }
-
-    /**
-     * Загружает списки фильтров из выбранного JSON файла и отправляет на сервер.
-     * @param {File} file - файл .json с полями whitelist, blacklist, scope (опционально)
-     */
-    async importFiltersFromJson(file) {
-        try {
-            const text = await file.text();
-            const data = JSON.parse(text);
-            const whitelist = Array.isArray(data.whitelist) ? data.whitelist : [];
-            const blacklist = Array.isArray(data.blacklist) ? data.blacklist : [];
-            const scope = ['all', 'whitelist', 'blacklist'].includes(data.scope) ? data.scope : 'all';
-            await this.updateFilters({ whitelist, blacklist, scope });
-            if (window.toastManager) {
-                const msg = this.translate('import_filters_success') || `Загружено: белый ${whitelist.length}, чёрный ${blacklist.length}`;
-                this.showNotification(msg, 'success');
-            }
-        } catch (err) {
-            console.error('[BotsManager] Ошибка загрузки JSON фильтров:', err);
-            if (window.toastManager) {
-                this.showNotification(this.translate('import_filters_error') || 'Неверный формат JSON файла', 'error');
-            } else {
-                alert(this.translate('import_filters_error') || 'Неверный формат JSON файла');
-            }
-        }
+        const exportBtn = document.getElementById('exportFiltersBtn');
+        const importBtn = document.getElementById('importFiltersBtn');
+        const importFile = document.getElementById('importFiltersFile');
+        if (exportBtn) exportBtn.addEventListener('click', () => this.exportFiltersToJson());
+        if (importBtn) importBtn.addEventListener('click', () => importFile && importFile.click());
+        if (importFile) importFile.addEventListener('change', (e) => { this.importFiltersFromJson(e.target.files[0]); e.target.value = ''; });
     }
     async addToWhitelist() {
         const input = document.getElementById('whitelistInput');
@@ -4771,14 +4698,13 @@ class BotsManager {
         
         // Проверяем что монеты еще нет в списке
         const whitelist = this.filtersData?.whitelist || [];
-        if (whitelist.some(x => this.getFilterSymbol(x) === symbol)) {
+        if (whitelist.includes(symbol)) {
             this.showNotification('⚠️ Монета уже в белом списке', 'warning');
             return;
         }
         
         try {
-            const now = new Date().toISOString();
-            whitelist.push({ symbol, added_at: now, updated_at: now });
+            whitelist.push(symbol);
             await this.updateFilters({ whitelist });
             input.value = '';
             this.showNotification(`✅ ${symbol} добавлена в белый список`, 'success');
@@ -4803,14 +4729,13 @@ class BotsManager {
 
         // Проверяем что монеты еще нет в списке
         const blacklist = this.filtersData?.blacklist || [];
-        if (blacklist.some(x => this.getFilterSymbol(x) === symbol)) {
+        if (blacklist.includes(symbol)) {
             this.showNotification('⚠️ Монета уже в черном списке', 'warning');
             return;
         }
 
         try {
-            const now = new Date().toISOString();
-            blacklist.push({ symbol, added_at: now, updated_at: now });
+            blacklist.push(symbol);
             await this.updateFilters({ blacklist });
         input.value = '';
             this.showNotification(`✅ ${symbol} добавлена в черный список`, 'success');
@@ -4822,7 +4747,7 @@ class BotsManager {
 
     async removeFromWhitelist(symbol) {
         try {
-            const whitelist = (this.filtersData?.whitelist || []).filter(x => this.getFilterSymbol(x) !== symbol);
+            const whitelist = (this.filtersData?.whitelist || []).filter(s => s !== symbol);
             await this.updateFilters({ whitelist });
             this.showNotification(`✅ ${symbol} удалена из белого списка`, 'success');
         } catch (error) {
@@ -4833,7 +4758,7 @@ class BotsManager {
 
     async removeFromBlacklist(symbol) {
         try {
-            const blacklist = (this.filtersData?.blacklist || []).filter(x => this.getFilterSymbol(x) !== symbol);
+            const blacklist = (this.filtersData?.blacklist || []).filter(s => s !== symbol);
             await this.updateFilters({ blacklist });
             this.showNotification(`✅ ${symbol} удалена из черного списка`, 'success');
         } catch (error) {
@@ -4842,49 +4767,42 @@ class BotsManager {
         }
     }
 
-    async clearWhitelist() {
-        const whitelist = this.filtersData?.whitelist || [];
-        if (whitelist.length === 0) {
-            this.showNotification('ℹ️ Белый список уже пуст', 'info');
-            return;
-        }
-        
-        const currentLang = document.documentElement.lang || 'ru';
-        const confirmMsg = TRANSLATIONS[currentLang]?.clear_whitelist_confirm || `Удалить все ${whitelist.length} монет из белого списка?`;
-        
-        if (!confirm(confirmMsg)) {
-            return;
-        }
-        
-        try {
-            await this.updateFilters({ whitelist: [] });
-            this.showNotification(`✅ Белый список очищен (${whitelist.length} монет удалено)`, 'success');
-        } catch (error) {
-            console.error('[BotsManager] ❌ Ошибка очистки белого списка:', error);
-            this.showNotification('❌ Ошибка очистки белого списка', 'error');
-        }
+    exportFiltersToJson() {
+        const w = this.filtersData?.whitelist || [];
+        const b = this.filtersData?.blacklist || [];
+        const scope = this.filtersData?.scope || 'all';
+        const payload = { whitelist: w, blacklist: b, scope };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const iso = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-');
+        a.download = 'coin_filters_' + iso + '.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        this.showNotification('Списки выгружены в JSON', 'success');
     }
 
-    async clearBlacklist() {
-        const blacklist = this.filtersData?.blacklist || [];
-        if (blacklist.length === 0) {
-            this.showNotification('ℹ️ Черный список уже пуст', 'info');
+    async importFiltersFromJson(file) {
+        if (!file) return;
+        if (!this.serviceOnline) {
+            this.showNotification('Сервис ботов недоступен. Запустите bots.py', 'error');
             return;
         }
-        
-        const currentLang = document.documentElement.lang || 'ru';
-        const confirmMsg = TRANSLATIONS[currentLang]?.clear_blacklist_confirm || `Удалить все ${blacklist.length} монет из черного списка?`;
-        
-        if (!confirm(confirmMsg)) {
-            return;
-        }
-        
         try {
-            await this.updateFilters({ blacklist: [] });
-            this.showNotification(`✅ Черный список очищен (${blacklist.length} монет удалено)`, 'success');
-        } catch (error) {
-            console.error('[BotsManager] ❌ Ошибка очистки черного списка:', error);
-            this.showNotification('❌ Ошибка очистки черного списка', 'error');
+            const text = await file.text();
+            const data = JSON.parse(text);
+            const w = Array.isArray(data.whitelist) ? data.whitelist : [];
+            const b = Array.isArray(data.blacklist) ? data.blacklist : [];
+            const scope = ['all', 'whitelist', 'blacklist'].includes(data.scope) ? data.scope : 'all';
+            const toSymbols = (arr) => arr.map(x => typeof x === 'string' ? x.trim().toUpperCase() : (x && x.symbol ? String(x.symbol).trim().toUpperCase() : '')).filter(Boolean);
+            const whitelist = [...new Set(toSymbols(w))];
+            const blacklist = [...new Set(toSymbols(b))];
+            await this.updateFilters({ whitelist, blacklist, scope });
+            this.showNotification('Списки загружены из JSON в БД', 'success');
+        } catch (err) {
+            console.error('[BotsManager] Ошибка импорта фильтров:', err);
+            this.showNotification('Ошибка: неверный формат JSON или чтение файла', 'error');
         }
     }
 
@@ -4905,7 +4823,7 @@ class BotsManager {
             this.filtersData.scope = updates.scope;
         }
         
-        // Отправляем на сервер
+        // Отправляем на сервер (в БД через API)
         const response = await fetch(`${this.apiUrl}/auto-bot`, {
             method: 'POST',
             headers: {
@@ -5045,10 +4963,10 @@ class BotsManager {
 
         statusText.className = 'filter-status-text';
 
-        if (blacklist.some(x => this.getFilterSymbol(x) === symbol)) {
+        if (blacklist.includes(symbol)) {
             statusText.textContent = '🔴 В черном списке';
             statusText.classList.add('in-blacklist');
-        } else if (whitelist.some(x => this.getFilterSymbol(x) === symbol)) {
+        } else if (whitelist.includes(symbol)) {
             statusText.textContent = '🟢 В белом списке';
             statusText.classList.add('in-whitelist');
         } else {
@@ -5070,19 +4988,17 @@ class BotsManager {
         const whitelist = this.filtersData?.whitelist || [];
         const blacklist = this.filtersData?.blacklist || [];
 
-        // Если уже в белом списке — сообщаем и подсвечиваем
-        if (whitelist.some(x => this.getFilterSymbol(x) === symbol)) {
-            this.showNotification('⚠️ Монета уже в белом списке', 'warning');
+        // Если уже в белом списке - подсвечиваем
+        if (whitelist.includes(symbol)) {
             this.highlightFilterStatus(symbol, 'whitelist');
             return;
         }
 
         try {
-            const now = new Date().toISOString();
-            whitelist.push({ symbol, added_at: now, updated_at: now });
+            whitelist.push(symbol);
             
             // УБИРАЕМ ИЗ ЧЕРНОГО СПИСКА если там была
-            const newBlacklist = blacklist.filter(x => this.getFilterSymbol(x) !== symbol);
+            const newBlacklist = blacklist.filter(s => s !== symbol);
             
             await this.updateFilters({ 
                 whitelist: whitelist,
@@ -5109,19 +5025,17 @@ class BotsManager {
         const whitelist = this.filtersData?.whitelist || [];
         const blacklist = this.filtersData?.blacklist || [];
 
-        // Если уже в черном списке — сообщаем и подсвечиваем
-        if (blacklist.some(x => this.getFilterSymbol(x) === symbol)) {
-            this.showNotification('⚠️ Монета уже в черном списке', 'warning');
+        // Если уже в черном списке - подсвечиваем
+        if (blacklist.includes(symbol)) {
             this.highlightFilterStatus(symbol, 'blacklist');
             return;
         }
 
         try {
-            const now = new Date().toISOString();
-            blacklist.push({ symbol, added_at: now, updated_at: now });
+            blacklist.push(symbol);
             
             // УБИРАЕМ ИЗ БЕЛОГО СПИСКА если там была
-            const newWhitelist = whitelist.filter(x => this.getFilterSymbol(x) !== symbol);
+            const newWhitelist = whitelist.filter(s => s !== symbol);
             
             await this.updateFilters({ 
                 whitelist: newWhitelist,
@@ -5150,8 +5064,8 @@ class BotsManager {
 
         try {
             // Удаляем из обоих списков
-            const newWhitelist = whitelist.filter(x => this.getFilterSymbol(x) !== symbol);
-            const newBlacklist = blacklist.filter(x => this.getFilterSymbol(x) !== symbol);
+            const newWhitelist = whitelist.filter(s => s !== symbol);
+            const newBlacklist = blacklist.filter(s => s !== symbol);
             
             await this.updateFilters({ 
                 whitelist: newWhitelist,
@@ -5210,15 +5124,14 @@ class BotsManager {
             const whitelist = this.filtersData?.whitelist || [];
             const newCoins = this.foundCoins
                 .map(coin => coin.symbol)
-                .filter(symbol => !whitelist.some(x => this.getFilterSymbol(x) === symbol));
+                .filter(symbol => !whitelist.includes(symbol));
 
             if (newCoins.length === 0) {
                 this.showNotification('⚠️ Все найденные монеты уже в белом списке', 'warning');
                 return;
             }
 
-            const now = new Date().toISOString();
-            newCoins.forEach(sym => whitelist.push({ symbol: sym, added_at: now, updated_at: now }));
+            whitelist.push(...newCoins);
             await this.updateFilters({ whitelist });
             
             // Очищаем поиск
@@ -5244,15 +5157,14 @@ class BotsManager {
             const blacklist = this.filtersData?.blacklist || [];
             const newCoins = this.foundCoins
                 .map(coin => coin.symbol)
-                .filter(symbol => !blacklist.some(x => this.getFilterSymbol(x) === symbol));
+                .filter(symbol => !blacklist.includes(symbol));
 
             if (newCoins.length === 0) {
                 this.showNotification('⚠️ Все найденные монеты уже в черном списке', 'warning');
                 return;
             }
 
-            const now = new Date().toISOString();
-            newCoins.forEach(sym => blacklist.push({ symbol: sym, added_at: now, updated_at: now }));
+            blacklist.push(...newCoins);
             await this.updateFilters({ blacklist });
             
             // Очищаем поиск
@@ -5316,8 +5228,8 @@ class BotsManager {
         const blacklist = this.filtersData?.blacklist || [];
 
         const resultsHtml = coins.map(coin => {
-            const inWhitelist = whitelist.some(x => this.getFilterSymbol(x) === coin.symbol);
-            const inBlacklist = blacklist.some(x => this.getFilterSymbol(x) === coin.symbol);
+            const inWhitelist = whitelist.includes(coin.symbol);
+            const inBlacklist = blacklist.includes(coin.symbol);
             const inAnyList = inWhitelist || inBlacklist;
             
             let statusHtml = '';
@@ -5369,19 +5281,17 @@ class BotsManager {
         const whitelist = this.filtersData?.whitelist || [];
         const blacklist = this.filtersData?.blacklist || [];
 
-        // Если уже в белом списке — сообщаем и подсвечиваем
-        if (whitelist.some(x => this.getFilterSymbol(x) === symbol)) {
-            this.showNotification('⚠️ Монета уже в белом списке', 'warning');
+        // Если уже в белом списке - подсвечиваем
+        if (whitelist.includes(symbol)) {
             this.highlightStatus(symbol, 'whitelist');
             return;
         }
 
         try {
-            const now = new Date().toISOString();
-            whitelist.push({ symbol, added_at: now, updated_at: now });
+            whitelist.push(symbol);
             
             // УБИРАЕМ ИЗ ЧЕРНОГО СПИСКА если там была
-            const newBlacklist = blacklist.filter(x => this.getFilterSymbol(x) !== symbol);
+            const newBlacklist = blacklist.filter(s => s !== symbol);
             
             await this.updateFilters({ 
                 whitelist: whitelist,
@@ -5410,19 +5320,17 @@ class BotsManager {
         const whitelist = this.filtersData?.whitelist || [];
         const blacklist = this.filtersData?.blacklist || [];
 
-        // Если уже в черном списке — сообщаем и подсвечиваем
-        if (blacklist.some(x => this.getFilterSymbol(x) === symbol)) {
-            this.showNotification('⚠️ Монета уже в черном списке', 'warning');
+        // Если уже в черном списке - подсвечиваем
+        if (blacklist.includes(symbol)) {
             this.highlightStatus(symbol, 'blacklist');
             return;
         }
 
         try {
-            const now = new Date().toISOString();
-            blacklist.push({ symbol, added_at: now, updated_at: now });
+            blacklist.push(symbol);
             
             // УБИРАЕМ ИЗ БЕЛОГО СПИСКА если там была
-            const newWhitelist = whitelist.filter(x => this.getFilterSymbol(x) !== symbol);
+            const newWhitelist = whitelist.filter(s => s !== symbol);
             
             await this.updateFilters({ 
                 whitelist: newWhitelist,
@@ -5457,15 +5365,15 @@ class BotsManager {
 
         try {
             // Удаляем из белого списка если там есть
-            if (whitelist.some(x => this.getFilterSymbol(x) === symbol)) {
-                const newWhitelist = whitelist.filter(x => this.getFilterSymbol(x) !== symbol);
+            if (whitelist.includes(symbol)) {
+                const newWhitelist = whitelist.filter(s => s !== symbol);
                 await this.updateFilters({ whitelist: newWhitelist });
                 removed = true;
                 listType = 'белого списка';
             }
             // Удаляем из черного списка если там есть  
-            else if (blacklist.some(x => this.getFilterSymbol(x) === symbol)) {
-                const newBlacklist = blacklist.filter(x => this.getFilterSymbol(x) !== symbol);
+            else if (blacklist.includes(symbol)) {
+                const newBlacklist = blacklist.filter(s => s !== symbol);
                 await this.updateFilters({ blacklist: newBlacklist });
                 removed = true;
                 listType = 'черного списка';
@@ -7502,16 +7410,14 @@ class BotsManager {
         }
     }
     
-    /**
-     * Сохраняет весь блок: торговые параметры и RSI выходы (объединённая кнопка)
-     */
-    async saveTradingAndRsiExits() {
-        console.log('[BotsManager] 💾 Сохранение торговых параметров и RSI выходов...');
+    async saveTradingParameters() {
+        console.log('[BotsManager] 💾 Сохранение торговых параметров...');
         try {
             const config = this.collectConfigurationData();
-            const params = {
+            const tradingParams = {
                 rsi_long_threshold: config.autoBot.rsi_long_threshold,
                 rsi_short_threshold: config.autoBot.rsi_short_threshold,
+                // ✅ Новые параметры RSI выхода с учетом тренда
                 rsi_exit_long_with_trend: config.autoBot.rsi_exit_long_with_trend,
                 rsi_exit_long_against_trend: config.autoBot.rsi_exit_long_against_trend,
                 rsi_exit_short_with_trend: config.autoBot.rsi_exit_short_with_trend,
@@ -7520,13 +7426,34 @@ class BotsManager {
                 default_position_mode: config.autoBot.default_position_mode,
                 leverage: config.autoBot.leverage,
                 check_interval: config.autoBot.check_interval,
+                // Торговые настройки (перенесены из отдельного блока)
                 trading_enabled: config.autoBot.trading_enabled,
                 use_test_server: config.autoBot.use_test_server
             };
-            await this.sendConfigUpdate('auto-bot', params, 'Торговые параметры и RSI выходы');
+            
+            await this.sendConfigUpdate('auto-bot', tradingParams, 'Торговые параметры');
         } catch (error) {
-            console.error('[BotsManager] ❌ Ошибка сохранения:', error);
-            this.showNotification('❌ Ошибка сохранения торговых параметров и RSI выходов', 'error');
+            console.error('[BotsManager] ❌ Ошибка сохранения торговых параметров:', error);
+            this.showNotification('❌ Ошибка сохранения торговых параметров', 'error');
+        }
+    }
+    
+    async saveRsiExits() {
+        console.log('[BotsManager] 💾 Сохранение RSI выходов...');
+        try {
+            const config = this.collectConfigurationData();
+            const rsiExits = {
+                // ✅ Новые параметры RSI выхода с учетом тренда
+                rsi_exit_long_with_trend: config.autoBot.rsi_exit_long_with_trend,
+                rsi_exit_long_against_trend: config.autoBot.rsi_exit_long_against_trend,
+                rsi_exit_short_with_trend: config.autoBot.rsi_exit_short_with_trend,
+                rsi_exit_short_against_trend: config.autoBot.rsi_exit_short_against_trend
+            };
+            
+            await this.sendConfigUpdate('auto-bot', rsiExits, 'RSI выходы');
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка сохранения RSI выходов:', error);
+            this.showNotification('❌ Ошибка сохранения RSI выходов', 'error');
         }
     }
     
@@ -8746,12 +8673,20 @@ class BotsManager {
             console.log('[BotsManager] ✅ Кнопка "Сохранить системные настройки" инициализирована');
         }
         
-        // Торговые параметры и RSI выходы (объединённая кнопка)
-        const saveTradingRsiBtn = document.querySelector('.config-section-save-btn[data-section="trading-rsi"]');
-        if (saveTradingRsiBtn && !saveTradingRsiBtn.hasAttribute('data-initialized')) {
-            saveTradingRsiBtn.setAttribute('data-initialized', 'true');
-            saveTradingRsiBtn.addEventListener('click', () => this.saveTradingAndRsiExits());
-            console.log('[BotsManager] ✅ Кнопка "Сохранить торговые параметры и RSI выходы" инициализирована');
+        // Торговые параметры
+        const saveTradingBtn = document.querySelector('.config-section-save-btn[data-section="trading"]');
+        if (saveTradingBtn && !saveTradingBtn.hasAttribute('data-initialized')) {
+            saveTradingBtn.setAttribute('data-initialized', 'true');
+            saveTradingBtn.addEventListener('click', () => this.saveTradingParameters());
+            console.log('[BotsManager] ✅ Кнопка "Сохранить торговые параметры" инициализирована');
+        }
+        
+        // RSI выходы
+        const saveRsiExitsBtn = document.querySelector('.config-section-save-btn[data-section="rsi-exits"]');
+        if (saveRsiExitsBtn && !saveRsiExitsBtn.hasAttribute('data-initialized')) {
+            saveRsiExitsBtn.setAttribute('data-initialized', 'true');
+            saveRsiExitsBtn.addEventListener('click', () => this.saveRsiExits());
+            console.log('[BotsManager] ✅ Кнопка "Сохранить RSI выходы" инициализирована');
         }
         
         // RSI временной фильтр

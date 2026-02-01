@@ -489,28 +489,35 @@ class AIConfigManager {
 
         // Метрики производительности
         if (performance && !performance.error) {
+            const aiWinRate = performance.ai_win_rate ?? 0;
+            const nonAiWinRate = performance.non_ai_win_rate ?? null;
+            const winRateDiff = performance.win_rate_difference ?? 0;
+            const aiAvgPnl = performance.ai_avg_pnl ?? 0;
+            const nonAiAvgPnl = performance.non_ai_avg_pnl ?? null;
+            const avgPnlDiff = performance.avg_pnl_difference ?? 0;
+
             html += `
                 <div class="self-learning-metrics">
                     <div class="metric-card">
                         <h6>Win Rate AI</h6>
-                        <div class="metric-value ${performance.ai_win_rate > 0.6 ? 'positive' : performance.ai_win_rate > 0.5 ? '' : 'negative'}">
-                            ${(performance.ai_win_rate * 100).toFixed(1)}%
+                        <div class="metric-value ${aiWinRate > 0.6 ? 'positive' : aiWinRate > 0.5 ? '' : 'negative'}">
+                            ${(aiWinRate * 100).toFixed(1)}%
                         </div>
-                        ${performance.non_ai_win_rate ? `
-                            <div class="metric-trend ${performance.win_rate_difference > 0 ? 'positive' : 'negative'}">
-                                vs ${(performance.non_ai_win_rate * 100).toFixed(1)}% (без AI)
+                        ${nonAiWinRate !== null ? `
+                            <div class="metric-trend ${winRateDiff > 0 ? 'positive' : 'negative'}">
+                                vs ${(nonAiWinRate * 100).toFixed(1)}% (без AI)
                             </div>
                         ` : ''}
                     </div>
 
                     <div class="metric-card">
                         <h6>Avg PnL AI</h6>
-                        <div class="metric-value ${performance.ai_avg_pnl > 0 ? 'positive' : 'negative'}">
-                            $${performance.ai_avg_pnl.toFixed(2)}
+                        <div class="metric-value ${aiAvgPnl > 0 ? 'positive' : 'negative'}">
+                            $${aiAvgPnl.toFixed(2)}
                         </div>
-                        ${performance.non_ai_avg_pnl ? `
-                            <div class="metric-trend ${performance.avg_pnl_difference > 0 ? 'positive' : 'negative'}">
-                                vs $${performance.non_ai_avg_pnl.toFixed(2)} (без AI)
+                        ${nonAiAvgPnl !== null ? `
+                            <div class="metric-trend ${avgPnlDiff > 0 ? 'positive' : 'negative'}">
+                                vs $${nonAiAvgPnl.toFixed(2)} (без AI)
                             </div>
                         ` : ''}
                     </div>

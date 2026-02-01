@@ -266,19 +266,20 @@ def cmd_delete(args):
 
 
 def cmd_cleanup(args):
-    """Оставляет для каждой БД только последние keep бэкапов, остальные удаляет."""
+    """Удаляет старые бэкапы"""
     print("=" * 80)
-    print("ОЧИСТКА БЭКАПОВ (оставить по N на каждую БД)")
+    print("ОЧИСТКА СТАРЫХ БЭКАПОВ")
     print("=" * 80)
     print()
-
+    
     service = get_backup_service()
-
-    print(f"Для каждой БД оставляем последние {args.keep} бэкапов, остальные удаляем.")
+    
+    print(f"Удаление бэкапов старше {args.days} дней...")
+    print(f"Сохранение минимум {args.keep} бэкапов каждого типа...")
     print()
-
-    result = service.cleanup_old_backups(keep_count=args.keep)
-
+    
+    result = service.cleanup_old_backups(days=args.days, keep_count=args.keep)
+    
     print()
     print("Результаты очистки:")
     print(f"   AI БД: удалено {result['ai_data']} бэкапов")
@@ -332,7 +333,7 @@ def main():
   python scripts/backup_databases.py list
   python scripts/backup_databases.py restore data/backups/ai_data_20240101_120000.db
   python scripts/backup_databases.py delete data/backups/ai_data_20240101_120000.db
-  python scripts/backup_databases.py cleanup --keep 5
+  python scripts/backup_databases.py cleanup --days 30 --keep 10
   python scripts/backup_databases.py stats
         """
     )
@@ -361,16 +362,9 @@ def main():
     delete_parser.add_argument('--force', action='store_true', help='Удалить без подтверждения')
     
     # Команда cleanup
-    cleanup_parser = subparsers.add_parser(
-        'cleanup',
-        help='Оставить для каждой БД только последние N бэкапов, остальные удалить',
-    )
-    cleanup_parser.add_argument(
-        '--keep',
-        type=int,
-        default=5,
-        help='Сколько последних бэкапов сохранять для каждой БД (по умолчанию: 5)',
-    )
+    cleanup_parser = subparsers.add_parser('cleanup', help='Удалить старые бэкапы')
+    cleanup_parser.add_argument('--days', type=int, default=30, help='Удалять бэкапы старше N дней (по умолчанию: 30)')
+    cleanup_parser.add_argument('--keep', type=int, default=10, help='Минимум бэкапов для сохранения (по умолчанию: 10)')
     
     # Команда stats
     subparsers.add_parser('stats', help='Показать статистику по бэкапам')

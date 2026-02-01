@@ -14,7 +14,7 @@ import os
 import shutil
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 import logging
@@ -496,58 +496,66 @@ class DatabaseBackupService:
             logger.error(f"❌ Ошибка удаления бэкапа: {e}")
             return False
     
-    def cleanup_old_backups(self, keep_count: int = 5) -> Dict[str, int]:
+    def cleanup_old_backups(self, days: int = 30, keep_count: int = 10) -> Dict[str, int]:
         """
-        Оставляет для каждой БД только последние keep_count бэкапов, остальные удаляет.
-
+        Удаляет старые бэкапы
+        
         Args:
-            keep_count: Сколько последних бэкапов сохранять для каждой БД (по умолчанию 5).
-
+            days: Удалять бэкапы старше указанного количества дней
+            keep_count: Минимальное количество бэкапов каждого типа для сохранения
+        
         Returns:
-            Словарь с количеством удаленных бэкапов по типам.
+            Словарь с количеством удаленных бэкапов по типам
         """
         result = {
             'ai_data': 0,
             'bots_data': 0,
             'total': 0
         }
-
+        
         try:
+            cutoff_date = datetime.now() - timedelta(days=days)
             backups = self.list_backups()
-
-            # Группируем только по основным БД (ai_data, bots_data), без before_restore и прочих
+            
+            # Группируем по типу БД
             backups_by_type = {}
             for backup in backups:
                 db_name = backup.get('db_name', 'unknown')
-                if db_name not in ('ai_data', 'bots_data'):
-                    continue
                 if db_name not in backups_by_type:
                     backups_by_type[db_name] = []
                 backups_by_type[db_name].append(backup)
-
+            
+            # Удаляем старые бэкапы
             for db_name, db_backups in backups_by_type.items():
-                # Сортируем по дате: новые первыми
-                db_backups.sort(key=lambda x: x['created_at'], reverse=True)
-
-                # Оставляем только первые keep_count (самые новые), остальные — на удаление
-                to_keep = db_backups[:keep_count]
-                to_delete = db_backups[keep_count:]
-
+                # Сортируем по дате (старые первыми)
+                db_backups.sort(key=lambda x: x['created_at'])
+                
+                # Оставляем последние keep_count бэкапов
+                to_keep = db_backups[-keep_count:] if len(db_backups) > keep_count else []
+                to_delete = []
+                
+                for backup in db_backups:
+                    if backup in to_keep:
+                        continue
+                    
+                    backup_date = datetime.fromisoformat(backup['created_at'])
+                    if backup_date < cutoff_date:
+                        to_delete.append(backup)
+                
+                # Удаляем старые бэкапы
                 for backup in to_delete:
                     if self.delete_backup(backup['path']):
                         result[db_name] = result.get(db_name, 0) + 1
                         result['total'] += 1
-
+            
             if result['total'] > 0:
-                logger.info(
-                    f"🗑️ Удалено лишних бэкапов: {result['total']} (ai_data: {result['ai_data']}, bots_data: {result['bots_data']}), оставлено по {keep_count} на БД"
-                )
+                logger.info(f"🗑️ Удалено старых бэкапов: {result['total']} (AI: {result['ai_data']}, Bots: {result['bots_data']})")
             else:
-                logger.debug("[Backup] Очистка: лишних бэкапов нет")
-
+                logger.info("ℹ️ Старые бэкапы не найдены")
+            
         except Exception as e:
-            logger.error(f"❌ Ошибка очистки бэкапов: {e}")
-
+            logger.error(f"❌ Ошибка очистки старых бэкапов: {e}")
+        
         return result
     
     def get_backup_stats(self) -> Dict[str, Any]:

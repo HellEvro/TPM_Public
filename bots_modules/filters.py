@@ -943,13 +943,10 @@ def get_coin_rsi_data_for_timeframe(symbol, exchange_obj=None, timeframe=None):
         scope = auto_config.get('scope', 'all')
         whitelist = auto_config.get('whitelist', [])
         blacklist = auto_config.get('blacklist', [])
-        # Нормализуем: элементы могут быть строками или объектами { symbol, added_at, updated_at }
-        whitelist_symbols = [item if isinstance(item, str) else item.get('symbol') for item in whitelist if item]
-        blacklist_symbols = [item if isinstance(item, str) else item.get('symbol') for item in blacklist if item]
         is_blocked_by_scope = False
-        if symbol in blacklist_symbols:
+        if symbol in blacklist:
             is_blocked_by_scope = True
-        elif scope == 'whitelist' and symbol not in whitelist_symbols:
+        elif scope == 'whitelist' and symbol not in whitelist:
             is_blocked_by_scope = True
         result['blocked_by_scope'] = is_blocked_by_scope
         if is_blocked_by_scope:
@@ -1124,14 +1121,11 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
         scope = auto_config.get('scope', 'all')
         whitelist = auto_config.get('whitelist', [])
         blacklist = auto_config.get('blacklist', [])
-        # Нормализуем: элементы могут быть строками или объектами { symbol, added_at, updated_at }
-        whitelist_symbols = [item if isinstance(item, str) else item.get('symbol') for item in whitelist if item]
-        blacklist_symbols = [item if isinstance(item, str) else item.get('symbol') for item in blacklist if item]
         
         is_blocked_by_scope = False
-        if symbol in blacklist_symbols:
+        if symbol in blacklist:
             is_blocked_by_scope = True
-        elif scope == 'whitelist' and symbol not in whitelist_symbols:
+        elif scope == 'whitelist' and symbol not in whitelist:
             is_blocked_by_scope = True
         
         # БЕЗ задержки - семафор и ThreadPool уже контролируют rate limit

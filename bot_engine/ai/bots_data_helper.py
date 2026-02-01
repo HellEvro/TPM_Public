@@ -113,7 +113,7 @@ def get_auto_bot_config() -> Optional[Dict[str, Any]]:
     """
     Получает конфигурацию Auto Bot — единый источник для bots.py и ai.py.
     - При запуске bots.py: из bots_data (загружено из bot_engine/bot_config.py).
-    - При отдельном запуске ai.py: fallback на data/coin_filters.json (фильтры), затем на bot_engine/bot_config.py
+    - При отдельном запуске ai.py: fallback на БД (фильтры), затем на bot_engine/bot_config.py
       (DEFAULT_AUTO_BOT_CONFIG), чтобы ExitScam, AI пороги и прочие настройки совпадали с ботами.
     """
     try:
@@ -127,10 +127,11 @@ def get_auto_bot_config() -> Optional[Dict[str, Any]]:
     except Exception as e:
         pass
 
-    # Fallback при отдельном запуске ai.py: загружаем фильтры из файлов data/
+    # Fallback при отдельном запуске ai.py: загружаем из БД (фильтры)
     try:
-        from bot_engine.coin_filters_config import load_coin_filters
-        filters = load_coin_filters()
+        from bot_engine.bots_database import get_bots_database
+        db = get_bots_database()
+        filters = db.load_coin_filters()
         if filters:
             return filters
     except Exception as e:

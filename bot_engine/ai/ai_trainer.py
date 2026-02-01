@@ -142,7 +142,7 @@ def _should_train_on_symbol(symbol: str) -> bool:
     except ImportError:
         auto_config = {}
     if not auto_config:
-        # Fallback при отдельном запуске ai.py: whitelist/blacklist/scope из data/coin_filters.json
+        # Fallback при отдельном запуске ai.py: whitelist/blacklist/scope из БД
         try:
             from bot_engine.ai.bots_data_helper import get_auto_bot_config
             auto_config = get_auto_bot_config() or {}
@@ -156,9 +156,9 @@ def _should_train_on_symbol(symbol: str) -> bool:
     whitelist = auto_config.get('whitelist', []) or []
     blacklist = auto_config.get('blacklist', []) or []
     
-    # Нормализуем списки: элементы могут быть строками или объектами { symbol, added_at, updated_at }
-    whitelist = [(item if isinstance(item, str) else item.get('symbol', '')).upper() for item in whitelist if item]
-    blacklist = [(item if isinstance(item, str) else item.get('symbol', '')).upper() for item in blacklist if item]
+    # Нормализуем списки (верхний регистр)
+    whitelist = [coin.upper() for coin in whitelist if coin]
+    blacklist = [coin.upper() for coin in blacklist if coin]
     
     # Если whitelist не пуст (независимо от scope), обучаемся только на монетах из whitelist
     if whitelist:

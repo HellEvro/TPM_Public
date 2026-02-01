@@ -101,7 +101,6 @@ _DATABASE_BACKUP_DEFAULTS = {
     'BOTS_ENABLED': True,
     'BACKUP_DIR': None,
     'MAX_RETRIES': 3,
-    'KEEP_COUNT': 5,  # для каждой БД хранить только последние N бэкапов, остальные удалять
 }
 
 if 'DATABASE_BACKUP' not in globals() or not isinstance(globals().get('DATABASE_BACKUP'), dict):
@@ -469,20 +468,6 @@ def _run_backup_job(backup_service, backup_config):
 
     for warning_msg in result.get('errors', []):
         backup_logger.warning(f"[Backup] {warning_msg}")
-
-    # Оставляем для каждой БД только последние KEEP_COUNT бэкапов
-    keep_count = backup_config.get('KEEP_COUNT', 5)
-    try:
-        prune_result = backup_service.cleanup_old_backups(keep_count=keep_count)
-        if prune_result.get('total', 0) > 0:
-            backup_logger.info(
-                "[Backup] Очистка: удалено %s бэкапов (ai_data: %s, bots_data: %s)",
-                prune_result['total'],
-                prune_result.get('ai_data', 0),
-                prune_result.get('bots_data', 0),
-            )
-    except Exception as prune_exc:
-        backup_logger.warning("[Backup] Ошибка очистки старых бэкапов: %s", prune_exc)
 
 
 def backup_scheduler_loop():
@@ -1442,50 +1427,49 @@ def get_language():
 
 
 
-# УСТАРЕВШИЙ ENDPOINT - теперь фильтры управляются через /api/bots/auto-bot и coin_filters_config
-# @app.route('/api/blacklist', methods=['POST'])
-# def manage_blacklist():
-#     """Управление черным списком"""
-#     try:
-#         data = request.get_json()
-#         action = data.get('action')
-#         symbol = data.get('symbol')
-#         
-#         if not action or not symbol:
-#             return jsonify({
-#                 'success': False,
-#                 'error': 'Missing required parameters'
-#             }), 400
-#             
-#         blacklist_file = 'data/blacklist.json'
-#         os.makedirs('data', exist_ok=True)
-#         
-#         try:
-#             with open(blacklist_file, 'r') as f:
-#                 blacklist = json.load(f)
-#         except:
-#             blacklist = []
-#             
-#         if action == 'add':
-#             if symbol not in blacklist:
-#                 blacklist.append(symbol)
-#         elif action == 'remove':
-#             if symbol in blacklist:
-#                 blacklist.remove(symbol)
-#                 
-#         with open(blacklist_file, 'w') as f:
-#             json.dump(blacklist, f)
-#             
-#         return jsonify({
-#             'success': True,
-#             'blacklist': blacklist
-#         })
-#         
-#     except Exception as e:
-#         return jsonify({
-#             'success': False,
-#             'error': str(e)
-#         }), 500
+@app.route('/api/blacklist', methods=['POST'])
+def manage_blacklist():
+    """Управление черным списком"""
+    try:
+        data = request.get_json()
+        action = data.get('action')
+        symbol = data.get('symbol')
+        
+        if not action or not symbol:
+            return jsonify({
+                'success': False,
+                'error': 'Missing required parameters'
+            }), 400
+            
+        blacklist_file = 'data/blacklist.json'
+        os.makedirs('data', exist_ok=True)
+        
+        try:
+            with open(blacklist_file, 'r') as f:
+                blacklist = json.load(f)
+        except:
+            blacklist = []
+            
+        if action == 'add':
+            if symbol not in blacklist:
+                blacklist.append(symbol)
+        elif action == 'remove':
+            if symbol in blacklist:
+                blacklist.remove(symbol)
+                
+        with open(blacklist_file, 'w') as f:
+            json.dump(blacklist, f)
+            
+        return jsonify({
+            'success': True,
+            'blacklist': blacklist
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 # Добавляем глобальные переменные для кэширования
 ticker_analysis_cache = {}

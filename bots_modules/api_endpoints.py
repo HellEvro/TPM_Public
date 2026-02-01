@@ -3151,19 +3151,24 @@ def auto_bot_config():
                 else:
                     logger.info(f"[API] ⏭️ Нет изменений: все {len(data)} параметров без изменений")
             
-            # ✅ Сохраняем списки фильтров (белый, чёрный) и scope в data/coin_filters.json
+            # ✅ КРИТИЧЕСКИ ВАЖНО: Сохраняем фильтры (whitelist, blacklist, scope) в БД
+            # И ВАЖНО: scope также должен быть в bots_data['auto_bot_config'] для сохранения в файл!
             filters_saved = False
             try:
-                from bot_engine.coin_filters_config import save_coin_filters
+                from bot_engine.bots_database import get_bots_database
+                db = get_bots_database()
+                
+                # Извлекаем фильтры из data
                 whitelist = data.get('whitelist') if 'whitelist' in data else None
                 blacklist = data.get('blacklist') if 'blacklist' in data else None
                 scope = data.get('scope') if 'scope' in data else None
+                
                 if whitelist is not None or blacklist is not None or scope is not None:
-                    filters_saved = save_coin_filters(whitelist=whitelist, blacklist=blacklist, scope=scope)
+                    filters_saved = db.save_coin_filters(whitelist=whitelist, blacklist=blacklist, scope=scope)
                     if filters_saved:
-                        logger.info(f"✅ Фильтры сохранены в data/: whitelist={len(whitelist) if whitelist else 'не изменен'}, blacklist={len(blacklist) if blacklist else 'не изменен'}, scope={scope if scope else 'не изменен'}")
+                        logger.info(f"✅ Фильтры сохранены в БД: whitelist={len(whitelist) if whitelist else 'не изменен'}, blacklist={len(blacklist) if blacklist else 'не изменен'}, scope={scope if scope else 'не изменен'}")
             except Exception as e:
-                logger.error(f"❌ Ошибка сохранения фильтров в файлы: {e}")
+                logger.error(f"❌ Ошибка сохранения фильтров в БД: {e}")
             
             # ✅ КРИТИЧЕСКИ ВАЖНО: Сохраняем в файл ТОЛЬКО если есть изменения!
             # Если changed_data пустой, не сохраняем и возвращаем сообщение "Нет изменений"

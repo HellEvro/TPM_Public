@@ -971,6 +971,15 @@
             <div class="filters-header">
                 <h2 data-translate="filter_settings_for_auto_bot">Настройки фильтров для Auto Bot</h2>
                 <p data-translate="manage_coin_lists_for_auto_trading">Управляйте списками монет для автоматической торговли</p>
+                <div class="filters-export-import">
+                    <button type="button" id="exportFiltersBtn" class="btn btn-sm btn-outline" title="Скачать списки в JSON">
+                        📤 Выгрузить в JSON
+                    </button>
+                    <button type="button" id="importFiltersBtn" class="btn btn-sm btn-outline" title="Загрузить списки из JSON в БД">
+                        📥 Загрузить из JSON
+                    </button>
+                    <input type="file" id="importFiltersFile" accept=".json" style="display: none;" />
+                </div>
             </div>
             
             <div class="filters-content">
@@ -1001,9 +1010,6 @@
                     <div class="filter-header">
                         <h3 data-translate="white_list_title">🟢 Белый список</h3>
                         <span class="filter-count" id="whitelistCount">0</span>
-                        <button type="button" class="btn btn-danger btn-sm filter-clear-btn" id="clearWhitelistBtn" onclick="window.botsManager.clearWhitelist()" data-translate="clear_all_list" title="Удалить все монеты из белого списка">
-                            🗑️ Удалить все
-                        </button>
                     </div>
                     <div class="filter-description">
                         <span data-translate="white_list_coins_priority">Монеты из белого списка будут приоритетными для Auto Bot</span>
@@ -1021,9 +1027,6 @@
                     <div class="filter-header">
                         <h3 data-translate="black_list_title">🔴 Черный список</h3>
                         <span class="filter-count" id="blacklistCount">0</span>
-                        <button type="button" class="btn btn-danger btn-sm filter-clear-btn" id="clearBlacklistBtn" onclick="window.botsManager.clearBlacklist()" data-translate="clear_all_list" title="Удалить все монеты из черного списка">
-                            🗑️ Удалить все
-                        </button>
                     </div>
                     <div class="filter-description">
                         <span data-translate="black_list_coins_excluded">Монеты из черного списка будут исключены из Auto Bot</span>
@@ -1033,21 +1036,6 @@
                             <p data-translate="black_list_empty_text">Черный список пуст</p>
                             <small data-translate="find_coins_through_search">Найдите монеты через поиск выше</small>
                         </div>
-                    </div>
-                </div>
-
-                <!-- Выгрузка / загрузка списков в JSON -->
-                <div class="filter-export-import-section">
-                    <h3 data-translate="export_import_filters_title">📁 Выгрузка и загрузка списков</h3>
-                    <p class="filter-export-import-desc" data-translate="export_import_filters_desc">Сохраните списки в файл или загрузите из ранее выгруженного JSON</p>
-                    <div class="filter-export-import-btns">
-                        <button type="button" id="exportFiltersJsonBtn" class="btn btn-secondary filter-export-btn" data-translate="export_filters_json" title="Скачать whitelist и blacklist в JSON файл">
-                            📤 Выгрузить в JSON
-                        </button>
-                        <button type="button" id="importFiltersJsonBtn" class="btn btn-secondary filter-import-btn" data-translate="import_filters_json" title="Загрузить списки из JSON файла">
-                            📥 Загрузить из JSON
-                        </button>
-                        <input type="file" id="importFiltersJsonInput" accept=".json,application/json" class="filter-import-file-input" style="display: none;" />
                     </div>
                 </div>
             </div>
@@ -1457,8 +1445,11 @@
                     </div>
                     
                     <div class="config-section-actions">
-                        <button class="btn btn-success config-section-save-btn" data-section="trading-rsi">
-                            <span data-translate="save_trading_rsi_section_btn">💾 Сохранить торговые параметры и RSI выходы</span>
+                        <button class="btn btn-success config-section-save-btn" data-section="trading">
+                            <span data-translate="save_trading_section_btn">💾 Сохранить торговые параметры</span>
+                        </button>
+                        <button class="btn btn-success config-section-save-btn" data-section="rsi-exits">
+                            <span data-translate="save_rsi_exits_section_btn">💾 Сохранить RSI выходы</span>
                         </button>
                     </div>
                 </div>
