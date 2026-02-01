@@ -367,9 +367,10 @@ class AIConfigManager {
                     this.getChildAICheckboxIds().forEach(id => this.setCheckbox(id, false));
                     this.updateSmcStatusText();
                     this.isProgrammaticChange = false;
-                    this.scheduleAutoSave();
-                } else {
-                    this.scheduleAutoSave();
+                }
+                if (window.botsManager) {
+                    window.botsManager.aiConfigDirty = true;
+                    window.botsManager.updateFloatingSaveButtonVisibility();
                 }
             });
         }
@@ -388,7 +389,10 @@ class AIConfigManager {
         if (smcCheckbox) {
             smcCheckbox.addEventListener('change', () => {
                 this.updateSmcStatusText();
-                this.scheduleAutoSave();
+                if (window.botsManager) {
+                    window.botsManager.aiConfigDirty = true;
+                    window.botsManager.updateFloatingSaveButtonVisibility();
+                }
             });
         }
 
@@ -401,10 +405,16 @@ class AIConfigManager {
                 if (el.getAttribute('data-autosave-bound')) return;
                 el.setAttribute('data-autosave-bound', 'true');
                 el.addEventListener('change', () => {
-                    if (!this.isProgrammaticChange) this.scheduleAutoSave();
+                    if (!this.isProgrammaticChange && window.botsManager) {
+                        window.botsManager.aiConfigDirty = true;
+                        window.botsManager.updateFloatingSaveButtonVisibility();
+                    }
                 });
                 el.addEventListener('input', () => {
-                    if (!this.isProgrammaticChange) this.scheduleAutoSave();
+                    if (!this.isProgrammaticChange && window.botsManager) {
+                        window.botsManager.aiConfigDirty = true;
+                        window.botsManager.updateFloatingSaveButtonVisibility();
+                    }
                 });
             });
             console.log('[AIConfigManager] ✅ Автосохранение при изменении полей включено');

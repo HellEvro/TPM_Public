@@ -1851,7 +1851,7 @@ def call_bots_service(endpoint, method='GET', data=None, timeout=10):
     except requests.exceptions.Timeout:
         return {
             'success': False,
-            'error': f'Timeout calling bots service ({timeout}s)',
+            'error': f'Таймаут сервиса ботов ({timeout} сек). Сервис не успел ответить — возможно перегрузка или блокировка. Проверьте, что bots.py запущен и работает.',
             'status_code': 504
         }
     except Exception as e:
@@ -1937,11 +1937,12 @@ def create_bot():
 @app.route('/api/bots/auto-bot', methods=['GET', 'POST'])
 def auto_bot_proxy():
     """Получить конфиг Auto Bot (GET) или обновить (POST) — прокси к сервису ботов."""
+    cfg_timeout = 60  # Таймаут: сохранение конфига может быть долгим
     if request.method == 'GET':
-        result = call_bots_service('/api/bots/auto-bot', method='GET')
+        result = call_bots_service('/api/bots/auto-bot', method='GET', timeout=cfg_timeout)
     else:
         data = request.get_json()
-        result = call_bots_service('/api/bots/auto-bot', method='POST', data=data)
+        result = call_bots_service('/api/bots/auto-bot', method='POST', data=data, timeout=cfg_timeout)
     status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
@@ -2005,11 +2006,12 @@ def export_config():
 @app.route('/api/bots/system-config', methods=['GET', 'POST'])
 def system_config():
     """Системные настройки (прокси к сервису ботов)"""
+    cfg_timeout = 60
     if request.method == 'GET':
-        result = call_bots_service('/api/bots/system-config', method='GET')
+        result = call_bots_service('/api/bots/system-config', method='GET', timeout=cfg_timeout)
     else:
         data = request.get_json()
-        result = call_bots_service('/api/bots/system-config', method='POST', data=data)
+        result = call_bots_service('/api/bots/system-config', method='POST', data=data, timeout=cfg_timeout)
     status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 

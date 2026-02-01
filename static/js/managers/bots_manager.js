@@ -44,6 +44,7 @@ class BotsManager {
         this.autoSaveDelay = 2000; // 2 секунды
         // Флаг для предотвращения автосохранения при программном изменении полей
         this.isProgrammaticChange = false;
+        this.aiConfigDirty = false;
         
         // URL сервиса ботов — всегда порт 5001 (сервис bots.py)
         const hostname = window.location.hostname || '127.0.0.1';
@@ -298,6 +299,7 @@ class BotsManager {
             content.classList.toggle('active', isActive);
         });
 
+        if (tabName !== 'config') this.hideFloatingSaveButton();
         // Загружаем данные для соответствующего таба
         switch(tabName) {
                     case 'management':
@@ -320,13 +322,11 @@ class BotsManager {
             case 'config':
                 console.log('[BotsManager] 🎛️ Переключение на вкладку КОНФИГУРАЦИЯ');
                 if (typeof this.applyConfigViewMode === 'function') this.applyConfigViewMode();
-                // Применяем стили при открытии конфигурации
                 setTimeout(() => this.applyReadabilityStyles(), 100);
-                // БЕЗ БЛОКИРОВКИ: Загружаем конфигурацию асинхронно
-                console.log('[BotsManager] 📋 Загружаем конфигурацию для вкладки config...');
                 this.loadConfigurationData();
-                // ✅ КРИТИЧЕСКИ ВАЖНО: Сразу разблокируем элементы
                 this.showConfigurationLoading(false);
+                this.createFloatingSaveButton();
+                setTimeout(() => this.updateFloatingSaveButtonVisibility(), 300);
                 break;
             case 'active-bots':
             case 'activeBotsTab':
@@ -5030,8 +5030,9 @@ class BotsManager {
         const whitelist = this.filtersData?.whitelist || [];
         const blacklist = this.filtersData?.blacklist || [];
 
-        // Если уже в белом списке - подсвечиваем
+        // Если уже в белом списке — сообщаем и подсвечиваем
         if (whitelist.includes(symbol)) {
+            this.showNotification('⚠️ Монета уже в белом списке', 'warning');
             this.highlightFilterStatus(symbol, 'whitelist');
             return;
         }
@@ -5067,8 +5068,9 @@ class BotsManager {
         const whitelist = this.filtersData?.whitelist || [];
         const blacklist = this.filtersData?.blacklist || [];
 
-        // Если уже в черном списке - подсвечиваем
+        // Если уже в черном списке — сообщаем и подсвечиваем
         if (blacklist.includes(symbol)) {
+            this.showNotification('⚠️ Монета уже в черном списке', 'warning');
             this.highlightFilterStatus(symbol, 'blacklist');
             return;
         }
@@ -5323,8 +5325,9 @@ class BotsManager {
         const whitelist = this.filtersData?.whitelist || [];
         const blacklist = this.filtersData?.blacklist || [];
 
-        // Если уже в белом списке - подсвечиваем
+        // Если уже в белом списке — сообщаем и подсвечиваем
         if (whitelist.includes(symbol)) {
+            this.showNotification('⚠️ Монета уже в белом списке', 'warning');
             this.highlightStatus(symbol, 'whitelist');
             return;
         }
@@ -5362,8 +5365,9 @@ class BotsManager {
         const whitelist = this.filtersData?.whitelist || [];
         const blacklist = this.filtersData?.blacklist || [];
 
-        // Если уже в черном списке - подсвечиваем
+        // Если уже в черном списке — сообщаем и подсвечиваем
         if (blacklist.includes(symbol)) {
+            this.showNotification('⚠️ Монета уже в черном списке', 'warning');
             this.highlightStatus(symbol, 'blacklist');
             return;
         }
@@ -6101,20 +6105,7 @@ class BotsManager {
                 console.log('[BotsManager] 🎯 Область действия изменена на:', value, '(было:', oldValue + ')');
                 console.log('[BotsManager] 🔍 Проверка: autoBotScope.value =', scopeInput.value);
                 
-                // ✅ КРИТИЧЕСКИ ВАЖНО: Автоматически сохраняем при переключении scope
-                if (oldValue !== value) {
-                    console.log('[BotsManager] 💾 Автоматическое сохранение scope при переключении...');
-                    try {
-                        // Сохраняем только scope, чтобы не трогать другие настройки
-                        await this.sendConfigUpdate('auto-bot', { scope: value }, 'Область действия');
-                        console.log('[BotsManager] ✅ Scope автоматически сохранен');
-                    } catch (error) {
-                        console.error('[BotsManager] ❌ Ошибка автоматического сохранения scope:', error);
-                        this.showNotification('❌ Ошибка сохранения области действия: ' + error.message, 'error');
-                    }
-                } else {
-                    console.log('[BotsManager] ⏭️ Scope не изменился, пропускаем сохранение');
-                }
+                if (oldValue !== value) this.updateFloatingSaveButtonVisibility();
             });
         });
         
@@ -6189,6 +6180,8 @@ class BotsManager {
                 }
                 
                 console.log('[BotsManager] ✅ Конфигурация загружена и применена');
+                this.aiConfigDirty = false;
+                this.updateFloatingSaveButtonVisibility();
                 return config;
             } else {
                 throw new Error(`API ошибка: ${autoBotData.message || systemData.message}`);
@@ -7452,14 +7445,16 @@ class BotsManager {
         }
     }
     
-    async saveTradingParameters() {
-        console.log('[BotsManager] 💾 Сохранение торговых параметров...');
+    /**
+     * Сохраняет весь блок: торговые параметры и RSI выходы (объединённая кнопка)
+     */
+    async saveTradingAndRsiExits() {
+        console.log('[BotsManager] 💾 Сохранение торговых параметров и RSI выходов...');
         try {
             const config = this.collectConfigurationData();
-            const tradingParams = {
+            const params = {
                 rsi_long_threshold: config.autoBot.rsi_long_threshold,
                 rsi_short_threshold: config.autoBot.rsi_short_threshold,
-                // ✅ Новые параметры RSI выхода с учетом тренда
                 rsi_exit_long_with_trend: config.autoBot.rsi_exit_long_with_trend,
                 rsi_exit_long_against_trend: config.autoBot.rsi_exit_long_against_trend,
                 rsi_exit_short_with_trend: config.autoBot.rsi_exit_short_with_trend,
@@ -7468,34 +7463,13 @@ class BotsManager {
                 default_position_mode: config.autoBot.default_position_mode,
                 leverage: config.autoBot.leverage,
                 check_interval: config.autoBot.check_interval,
-                // Торговые настройки (перенесены из отдельного блока)
                 trading_enabled: config.autoBot.trading_enabled,
                 use_test_server: config.autoBot.use_test_server
             };
-            
-            await this.sendConfigUpdate('auto-bot', tradingParams, 'Торговые параметры');
+            await this.sendConfigUpdate('auto-bot', params, 'Торговые параметры и RSI выходы');
         } catch (error) {
-            console.error('[BotsManager] ❌ Ошибка сохранения торговых параметров:', error);
-            this.showNotification('❌ Ошибка сохранения торговых параметров', 'error');
-        }
-    }
-    
-    async saveRsiExits() {
-        console.log('[BotsManager] 💾 Сохранение RSI выходов...');
-        try {
-            const config = this.collectConfigurationData();
-            const rsiExits = {
-                // ✅ Новые параметры RSI выхода с учетом тренда
-                rsi_exit_long_with_trend: config.autoBot.rsi_exit_long_with_trend,
-                rsi_exit_long_against_trend: config.autoBot.rsi_exit_long_against_trend,
-                rsi_exit_short_with_trend: config.autoBot.rsi_exit_short_with_trend,
-                rsi_exit_short_against_trend: config.autoBot.rsi_exit_short_against_trend
-            };
-            
-            await this.sendConfigUpdate('auto-bot', rsiExits, 'RSI выходы');
-        } catch (error) {
-            console.error('[BotsManager] ❌ Ошибка сохранения RSI выходов:', error);
-            this.showNotification('❌ Ошибка сохранения RSI выходов', 'error');
+            console.error('[BotsManager] ❌ Ошибка сохранения:', error);
+            this.showNotification('❌ Ошибка сохранения торговых параметров и RSI выходов', 'error');
         }
     }
     
@@ -7660,6 +7634,64 @@ class BotsManager {
         // ❌ УСТАРЕВШИЕ НАСТРОЙКИ EMA - УБРАНЫ (больше не используются)
         // Тренд теперь определяется простым анализом цены - настройки не требуются
         this.showNotification('ℹ️ Настройки тренда больше не используются (тренд определяется автоматически по цене)', 'info');
+    }
+
+    hasUnsavedConfigChanges() {
+        if (!this.originalConfig) return false;
+        try {
+            const config = this.collectConfigurationData();
+            const autoBotChanges = this.filterChangedParams(config.autoBot || {}, 'autoBot');
+            const systemChanges = this.filterChangedParams(config.system || {}, 'system');
+            return Object.keys(autoBotChanges).length > 0 || Object.keys(systemChanges).length > 0 || this.aiConfigDirty;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    createFloatingSaveButton() {
+        if (document.getElementById('floatingSaveConfigBtn')) return;
+        const btn = document.createElement('button');
+        btn.id = 'floatingSaveConfigBtn';
+        btn.className = 'floating-save-config-btn';
+        btn.innerHTML = '💾 ' + (this.getTranslation('save_all_config_btn') || 'Сохранить все настройки');
+        btn.addEventListener('click', async () => {
+            try {
+                btn.disabled = true;
+                await this.saveAllConfiguration();
+            } finally {
+                btn.disabled = false;
+            }
+        });
+        document.body.appendChild(btn);
+    }
+
+    async saveAllConfiguration() {
+        await this.saveConfiguration(false);
+        if (window.aiConfigManager && typeof window.aiConfigManager.saveAIConfig === 'function') {
+            await window.aiConfigManager.saveAIConfig(false);
+        }
+        this.aiConfigDirty = false;
+        this.updateFloatingSaveButtonVisibility();
+    }
+
+    hideFloatingSaveButton() {
+        const btn = document.getElementById('floatingSaveConfigBtn');
+        if (btn) btn.classList.remove('visible');
+    }
+
+    updateFloatingSaveButtonVisibility() {
+        const btn = document.getElementById('floatingSaveConfigBtn');
+        if (!btn) return;
+        const configTab = document.getElementById('configTab');
+        const isConfigTabActive = configTab && configTab.classList.contains('active');
+        const botsContainer = document.getElementById('botsContainer');
+        const isBotsPageVisible = botsContainer && !botsContainer.classList.contains('hidden');
+        const hasChanges = this.hasUnsavedConfigChanges();
+        if (isBotsPageVisible && isConfigTabActive && hasChanges) {
+            btn.classList.add('visible');
+        } else {
+            btn.classList.remove('visible');
+        }
     }
     
     // ✅ ФИЛЬТРАЦИЯ ИЗМЕНЕННЫХ ПАРАМЕТРОВ
@@ -7922,14 +7954,9 @@ class BotsManager {
                 console.log('[BotsManager] 🔄 RSI пороги обновлены после сохранения');
             }
             
-            // ✅ ПЕРЕЗАГРУЖАЕМ КОНФИГУРАЦИЮ (чтобы UI отображал актуальные значения)
-            setTimeout(() => {
-                console.log('[BotsManager] 🔄 Перезагрузка конфигурации для обновления UI...');
-                this.loadConfigurationData();
-                
-                // Переинициализируем автосохранение на случай новых полей
-                this.initializeAutoSave();
-            }, 500);
+            this.aiConfigDirty = false;
+            this.updateFloatingSaveButtonVisibility();
+            setTimeout(() => this.loadConfigurationData(), 500);
             
             // ✅ ПЕРЕЗАГРУЖАЕМ ДАННЫЕ RSI (чтобы применить новые фильтры)
             setTimeout(() => {
@@ -8715,20 +8742,11 @@ class BotsManager {
             console.log('[BotsManager] ✅ Кнопка "Сохранить системные настройки" инициализирована');
         }
         
-        // Торговые параметры
-        const saveTradingBtn = document.querySelector('.config-section-save-btn[data-section="trading"]');
-        if (saveTradingBtn && !saveTradingBtn.hasAttribute('data-initialized')) {
-            saveTradingBtn.setAttribute('data-initialized', 'true');
-            saveTradingBtn.addEventListener('click', () => this.saveTradingParameters());
-            console.log('[BotsManager] ✅ Кнопка "Сохранить торговые параметры" инициализирована');
-        }
-        
-        // RSI выходы
-        const saveRsiExitsBtn = document.querySelector('.config-section-save-btn[data-section="rsi-exits"]');
-        if (saveRsiExitsBtn && !saveRsiExitsBtn.hasAttribute('data-initialized')) {
-            saveRsiExitsBtn.setAttribute('data-initialized', 'true');
-            saveRsiExitsBtn.addEventListener('click', () => this.saveRsiExits());
-            console.log('[BotsManager] ✅ Кнопка "Сохранить RSI выходы" инициализирована');
+        // Торговые параметры и RSI выходы (объединённая кнопка)
+        const saveTradingRsiBtn = document.querySelector('.config-section-save-btn[data-section="trading-rsi"]');
+        if (saveTradingRsiBtn && !saveTradingRsiBtn.hasAttribute('data-initialized')) {
+            saveTradingRsiBtn.setAttribute('data-initialized', 'true');
+            saveTradingRsiBtn.addEventListener('click', () => this.saveTradingAndRsiExits());
         }
         
         // RSI временной фильтр
@@ -8853,9 +8871,7 @@ class BotsManager {
         if (limitOrdersToggle && !limitOrdersToggle.hasAttribute('data-autosave-initialized')) {
             limitOrdersToggle.setAttribute('data-autosave-initialized', 'true');
             limitOrdersToggle.addEventListener('change', () => {
-                if (!this.isProgrammaticChange) {
-                    this.scheduleAutoSave();
-                }
+                if (!this.isProgrammaticChange) this.updateFloatingSaveButtonVisibility();
             });
             console.log('[BotsManager] ✅ Обработчик автосохранения добавлен для toggle лимитных ордеров');
         }
@@ -8883,21 +8899,19 @@ class BotsManager {
             if (input.type === 'number' || input.type === 'text') {
                 input.addEventListener('blur', () => {
                     if (!this.isProgrammaticChange) {
-                        this.scheduleAutoSave();
+                        if (input.closest('#aiConfigSection')) this.aiConfigDirty = true;
+                        this.updateFloatingSaveButtonVisibility();
                     }
                 });
                 input.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter') {
-                        e.target.blur(); // blur вызовет scheduleAutoSave
-                    }
+                    if (e.key === 'Enter') e.target.blur();
                 });
             }
-            
-            // Checkbox и select: сохраняем при изменении (нет проблемы «не успеваю ввести»)
             if (input.type === 'checkbox' || input.tagName === 'SELECT') {
                 input.addEventListener('change', () => {
                     if (!this.isProgrammaticChange) {
-                        this.scheduleAutoSave();
+                        if (input.closest('#aiConfigSection')) this.aiConfigDirty = true;
+                        this.updateFloatingSaveButtonVisibility();
                     }
                 });
             }
@@ -8934,7 +8948,7 @@ class BotsManager {
                             input.value = val;
                             input.dispatchEvent(new Event('input', { bubbles: true }));
                             input.dispatchEvent(new Event('change', { bubbles: true }));
-                            if (!self.isProgrammaticChange) self.scheduleAutoSave();
+                            if (!self.isProgrammaticChange) self.updateFloatingSaveButtonVisibility();
                         };
                         const minusBtn = document.createElement('button');
                         minusBtn.type = 'button';
@@ -11586,7 +11600,7 @@ class BotsManager {
                             this.addLimitOrderRow();
                             // ✅ Триггерим автосохранение при добавлении строки
                             if (!this.isProgrammaticChange) {
-                                this.scheduleAutoSave();
+                                this.updateFloatingSaveButtonVisibility();
                             }
                         } catch (error) {
                             console.error('[BotsManager] ❌ Ошибка добавления строки лимитного ордера:', error);
@@ -11618,7 +11632,7 @@ class BotsManager {
                             this.addLimitOrderRow();
                             // ✅ Триггерим автосохранение при добавлении строки
                             if (!this.isProgrammaticChange) {
-                                this.scheduleAutoSave();
+                                this.updateFloatingSaveButtonVisibility();
                             }
                         } catch (error) {
                             console.error('[BotsManager] ❌ Ошибка добавления строки лимитного ордера (делегирование):', error);
@@ -11673,7 +11687,7 @@ class BotsManager {
                 row.remove();
                 // ✅ Триггерим автосохранение при удалении строки
                 if (!this.isProgrammaticChange) {
-                    this.scheduleAutoSave();
+                    this.updateFloatingSaveButtonVisibility();
                 }
             } else {
                 // Если это последняя строка, просто очищаем значения
@@ -11681,7 +11695,7 @@ class BotsManager {
                 row.querySelector('.limit-order-margin').value = 0;
                 // ✅ Триггерим автосохранение при очистке значений последней строки
                 if (!this.isProgrammaticChange) {
-                    this.scheduleAutoSave();
+                    this.updateFloatingSaveButtonVisibility();
                 }
             }
         });
@@ -11698,7 +11712,7 @@ class BotsManager {
             percentInput.setAttribute('data-autosave-initialized', 'true');
             percentInput.addEventListener('blur', () => {
                 if (!this.isProgrammaticChange) {
-                    this.scheduleAutoSave();
+                    this.updateFloatingSaveButtonVisibility();
                 }
             });
         }
@@ -11728,7 +11742,7 @@ class BotsManager {
                     this.showNotification('⚠️ Сумма лимитного ордера увеличена до минимума 5 USDT (требование биржи Bybit)', 'warning');
                 }
                 if (!this.isProgrammaticChange) {
-                    this.scheduleAutoSave();
+                    this.updateFloatingSaveButtonVisibility();
                 }
             });
         }
@@ -11830,7 +11844,7 @@ class BotsManager {
             
             // ✅ Сбрасываем флаг и триггерим автосохранение после завершения сброса
             this.isProgrammaticChange = false;
-            this.scheduleAutoSave();
+            this.updateFloatingSaveButtonVisibility();
             
             this.showNotification('✅ Настройки сброшены к значениям по умолчанию', 'success');
             console.log('[BotsManager] ✅ Лимитные ордера сброшены к значениям по умолчанию');

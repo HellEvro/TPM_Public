@@ -263,9 +263,11 @@ def save_auto_bot_config_to_py(config: Dict[str, Any]) -> bool:
         # Добавляем все строки после блока конфигурации
         updated_lines.extend(lines[end_idx + 1:])
         
-        # Записываем обратно в файл
+        # Записываем обратно в файл с принудительной синхронизацией на диск
         with open(config_file, 'w', encoding='utf-8') as f:
             f.writelines(updated_lines)
+            f.flush()
+            os.fsync(f.fileno())
         
         # ✅ ПРОВЕРЯЕМ, что файл действительно обновлен - читаем обратно ключевые значения
         try:
@@ -408,6 +410,8 @@ def save_system_config_to_py(config: Dict[str, Any]) -> bool:
 
         with open(config_file, 'w', encoding='utf-8') as f:
             f.writelines(updated_lines)
+            f.flush()
+            os.fsync(f.fileno())
 
         logger.info("[CONFIG_WRITER] ✅ SystemConfig обновлен в bot_config.py")
         return True
