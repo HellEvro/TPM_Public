@@ -3607,7 +3607,6 @@ class BotsManager {
             }
 
             if (!valuesEqual(indVal, mainVal)) {
-                highlightedIds.add(elementId);
                 const el = document.getElementById(elementId);
                 if (el) {
                     const parent = el.closest('.setting-item');

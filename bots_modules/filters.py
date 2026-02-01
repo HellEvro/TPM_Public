@@ -475,7 +475,9 @@ def _maybe_auto_learn_exit_scam(symbol: str, candles: list) -> None:
             return
         _exit_scam_auto_learn_last[symbol] = now
         from bot_engine.ai.exit_scam_learner import compute_exit_scam_params
-        params, _ = compute_exit_scam_params(candles, aggressiveness='normal')
+        # Копия свечей, чтобы не использовать общий список при параллельной обработке монет
+        candles_copy = list(candles)
+        params, _ = compute_exit_scam_params(candles_copy, aggressiveness='normal')
         existing = get_individual_coin_settings(symbol) or {}
         merged = {**existing, **params}
         set_individual_coin_settings(symbol, merged, persist=True)

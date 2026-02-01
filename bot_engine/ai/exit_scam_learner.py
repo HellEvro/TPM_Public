@@ -18,11 +18,12 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger("AI.ExitScamLearner")
 
 # Ограничения параметров (как в фильтре и UI)
-MIN_SINGLE_PERCENT = 5.0
+# На 1m ТФ движения могут быть 0.01% и меньше — минимумы позволяют сырым перцентилям пройти
+MIN_SINGLE_PERCENT = 0.01
 MAX_SINGLE_PERCENT = 60.0
 MIN_MULTI_COUNT = 2
 MAX_MULTI_COUNT = 12
-MIN_MULTI_PERCENT = 20.0
+MIN_MULTI_PERCENT = 0.01
 MAX_MULTI_PERCENT = 150.0
 MIN_CANDLES_LOOKBACK = 8
 MAX_CANDLES_LOOKBACK = 30
@@ -162,11 +163,8 @@ def compute_exit_scam_params(
         "candles_analyzed": len(normalized),
     }
     logger.info(
-        "ExitScam learner: single=%.1f%%, multi N=%s %.1f%%, lookback=%s",
-        single_candle_percent,
-        multi_candle_count,
-        multi_candle_percent,
-        exit_scam_candles,
+        "ExitScam learner: single=%s%%, multi N=%s %s%%, lookback=%s"
+        % (single_candle_percent, multi_candle_count, multi_candle_percent, exit_scam_candles),
     )
     return params, stats
 
