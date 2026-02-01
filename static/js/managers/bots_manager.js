@@ -4671,17 +4671,25 @@ class BotsManager {
 
     initializeFilterControls() {
         const filtersSearchInput = document.getElementById('filtersSearchInput');
-        if (filtersSearchInput) {
+        if (filtersSearchInput && !filtersSearchInput.dataset.filterInit) {
+            filtersSearchInput.dataset.filterInit = '1';
             filtersSearchInput.addEventListener('input', (e) => {
                 this.performFiltersSearch(e.target.value);
             });
         }
+        const filtersTab = document.getElementById('filtersTab');
+        if (!filtersTab || filtersTab.dataset.controlsInit) return;
+        filtersTab.dataset.controlsInit = '1';
         const exportBtn = document.getElementById('exportFiltersBtn');
         const importBtn = document.getElementById('importFiltersBtn');
         const importFile = document.getElementById('importFiltersFile');
         if (exportBtn) exportBtn.addEventListener('click', () => this.exportFiltersToJson());
         if (importBtn) importBtn.addEventListener('click', () => importFile && importFile.click());
         if (importFile) importFile.addEventListener('change', (e) => { this.importFiltersFromJson(e.target.files[0]); e.target.value = ''; });
+        const clearWhitelistBtn = document.getElementById('clearWhitelistBtn');
+        const clearBlacklistBtn = document.getElementById('clearBlacklistBtn');
+        if (clearWhitelistBtn) clearWhitelistBtn.addEventListener('click', () => this.clearWhitelist());
+        if (clearBlacklistBtn) clearBlacklistBtn.addEventListener('click', () => this.clearBlacklist());
     }
     async addToWhitelist() {
         const input = document.getElementById('whitelistInput');
@@ -4764,6 +4772,40 @@ class BotsManager {
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка удаления из черного списка:', error);
             this.showNotification('❌ Ошибка удаления из черного списка', 'error');
+        }
+    }
+
+    async clearWhitelist() {
+        const whitelist = this.filtersData?.whitelist || [];
+        if (whitelist.length === 0) {
+            this.showNotification('Белый список уже пуст', 'info');
+            return;
+        }
+        const msg = 'Удалить все ' + whitelist.length + ' монет из белого списка?';
+        if (!confirm(msg)) return;
+        try {
+            await this.updateFilters({ whitelist: [] });
+            this.showNotification('Белый список очищен', 'success');
+        } catch (error) {
+            console.error('[BotsManager] Ошибка очистки белого списка:', error);
+            this.showNotification('Ошибка очистки белого списка', 'error');
+        }
+    }
+
+    async clearBlacklist() {
+        const blacklist = this.filtersData?.blacklist || [];
+        if (blacklist.length === 0) {
+            this.showNotification('Черный список уже пуст', 'info');
+            return;
+        }
+        const msg = 'Удалить все ' + blacklist.length + ' монет из черного списка?';
+        if (!confirm(msg)) return;
+        try {
+            await this.updateFilters({ blacklist: [] });
+            this.showNotification('Черный список очищен', 'success');
+        } catch (error) {
+            console.error('[BotsManager] Ошибка очистки черного списка:', error);
+            this.showNotification('Ошибка очистки черного списка', 'error');
         }
     }
 

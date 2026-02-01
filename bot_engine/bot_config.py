@@ -203,15 +203,15 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'enabled': True,
     'max_concurrent': 50,
     'risk_cap_percent': 10,
-    'scope': 'all',  # all | whitelist | blacklist
-    'whitelist': [],
-    'blacklist': [],
+    'scope': 'whitelist', # all | whitelist | blacklist
+    'whitelist': ['2Z', 'AAVE', 'ADA', 'AERO', 'ALGO', 'APT', 'ARB', 'ASTER', 'ATOM', 'AVAX', 'BCH', 'BNB', 'BSV', 'BTC', 'CAKE', 'CC', 'CFX', 'CHZ', 'CRO', 'CRV', 'DASH', 'DOGE', 'DOT', 'ENA', 'ENS', 'ETC', 'ETH', 'ETHFI', 'FARTCOIN', 'FIL', 'FLR', 'GALA', 'GLM', 'GNO', 'GRT', 'HBAR', 'HYPE', 'ICP', 'INJ', 'IOTA', 'IP', 'JASMY', 'JST', 'JUP', 'KAIA', 'KAS', 'LDO', 'LINK', 'LIT', 'LTC', 'MNT', 'MORPHO', 'MYX', 'NEAR', 'NIGHT', 'OKB', 'ONDO', 'OP', 'PAXG', 'PENDLE', 'PENGU', 'PIPPIN', 'POL', 'PYTH', 'QNT', 'RAYDIUM', 'RENDER', 'RIVER', 'SAND', 'SEI', 'SKY', 'SOL', 'SPX', 'STRK', 'STX', 'SUI', 'SUN', 'SYRUP', 'TAO', 'THETA', 'TIA', 'TON', 'TRUMP', 'TRX', 'TWT', 'UNI', 'VET', 'VIRTUAL', 'WIF', 'WLD', 'WLFI', 'XAUT', 'XCN', 'XDC', 'XLM', 'XPL', 'XRP', 'XTZ', 'ZEC', 'ZK', 'ZRO'],
+    'blacklist': ['1000RATS', 'A2Z', 'AVL', 'SAHARA'],
     # RSI параметры согласно ТЗ
     'rsi_long_threshold': 22, # Вход в LONG при RSI <= 29
     'rsi_short_threshold': 78, # Вход в SHORT при RSI >= 71
     # ✅ Новые параметры RSI выхода с учетом тренда
-    'rsi_exit_long_with_trend': 65, # Выход из LONG при RSI >= 65 (вход по тренду)
-    'rsi_exit_long_against_trend': 60,   # Выход из LONG при RSI >= 60 (вход против тренда)
+    'rsi_exit_long_with_trend': 55, # Выход из LONG при RSI >= 65 (вход по тренду)
+    'rsi_exit_long_against_trend': 55, # Выход из LONG при RSI >= 60 (вход против тренда)
     'rsi_exit_short_with_trend': 45, # Выход из SHORT при RSI <= 35 (вход по тренду)
     'rsi_exit_short_against_trend': 45, # Выход из SHORT при RSI <= 40 (вход против тренда)
     'default_position_size': 5,          # Базовый размер позиции (в единицах согласно default_position_mode)
