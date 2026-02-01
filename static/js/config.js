@@ -782,7 +782,7 @@ const TRANSLATIONS = {
         'coin_info_ema': 'EMA',
         'quick_long': 'Быстрый LONG',
         'quick_short': 'Быстрый SHORT',
-        'individual_settings_description': 'Индивидуальные настройки для этой монеты (переопределяют общие настройки)',
+        'individual_settings_description': 'Настройки применяются только к этой монете. Если настройка не задана, используется общая конфигурация. Подсвечены настройки, отличающиеся от основного конфига.',
         'refresh_interval_label': 'Интервал обновления:',
         'refresh_interval_help': 'Управляет обновлением блока с балансом, PnL, позициями и мониторингом ботов. Рекомендуется: 30 сек, минимум: 3 сек',
         'exit_scam_filter_title': '🛡️ Фильтр ExitScam',
@@ -1697,7 +1697,7 @@ const TRANSLATIONS = {
         'coin_info_ema': 'EMA',
         'quick_long': 'Quick LONG',
         'quick_short': 'Quick SHORT',
-        'individual_settings_description': 'Individual settings for this coin (overrides global settings)',
+        'individual_settings_description': 'Settings apply only to this coin. If a setting is not specified, the general configuration is used. Settings that differ from the main config are highlighted.',
         'refresh_interval_label': 'Refresh interval:',
         'refresh_interval_help': 'Manages the update of the block with balance, PnL, positions and bot monitoring. Recommended: 30 sec, minimum: 3 sec',
         
