@@ -811,9 +811,6 @@
                                 <button class="btn btn-primary btn-sm" id="learnExitScamForCoinBtn" title="Подбор порогов ExitScam по истории свечей выбранной монеты">
                                     <span data-translate="learn_exit_scam_btn">🧠 Подобрать ExitScam по истории</span>
                                 </button>
-                                <button class="btn btn-secondary btn-sm" id="learnExitScamForAllCoinsBtn" title="Расчёт ExitScam по истории для всех монет из кэша (текущий ТФ)">
-                                    <span data-translate="learn_exit_scam_all_btn">📊 ExitScam для всех монет</span>
-                                </button>
                             </div>
                             <div class="settings-status" id="individualSettingsStatus" style="margin-top: 10px; font-size: 12px; color: var(--text-muted);">
                                 <span data-translate="no_individual_settings">Нет индивидуальных настроек для этой монеты</span>
@@ -1887,6 +1884,12 @@
                                 <option value="1M">1M</option>
                             </select>
                             <small class="config-help">Обычно совпадает с таймфреймом системы</small>
+                        </div>
+                        <div class="config-item" style="display: flex; align-items: center; gap: 8px;">
+                            <button class="btn btn-secondary btn-sm" id="learnExitScamForAllCoinsBtn" title="Расчёт ExitScam по истории для всех монет из кэша (текущий ТФ)">
+                                <span data-translate="learn_exit_scam_all_btn">📊 ExitScam для всех монет</span>
+                            </button>
+                            <small class="config-help" style="margin: 0;">Рассчитать и сохранить пороги ExitScam по истории свечей для всех монет (по текущему ТФ)</small>
                         </div>
                     </div>
                 </div>
