@@ -204,6 +204,11 @@ class App {
             const botsContainer = document.getElementById('botsContainer');
             if (botsContainer) botsContainer.style.display = 'none';
             
+            // Скрываем плавающую кнопку сохранения при уходе со страницы Боты
+            if (tabName !== 'bots' && window.botsManager) {
+                window.botsManager.hideFloatingSaveButton();
+            }
+
             // Показываем нужные контейнеры
             if (tabName === 'positions') {
                 if (positionsContainer) positionsContainer.style.display = 'block';

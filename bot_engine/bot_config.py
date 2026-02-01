@@ -216,7 +216,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'rsi_exit_short_against_trend': 45, # Выход из SHORT при RSI <= 40 (вход против тренда)
     'default_position_size': 5,          # Базовый размер позиции (в единицах согласно default_position_mode)
     'default_position_mode': 'percent', # Режим расчета: usdt | percent
-    'leverage': 100, # ✅ Кредитное плечо (1-125x)
+    'leverage': 10, # ✅ Кредитное плечо (1-125x)
     'check_interval': 10, # Интервал проверки в секундах (3 мин = 180 сек)
     'monitoring_interval': 10,  # Интервал мониторинга активных ботов в секундах
     # Торговые настройки
