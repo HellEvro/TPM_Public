@@ -3001,6 +3001,46 @@ def learn_exit_scam_for_all_coins():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+EXIT_SCAM_INDIVIDUAL_KEYS = (
+    'exit_scam_enabled', 'exit_scam_candles', 'exit_scam_single_candle_percent',
+    'exit_scam_multi_candle_count', 'exit_scam_multi_candle_percent',
+)
+
+
+@bots_app.route('/api/bots/individual-settings/reset-exit-scam-all', methods=['POST'])
+def reset_exit_scam_to_config_for_all():
+    """Сброс индивидуальных настроек ExitScam для всех монет — будут использоваться значения из конфига."""
+    try:
+        with rsi_data_lock:
+            symbols = list(coins_rsi_data.get('coins', {}).keys())
+        if not symbols:
+            return jsonify({
+                'success': True,
+                'reset_count': 0,
+                'message': 'Нет монет в кэше',
+            })
+        reset_count = 0
+        for symbol in symbols:
+            existing = get_individual_coin_settings(symbol) or {}
+            if not any(k in existing for k in EXIT_SCAM_INDIVIDUAL_KEYS):
+                continue
+            rest = {k: v for k, v in existing.items() if k not in EXIT_SCAM_INDIVIDUAL_KEYS}
+            if rest:
+                set_individual_coin_settings(symbol, rest, persist=True)
+            else:
+                remove_individual_coin_settings(symbol, persist=True)
+            reset_count += 1
+        logger.info(f" ExitScam сброшен к конфигу для {reset_count} монет")
+        return jsonify({
+            'success': True,
+            'reset_count': reset_count,
+            'message': f'ExitScam сброшен к общим настройкам для {reset_count} монет',
+        })
+    except Exception as e:
+        logger.error(f" Ошибка reset-exit-scam-all: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @bots_app.route('/api/bots/individual-settings/reset-all', methods=['DELETE'])
 def reset_all_individual_settings():
     """API для сброса всех индивидуальных настроек к глобальным настройкам"""

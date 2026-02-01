@@ -3405,6 +3405,43 @@ class BotsManager {
         }
     }
 
+    /**
+     * Сброс индивидуальных настроек ExitScam для всех монет — будут использоваться значения из конфига.
+     */
+    async resetExitScamToConfigForAll() {
+        const btn = document.getElementById('resetExitScamToConfigForAllBtn');
+        const originalText = btn ? btn.innerHTML : '';
+        try {
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span>⏳ Сброс...</span>';
+            }
+            this.showNotification('🔄 Сброс ExitScam к общим настройкам для всех монет...', 'info');
+            const response = await fetch(
+                `${this.BOTS_SERVICE_URL}/api/bots/individual-settings/reset-exit-scam-all`,
+                { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }
+            );
+            const data = await response.json();
+            if (data.success) {
+                const n = data.reset_count || 0;
+                this.showNotification(
+                    n > 0 ? `✅ ExitScam сброшен к общим настройкам для ${n} монет` : '✅ Нет индивидуальных ExitScam — все уже используют конфиг',
+                    'success'
+                );
+            } else {
+                this.showNotification(`❌ ${data.error || 'Ошибка сброса'}`, 'error');
+            }
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка reset-exit-scam-all:', error);
+            this.showNotification('❌ Ошибка соединения при сбросе ExitScam', 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+    }
+
     async resetAllCoinsToGlobalSettings() {
         try {
             const confirmed = confirm('⚠️ Вы уверены, что хотите сбросить индивидуальные настройки ВСЕХ монет к глобальным настройкам?\n\nЭто действие нельзя отменить!');
@@ -4183,6 +4220,10 @@ class BotsManager {
         const learnExitScamAllBtn = document.getElementById('learnExitScamForAllCoinsBtn');
         if (learnExitScamAllBtn) {
             learnExitScamAllBtn.addEventListener('click', () => this.learnExitScamForAllCoins());
+        }
+        const resetExitScamToConfigBtn = document.getElementById('resetExitScamToConfigForAllBtn');
+        if (resetExitScamToConfigBtn) {
+            resetExitScamToConfigBtn.addEventListener('click', () => this.resetExitScamToConfigForAll());
         }
         
         console.log('[BotsManager] ✅ Кнопки индивидуальных настроек инициализированы');

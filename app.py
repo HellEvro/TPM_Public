@@ -2010,6 +2010,19 @@ def learn_exit_scam_all():
     status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
+
+@app.route('/api/bots/individual-settings/reset-exit-scam-all', methods=['POST'])
+def reset_exit_scam_all():
+    """Сброс ExitScam к общим настройкам для всех монет (прокси к сервису ботов)"""
+    result = call_bots_service(
+        '/api/bots/individual-settings/reset-exit-scam-all',
+        method='POST',
+        data={}
+    )
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
+
 @app.route('/api/bots/start', methods=['POST'])
 def start_bot():
     """Запустить бота (прокси к сервису ботов)"""
