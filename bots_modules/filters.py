@@ -216,7 +216,7 @@ try:
     from bots_modules.imports_and_globals import (
         bots_data_lock, bots_data, rsi_data_lock, coins_rsi_data,
         BOT_STATUS, system_initialized, get_exchange,
-        get_individual_coin_settings
+        get_individual_coin_settings, set_individual_coin_settings
     )
     from bot_engine.bot_config import SystemConfig
 except ImportError:
@@ -230,6 +230,8 @@ except ImportError:
         return None
     def get_individual_coin_settings(symbol):
         return None
+    def set_individual_coin_settings(symbol, settings, persist=True):
+        pass
     # Fallback для SystemConfig
     class SystemConfig:
         RSI_OVERSOLD = 29
@@ -452,6 +454,34 @@ def _legacy_check_rsi_time_filter(candles, rsi, signal, symbol=None, individual_
     except Exception as e:
         logger.error(f" Ошибка проверки временного фильтра: {e}")
         return {'allowed': False, 'reason': f'Ошибка анализа: {str(e)}', 'last_extreme_candles_ago': None, 'calm_candles': 0}
+
+# Троттлинг автоподбора ExitScam: не чаще раза в 60 мин на монету
+_exit_scam_auto_learn_last: dict = {}
+_EXIT_SCAM_AUTO_LEARN_INTERVAL_SEC = 3600
+
+
+def _maybe_auto_learn_exit_scam(symbol: str, candles: list) -> None:
+    """Если включён автоподбор ExitScam — подбирает параметры по свечам и пишет в индивидуальные настройки монеты."""
+    try:
+        auto_config = bots_data.get('auto_bot_config', {})
+        if not auto_config.get('exit_scam_auto_learn_enabled'):
+            return
+        if not candles or len(candles) < 50:
+            return
+        import time as _time
+        now = _time.time()
+        last = _exit_scam_auto_learn_last.get(symbol, 0)
+        if now - last < _EXIT_SCAM_AUTO_LEARN_INTERVAL_SEC:
+            return
+        _exit_scam_auto_learn_last[symbol] = now
+        from bot_engine.ai.exit_scam_learner import compute_exit_scam_params
+        params, _ = compute_exit_scam_params(candles, aggressiveness='normal')
+        existing = get_individual_coin_settings(symbol) or {}
+        merged = {**existing, **params}
+        set_individual_coin_settings(symbol, merged, persist=True)
+        logger.info(f" ExitScam автоподбор для {symbol}: single={params.get('exit_scam_single_candle_percent')}%, multi N={params.get('exit_scam_multi_candle_count')} {params.get('exit_scam_multi_candle_percent')}%")
+    except Exception as e:
+        logger.debug(f"ExitScam автоподбор для {symbol}: {e}")
 
 def get_coin_candles_only(symbol, exchange_obj=None, timeframe=None):
     """⚡ БЫСТРАЯ загрузка ТОЛЬКО свечей БЕЗ расчетов
@@ -1783,6 +1813,9 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
             'trading_status': trading_status,
             'is_delisting': is_delisting
         }
+
+        # Автоподбор ExitScam по истории для каждой монеты (если включён в конфиге)
+        _maybe_auto_learn_exit_scam(symbol, candles)
         
         # Логируем торговые сигналы и блокировки тренда
         # НЕ показываем дефолтные значения! Только рассчитанные данные!

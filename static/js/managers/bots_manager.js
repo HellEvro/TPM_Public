@@ -3309,6 +3309,56 @@ class BotsManager {
         }
     }
 
+    /**
+     * Подбор параметров ExitScam по истории свечей для выбранной монеты.
+     * Результат сохраняется в индивидуальные настройки монеты и подставляется в форму.
+     */
+    async learnExitScamForCoin() {
+        if (!this.selectedCoin || !this.selectedCoin.symbol) {
+            this.showNotification('⚠️ Выберите монету для подбора ExitScam', 'warning');
+            return;
+        }
+        const symbol = this.selectedCoin.symbol;
+        const btn = document.getElementById('learnExitScamForCoinBtn');
+        const originalText = btn ? btn.innerHTML : '';
+        try {
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span>⏳ Анализ свечей...</span>';
+            }
+            this.showNotification(`🧠 Анализ свечей ${symbol}...`, 'info');
+            const response = await fetch(
+                `${this.BOTS_SERVICE_URL}/api/bots/individual-settings/${encodeURIComponent(symbol)}/learn-exit-scam`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ aggressiveness: 'normal' })
+                }
+            );
+            const data = await response.json();
+            if (data.success && data.params) {
+                await this.loadAndApplyIndividualSettings(symbol);
+                this.updateIndividualSettingsStatus(true);
+                const p = data.params;
+                this.showNotification(
+                    `✅ ExitScam для ${symbol}: 1 св ${p.exit_scam_single_candle_percent}%, ${p.exit_scam_multi_candle_count} св ${p.exit_scam_multi_candle_percent}%`,
+                    'success'
+                );
+            } else {
+                const err = data.error || 'Не удалось подобрать параметры';
+                this.showNotification(`❌ ExitScam: ${err}`, 'error');
+            }
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка learn-exit-scam:', error);
+            this.showNotification('❌ Ошибка соединения при подборе ExitScam', 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+    }
+
     async resetAllCoinsToGlobalSettings() {
         try {
             const confirmed = confirm('⚠️ Вы уверены, что хотите сбросить индивидуальные настройки ВСЕХ монет к глобальным настройкам?\n\nЭто действие нельзя отменить!');
@@ -3349,6 +3399,134 @@ class BotsManager {
             console.error('[BotsManager] ❌ Ошибка сброса всех индивидуальных настроек:', error);
             this.showNotification('❌ Ошибка соединения при сбросе настроек', 'error');
             return false;
+        }
+    }
+
+    /**
+     * Маппинг ключей конфига на ID элементов для подсветки отличий от основного конфига.
+     * Только ключи, присутствующие в индивидуальных настройках и отличающиеся от main config, подсвечиваются.
+     */
+    getIndividualSettingsElementMap() {
+        return {
+            rsi_long_threshold: 'rsiLongThresholdDup',
+            rsi_short_threshold: 'rsiShortThresholdDup',
+            rsi_exit_long_with_trend: 'rsiExitLongWithTrendDup',
+            rsi_exit_long_against_trend: 'rsiExitLongAgainstTrendDup',
+            rsi_exit_short_with_trend: 'rsiExitShortWithTrendDup',
+            rsi_exit_short_against_trend: 'rsiExitShortAgainstTrendDup',
+            max_loss_percent: 'maxLossPercentDup',
+            take_profit_percent: 'takeProfitPercentDup',
+            trailing_stop_activation: 'trailingStopActivationDup',
+            trailing_stop_distance: 'trailingStopDistanceDup',
+            trailing_take_distance: 'trailingTakeDistanceDup',
+            trailing_update_interval: 'trailingUpdateIntervalDup',
+            max_position_hours: 'maxPositionHoursDup',
+            break_even_protection: 'breakEvenProtectionDup',
+            break_even_trigger: 'breakEvenTriggerDup',
+            break_even_trigger_percent: 'breakEvenTriggerDup',
+            avoid_down_trend: 'avoidDownTrendDup',
+            avoid_up_trend: 'avoidUpTrendDup',
+            enable_maturity_check: 'enableMaturityCheckDup',
+            min_candles_for_maturity: 'minCandlesForMaturityDup',
+            min_rsi_low: 'minRsiLowDup',
+            max_rsi_high: 'maxRsiHighDup',
+            rsi_time_filter_enabled: 'rsiTimeFilterEnabledDup',
+            rsi_time_filter_candles: 'rsiTimeFilterCandlesDup',
+            rsi_time_filter_upper: 'rsiTimeFilterUpperDup',
+            rsi_time_filter_lower: 'rsiTimeFilterLowerDup',
+            exit_scam_enabled: 'exitScamEnabledDup',
+            exit_scam_candles: 'exitScamCandlesDup',
+            exit_scam_single_candle_percent: 'exitScamSingleCandleDup',
+            exit_scam_multi_candle_count: 'exitScamMultiCountDup',
+            exit_scam_multi_candle_percent: 'exitScamMultiPercentDup',
+            trend_detection_enabled: 'trendDetectionEnabledDup',
+            trend_analysis_period: 'trendAnalysisPeriodDup',
+            trend_price_change_threshold: 'trendPriceChangeThresholdDup',
+            trend_candles_threshold: 'trendCandlesThresholdDup',
+            volume_mode: 'volumeModeSelect',
+            volume_value: 'volumeValueInput',
+            leverage: 'leverageCoinInput',
+            enhanced_rsi_enabled: 'enhancedRsiEnabledDup',
+            enhanced_rsi_require_volume_confirmation: 'enhancedRsiVolumeConfirmDup',
+            enhanced_rsi_require_divergence_confirmation: 'enhancedRsiDivergenceConfirmDup',
+            enhanced_rsi_use_stoch_rsi: 'enhancedRsiUseStochRsiDup'
+        };
+    }
+
+    clearIndividualSettingDiffHighlights() {
+        document.querySelectorAll('.setting-item.individual-setting-diff').forEach(el => {
+            el.classList.remove('individual-setting-diff');
+        });
+    }
+
+    /**
+     * Подсвечивает настройки, которые отличаются от основного конфига.
+     * @param {Object} individualSettings - индивидуальные настройки монеты
+     */
+    highlightIndividualSettingDiffs(individualSettings) {
+        this.clearIndividualSettingDiffHighlights();
+        if (!individualSettings || typeof individualSettings !== 'object') return;
+
+        const config = this.cachedAutoBotConfig || {};
+        const fallback = {
+            rsi_long_threshold: 29, rsi_short_threshold: 71,
+            rsi_exit_long_with_trend: 65, rsi_exit_long_against_trend: 60,
+            rsi_exit_short_with_trend: 35, rsi_exit_short_against_trend: 40,
+            max_loss_percent: 15.0, take_profit_percent: 20.0,
+            trailing_stop_activation: 20.0, trailing_stop_distance: 5.0,
+            trailing_take_distance: 0.5, trailing_update_interval: 3.0,
+            max_position_hours: 0, break_even_protection: true,
+            break_even_trigger: 20.0, break_even_trigger_percent: 20.0,
+            avoid_down_trend: true, avoid_up_trend: true,
+            enable_maturity_check: true, min_candles_for_maturity: 400,
+            min_rsi_low: 35, max_rsi_high: 65,
+            rsi_time_filter_enabled: true, rsi_time_filter_candles: 6,
+            rsi_time_filter_upper: 65, rsi_time_filter_lower: 35,
+            exit_scam_enabled: true, exit_scam_candles: 8,
+            exit_scam_single_candle_percent: 15, exit_scam_multi_candle_count: 4,
+            exit_scam_multi_candle_percent: 50, trend_detection_enabled: false,
+            trend_analysis_period: 30, trend_price_change_threshold: 7,
+            trend_candles_threshold: 70, volume_mode: 'usdt', volume_value: 10,
+            leverage: 1, enhanced_rsi_enabled: false,
+            enhanced_rsi_require_volume_confirmation: false,
+            enhanced_rsi_require_divergence_confirmation: false,
+            enhanced_rsi_use_stoch_rsi: false
+        };
+
+        const getMainValue = (key) => {
+            const v = config[key];
+            return v !== undefined ? v : fallback[key];
+        };
+
+        const valuesEqual = (a, b) => {
+            if (a === b) return true;
+            if (typeof a === 'boolean' || typeof b === 'boolean') return Boolean(a) === Boolean(b);
+            const na = Number(a);
+            const nb = Number(b);
+            if (!Number.isNaN(na) && !Number.isNaN(nb)) return na === nb;
+            return String(a) === String(b);
+        };
+
+        const elementMap = this.getIndividualSettingsElementMap();
+
+        for (const [configKey, elementId] of Object.entries(elementMap)) {
+            if (!(configKey in individualSettings)) continue;
+            if (configKey === 'break_even_trigger' && 'break_even_trigger_percent' in individualSettings) continue;
+
+            const indVal = individualSettings[configKey];
+            let mainVal = getMainValue(configKey);
+            if (configKey === 'break_even_trigger_percent') {
+                mainVal = getMainValue('break_even_trigger') ?? getMainValue('break_even_trigger_percent');
+            }
+
+            if (!valuesEqual(indVal, mainVal)) {
+                highlightedIds.add(elementId);
+                const el = document.getElementById(elementId);
+                if (el) {
+                    const parent = el.closest('.setting-item');
+                    if (parent) parent.classList.add('individual-setting-diff');
+                }
+            }
         }
     }
 
@@ -3633,6 +3811,7 @@ class BotsManager {
             }
         }
         
+        this.highlightIndividualSettingDiffs(settings);
         console.log('[BotsManager] ✅ Индивидуальные настройки применены к UI');
     }
 
@@ -3660,12 +3839,13 @@ class BotsManager {
             }
              
              if (settings) {
-                 // Применяем настройки к UI
+                 // Применяем настройки к UI и подсвечиваем отличия от основного конфига
                  this.applyIndividualSettingsToUI(settings);
                  this.updateIndividualSettingsStatus(true);
                  console.log(`[BotsManager] ✅ Индивидуальные настройки для ${symbol} применены`);
              } else {
-                 // Сбрасываем UI к общим настройкам
+                 // Сбрасываем UI к общим настройкам и убираем подсветку
+                 this.clearIndividualSettingDiffHighlights();
                  this.resetToGeneralSettings();
                  this.updateIndividualSettingsStatus(false);
                  console.log(`[BotsManager] ℹ️ Используются общие настройки для ${symbol}`);
@@ -3678,6 +3858,7 @@ class BotsManager {
 
      resetToGeneralSettings() {
         console.log('[BotsManager] 🔄 Сброс к общим настройкам');
+        this.clearIndividualSettingDiffHighlights();
         const config = this.cachedAutoBotConfig || {};
         const fallback = {
             rsi_long_threshold: 29,
@@ -3895,7 +4076,11 @@ class BotsManager {
                 if (volumeValueEl) settings.volume_value = parseFloat(volumeValueEl.value) || 10;
                 const leverageCoinEl = document.getElementById('leverageCoinInput');
                 if (leverageCoinEl) settings.leverage = parseInt(leverageCoinEl.value) || 1;
-                await this.saveIndividualSettings(this.selectedCoin.symbol, settings);
+                const success = await this.saveIndividualSettings(this.selectedCoin.symbol, settings);
+                if (success) {
+                    this.highlightIndividualSettingDiffs(settings);
+                    this.updateIndividualSettingsStatus(true);
+                }
             });
         }
         
@@ -3941,6 +4126,12 @@ class BotsManager {
                     await this.copySettingsToAllCoins(this.selectedCoin.symbol);
                 }
             });
+        }
+        
+        // Кнопка «Подобрать ExitScam по истории» для выбранной монеты
+        const learnExitScamBtn = document.getElementById('learnExitScamForCoinBtn');
+        if (learnExitScamBtn) {
+            learnExitScamBtn.addEventListener('click', () => this.learnExitScamForCoin());
         }
         
         console.log('[BotsManager] ✅ Кнопки индивидуальных настроек инициализированы');
@@ -6667,6 +6858,10 @@ class BotsManager {
             exitScamEnabledEl.checked = autoBotConfig.exit_scam_enabled !== false;
             console.log('[BotsManager] 🛡️ ExitScam фильтр:', exitScamEnabledEl.checked);
         }
+        const exitScamAutoLearnEl = document.getElementById('exitScamAutoLearnEnabled');
+        if (exitScamAutoLearnEl) {
+            exitScamAutoLearnEl.checked = autoBotConfig.exit_scam_auto_learn_enabled === true;
+        }
         
         const exitScamCandlesEl = document.getElementById('exitScamCandles');
         if (exitScamCandlesEl) {
@@ -7070,6 +7265,7 @@ class BotsManager {
             'exitScamMultiCandleCount': 'exit_scam_multi_candle_count',
             'exitScamMultiCandlePercent': 'exit_scam_multi_candle_percent',
             'exitScamTimeframe': 'exit_scam_timeframe',
+            'exitScamAutoLearnEnabled': 'exit_scam_auto_learn_enabled',
             'tradingEnabled': 'trading_enabled',
             'useTestServer': 'use_test_server',
             'enhancedRsiEnabled': 'enhanced_rsi_enabled',
@@ -7177,6 +7373,10 @@ class BotsManager {
         if (exitScamMultiPercentEl && exitScamMultiPercentEl.value !== '') {
             const v = parseFloat(exitScamMultiPercentEl.value);
             if (!isNaN(v)) autoBotConfig.exit_scam_multi_candle_percent = v;
+        }
+        const exitScamAutoLearnEl = document.getElementById('exitScamAutoLearnEnabled');
+        if (exitScamAutoLearnEl) {
+            autoBotConfig.exit_scam_auto_learn_enabled = exitScamAutoLearnEl.checked;
         }
         
         const limitOrderRows = document.querySelectorAll('.limit-order-row');
@@ -7504,8 +7704,10 @@ class BotsManager {
             const exitScamMultiPercentEl = document.getElementById('exitScamMultiCandlePercent');
             const exitScamTimeframeEl = document.getElementById('exitScamTimeframe');
             const config = this.collectConfigurationData();
+            const exitScamAutoLearnEl = document.getElementById('exitScamAutoLearnEnabled');
             const exitScamFilter = {
                 exit_scam_enabled: exitScamEnabledEl ? exitScamEnabledEl.checked : (config.autoBot.exit_scam_enabled !== false),
+                exit_scam_auto_learn_enabled: exitScamAutoLearnEl ? exitScamAutoLearnEl.checked : (config.autoBot.exit_scam_auto_learn_enabled === true),
                 exit_scam_candles: exitScamCandlesEl && exitScamCandlesEl.value !== '' ? parseInt(exitScamCandlesEl.value, 10) : (config.autoBot.exit_scam_candles ?? 8),
                 exit_scam_single_candle_percent: exitScamSingleEl && exitScamSingleEl.value !== '' ? parseFloat(exitScamSingleEl.value) : (config.autoBot.exit_scam_single_candle_percent ?? 15),
                 exit_scam_multi_candle_count: exitScamMultiCountEl && exitScamMultiCountEl.value !== '' ? parseInt(exitScamMultiCountEl.value, 10) : (config.autoBot.exit_scam_multi_candle_count ?? 4),
@@ -8767,13 +8969,7 @@ class BotsManager {
             console.log('[BotsManager] ✅ Кнопка "Сохранить RSI временной фильтр" инициализирована');
         }
         
-        // ExitScam фильтр
-        const saveExitScamBtn = document.querySelector('.config-section-save-btn[data-section="exit-scam"]');
-        if (saveExitScamBtn && !saveExitScamBtn.hasAttribute('data-initialized')) {
-            saveExitScamBtn.setAttribute('data-initialized', 'true');
-            saveExitScamBtn.addEventListener('click', () => this.saveExitScamFilter());
-            console.log('[BotsManager] ✅ Кнопка "Сохранить ExitScam фильтр" инициализирована');
-        }
+        // ExitScam фильтр — сохраняется по общим правилам (авто при переключении чекбоксов/select, числа — через общее сохранение)
         
         // Enhanced RSI
         const saveEnhancedRsiBtn = document.querySelector('.config-section-save-btn[data-section="enhanced-rsi"]');

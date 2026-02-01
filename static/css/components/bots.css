@@ -1753,6 +1753,20 @@ input:checked + .slider:before {
     min-width: auto;
 }
 
+/* Подсветка настроек, отличающихся от основного конфига */
+.setting-item.individual-setting-diff {
+    background: rgba(79, 172, 254, 0.08);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin: 0 -10px 12px -10px;
+    border-left: 3px solid var(--blue-color, #4facfe);
+    padding-left: 14px;
+}
+
+.setting-item.individual-setting-diff label {
+    color: var(--accent-color, var(--blue-color));
+}
+
 /* Адаптивность для небольших экранов */
 @media (max-width: 768px) {
     .auto-bot-settings-duplicate .setting-item {

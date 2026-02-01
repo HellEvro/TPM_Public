@@ -1558,6 +1558,7 @@ CONFIG_NAMES = {
     'break_even_trigger': 'Триггер безубыточности (%)',
     'break_even_trigger_percent': 'Триггер безубыточности (%)',
     'exit_scam_enabled': 'Exit Scam защита',
+    'exit_scam_auto_learn_enabled': 'Автоподбор ExitScam по истории',
     'exit_scam_candles': 'Exit Scam - количество свечей',
     'exit_scam_single_candle_percent': 'Exit Scam - % одной свечи',
     'exit_scam_multi_candle_count': 'Exit Scam - количество свечей (множественный)',
@@ -2865,6 +2866,78 @@ def copy_individual_settings(symbol):
         return jsonify({'success': False, 'error': 'Individual settings not found'}), 404
     except Exception as e:
         logger.error(f" ❌ Ошибка копирования настроек {symbol}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _get_candles_for_learn_exit_scam(symbol, timeframe=None):
+    """Берёт свечи из кэша в памяти или из БД (без запроса к бирже)."""
+    try:
+        from bot_engine.bot_config import get_current_timeframe
+        tf = timeframe or get_current_timeframe()
+    except Exception:
+        tf = '6h'
+    candles = None
+    with rsi_data_lock:
+        candles_cache = coins_rsi_data.get('candles_cache', {})
+        if symbol in candles_cache:
+            symbol_cache = candles_cache[symbol]
+            if isinstance(symbol_cache, dict) and tf in symbol_cache:
+                candles = (symbol_cache[tf].get('candles') or [])[:]
+            elif isinstance(symbol_cache, dict) and 'candles' in symbol_cache:
+                if symbol_cache.get('timeframe') == tf:
+                    candles = (symbol_cache.get('candles') or [])[:]
+            if not candles and isinstance(symbol_cache, dict):
+                for _tf, data in symbol_cache.items():
+                    if isinstance(data, dict) and data.get('candles'):
+                        candles = (data.get('candles') or [])[:]
+                        break
+    if not candles:
+        try:
+            from bot_engine.storage import get_candles_for_symbol
+            db_data = get_candles_for_symbol(symbol)
+            if db_data:
+                candles = (db_data.get('candles') or [])[:]
+        except Exception:
+            pass
+    return candles
+
+
+@bots_app.route('/api/bots/individual-settings/<symbol>/learn-exit-scam', methods=['POST'])
+def learn_exit_scam_for_coin(symbol):
+    """Подбор параметров ExitScam по истории свечей для монеты. Свечи берутся из кэша/БД (не с биржи)."""
+    try:
+        if not symbol:
+            return jsonify({'success': False, 'error': 'Symbol is required'}), 400
+        normalized_symbol = symbol.upper()
+
+        payload = request.get_json(silent=True) or {}
+        aggressiveness = (payload.get('aggressiveness') or 'normal').strip().lower()
+        if aggressiveness not in ('normal', 'conservative', 'aggressive'):
+            aggressiveness = 'normal'
+        timeframe = payload.get('timeframe') or None
+
+        candles = _get_candles_for_learn_exit_scam(normalized_symbol, timeframe=timeframe)
+        if not candles or len(candles) < 50:
+            return jsonify({
+                'success': False,
+                'error': f'Недостаточно свечей в кэше/БД (есть {len(candles) or 0}, нужно минимум 50). Дождитесь обновления данных.',
+                'symbol': normalized_symbol
+            }), 400
+
+        from bot_engine.ai.exit_scam_learner import compute_exit_scam_params
+        params, stats = compute_exit_scam_params(candles, aggressiveness=aggressiveness)
+        existing = get_individual_coin_settings(normalized_symbol) or {}
+        merged = {**existing, **params}
+        set_individual_coin_settings(normalized_symbol, merged, persist=True)
+        logger.info(f" ExitScam для {normalized_symbol} обучен и сохранён: {params}")
+        return jsonify({
+            'success': True,
+            'symbol': normalized_symbol,
+            'params': params,
+            'stats': stats,
+        })
+    except Exception as e:
+        logger.error(f" Ошибка learn-exit-scam для {symbol}: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

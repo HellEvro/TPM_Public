@@ -691,6 +691,7 @@ const TRANSLATIONS = {
         'load_individual_settings': '📥 Загрузить настройки',
         'reset_individual_settings': '🔄 Сбросить к общим',
         'copy_to_all_coins': '📋 Применить ко всем монетам',
+        'learn_exit_scam_btn': '🧠 Подобрать ExitScam по истории',
         'no_individual_settings_text': 'Нет индивидуальных настроек для этой монеты',
         'remove_coins_btn': '🗑️ Удалить',
         
@@ -733,6 +734,8 @@ const TRANSLATIONS = {
         'exit_scam_single_candle_help': 'Лимит в % как есть: 0.5 = 0.5%. Тело свечи: |close−open|/open×100%',
         'exit_scam_multi_count_help': 'Количество свечей для проверки суммарного изменения',
         'exit_scam_multi_percent_help': 'Если N свечей суммарно изменились больше чем на этот % - блокировка входа',
+        'exit_scam_auto_learn_label': 'Автоподбор ExitScam по истории для каждой монеты',
+        'exit_scam_auto_learn_help': 'При обновлении данных монеты подбирает пороги по свечам из кэша/БД и сохраняет в индивидуальные настройки (не чаще 1 раза в час на монету)',
         
         // Улучшенная система RSI
         'enhanced_rsi_system': 'Улучшенная система RSI',
@@ -1678,6 +1681,7 @@ const TRANSLATIONS = {
         'load_individual_settings': '📥 Load settings',
         'reset_individual_settings': '🔄 Reset to defaults',
         'copy_to_all_coins': '📋 Apply to all coins',
+        'learn_exit_scam_btn': '🧠 Learn ExitScam from history',
         'no_individual_settings_text': 'No individual settings for this coin',
         'remove_coins_btn': '🗑️ Remove',
         
@@ -1736,6 +1740,8 @@ const TRANSLATIONS = {
         'exit_scam_multi_count_help': 'Number of candles to check for total change',
         'exit_scam_multi_percent_label': 'Total change limit:',
         'exit_scam_multi_percent_help': 'If N candles have changed by more than this % in total - block entry',
+        'exit_scam_auto_learn_label': 'Auto-learn ExitScam from history for each coin',
+        'exit_scam_auto_learn_help': 'When coin data is updated, learns thresholds from candles in cache/DB and saves to individual settings (at most once per hour per coin)',
         
         // Enhanced RSI system
         'enhanced_rsi_system': 'Enhanced RSI System',

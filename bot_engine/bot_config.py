@@ -308,7 +308,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'rsi_extreme_overbought': 80,
     'rsi_extreme_oversold': 20,
     'rsi_extreme_zone_timeout': 3,
-    'rsi_update_interval': 11,
+    'rsi_update_interval': 10,
     'rsi_volume_confirmation_multiplier': 1.2,
     'self_learning_enabled': True,
     'stop_loss_setup_interval': 10,
@@ -318,6 +318,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'exit_scam_effective_multi_pct': 2,
     'exit_scam_effective_single_pct': 0.5,
     'exit_scam_timeframe': '1m',
+    'exit_scam_auto_learn_enabled': False,
 }
 
 # Настройки по умолчанию для отдельного бота
@@ -333,7 +334,7 @@ DEFAULT_BOT_CONFIG = {
 # Системные настройки
 class SystemConfig:
     # Интервалы обновления (в секундах)
-    RSI_UPDATE_INTERVAL = 11 # 30 минут (рекомендуется для 6H RSI)
+    RSI_UPDATE_INTERVAL = 10 # 30 минут (рекомендуется для 6H RSI)
     ACCOUNT_UPDATE_INTERVAL = 5  # 5 секунд
     UI_REFRESH_INTERVAL = 2 # 3 секунды
     AUTO_SAVE_INTERVAL = 30  # 30 секунд

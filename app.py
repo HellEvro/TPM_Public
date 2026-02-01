@@ -1986,6 +1986,18 @@ def copy_individual_settings(symbol):
     status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
+@app.route('/api/bots/individual-settings/<symbol>/learn-exit-scam', methods=['POST'])
+def learn_exit_scam(symbol):
+    """Подбор ExitScam по истории свечей для монеты (прокси к сервису ботов)"""
+    data = request.get_json(silent=True) or {}
+    result = call_bots_service(
+        f'/api/bots/individual-settings/{symbol}/learn-exit-scam',
+        method='POST',
+        data=data
+    )
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
 @app.route('/api/bots/start', methods=['POST'])
 def start_bot():
     """Запустить бота (прокси к сервису ботов)"""

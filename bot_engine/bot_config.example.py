@@ -133,6 +133,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'limit_orders_margin_amounts': [5, 5, 5, 5, 5], # Объем маржи в USDT для каждого ордера (минимум 5 USDT на бирже Bybit, иначе ордер будет отклонен)
     # ExitScam фильтр (защита от резких движений цены)
     'exit_scam_enabled': True,          # Включить проверку на ExitScam
+    'exit_scam_auto_learn_enabled': False,  # Автоподбор порогов ExitScam по истории для каждой монеты (из кэша/БД)
     'exit_scam_candles': 8,            # Количество свечей для проверки (10 = 60 часов на 6H)
     'exit_scam_single_candle_percent': 15,  # Максимальный % изменения одной свечи (15% = блокировка)
     'exit_scam_multi_candle_count': 4,        # Количество свечей для суммарного анализа
