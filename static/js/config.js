@@ -692,6 +692,7 @@ const TRANSLATIONS = {
         'reset_individual_settings': '🔄 Сбросить к общим',
         'copy_to_all_coins': '📋 Применить ко всем монетам',
         'learn_exit_scam_btn': '🧠 Подобрать ExitScam по истории',
+        'learn_exit_scam_all_btn': '📊 ExitScam для всех монет',
         'no_individual_settings_text': 'Нет индивидуальных настроек для этой монеты',
         'remove_coins_btn': '🗑️ Удалить',
         
@@ -1682,6 +1683,7 @@ const TRANSLATIONS = {
         'reset_individual_settings': '🔄 Reset to defaults',
         'copy_to_all_coins': '📋 Apply to all coins',
         'learn_exit_scam_btn': '🧠 Learn ExitScam from history',
+        'learn_exit_scam_all_btn': '📊 ExitScam for all coins',
         'no_individual_settings_text': 'No individual settings for this coin',
         'remove_coins_btn': '🗑️ Remove',
         

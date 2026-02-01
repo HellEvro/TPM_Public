@@ -1998,6 +1998,18 @@ def learn_exit_scam(symbol):
     status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
+@app.route('/api/bots/individual-settings/learn-exit-scam-all', methods=['POST'])
+def learn_exit_scam_all():
+    """Расчёт ExitScam по истории для всех монет (прокси к сервису ботов)"""
+    data = request.get_json(silent=True) or {}
+    result = call_bots_service(
+        '/api/bots/individual-settings/learn-exit-scam-all',
+        method='POST',
+        data=data
+    )
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
 @app.route('/api/bots/start', methods=['POST'])
 def start_bot():
     """Запустить бота (прокси к сервису ботов)"""

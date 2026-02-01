@@ -2870,7 +2870,7 @@ def copy_individual_settings(symbol):
 
 
 def _get_candles_for_learn_exit_scam(symbol, timeframe=None):
-    """Берёт свечи из кэша в памяти или из БД (без запроса к бирже)."""
+    """Берёт свечи из кэша в памяти или из БД только для запрошенного/текущего таймфрейма (без подстановки 6h)."""
     try:
         from bot_engine.bot_config import get_current_timeframe
         tf = timeframe or get_current_timeframe()
@@ -2886,16 +2886,12 @@ def _get_candles_for_learn_exit_scam(symbol, timeframe=None):
             elif isinstance(symbol_cache, dict) and 'candles' in symbol_cache:
                 if symbol_cache.get('timeframe') == tf:
                     candles = (symbol_cache.get('candles') or [])[:]
-            if not candles and isinstance(symbol_cache, dict):
-                for _tf, data in symbol_cache.items():
-                    if isinstance(data, dict) and data.get('candles'):
-                        candles = (data.get('candles') or [])[:]
-                        break
+            # Не подставляем свечи другого ТФ (например 6h) — только запрошенный/текущий
     if not candles:
         try:
             from bot_engine.storage import get_candles_for_symbol
             db_data = get_candles_for_symbol(symbol)
-            if db_data:
+            if db_data and (db_data.get('timeframe') == tf or not db_data.get('timeframe')):
                 candles = (db_data.get('candles') or [])[:]
         except Exception:
             pass
@@ -2916,12 +2912,18 @@ def learn_exit_scam_for_coin(symbol):
             aggressiveness = 'normal'
         timeframe = payload.get('timeframe') or None
 
+        try:
+            from bot_engine.bot_config import get_current_timeframe
+            effective_tf = timeframe or get_current_timeframe()
+        except Exception:
+            effective_tf = '6h'
         candles = _get_candles_for_learn_exit_scam(normalized_symbol, timeframe=timeframe)
         if not candles or len(candles) < 50:
             return jsonify({
                 'success': False,
-                'error': f'Недостаточно свечей в кэше/БД (есть {len(candles) or 0}, нужно минимум 50). Дождитесь обновления данных.',
-                'symbol': normalized_symbol
+                'error': f'Недостаточно свечей для таймфрейма {effective_tf} (есть {len(candles) or 0}, нужно минимум 50). Дождитесь обновления данных по текущему ТФ.',
+                'symbol': normalized_symbol,
+                'timeframe': effective_tf
             }), 400
 
         from bot_engine.ai.exit_scam_learner import compute_exit_scam_params
@@ -2938,6 +2940,64 @@ def learn_exit_scam_for_coin(symbol):
         })
     except Exception as e:
         logger.error(f" Ошибка learn-exit-scam для {symbol}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bots_app.route('/api/bots/individual-settings/learn-exit-scam-all', methods=['POST'])
+def learn_exit_scam_for_all_coins():
+    """Ручной расчёт ExitScam по истории для всех монет из кэша/БД (по текущему ТФ)."""
+    try:
+        payload = request.get_json(silent=True) or {}
+        aggressiveness = (payload.get('aggressiveness') or 'normal').strip().lower()
+        if aggressiveness not in ('normal', 'conservative', 'aggressive'):
+            aggressiveness = 'normal'
+        timeframe = payload.get('timeframe') or None
+        try:
+            from bot_engine.bot_config import get_current_timeframe
+            effective_tf = timeframe or get_current_timeframe()
+        except Exception:
+            effective_tf = '6h'
+
+        with rsi_data_lock:
+            symbols = list(coins_rsi_data.get('coins', {}).keys())
+        if not symbols:
+            return jsonify({
+                'success': False,
+                'error': 'Нет монет в кэше. Дождитесь обновления RSI данных.',
+                'updated_count': 0,
+                'failed_count': 0,
+            }), 400
+
+        from bot_engine.ai.exit_scam_learner import compute_exit_scam_params
+        updated_count = 0
+        failed_count = 0
+        symbols_updated = []
+        for symbol in symbols:
+            try:
+                candles = _get_candles_for_learn_exit_scam(symbol, timeframe=timeframe)
+                if not candles or len(candles) < 50:
+                    failed_count += 1
+                    continue
+                params, _ = compute_exit_scam_params(candles, aggressiveness=aggressiveness)
+                existing = get_individual_coin_settings(symbol) or {}
+                merged = {**existing, **params}
+                set_individual_coin_settings(symbol, merged, persist=True)
+                updated_count += 1
+                symbols_updated.append(symbol)
+            except Exception as e:
+                logger.debug(f"learn-exit-scam-all {symbol}: {e}")
+                failed_count += 1
+
+        logger.info(f" ExitScam для всех: обновлено {updated_count}, ошибок {failed_count}")
+        return jsonify({
+            'success': True,
+            'updated_count': updated_count,
+            'failed_count': failed_count,
+            'timeframe': effective_tf,
+            'symbols_updated': symbols_updated[:50],
+        })
+    except Exception as e:
+        logger.error(f" Ошибка learn-exit-scam-all: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

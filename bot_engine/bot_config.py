@@ -318,7 +318,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'exit_scam_effective_multi_pct': 2,
     'exit_scam_effective_single_pct': 0.5,
     'exit_scam_timeframe': '1m',
-    'exit_scam_auto_learn_enabled': False,
+    'exit_scam_auto_learn_enabled': True,
 }
 
 # Настройки по умолчанию для отдельного бота
