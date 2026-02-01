@@ -7666,12 +7666,18 @@ class BotsManager {
     }
 
     async saveAllConfiguration() {
-        await this.saveConfiguration(false);
-        if (window.aiConfigManager && typeof window.aiConfigManager.saveAIConfig === 'function') {
-            await window.aiConfigManager.saveAIConfig(false);
+        try {
+            await this.saveConfiguration(false, true);
+            if (window.aiConfigManager && typeof window.aiConfigManager.saveAIConfig === 'function') {
+                await window.aiConfigManager.saveAIConfig(false, true);
+            }
+            this.aiConfigDirty = false;
+            this.updateFloatingSaveButtonVisibility();
+            this.showNotification('✅ Все настройки сохранены', 'success');
+        } catch (error) {
+            console.error('[BotsManager] Ошибка при сохранении:', error);
+            this.showNotification('❌ Ошибка сохранения настроек: ' + error.message, 'error');
         }
-        this.aiConfigDirty = false;
-        this.updateFloatingSaveButtonVisibility();
     }
 
     hideFloatingSaveButton() {
@@ -7890,7 +7896,7 @@ class BotsManager {
         }
     }
 
-    async saveConfiguration(isAutoSave = false) {
+    async saveConfiguration(isAutoSave = false, skipNotification = false) {
         // Отменяем запланированное автосохранение при ручном сохранении
         if (!isAutoSave && this.autoSaveTimer) {
             clearTimeout(this.autoSaveTimer);
@@ -7944,8 +7950,8 @@ class BotsManager {
                 }
             }
             
-            // Показываем уведомление только при ручном сохранении (при автосохранении уведомление показывается в scheduleAutoSave)
-            if (!isAutoSave) {
+            // Показываем уведомление только при ручном сохранении (при вызове из saveAllConfiguration — skipNotification)
+            if (!isAutoSave && !skipNotification) {
                 this.showNotification('✅ Настройки сохранены', 'success');
             }
             console.log('[BotsManager] ✅ Конфигурация сохранена в bot_config.py и перезагружена');
@@ -7968,8 +7974,8 @@ class BotsManager {
             
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка сохранения конфигурации:', error);
-            // Показываем уведомление об ошибке только если это не автосохранение (при автосохранении уведомление показывается в scheduleAutoSave)
-            if (!isAutoSave) {
+            // Показываем уведомление об ошибке только если это не автосохранение
+            if (!isAutoSave && !skipNotification) {
                 this.showNotification('❌ Ошибка сохранения конфигурации: ' + error.message, 'error');
             }
             // Пробрасываем ошибку дальше для обработки в scheduleAutoSave

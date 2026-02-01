@@ -166,8 +166,9 @@ class AIConfigManager {
     /**
      * Сохранение AI конфигурации
      * @param {boolean} isAutoSave - true при автосохранении (другое уведомление)
+     * @param {boolean} skipNotification - true при вызове из saveAllConfiguration (уведомление покажет вызывающий)
      */
-    async saveAIConfig(isAutoSave = false) {
+    async saveAIConfig(isAutoSave = false, skipNotification = false) {
         try {
             if (!isAutoSave && this.autoSaveTimer) {
                 clearTimeout(this.autoSaveTimer);
@@ -223,14 +224,16 @@ class AIConfigManager {
             if (data.success) {
                 console.log('[AIConfigManager] ✅ AI конфигурация сохранена');
                 
-                if (!isAutoSave && window.showToast) {
-                    window.showToast('✅ AI конфигурация сохранена', 'success');
-                }
-                if (isAutoSave && window.toastManager) {
-                    if (!window.toastManager.container) window.toastManager.init();
-                    window.toastManager.success('✅ AI настройки автоматически сохранены', 3000);
-                } else if (isAutoSave && window.showToast) {
-                    window.showToast('✅ AI настройки автоматически сохранены', 'success');
+                if (!skipNotification) {
+                    if (!isAutoSave && window.showToast) {
+                        window.showToast('✅ AI конфигурация сохранена', 'success');
+                    }
+                    if (isAutoSave && window.toastManager) {
+                        if (!window.toastManager.container) window.toastManager.init();
+                        window.toastManager.success('✅ AI настройки автоматически сохранены', 3000);
+                    } else if (isAutoSave && window.showToast) {
+                        window.showToast('✅ AI настройки автоматически сохранены', 'success');
+                    }
                 }
                 
                 if (!isAutoSave) {

@@ -203,7 +203,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'enabled': True,
     'max_concurrent': 50,
     'risk_cap_percent': 10,
-    'scope': 'whitelist', # all | whitelist | blacklist
+    'scope': 'all', # all | whitelist | blacklist
     'whitelist': [],
     'blacklist': [],
     # RSI параметры согласно ТЗ
