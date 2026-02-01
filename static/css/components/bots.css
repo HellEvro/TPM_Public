@@ -2984,6 +2984,14 @@ input:checked + .toggle-slider:before {
     transform: translateY(-2px);
     box-shadow: 0 6px 24px rgba(40, 167, 69, 0.5);
 }
+.floating-save-config-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+.floating-save-config-btn:disabled:hover {
+    transform: none;
+    box-shadow: 0 4px 20px rgba(40, 167, 69, 0.4);
+}
 .config-section-save-btn { display: none !important; }
 .config-actions .config-save-btn { display: none !important; }
 

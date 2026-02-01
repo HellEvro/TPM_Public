@@ -7685,12 +7685,14 @@ class BotsManager {
         const configTab = document.getElementById('configTab');
         const isConfigTabActive = configTab && configTab.classList.contains('active');
         const botsContainer = document.getElementById('botsContainer');
-        const isBotsPageVisible = botsContainer && !botsContainer.classList.contains('hidden');
+        const isBotsPageVisible = botsContainer && botsContainer.style.display !== 'none';
         const hasChanges = this.hasUnsavedConfigChanges();
-        if (isBotsPageVisible && isConfigTabActive && hasChanges) {
+        if (isBotsPageVisible && isConfigTabActive) {
             btn.classList.add('visible');
+            btn.disabled = !hasChanges;
         } else {
             btn.classList.remove('visible');
+            btn.disabled = false;
         }
     }
     
