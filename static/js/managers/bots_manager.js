@@ -4911,14 +4911,13 @@ class BotsManager {
         
         // ✅ Принудительно инициализируем toastManager, если его нет
         if (!window.toastManager) {
-            console.warn('[BotsManager] ⚠️ toastManager не найден, пытаемся создать...');
-            // Пытаемся загрузить toast.js, если он еще не загружен
             if (typeof ToastManager !== 'undefined') {
                 window.toastManager = new ToastManager();
-                console.log('[BotsManager] ✅ toastManager создан');
+            } else if (window.showToast) {
+                window.showToast(message, type, 4000);
+                return;
             } else {
-                console.error('[BotsManager] ❌ ToastManager не доступен! Пропускаем уведомление.');
-                return; // ❌ НЕ используем alert - просто пропускаем
+                return;
             }
         }
         
@@ -4962,10 +4961,10 @@ class BotsManager {
                 container.style.opacity = '1';
             }
             
-            // ✅ Показываем уведомление (автоматически скрывается через 3-5 секунд)
+            // ✅ Показываем уведомление (автоматически скрывается через 4-5 секунд)
             switch(type) {
                 case 'success':
-                    window.toastManager.success(message, 3000); // 3 секунды
+                    window.toastManager.success(message, 4500);
                     console.log('[BotsManager] ✅ Вызван toastManager.success()');
                     break;
                 case 'error':
@@ -4984,8 +4983,9 @@ class BotsManager {
             }
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка при показе уведомления:', error);
-            console.error('[BotsManager] Stack trace:', error.stack);
-            // ❌ НЕ используем alert - просто логируем ошибку
+            if (window.showToast) {
+                try { window.showToast(message, type, 4000); } catch (e) { /* ignore */ }
+            }
         }
     }
 
@@ -7675,10 +7675,10 @@ class BotsManager {
             }
             this.aiConfigDirty = false;
             this.updateFloatingSaveButtonVisibility();
-            this.showNotification('✅ Все настройки сохранены', 'success');
+            this.showConfigNotification('✅ Сохранено', 'Все настройки сохранены', 'success');
         } catch (error) {
             console.error('[BotsManager] Ошибка при сохранении:', error);
-            this.showNotification('❌ Ошибка сохранения настроек: ' + error.message, 'error');
+            this.showConfigNotification('❌ Ошибка', 'Ошибка сохранения настроек: ' + error.message, 'error');
         }
     }
 
@@ -8888,7 +8888,67 @@ class BotsManager {
     }
     
     /**
-     * Автосохранение при изменении переключателя (checkbox/select) — без нажатия кнопки
+     * Сохраняет ТОЛЬКО одно значение переключателя (checkbox/select) — предотвращает сброс других настроек
+     */
+    async saveSingleToggleToBackend(input) {
+        if (!input || !input.id) return false;
+        const configKey = this.mapElementIdToConfigKey(input.id);
+        if (!configKey) return false;
+
+        const systemConfigKeys = [
+            'enhanced_rsi_enabled', 'enhanced_rsi_require_volume_confirmation', 'enhanced_rsi_require_divergence_confirmation',
+            'enhanced_rsi_use_stoch_rsi', 'rsi_extreme_zone_timeout', 'rsi_extreme_oversold', 'rsi_extreme_overbought',
+            'rsi_volume_confirmation_multiplier', 'rsi_divergence_lookback', 'rsi_update_interval', 'auto_save_interval',
+            'mini_chart_update_interval', 'debug_mode', 'auto_refresh_ui', 'refresh_interval', 'position_sync_interval',
+            'inactive_bot_cleanup_interval', 'inactive_bot_timeout', 'stop_loss_setup_interval'
+        ];
+        const isSystem = configKey.startsWith('system_') || systemConfigKeys.includes(configKey);
+
+        let value;
+        if (input.type === 'checkbox') {
+            value = input.checked;
+        } else if (input.tagName === 'SELECT' || input.type === 'hidden') {
+            value = input.value;
+        } else {
+            return false;
+        }
+
+        try {
+            if (isSystem) {
+                const systemKey = configKey.startsWith('system_') ? configKey.replace('system_', '') : configKey;
+                const payload = { [systemKey]: value };
+                const res = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/system-config`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message || 'System config save failed');
+            } else {
+                const payload = { [configKey]: value };
+                const res = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/auto-bot`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message || 'Auto-bot config save failed');
+            }
+            if (this.originalConfig) {
+                const group = isSystem ? this.originalConfig.system : this.originalConfig.autoBot;
+                const key = isSystem ? configKey.replace('system_', '') : configKey;
+                if (group) group[key] = value;
+            }
+            if (this.cachedAutoBotConfig && !isSystem) {
+                this.cachedAutoBotConfig[configKey] = value;
+            }
+            return true;
+        } catch (e) {
+            console.error('[BotsManager] saveSingleToggleToBackend:', e);
+            throw e;
+        }
+    }
+
+    /**
+     * Автосохранение при изменении переключателя (checkbox/select) — сохраняет ТОЛЬКО изменённое поле
      */
     scheduleToggleAutoSave(input) {
         if (this.toggleAutoSaveTimer) clearTimeout(this.toggleAutoSaveTimer);
@@ -8902,12 +8962,16 @@ class BotsManager {
                     }
                     self.aiConfigDirty = false;
                 } else {
-                    await self.saveConfiguration(false, false);
+                    const ok = await self.saveSingleToggleToBackend(input);
+                    if (!ok) {
+                        await self.saveConfiguration(false, true);
+                    }
                 }
                 self.updateFloatingSaveButtonVisibility();
+                self.showConfigNotification('✅ Сохранено', 'Настройка сохранена', 'success');
             } catch (err) {
                 console.error('[BotsManager] Ошибка автосохранения переключателя:', err);
-                self.showNotification('❌ Ошибка сохранения: ' + err.message, 'error');
+                self.showConfigNotification('❌ Ошибка', 'Ошибка сохранения: ' + err.message, 'error');
             }
         }, this.toggleAutoSaveDelay);
     }

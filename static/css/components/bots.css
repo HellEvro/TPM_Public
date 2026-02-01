@@ -2136,15 +2136,21 @@ input:checked + .slider:before {
 
 .active-bots-list {
     flex: 1;
+    min-width: 0;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
-/* Карточки ботов в работе — адаптивная сетка по ширине экрана (3, 4, 5+ в ряд) */
+/* Карточки ботов в работе — фиксированная ширина, заполнение сверху вниз, без растягивания */
 .active-bots-cards-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    grid-template-columns: repeat(auto-fill, 280px);
     gap: 12px;
     align-items: start;
+    align-content: start;
+    justify-content: start;
+    padding: 4px 0;
+    box-sizing: border-box;
 }
 
 .active-bots-cards-grid .active-bot-item {
@@ -2152,6 +2158,9 @@ input:checked + .slider:before {
     display: flex;
     flex-direction: column;
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .active-bots-cards-grid .active-bot-item .bot-header {
@@ -2933,7 +2942,7 @@ input:checked + .toggle-slider:before {
     padding: 15px 20px;
     border-radius: 8px;
     box-shadow: 0 4px 20px rgba(40, 167, 69, 0.3);
-    z-index: 1000;
+    z-index: 1000000;
     transform: translateX(400px);
     transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
     min-width: 300px;

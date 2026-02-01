@@ -236,6 +236,16 @@ window.notifications = {
     show: (message, type) => window.toastManager.show(message, type)
 };
 
+// Глобальная функция showToast для совместимости (ai_config_manager и др.)
+window.showToast = function(message, type = 'info', duration = 4000) {
+    if (window.toastManager) {
+        if (type === 'success') window.toastManager.success(message, duration);
+        else if (type === 'error') window.toastManager.error(message, duration);
+        else if (type === 'warning') window.toastManager.warning(message, duration);
+        else window.toastManager.info(message, duration);
+    }
+};
+
 // ✅ Тестовая функция для проверки работы toast (можно вызвать из консоли: testToast())
 window.testToast = function() {
     console.log('[ToastManager] 🧪 Тестирование toast уведомлений...');
