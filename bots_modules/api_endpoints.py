@@ -2870,7 +2870,7 @@ def copy_individual_settings(symbol):
 
 
 def _get_candles_for_learn_exit_scam(symbol, timeframe=None):
-    """Берёт свечи из кэша в памяти или из БД только для запрошенного/текущего таймфрейма (без подстановки 6h)."""
+    """Берёт свечи только из кэша или БД для этой монеты (без запросов к бирже). Расчёт индивидуальный по своим данным."""
     try:
         from bot_engine.bot_config import get_current_timeframe
         tf = timeframe or get_current_timeframe()
@@ -2886,7 +2886,6 @@ def _get_candles_for_learn_exit_scam(symbol, timeframe=None):
             elif isinstance(symbol_cache, dict) and 'candles' in symbol_cache:
                 if symbol_cache.get('timeframe') == tf:
                     candles = (symbol_cache.get('candles') or [])[:]
-            # Не подставляем свечи другого ТФ (например 6h) — только запрошенный/текущий
     if not candles:
         try:
             from bot_engine.storage import get_candles_for_symbol
@@ -2972,29 +2971,59 @@ def learn_exit_scam_for_all_coins():
         updated_count = 0
         failed_count = 0
         symbols_updated = []
+        sample_params = []  # примеры посчитанных параметров по монетам (для проверки индивидуальности)
         for symbol in symbols:
             try:
                 candles = _get_candles_for_learn_exit_scam(symbol, timeframe=timeframe)
                 if not candles or len(candles) < 50:
                     failed_count += 1
                     continue
+                # Явная копия, чтобы не передавать общий список между монетами
+                candles = list(candles)
                 params, _ = compute_exit_scam_params(candles, aggressiveness=aggressiveness)
+                logger.info(
+                    f" ExitScam {symbol}: single={params.get('exit_scam_single_candle_percent')}%%, "
+                    f"multi N={params.get('exit_scam_multi_candle_count')} {params.get('exit_scam_multi_candle_percent')}%%"
+                )
                 existing = get_individual_coin_settings(symbol) or {}
                 merged = {**existing, **params}
                 set_individual_coin_settings(symbol, merged, persist=True)
                 updated_count += 1
                 symbols_updated.append(symbol)
+                if len(sample_params) < 10:
+                    sample_params.append({
+                        'symbol': symbol,
+                        'exit_scam_single_candle_percent': params.get('exit_scam_single_candle_percent'),
+                        'exit_scam_multi_candle_percent': params.get('exit_scam_multi_candle_percent'),
+                        'exit_scam_multi_candle_count': params.get('exit_scam_multi_candle_count'),
+                        'exit_scam_candles': params.get('exit_scam_candles'),
+                    })
             except Exception as e:
                 logger.debug(f"learn-exit-scam-all {symbol}: {e}")
                 failed_count += 1
 
-        logger.info(f" ExitScam для всех: обновлено {updated_count}, ошибок {failed_count}")
+        # Если ни по одной монете нет свечей в БД/кэше — явная ошибка
+        if updated_count == 0:
+            logger.warning(f" ExitScam для всех: нет свечей в БД/кэше по ТФ {effective_tf} (нужно мин. 50 на монету)")
+            return jsonify({
+                'success': False,
+                'error': (
+                    f'Нет свечей в БД/кэше для расчёта. Загрузите данные свечей по таймфрейму {effective_tf} '
+                    '(обновление RSI или загрузка кэша свечей). Нужно минимум 50 свечей на монету.'
+                ),
+                'updated_count': 0,
+                'failed_count': failed_count,
+                'timeframe': effective_tf,
+            }), 400
+
+        logger.info(f" ExitScam для всех: обновлено {updated_count}, без свечей/ошибок {failed_count}")
         return jsonify({
             'success': True,
             'updated_count': updated_count,
             'failed_count': failed_count,
             'timeframe': effective_tf,
             'symbols_updated': symbols_updated[:50],
+            'sample_params': sample_params,
         })
     except Exception as e:
         logger.error(f" Ошибка learn-exit-scam-all: {e}", exc_info=True)

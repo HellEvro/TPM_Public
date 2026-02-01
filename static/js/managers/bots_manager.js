@@ -3387,10 +3387,14 @@ class BotsManager {
             if (data.success) {
                 const u = data.updated_count || 0;
                 const f = data.failed_count || 0;
-                this.showNotification(
-                    `✅ Индивидуальный ExitScam для всех: обновлено ${u} монет, без данных/ошибок: ${f}`,
-                    'success'
-                );
+                const sample = (data.sample_params || []).slice(0, 5);
+                const sampleStr = sample.length
+                    ? sample.map(s => `${s.symbol} ${s.exit_scam_single_candle_percent}%/${s.exit_scam_multi_candle_count}св ${s.exit_scam_multi_candle_percent}%`).join(', ')
+                    : '';
+                const msg = sampleStr
+                    ? `✅ Обновлено ${u} монет (ошибок: ${f}). Примеры: ${sampleStr}. Выберите монету и загрузите настройки — значения индивидуальны.`
+                    : `✅ Индивидуальный ExitScam для всех: обновлено ${u} монет, без данных/ошибок: ${f}`;
+                this.showNotification(msg, 'success');
             } else {
                 this.showNotification(`❌ ${data.error || 'Ошибка расчёта'}`, 'error');
             }
