@@ -1,0 +1,7 @@
+#!/bin/sh
+# Pre-merge hook: создание бэкапа bot_config.py перед merge/pull
+# Использует Python скрипт для кроссплатформенной работы
+
+python3 .git/hooks/pre-merge.py 2>/dev/null || python .git/hooks/pre-merge.py 2>/dev/null || exit 0
+exit 0
+

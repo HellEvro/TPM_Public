@@ -1,0 +1,144 @@
+# =============================================================================
+# InfoBot требует Python 3.12 или выше (рекомендуется 3.14+).
+# Установка: https://www.python.org/downloads/
+# Или: python scripts/ensure_python314_venv.py (создаёт .venv с Python 3.14+)
+#
+# PyTorch работает на всех версиях Python 3.8+, включая 3.12 и 3.14+.
+# Для установки PyTorch с GPU: python scripts/setup_python_gpu.py
+# Или вручную: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+#
+# pip install -r requirements.txt --no-warn-script-location  — меньше предупреждений PATH
+# =============================================================================
+
+# Core dependencies
+flask>=2.3.3
+flask-cors>=4.0.0
+flask-socketio>=5.3.6
+python-socketio>=5.9.0
+python-engineio>=4.7.1
+
+# Exchange APIs
+ccxt>=4.1.13
+bybit-api
+pybit>=5.11.0
+python-binance>=1.0.29
+binance-connector>=3.0.0
+okx-api>=0.0.1
+
+# Utilities
+requests>=2.31.0
+python-telegram-bot>=20.6
+websocket-client>=1.6.3
+python-dotenv>=1.0.0
+APScheduler>=3.10.4
+psutil>=5.9.0
+
+# Data processing
+pandas>=2.1.1
+numpy>=1.26.0
+matplotlib>=3.7.0
+pytz>=2023.3.post1
+python-dateutil>=2.8.2
+
+# Database (SQLite встроен в Python, но может потребоваться для расширенных функций)
+# sqlite3 встроен в Python 3.x, дополнительные зависимости не требуются
+# Для работы с БД используется стандартный модуль sqlite3
+
+# Async support
+aiohttp>=3.8.6
+asyncio>=3.4.3
+
+# Logging and formatting
+colorama>=0.4.6
+rich>=13.0.0
+
+# Security
+cryptography>=41.0.0
+
+# =============================================================================
+# AI/ML dependencies - PyTorch (ОБЯЗАТЕЛЕН для LSTM Predictor)
+# =============================================================================
+# ⚠️ ВАЖНО: PyTorch ОБЯЗАТЕЛЕН для работы LSTM Predictor!
+# Без PyTorch LSTM Predictor не будет работать (даже на CPU).
+# PyTorch работает на CPU и GPU - если GPU нет, автоматически используется CPU.
+#
+# УСТАНОВКА PYTORCH:
+# 
+# РЕКОМЕНДУЕТСЯ: Автоматическая установка (определяет GPU и устанавливает нужную версию):
+#    python scripts/setup_python_gpu.py
+#
+# РУЧНАЯ УСТАНОВКА:
+#
+# 1. С GPU (NVIDIA CUDA) - если есть GPU:
+#    - Проверьте наличие GPU: nvidia-smi
+#    - Установите PyTorch с CUDA 12.1:
+#      pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+#    - Или CUDA 11.8 (если CUDA 12.1 не поддерживается):
+#      pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+#
+# 2. БЕЗ GPU (CPU версия) - если GPU нет:
+#    pip install torch torchvision torchaudio
+#    Система автоматически будет использовать CPU для обучения и предсказаний.
+#
+# 3. Проверка установки:
+#    python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU (GPU не найден)')"
+#
+# КАК РАБОТАЕТ:
+# - Если GPU доступен: PyTorch использует GPU для ускорения обучения и предсказаний
+# - Если GPU НЕ доступен: PyTorch автоматически использует CPU (работает медленнее, но функционально)
+# - LSTM Predictor автоматически определяет доступное устройство и использует его
+#
+# РАЗМЕРЫ:
+# - PyTorch с CUDA: ~2-3 GB
+# - PyTorch CPU: ~200-300 MB
+#
+# ТРЕБОВАНИЯ ДЛЯ GPU (опционально):
+# - NVIDIA GPU с поддержкой CUDA
+# - Драйверы NVIDIA (проверьте: nvidia-smi)
+# - CUDA Toolkit 11.8 или 12.1 (устанавливается автоматически с PyTorch)
+# =============================================================================
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# Machine Learning libraries (версии зафиксированы — модели pickle чувствительны к sklearn)
+# При смене версии переобучите модели (signal/profit/scaler) или проверьте: python scripts/verify_ai_deps.py
+scikit-learn>=1.7.0,<1.8
+scipy>=1.10.0
+joblib>=1.3.0
+
+# Deep Learning (LSTM/CNN) — PyTorch уже выше
+
+# Для обработки изображений (Pattern Recognition) - опционально
+# opencv-python>=4.8.0  # Обработка изображений для CNN
+
+# Для защиты модулей (только для сборки) - опционально
+# Cython>=3.0.0        # Компиляция Python в .pyd/.so
+# pyarmor>=8.0.0       # Обфускация кода
+
+# Для анализа и визуализации (опционально)
+# matplotlib>=3.7.0    # Визуализация графиков (уже указан выше)
+# seaborn>=0.12.0      # Статистическая визуализация
+
+# ===========================================
+# Примечания:
+# ===========================================
+# 
+# 1. PyTorch: ~2-3 GB (с CUDA), ~200-300 MB (CPU). 
+#    GPU: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+#    CPU: pip install torch torchvision torchaudio
+#
+# 2. Для GPU:
+#    - Установите PyTorch с CUDA поддержкой (см. инструкции выше)
+#    - Требуется NVIDIA GPU с драйверами (проверьте: nvidia-smi)
+#    - Автоматическая установка: python scripts/setup_python_gpu.py
+#
+# 3. Минимальные требования для AI модулей:
+#    - PyTorch (torch, torchvision, torchaudio)
+#    - scikit-learn + numpy + pandas + joblib + scipy
+#    - Все эти зависимости уже включены выше
+#
+# 4. Проект требует Python 3.12 или выше (рекомендуется 3.14+).
+#    PyTorch работает на всех версиях Python 3.8+, включая 3.12 и 3.14+.
+#
+# ===========================================

@@ -1,0 +1,79 @@
+<!-- Страница закрытых позиций -->
+<div class="section">
+    <!-- Блок статистики -->
+    <div class="stats-block">
+        <div class="stat-item">
+            <span class="stat-label" data-translate="totalWalletBalance">Общий баланс:</span>
+            <span class="stat-value" id="totalBalance">0.000 USDT</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label" data-translate="totalAvailableBalance">Доступные средства:</span>
+            <span class="stat-value" id="availableBalance">0.000 USDT</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-label" data-translate="cumulativeRealizedPnL">Общий P&L:</span>
+            <span class="stat-value" id="realizedPnL">0.000 USDT</span>
+        </div>
+    </div>
+
+    <div class="closed-pnl-header">
+        <div class="page-size-container">
+            <h2 data-translate="closedPositions">Закрытые позиции</h2>
+            <div>
+                <label for="pageSize" data-translate="showPerPage">Показывать по</label>:
+                <select id="pageSize" onchange="window.app.changePageSize(this.value)" class="sort-select">
+                    <option value="10">10</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+        </div>
+        <div class="period-filter-container">
+            <label for="periodSelect" data-translate="periodFilter">Период:</label>
+            <select id="periodSelect" onchange="window.app.onPeriodChange()" class="sort-select">
+                <option value="all" data-translate="periodAll">За всё время</option>
+                <option value="day" data-translate="periodDay">За день</option>
+                <option value="week" data-translate="periodWeek">За неделю</option>
+                <option value="month" data-translate="periodMonth">За месяц</option>
+                <option value="half_year" data-translate="periodHalfYear">За полгода</option>
+                <option value="year" data-translate="periodYear">За год</option>
+                <option value="custom" data-translate="periodCustom">Произвольный период</option>
+            </select>
+            <div id="customDateRange" style="display: none; margin-left: 10px;">
+                <input type="date" id="startDate" class="date-input" />
+                <span style="margin: 0 5px;">-</span>
+                <input type="date" id="endDate" class="date-input" />
+                <button onclick="window.app.applyCustomDateRange()" class="apply-date-btn" data-translate="apply">Применить</button>
+            </div>
+            <button id="refreshClosedPnlBtn" onclick="window.app.updateClosedPnl()" class="refresh-btn" style="margin-left: 10px; padding: 8px 16px; background-color: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;" data-translate="refresh">Обновить</button>
+        </div>
+        <select id="sortSelect" onchange="window.app.updateClosedPnl()" class="sort-select">
+            <option value="time" data-translate="sortNew">От нового к старому</option>
+            <option value="pnl" data-translate="sortPnl">По размеру PNL</option>
+        </select>
+    </div>
+    <div id="closedPnlLoading" class="loader-container" style="display: none; padding: 40px;">
+        <div class="loader"></div>
+        <div class="loader-text" data-translate="loadingData">Загрузка данных...</div>
+    </div>
+    <table class="pnl-table" id="closedPnlTableContainer">
+        <thead>
+            <tr>
+                <th data-translate="contracts">Контракты</th>
+                <th data-translate="quantity">Кол-во</th>
+                <th data-translate="entryPrice">Цена входа</th>
+                <th data-translate="exitPrice">Цена выхода</th>
+                <th data-translate="realizedPnl">Реальз. P&L</th>
+                <th data-translate="tradingTime">Время торговли</th>
+            </tr>
+        </thead>
+        <tbody id="closedPnlTable">
+            <!-- Данные будут добавлены через JavaScript -->
+        </tbody>
+    </table>
+    <div class="pagination">
+        <button class="pagination-btn" onclick="window.app.prevPage()" data-translate="prevPage">< Назад</button>
+        <span id="pageInfo"></span>
+        <button class="pagination-btn" onclick="window.app.nextPage()" data-translate="nextPage">Вперед ></button>
+    </div>
+</div>

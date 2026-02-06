@@ -1,0 +1,7 @@
+#!/bin/sh
+# Post-merge hook: защита bot_config.py от перезаписи при git pull
+# Использует Python скрипт для кроссплатформенной работы
+
+python3 .git/hooks/post-merge.py 2>/dev/null || python .git/hooks/post-merge.py 2>/dev/null || exit 0
+exit 0
+

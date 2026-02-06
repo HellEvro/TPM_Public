@@ -1,0 +1,185 @@
+/* Toast уведомления - стильные всплывающие сообщения справа вверху */
+
+.toast-container {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    z-index: 999999 !important;
+    display: flex !important;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 400px;
+    pointer-events: none;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+.toast {
+    background: #2c2c2c !important;
+    color: #ffffff !important;
+    padding: 16px 20px !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+    display: flex !important;
+    align-items: center;
+    gap: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.4;
+    min-width: 280px;
+    max-width: 400px;
+    word-wrap: break-word;
+    pointer-events: auto !important;
+    position: relative !important;
+    border-left: 4px solid;
+    transform: translateX(100%);
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    visibility: visible !important;
+    z-index: 999999 !important;
+}
+
+.toast.show {
+    transform: translateX(0) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+.toast.hide {
+    transform: translateX(100%);
+    opacity: 0;
+}
+
+/* Типы уведомлений */
+.toast.success {
+    border-left-color: #4caf50;
+    background: #1b5e20;
+}
+
+.toast.error {
+    border-left-color: #f44336;
+    background: #b71c1c;
+}
+
+.toast.warning {
+    border-left-color: #ff9800;
+    background: #e65100;
+}
+
+.toast.info {
+    border-left-color: #2196f3;
+    background: #0d47a1;
+}
+
+/* Иконки */
+.toast-icon {
+    flex-shrink: 0;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.toast.success .toast-icon::before {
+    content: '✅';
+}
+
+.toast.error .toast-icon::before {
+    content: '❌';
+}
+
+.toast.warning .toast-icon::before {
+    content: '⚠️';
+}
+
+.toast.info .toast-icon::before {
+    content: 'ℹ️';
+}
+
+/* Содержимое */
+.toast-message {
+    flex: 1;
+    color: #ffffff;
+    font-weight: 500;
+}
+
+/* Кнопка закрытия (опционально) */
+.toast-close {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    padding: 0;
+    margin-left: 8px;
+    transition: color 0.2s;
+}
+
+.toast-close:hover {
+    color: rgba(255, 255, 255, 1);
+}
+
+/* Прогресс-бар автозакрытия */
+.toast-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 0 0 8px 0;
+    transform-origin: left;
+    transform: scaleX(1);
+    transition: transform linear;
+}
+
+.toast.success .toast-progress {
+    background: rgba(76, 175, 80, 0.6);
+}
+
+.toast.error .toast-progress {
+    background: rgba(244, 67, 54, 0.6);
+}
+
+.toast.warning .toast-progress {
+    background: rgba(255, 152, 0, 0.6);
+}
+
+.toast.info .toast-progress {
+    background: rgba(33, 150, 243, 0.6);
+}
+
+/* Адаптация для мобильных устройств */
+@media (max-width: 480px) {
+    .toast-container {
+        left: 20px;
+        right: 20px;
+        top: 20px;
+        max-width: none;
+    }
+    
+    .toast {
+        min-width: auto;
+        max-width: none;
+    }
+}
+
+/* Темная тема */
+body.dark-theme .toast {
+    background: #424242;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+body.dark-theme .toast.success {
+    background: #2e7d32;
+}
+
+body.dark-theme .toast.error {
+    background: #c62828;
+}
+
+body.dark-theme .toast.warning {
+    background: #ef6c00;
+}
+
+body.dark-theme .toast.info {
+    background: #1565c0;
+}

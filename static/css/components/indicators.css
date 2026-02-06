@@ -1,0 +1,59 @@
+/* === Status Indicators === */
+.status-indicator {
+    animation: none;
+    border-radius: 50%;
+    display: inline-block;
+    height: 10px;
+    margin-right: 5px;
+    width: 10px;
+}
+
+.status-indicator.online {
+    animation: blink 2s infinite;
+    background-color: var(--green-color);
+}
+
+.status-indicator.offline {
+    background-color: var(--red-color);
+}
+
+/* === EMA Indicator === */
+.ema-indicator {
+    color: var(--text-color);
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+/* === Manual Position Indicator === */
+.manual-position-indicator {
+    color: var(--orange-color);
+    font-size: 1.1em;
+    margin-right: 4px;
+    opacity: 0.8;
+    transition: opacity 0.2s ease;
+}
+
+.manual-position-indicator:hover {
+    opacity: 1;
+}
+
+/* === Mature Coin Indicator === */
+.mature-coin-indicator {
+    color: var(--blue-color);
+    font-size: 1.1em;
+    margin-right: 4px;
+    opacity: 0.8;
+    transition: opacity 0.2s ease;
+}
+
+.mature-coin-indicator:hover {
+    opacity: 1;
+}
+
+/* === Animations === */
+@keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+} 

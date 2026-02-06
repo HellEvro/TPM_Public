@@ -1,0 +1,489 @@
+# ===========================================
+# Python
+# ===========================================
+__pycache__/
+*.py[cod]
+# ВАЖНО: Скомпилированные .pyc файлы для лицензирования НУЖНЫ
+!scripts/hardware_id.pyc
+!bot_engine/ai/ai_manager.pyc
+!bot_engine/ai/license_checker.pyc
+!bot_engine/ai/hardware_id_source.pyc
+!bot_engine/ai/_ai_launcher.pyc
+# Версионированные .pyc файлы для Python 3.12 и 3.14
+!bot_engine/ai/pyc_312/*.pyc
+!bot_engine/ai/pyc_314/*.pyc
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ===========================================
+# PyInstaller
+# ===========================================
+*.manifest
+*.spec
+
+# ===========================================
+# Installer logs
+# ===========================================
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ===========================================
+# Unit test / coverage reports
+# ===========================================
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# ===========================================
+# Translations
+# ===========================================
+*.mo
+*.pot
+
+# ===========================================
+# Django stuff:
+# ===========================================
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# ===========================================
+# Flask stuff:
+# ===========================================
+instance/
+.webassets-cache
+
+# ===========================================
+# Scrapy stuff:
+# ===========================================
+.scrapy
+
+# ===========================================
+# Sphinx documentation
+# ===========================================
+docs/_build/
+
+# ===========================================
+# PyBuilder
+# ===========================================
+.pybuilder/
+target/
+
+# ===========================================
+# Jupyter Notebook
+# ===========================================
+.ipynb_checkpoints
+
+# ===========================================
+# IPython
+# ===========================================
+profile_default/
+ipython_config.py
+
+# ===========================================
+# pyenv
+# ===========================================
+.python-version
+
+# ===========================================
+# pipenv
+# ===========================================
+Pipfile.lock
+
+# ===========================================
+# poetry
+# ===========================================
+poetry.lock
+
+# ===========================================
+# pdm
+# ===========================================
+.pdm.toml
+
+# ===========================================
+# PEP 582
+# ===========================================
+__pypackages__/
+
+# ===========================================
+# Celery stuff
+# ===========================================
+celerybeat-schedule
+celerybeat.pid
+
+# ===========================================
+# SageMath parsed files
+# ===========================================
+*.sage.py
+
+# ===========================================
+# Environments
+# ===========================================
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ===========================================
+# Spyder project settings
+# ===========================================
+.spyderproject
+.spyproject
+
+# ===========================================
+# Rope project settings
+# ===========================================
+.ropeproject
+
+# ===========================================
+# mkdocs documentation
+# ===========================================
+/site
+
+# ===========================================
+# mypy
+# ===========================================
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ===========================================
+# Pyre type checker
+# ===========================================
+.pyre/
+
+# ===========================================
+# pytype static type analyzer
+# ===========================================
+.pytype/
+
+# ===========================================
+# Cython debug symbols
+# ===========================================
+cython_debug/
+
+# ===========================================
+# PyCharm
+# ===========================================
+.idea/
+
+# ===========================================
+# VS Code
+# ===========================================
+.vscode/
+*.code-workspace
+
+# ===========================================
+# Trading Bot Specific
+# ===========================================
+# API Keys and secrets
+API_KEYS_SECRET*.txt
+*_SECRET*.txt
+*.key
+*.pem
+secrets/
+keys/
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Data files (trading data, positions, etc.)
+# data/
+# Исключения: ИИ данные ДОЛЖНЫ быть в git
+data/ai/*
+!data/ai/models/
+!data/ai/models/**
+
+data/process_state.json
+data/candles_cache.json
+# Большие файлы данных AI (не коммитим в Git)
+data/ai/market_data.json
+data/ai/candles_full_history.json
+data/ai/history_data.json
+data/ai/bots_data.json
+data/ai/parameter_training_data.json
+data/ai/parameter_training_data.json.backup
+data/ai/parameter_training_data.json.corrupted
+data/ai/used_training_parameters.json
+data/ai/best_params_per_symbol.json
+data/ai/blocked_params.json
+data/ai/win_rate_targets.json
+data/maturity_check_cache.json
+data/bots_state.json
+data/bot_history.json
+data/default_auto_bot_config.json
+data/delisted.json
+data/individual_coin_settings.json
+data/mature_coins.json
+data/system_config.json
+data/telegram_states.json
+data/bot_positions_registry.json
+data/ai/models/profit_predictor.pkl
+data/ai/models/profit_predictor_metadata.json
+data/ai/models/signal_predictor.pkl
+data/ai/models/signal_predictor_metadata.json
+app/config.py
+app/keys.py
+# Локальный конфиг пользователя — создаётся из bot_config.example.py, не коммитить и не перетирать при pull
+configs/bot_config.py
+bot_engine/bot_config.py
+
+*.json.backup
+*.json.bak
+*.json.tmp
+*.json.lock
+
+# Cache files
+*.cache
+cache/
+.cache/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Database files
+# *.db
+#*.sqlite
+# *.sqlite3
+
+# Backup files
+*.backup
+*.bak
+backup/
+backups/
+
+# Database backup files
+*.db.backup
+*.db.backup_*
+*.db.bak
+*.sqlite.backup
+*.sqlite.backup_*
+*.sqlite.bak
+*.sqlite3.backup
+*.sqlite3.backup_*
+*.sqlite3.bak
+data/*.db.backup
+data/*.db.backup_*
+data/*.db.bak
+data/*.sqlite.backup
+data/*.sqlite.backup_*
+data/*.sqlite.bak
+data/*.sqlite3.backup
+data/*.sqlite3.backup_*
+data/*.sqlite3.bak
+
+# SQLite backup auxiliary files (-shm, -wal)
+*-shm
+*-wal
+data/*-shm
+data/*-wal
+# Backup files with auxiliary files (pattern: *.db.backup_TIMESTAMP-shm, *.db.backup_TIMESTAMP-wal)
+*.db.backup_*-shm
+*.db.backup_*-wal
+*.sqlite.backup_*-shm
+*.sqlite.backup_*-wal
+*.sqlite3.backup_*-shm
+*.sqlite3.backup_*-wal
+data/*.db.backup_*-shm
+data/*.db.backup_*-wal
+data/*.sqlite.backup_*-shm
+data/*.sqlite.backup_*-wal
+data/*.sqlite3.backup_*-shm
+data/*.sqlite3.backup_*-wal
+
+# Configuration backups
+*_backup_*.json
+*_bak_*.json
+
+# ===========================================
+# OS Specific
+# ===========================================
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.tmp
+*.lnk
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.stackdump
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ===========================================
+# Project Specific
+# ===========================================
+# Old working directories
+_stable/
+_work_in_progress/
+_work_TRADING_/
+
+# Public version for Git
+# ✅ ИСКЛЮЧЕНИЯ: Файлы лицензирования в публичной версии НУЖНЫ (должны быть ПЕРЕД правилом InfoBot_Public/)
+!InfoBot_Public/bot_engine/ai/license_checker.pyc
+!InfoBot_Public/bot_engine/ai/hardware_id_source.pyc
+!InfoBot_Public/bot_engine/ai/ai_manager.pyc
+InfoBot_Public/
+
+# Test files
+#test_*.py
+#*_test.py
+#tests/
+#test_output.txt
+
+# Documentation drafts
+*.md.tmp
+*.md.backup
+
+# UI state
+launcher/.infobot_manager_state.json
+
+# Process files
+*.pid
+*.lock
+
+# ===========================================
+# Security
+# ===========================================
+# Never commit these!
+*.p12
+*.p8
+*.pem
+*.key
+*.crt
+*.cer
+*.der
+*.pfx
+*.p7b
+*.p7s
+
+# ===========================================
+# AI Premium Module
+# ===========================================
+# License files
+license.lic
+*.lic
+
+# Compiled premium modules
+infobot_ai_premium.pyd
+infobot_ai_premium.so
+*.pyd
+*.so
+
+# AI data files (large files that shouldn't be in git)
+# data/ai/historical/*.csv
+# data/ai/training/*.npz
+
+# NOTE: ВСЕ обученные модели ДОЛЖНЫ быть в git!
+# Все модели критичны для работы системы
+# data/ai/models/*.pkl - КОММИТИМ!
+# data/ai/models/*.h5 - КОММИТИМ!
+# data/ai/models/*.pt - КОММИТИМ!
+
+# Большие deep learning модели - ВКЛЮЧАЕМ В GIT!
+# Все обученные модели критичны для работы
+# Правила уже добавлены выше в разделе data/ исключений
+
+# Encrypted models
+*.encrypted
+
+# Premium build artifacts (УДАЛЕНО)
+# InfoBot_AI_Premium/ больше не используется
+
+# Dev scripts and tests (не нужны в публичной версии)
+scripts/fix/
+scripts/check/
+scripts/test_*.py
+scripts/verify_ai_ready.py
+scripts/quick_import_test.py
+
+# Old premium loader (не используется, заменен на ai_manager.pyc)
+bot_engine/ai/_premium_loader.py
+
+# Build artifacts
+scripts/hardware_id.build/
+
+# Source files should not be in public (keep only compiled .pyc)
+license_generator/source/
+license_generator/source/
+app/telegram_states.json
+data/bot_history.json.corrupted
+data/ai/models/
+data/async_state.json
+data/rsi_cache.json
+data/bots_data.db
+data/app_data.db
+data/ai_data.db
+data/ai_data.db-shm
+data/ai_data.db-wal
+data/bots_data.db-shm
+data/bots_data.db-wal
+data/app_data.db-shm
+data/database_gui_settings.json

@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Автоматическая проверка и установка PyTorch с поддержкой GPU
+Вызывается автоматически при запуске ai.py
+"""
+
+import sys
+import subprocess
+import logging
+import platform
+
+logger = logging.getLogger('PyTorchSetup')
+
+# Глобальные флаги для предотвращения дублирования
+_gpu_warning_shown = False
+_pytorch_checked = False
+
+def check_python_version():
+    """Проверяет версию Python. PyTorch поддерживает Python 3.8+."""
+    version = sys.version_info
+    major, minor = version.major, version.minor
+
+    if major == 3 and minor >= 8:
+        return {
+            'supported': True,
+            'gpu_supported': True,  # PyTorch поддерживает GPU на всех версиях Python
+            'message': f'Python {major}.{minor} поддерживается PyTorch',
+            'recommended': f'Python {major}.{minor}'
+        }
+
+    # Версии ниже 3.8 не поддерживаются
+    return {
+        'supported': False,
+        'gpu_supported': False,
+        'message': f'Python {major}.{minor} не поддерживается. Требуется Python 3.8+.',
+        'recommended': 'Python 3.8+'
+    }
+
+def check_gpu_available():
+    """Проверяет наличие NVIDIA GPU в системе"""
+    try:
+        result = subprocess.run(
+            ['nvidia-smi'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+        return False
+
+def check_pytorch_installation():
+    """Проверяет установку PyTorch и поддержку CUDA"""
+    try:
+        logger.info("Импорт PyTorch...")
+        import torch
+
+        logger.info("Получение информации о PyTorch...")
+        version = torch.__version__
+
+        logger.info("Проверка поддержки CUDA...")
+        cuda_available = torch.cuda.is_available()
+        cuda_version = None
+        if cuda_available:
+            cuda_version = torch.version.cuda
+
+        logger.info("Поиск GPU устройств...")
+        gpus_found = 0
+        gpu_devices = []
+        if cuda_available:
+            gpus_found = torch.cuda.device_count()
+            for i in range(gpus_found):
+                gpu_name = torch.cuda.get_device_name(i)
+                gpu_devices.append(f"GPU {i}: {gpu_name}")
+
+        return {
+            'installed': True,
+            'version': version,
+            'cuda_available': cuda_available,
+            'cuda_version': cuda_version,
+            'gpus_found': gpus_found,
+            'gpu_devices': gpu_devices
+        }
+    except ImportError:
+        return {
+            'installed': False,
+            'version': None,
+            'cuda_available': False,
+            'cuda_version': None,
+            'gpus_found': 0,
+            'gpu_devices': []
+        }
+    except Exception as e:
+        logger.warning(f"Ошибка при проверке PyTorch: {e}")
+        # Возвращаем частичную информацию
+        try:
+            import torch
+            return {
+                'installed': True,
+                'version': torch.__version__,
+                'cuda_available': False,
+                'cuda_version': None,
+                'gpus_found': 0,
+                'gpu_devices': []
+            }
+        except:
+            return {
+                'installed': False,
+                'version': None,
+                'cuda_available': False,
+                'cuda_version': None,
+                'gpus_found': 0,
+                'gpu_devices': []
+            }
+
+def install_pytorch_with_gpu(has_gpu=False):
+    """УСТАРЕЛО: Установка PyTorch выполняется ТОЛЬКО через requirements.txt"""
+    logger.info("💡 PyTorch устанавливается через: pip install -r requirements.txt")
+    if has_gpu:
+        logger.info("💡 Для GPU поддержки: pip install torch --index-url https://download.pytorch.org/whl/cu121")
+    return False, "Установка PyTorch выполняется через requirements.txt"
+
+def ensure_pytorch_setup():
+    """
+    Главная функция: проверяет наличие PyTorch (установка выполняется через requirements.txt)
+    Вызывается автоматически при импорте модуля
+    """
+    global _pytorch_checked
+
+    # Проверяем только один раз во всей программе
+    if _pytorch_checked:
+
+        return True
+
+    # Проверяем, что мы в главном процессе (для предотвращения дублирования в дочерних процессах)
+    try:
+        import multiprocessing
+        is_main_process = multiprocessing.current_process().name == 'MainProcess'
+        if not is_main_process:
+
+            return True
+    except:
+        # Если multiprocessing недоступен, продолжаем
+        pass
+
+    _pytorch_checked = True
+
+    try:
+        # Проверяем версию Python
+        python_info = check_python_version()
+
+        # Проверяем наличие GPU
+        logger.info("Проверка наличия GPU в системе...")
+        has_gpu = check_gpu_available()
+        if has_gpu:
+            logger.info("✅ NVIDIA GPU обнаружен в системе")
+        else:
+            logger.info("ℹ️ NVIDIA GPU не обнаружен, будет использоваться CPU")
+
+        # Проверяем установку PyTorch
+        logger.info("Проверка установки PyTorch...")
+        torch_info = check_pytorch_installation()
+
+        if not torch_info['installed']:
+            # PyTorch должен устанавливаться через requirements.txt
+            logger.warning("⚠️ PyTorch не установлен")
+            logger.info("💡 Установите PyTorch через: pip install -r requirements.txt")
+            if has_gpu:
+                logger.info("💡 Для GPU поддержки: pip install torch --index-url https://download.pytorch.org/whl/cu121")
+            logger.info("ℹ️ AI система будет работать без PyTorch (LSTM и некоторые функции будут недоступны).")
+
+        # Выводим информацию о PyTorch
+        if torch_info['installed']:
+            logger.info(f"PyTorch версия: {torch_info['version']}")
+
+            if torch_info['cuda_available']:
+                logger.info(f"✅ PyTorch с поддержкой CUDA {torch_info['cuda_version']}")
+                if torch_info['gpus_found'] > 0:
+                    logger.info(f"✅ Найдено GPU устройств: {torch_info['gpus_found']}")
+                    for gpu_device in torch_info['gpu_devices']:
+                        logger.info(f"   {gpu_device}")
+                else:
+                    logger.warning("⚠️ GPU устройства не найдены PyTorch")
+                    if check_gpu_available():
+                        logger.warning("   GPU обнаружен в системе, но PyTorch его не видит")
+                        logger.warning("   Возможно, требуется установка CUDA библиотек вручную")
+            else:
+                logger.warning("⚠️ PyTorch установлен БЕЗ поддержки CUDA (CPU версия)")
+                if has_gpu:
+                    logger.warning("   GPU обнаружен в системе, но PyTorch не может его использовать")
+                    logger.info("   💡 РЕШЕНИЯ:")
+                    logger.info("      1. Установите PyTorch с CUDA: pip install torch --index-url https://download.pytorch.org/whl/cu121")
+                    logger.info("      2. Или используйте PyTorch CPU версию (уже установлена)")
+                    logger.info("   ℹ️ Система будет работать на CPU, но медленнее для обучения LSTM моделей")
+    except Exception as e:
+        logger.warning(f"Ошибка при проверке PyTorch: {e}")
+        logger.info("Продолжаем работу...")
+        return True
+
+    return True
+
+# НЕ вызываем автоматически при импорте - только по явному запросу
+# Это предотвращает множественные вызовы из разных модулей
