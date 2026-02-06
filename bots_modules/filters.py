@@ -2243,11 +2243,11 @@ def load_all_coins_candles_fast():
         except Exception as db_error:
             logger.warning(f"⚠️ Ошибка сохранения в БД кэша: {db_error}")
         
-        # 🔄 Сбрасываем задержку запросов после успешной загрузки раунда
+        # 🔄 Сбрасываем задержку запросов после успешной загрузки раунда (только если не было недавнего rate limit)
         try:
             if current_exchange and hasattr(current_exchange, 'reset_request_delay'):
-                current_exchange.reset_request_delay()
-                logger.info(f"🔄 Задержка запросов сброшена к базовому значению")
+                if current_exchange.reset_request_delay():
+                    logger.info(f"🔄 Задержка запросов сброшена к базовому значению")
         except Exception as reset_error:
             logger.warning(f"⚠️ Ошибка сброса задержки: {reset_error}")
         
@@ -2510,13 +2510,13 @@ def load_all_coins_rsi():
         except Exception as update_error:
             logger.warning(f"⚠️ Не удалось обновить is_mature: {update_error}")
 
-        # 🔄 Сбрасываем задержку запросов после успешной загрузки раунда
+        # 🔄 Сбрасываем задержку запросов после успешной загрузки раунда (только если не было недавнего rate limit)
         try:
             if current_exchange and hasattr(
                 current_exchange, "reset_request_delay"
             ):
-                current_exchange.reset_request_delay()
-                logger.info("🔄 Задержка запросов сброшена к базовому значению")
+                if current_exchange.reset_request_delay():
+                    logger.info("🔄 Задержка запросов сброшена к базовому значению")
         except Exception as reset_error:
             logger.warning(f"⚠️ Ошибка сброса задержки: {reset_error}")
 
