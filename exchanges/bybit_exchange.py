@@ -179,6 +179,10 @@ class BybitExchange(BaseExchange):
         # Кэш режима маржи по символу: {symbol: (mode_str, timestamp)}
         self._margin_mode_cache = {}
         self._margin_mode_cache_ttl = 300  # 5 минут
+        # Кэш режима маржи на уровне аккаунта (для расчёта доступного остатка)
+        self._account_margin_mode_cache = None
+        self._account_margin_mode_cache_time = 0
+        self._account_margin_mode_cache_ttl = 300  # 5 минут
     
     def _setup_connection_pool(self):
         """Настраивает пул соединений для requests и pybit"""
@@ -2126,6 +2130,25 @@ class BybitExchange(BaseExchange):
         else:
             return "Нейтральная ситуация - рекомендуется наблюдение"
 
+    def _get_account_margin_mode(self):
+        """Возвращает режим маржи на уровне аккаунта: ISOLATED_MARGIN | REGULAR_MARGIN | PORTFOLIO_MARGIN. Кэш 5 мин."""
+        import time
+        current_time = time.time()
+        if (self._account_margin_mode_cache is not None and
+            current_time - self._account_margin_mode_cache_time < self._account_margin_mode_cache_ttl):
+            return self._account_margin_mode_cache
+        try:
+            resp = self.client.get_account_info()
+            if resp.get('retCode') != 0:
+                return None
+            mode = (resp.get('result') or {}).get('marginMode') or ''
+            self._account_margin_mode_cache = mode if mode else None
+            self._account_margin_mode_cache_time = current_time
+            return self._account_margin_mode_cache
+        except Exception as e:
+            logger.debug(f"[BYBIT_BOT] get_account_info: {e}")
+            return None
+
     def get_wallet_balance(self):
         """Получает общий баланс кошелька и реализованный PNL (с кэшированием)"""
         import time
@@ -2168,11 +2191,31 @@ class BybitExchange(BaseExchange):
             total_balance = _safe_float(wallet_data.get('totalWalletBalance'))
             available_balance = _safe_float(wallet_data.get('totalAvailableBalance'))
             
-            # Получаем реализованный PNL из данных кошелька
+            # Режим маржи: при ISOLATED_MARGIN поле totalAvailableBalance не применимо (Bybit docs)
+            # — считаем доступный остаток по монете USDT
+            margin_mode = self._get_account_margin_mode()
+            use_isolated_calculation = (margin_mode == 'ISOLATED_MARGIN')
+            
             coin_list = wallet_data.get('coin') or []
+            realized_pnl = 0.0
             if coin_list:
                 coin_data = coin_list[0]
                 realized_pnl = _safe_float(coin_data.get('cumRealisedPnl'))
+                # Изолированная маржа: всегда считаем остаток по USDT. Иначе — fallback если totalAvailableBalance = 0
+                if use_isolated_calculation or (available_balance <= 0 and total_balance > 0):
+                    for c in coin_list:
+                        if (c.get('coin') or '').upper() == 'USDT':
+                            wb = _safe_float(c.get('walletBalance'))
+                            pos_im = _safe_float(c.get('totalPositionIM'))
+                            order_im = _safe_float(c.get('totalOrderIM'))
+                            locked = _safe_float(c.get('locked'))
+                            bonus = _safe_float(c.get('bonus'))
+                            available_balance = max(0.0, wb - pos_im - order_im - locked - bonus)
+                            if use_isolated_calculation:
+                                logger.debug(f"[BYBIT_BOT] Остаток по USDT (режим изолированной маржи): {available_balance:.2f} USDT")
+                            else:
+                                logger.debug(f"[BYBIT_BOT] Остаток по USDT (fallback, totalAvailableBalance=0): {available_balance:.2f} USDT")
+                            break
             else:
                 realized_pnl = 0.0
             
