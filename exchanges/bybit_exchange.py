@@ -2857,12 +2857,18 @@ class BybitExchange(BaseExchange):
             try:
                 response = self.client.place_order(**order_params)
             except Exception as api_error:
-                # Pybit бросает исключение при retCode != 0, но ответ может быть в ошибке!
-                logger.error(f"[BYBIT_BOT] ❌ {symbol}: Pybit exception: {api_error}")
-                # Пытаемся извлечь ответ из исключения
+                # Pybit бросает исключение при retCode != 0 — обрабатываем ожидаемые коды как WARNING
                 error_str = str(api_error)
                 import re
-                # Извлекаем retCode и retMsg из строки ошибки
+                # ✅ Ожидаемая ошибка: недостаточно средств (110007) — только WARNING, без трейсбека
+                if '110007' in error_str or 'not enough for new order' in error_str.lower():
+                    user_message = "Недостаточно средств для нового ордера (баланс/маржа)"
+                    logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: {user_message} (ErrCode: 110007)")
+                    return {
+                        'success': False,
+                        'message': user_message,
+                        'error_code': '110007'
+                    }
                 # ✅ Обрабатываем ошибку превышения максимального кредитного плеча (110013)
                 if '110013' in error_str or 'maxLeverage' in error_str.lower():
                     logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: Обнаружена ошибка превышения максимального кредитного плеча (110013)")
@@ -2972,9 +2978,6 @@ class BybitExchange(BaseExchange):
                 
         except Exception as e:
             error_str = str(e)
-            logger.error(f"[BYBIT_BOT] Ошибка размещения ордера: {error_str}")
-            import traceback
-            logger.error(f"[BYBIT_BOT] Трейсбек: {traceback.format_exc()}")
             # Извлекаем код ошибки из строки исключения (если есть)
             error_code = ''
             if 'ErrCode:' in error_str:
@@ -2982,16 +2985,20 @@ class BybitExchange(BaseExchange):
                 match = re.search(r'ErrCode:\s*(\d+)', error_str)
                 if match:
                     error_code = match.group(1)
-            
-            # ✅ Обрабатываем ошибку недостатка средств для ордера (110007)
-            if error_code == '110007' or '110007' in error_str or 'not enough for new order' in error_str.lower():
-                user_message = "Недостаточно средств для нового ордера (баланс/маржа)"
-                logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: {user_message} (ErrCode: 110007)")
-                return {
-                    'success': False,
-                    'message': user_message,
-                    'error_code': '110007'
-                }
+            # ✅ Ожидаемые ошибки (110007, 110013) — только WARNING, без ERROR и трейсбека
+            is_expected = (
+                error_code == '110007' or '110007' in error_str or 'not enough for new order' in error_str.lower() or
+                error_code == '110013' or '110013' in error_str or 'maxleverage' in error_str.lower()
+            )
+            if is_expected:
+                if error_code == '110007' or '110007' in error_str or 'not enough for new order' in error_str.lower():
+                    user_message = "Недостаточно средств для нового ордера (баланс/маржа)"
+                    logger.warning(f"[BYBIT_BOT] ⚠️ {symbol}: {user_message} (ErrCode: 110007)")
+                    return {'success': False, 'message': user_message, 'error_code': '110007'}
+            else:
+                import traceback
+                logger.error(f"[BYBIT_BOT] Ошибка размещения ордера: {error_str}")
+                logger.error(f"[BYBIT_BOT] Трейсбек: {traceback.format_exc()}")
 
             # ✅ Обрабатываем ошибку превышения максимального кредитного плеча (110013) в исключении
             if error_code == '110013' or '110013' in error_str or 'maxLeverage' in error_str.lower():

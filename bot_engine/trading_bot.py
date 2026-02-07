@@ -1011,11 +1011,12 @@ class TradingBot:
                         set_insufficient_funds(True)
                     except Exception:
                         pass
-                # MIN_NOTIONAL и недостаток средств — штатная ситуация, не ERROR
+                # MIN_NOTIONAL и недостаток средств — штатная ситуация, только WARNING
                 is_expected = (
                     error_code == 'MIN_NOTIONAL' or '110007' in (error_code or '') or
                     'меньше минимального ордера' in (error_message or '') or
-                    'Недостаточно доступного остатка' in (error_message or '')
+                    'Недостаточно доступного остатка' in (error_message or '') or
+                    'Недостаточно средств' in (error_message or '') or 'баланс/маржа' in (error_message or '')
                 )
                 if is_expected:
                     self.logger.warning(f"Failed to enter position: {order_result}")

@@ -2970,7 +2970,8 @@ def process_auto_bot_signals(exchange_obj=None):
                     if symbol not in _delisting_entry_warned_symbols:
                         _delisting_entry_warned_symbols.add(symbol)
                         logger.warning(f" ⚠️ {symbol}: монета в делистинге — вход не выполнен. Помечена в списке.")
-                elif 'MIN_NOTIONAL' in error_str or '110007' in error_str or 'меньше минимального ордера' in error_str or 'Недостаточно доступного остатка' in error_str:
+                elif ('MIN_NOTIONAL' in error_str or '110007' in error_str or 'меньше минимального ордера' in error_str or
+                      'Недостаточно доступного остатка' in error_str or 'Недостаточно средств' in error_str or 'баланс/маржа' in error_str):
                     logger.warning(f" ⚠️ Ошибка входа для {symbol}: {e}")
                 else:
                     logger.error(f" ❌ Ошибка входа для {symbol}: {e}")

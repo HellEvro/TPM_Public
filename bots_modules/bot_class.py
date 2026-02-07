@@ -2607,7 +2607,8 @@ class NewTradingBot:
                         logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Монета в делистинге — не открываем позицию. Помечена в списке.")
                 except Exception:
                     logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось открыть позицию {side}: {error_msg}")
-            elif 'MIN_NOTIONAL' in error_msg or '110007' in error_msg or 'меньше минимального ордера' in error_msg or 'Недостаточно доступного остатка' in error_msg:
+            elif ('MIN_NOTIONAL' in error_msg or '110007' in error_msg or 'меньше минимального ордера' in error_msg or
+                  'Недостаточно доступного остатка' in error_msg or 'Недостаточно средств' in error_msg or 'баланс/маржа' in error_msg):
                 logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось открыть позицию {side}: {error_msg}")
             else:
                 logger.error(f"[NEW_BOT_{self.symbol}] ❌ Не удалось открыть позицию {side}: {error_msg}")

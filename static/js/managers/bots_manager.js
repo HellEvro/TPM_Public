@@ -24,8 +24,12 @@ class BotsManager {
         // Версия данных для отслеживания изменений
         this.lastDataVersion = 0;
         
-        // Единый интервал обновления UI и мониторинга ботов
-        this.refreshInterval = 3000; // 3 секунды по умолчанию
+        // Кэш последнего отображённого состояния (чтобы не перерисовывать DOM без изменений — убирает «дискотеку»)
+        this._lastAccountDisplay = null;
+        this._lastServiceStatus = { status: null, message: null };
+        
+        // Единый интервал обновления UI и мониторинга ботов (мин. 5 сек — иначе интерфейс мигает)
+        this.refreshInterval = 5000;
         this.monitoringTimer = null;
         
         // Debounce для поиска
@@ -731,6 +735,11 @@ class BotsManager {
     }
 
     updateServiceStatus(status, message) {
+        if (this._lastServiceStatus.status === status && this._lastServiceStatus.message === message) {
+            return;
+        }
+        this._lastServiceStatus = { status, message };
+        
         const statusElement = document.getElementById('botsServiceStatus');
         const statusDot = document.getElementById('rsiStatusDot');
         
@@ -5915,6 +5924,7 @@ class BotsManager {
                 
                 // Если список ботов изменился - полная перерисовка
                 if (needsFullRedraw) {
+                    this._lastBotDisplay = {};
                     console.log(`[DEBUG] Полная перерисовка правой панели`);
                     // Отображаем список активных ботов в правой панели
                     const rightPanelHtml = this.activeBots.map(bot => {
@@ -6221,13 +6231,14 @@ class BotsManager {
             }
         }, this.refreshInterval);
         
-        // Отдельный интервал для обновления данных аккаунта каждую секунду
+        // Отдельный интервал для данных аккаунта (баланс, PnL) — не чаще 10 сек, иначе мигает интерфейс
+        const accountIntervalMs = Math.max(10000, this.refreshInterval);
         this.accountUpdateInterval = setInterval(() => {
             if (this.serviceOnline) {
                 this.logDebug('[BotsManager] 💰 Обновление данных аккаунта...');
                 this.loadAccountInfo();
             }
-        }, 1000); // Каждую секунду
+        }, accountIntervalMs);
         
         console.log(`[BotsManager] ⏰ Запущено периодическое обновление (${this.refreshInterval/1000} сек)`);
         
@@ -6289,25 +6300,29 @@ class BotsManager {
         });
     }
     updateSingleBotDisplay(bot) {
-        // Находим элемент бота в списке
+        const pnl = bot.pnl || 0;
+        const price = bot.current_price != null ? Number(bot.current_price).toFixed(6) : '';
+        const side = bot.position_side || '';
+        const trailing = !!bot.trailing_stop_active;
+        const key = `${bot.symbol}|${pnl}|${price}|${side}|${trailing}`;
+        if (!this._lastBotDisplay) this._lastBotDisplay = {};
+        if (this._lastBotDisplay[bot.symbol] === key) return;
+        this._lastBotDisplay[bot.symbol] = key;
+        
         const botElement = document.querySelector(`[data-bot-symbol="${bot.symbol}"]`);
         if (!botElement) return;
         
-        // Обновляем PnL
         const pnlElement = botElement.querySelector('.bot-pnl');
         if (pnlElement) {
-            const pnl = bot.pnl || 0;
             pnlElement.textContent = `PnL: $${pnl.toFixed(2)}`;
             pnlElement.style.color = pnl >= 0 ? 'var(--green-color)' : 'var(--red-color)';
         }
         
-        // Обновляем цену
         const priceElement = botElement.querySelector('.bot-price');
         if (priceElement && bot.current_price) {
             priceElement.textContent = `$${bot.current_price.toFixed(6)}`;
         }
         
-        // Обновляем направление позиции
         const directionElement = botElement.querySelector('.bot-direction');
         if (directionElement) {
             if (bot.position_side === 'Long') {
@@ -6322,7 +6337,6 @@ class BotsManager {
             }
         }
         
-        // Обновляем статус трейлинг стопа
         const trailingElement = botElement.querySelector('.bot-trailing');
         if (trailingElement) {
             if (bot.trailing_stop_active) {
@@ -6895,7 +6909,8 @@ class BotsManager {
         console.log('[BotsManager] 🔍 systemConfig.position_sync_interval:', systemConfig.position_sync_interval);
         if (positionSyncIntervalEl && systemConfig.position_sync_interval !== undefined) {
             positionSyncIntervalEl.value = systemConfig.position_sync_interval;
-            this.refreshInterval = Math.max(1000, systemConfig.position_sync_interval * 1000);
+            // Минимум 5 сек — иначе интерфейс мигает как стробоскоп
+            this.refreshInterval = Math.max(5000, systemConfig.position_sync_interval * 1000);
             console.log('[BotsManager] 🔄 Синхронизация позиций и период обновления UI (RSI, боты, мониторинг):', systemConfig.position_sync_interval, 'сек');
         } else if (positionSyncIntervalEl) {
             positionSyncIntervalEl.value = 600;
@@ -8899,17 +8914,21 @@ class BotsManager {
     }
     
     updateAccountDisplay(accountData) {
-        // Ищем заголовок h3 в правой панели
+        const balance = accountData && accountData.success ? parseFloat(accountData.total_wallet_balance || 0) : null;
+        const available = accountData && accountData.success ? parseFloat(accountData.total_available_balance || 0) : null;
+        const pnl = accountData && accountData.success ? parseFloat(accountData.total_unrealized_pnl || 0) : null;
+        const positions = accountData && accountData.success ? parseInt(accountData.active_positions || 0) : null;
+        const insufficient_funds = !!(accountData && accountData.insufficient_funds);
+        const key = [balance, available, pnl, positions, insufficient_funds].join('|');
+        if (this._lastAccountDisplay === key) {
+            return;
+        }
+        this._lastAccountDisplay = key;
+        
         const activeBotsHeader = document.querySelector('.active-bots-header h3');
         if (!activeBotsHeader) return;
         
         if (accountData && accountData.success) {
-            const balance = parseFloat(accountData.total_wallet_balance || 0);
-            const available = parseFloat(accountData.total_available_balance || 0);
-            const pnl = parseFloat(accountData.total_unrealized_pnl || 0);
-            const positions = parseInt(accountData.active_positions || 0);
-            const activeBots = parseInt(accountData.active_bots || 0);
-            
             const balanceText = (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS[document.documentElement.lang || 'ru'] && TRANSLATIONS[document.documentElement.lang || 'ru']['balance']) ? TRANSLATIONS[document.documentElement.lang || 'ru']['balance'] : 'Баланс';
             const remainderText = (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS[document.documentElement.lang || 'ru'] && TRANSLATIONS[document.documentElement.lang || 'ru']['remainder']) ? TRANSLATIONS[document.documentElement.lang || 'ru']['remainder'] : 'Остаток';
             const openPositionsText = (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS[document.documentElement.lang || 'ru'] && TRANSLATIONS[document.documentElement.lang || 'ru']['open_positions']) ? TRANSLATIONS[document.documentElement.lang || 'ru']['open_positions'] : 'Открытых позиций';
@@ -8933,16 +8952,12 @@ class BotsManager {
             `;
         }
         
-        // Показ/скрытие сообщения «Недостаточно средств» (справа у блока с балансом и в мобильном блоке)
-        const showInsufficient = !!(accountData && accountData.insufficient_funds);
+        const showInsufficient = insufficient_funds;
         const trInsufficient = (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS[document.documentElement.lang || 'ru'] && TRANSLATIONS[document.documentElement.lang || 'ru']['insufficient_funds']);
         document.querySelectorAll('.insufficient-funds-alert').forEach(function (el) {
             el.style.display = showInsufficient ? 'block' : 'none';
             if (showInsufficient && trInsufficient) el.textContent = trInsufficient;
         });
-        
-        // Автообновление происходит через основной интервал в startPeriodicUpdate()
-        // Не создаем отдельный интервал для accountInfo
     }
     
     // ==========================================
