@@ -665,6 +665,8 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         # ✅ УБРАНО: Проверка на открытую позицию должна быть только в should_open_long/short
         # Статическая функция всегда проверяет фильтр, проверка позиции делается на уровне бота
         
+        n_count = max(1, int(loss_reentry_count) if loss_reentry_count is not None else 1)
+        
         # Получаем последние N закрытых сделок для этого символа
         from bot_engine.bots_database import get_bots_database
         bots_db = get_bots_database()
@@ -675,12 +677,39 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
             symbol=symbol,
             status='CLOSED',
             decision_source=None,
-            limit=loss_reentry_count,
+            limit=n_count,
             offset=0
         )
         
+        # ✅ КРИТИЧНО: Дополняем из closed_pnl_history (сделки с биржи/UI), иначе защита не видит закрытия не из бота
+        if not closed_trades or len(closed_trades) < n_count:
+            try:
+                from app.app_database import get_app_database
+                app_db = get_app_database()
+                if app_db:
+                    all_closed_pnl = app_db.load_closed_pnl_history(sort_by='time', period='all')
+                    symbol_closed_pnl = [t for t in all_closed_pnl if t.get('symbol') == symbol]
+                    symbol_closed_pnl.sort(key=lambda x: x.get('close_timestamp', 0), reverse=True)
+                    if not closed_trades:
+                        closed_trades = []
+                    needed = n_count - len(closed_trades)
+                    for pnl_trade in symbol_closed_pnl[:needed]:
+                        ct = pnl_trade.get('close_timestamp')
+                        exit_ts = int(ct) if ct is not None else None
+                        if exit_ts is not None and exit_ts > 1e12:
+                            exit_ts = exit_ts // 1000  # мс -> сек для единообразия
+                        closed_trades.append({
+                            'pnl': pnl_trade.get('closed_pnl'),
+                            'exit_time': pnl_trade.get('close_time'),
+                            'exit_timestamp': exit_ts,
+                        })
+                    closed_trades.sort(key=lambda x: x.get('exit_timestamp') or 0, reverse=True)
+                    closed_trades = closed_trades[:n_count]
+            except Exception as _e:
+                pass  # app_db может быть недоступен (например, вне веб-контекста)
+        
         # Если нет закрытых сделок - разрешаем вход, НЕ показываем фильтр
-        if not closed_trades or len(closed_trades) < loss_reentry_count:
+        if not closed_trades or len(closed_trades) < n_count:
             return None  # Недостаточно сделок - фильтр не применяется
         
         # ✅ ИСПРАВЛЕНО: Проверяем, все ли последние N сделок были в минус
@@ -791,7 +820,7 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
             # ✅ ФИЛЬТР БЛОКИРУЕТ - показываем в UI
             return {
                 'allowed': False,
-                'reason': f'Последние {loss_reentry_count} сделок в минус, прошло только {candles_passed} свечей (требуется {loss_reentry_candles_int})',
+                'reason': f'Последние {n_count} сделок в минус, прошло только {candles_passed} свечей (требуется {loss_reentry_candles_int})',
                 'candles_passed': candles_passed
             }
         
@@ -800,7 +829,7 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         
     except Exception as e:
         # При ошибке разрешаем вход (безопаснее, как в bot_class.py)
-        pass
+        logger.debug(f"{symbol}: loss_reentry check error: {e}")
         return {'allowed': True, 'reason': f'Ошибка проверки: {str(e)}', 'candles_passed': None}
 
 

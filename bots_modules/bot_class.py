@@ -794,6 +794,8 @@ class NewTradingBot:
             if not loss_reentry_protection_enabled:
                 return {'allowed': True, 'reason': 'Protection disabled'}
             
+            n_count = max(1, int(loss_reentry_count) if loss_reentry_count is not None else 1)
+            
             # Получаем последние N закрытых сделок для этого символа
             try:
                 from bot_engine.bots_database import get_bots_database
@@ -806,7 +808,7 @@ class NewTradingBot:
                     symbol=self.symbol,  # ⬅️ Только для текущей монеты
                     status='CLOSED',
                     decision_source=None,
-                    limit=loss_reentry_count,  # ⬅️ Последние N сделок
+                    limit=n_count,  # ⬅️ Последние N сделок
                     offset=0
                 )
                 
@@ -815,8 +817,8 @@ class NewTradingBot:
                         pnl = trade.get('pnl')
                         exit_timestamp = trade.get('exit_timestamp')
                 
-                # ✅ КРИТИЧНО: Если нет сделок в bot_trades_history или недостаточно, дополняем из closed_pnl_history (UI сделки)
-                if not closed_trades or len(closed_trades) < loss_reentry_count:
+                # ✅ КРИТИЧНО: Если нет сделок в bot_trades_history или недостаточно, дополняем из closed_pnl_history (сделки с биржи/UI)
+                if not closed_trades or len(closed_trades) < n_count:
                     try:
                         from app.app_database import get_app_database
                         app_db = get_app_database()
@@ -832,12 +834,16 @@ class NewTradingBot:
                                 closed_trades = []
                             
                             # Дополняем до нужного количества
-                            needed_count = loss_reentry_count - len(closed_trades)
+                            needed_count = n_count - len(closed_trades)
                             for pnl_trade in symbol_closed_pnl[:needed_count]:
+                                ct = pnl_trade.get('close_timestamp')
+                                exit_ts = int(ct) if ct is not None else None
+                                if exit_ts is not None and exit_ts > 1e12:
+                                    exit_ts = exit_ts // 1000  # мс -> сек для единообразия с bot_trades_history
                                 trade = {
                                     'pnl': pnl_trade.get('closed_pnl'),  # ⬅️ В closed_pnl_history поле называется closed_pnl
                                     'exit_time': pnl_trade.get('close_time'),
-                                    'exit_timestamp': pnl_trade.get('close_timestamp'),
+                                    'exit_timestamp': exit_ts,
                                     'close_reason': 'MANUAL_CLOSE',
                                     'is_simulated': False
                                 }
@@ -846,7 +852,7 @@ class NewTradingBot:
                             # Сортируем объединенный список по exit_timestamp DESC
                             closed_trades.sort(key=lambda x: x.get('exit_timestamp') or 0, reverse=True)
                             # Берем только последние N
-                            closed_trades = closed_trades[:loss_reentry_count]
+                            closed_trades = closed_trades[:n_count]
                     except Exception as app_db_error:
                         logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка загрузки из closed_pnl_history: {app_db_error}")
                         import traceback
@@ -854,9 +860,9 @@ class NewTradingBot:
                 
                 # ✅ КРИТИЧНО: Если нет закрытых сделок или недостаточно - РАЗРЕШАЕМ вход
                 # (фильтр не применяется, если недостаточно истории)
-                if not closed_trades or len(closed_trades) < loss_reentry_count:
-                    logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Защита от повторных входов: недостаточно закрытых сделок ({len(closed_trades) if closed_trades else 0} < {loss_reentry_count}) - РАЗРЕШАЕМ вход")
-                    return {'allowed': True, 'reason': f'Not enough closed trades ({len(closed_trades) if closed_trades else 0} < {loss_reentry_count})'}
+                if not closed_trades or len(closed_trades) < n_count:
+                    logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Защита от повторных входов: недостаточно закрытых сделок ({len(closed_trades) if closed_trades else 0} < {n_count}) - РАЗРЕШАЕМ вход")
+                    return {'allowed': True, 'reason': f'Not enough closed trades ({len(closed_trades) if closed_trades else 0} < {n_count})'}
                 
                 # ✅ ИСПРАВЛЕНО: Проверяем, все ли последние N сделок были с отрицательным результатом (pnl < 0)
                 # Важно: проверяем именно ПОСЛЕДНИЕ N сделок по времени закрытия (уже отсортированы DESC)
@@ -886,11 +892,11 @@ class NewTradingBot:
                 
                 # ✅ КРИТИЧНО: Если НЕ ВСЕ последние N сделок в минус - РАЗРЕШАЕМ вход (фильтр НЕ работает)
                 if not all_losses:
-                    logger.info(f"[NEW_BOT_{self.symbol}] ✅ Защита от повторных входов: НЕ все последние {loss_reentry_count} сделок в минус. PnL: {', '.join(pnl_details)}")
-                    return {'allowed': True, 'reason': f'Not all last {loss_reentry_count} trades were losses'}
+                    logger.info(f"[NEW_BOT_{self.symbol}] ✅ Защита от повторных входов: НЕ все последние {n_count} сделок в минус. PnL: {', '.join(pnl_details)}")
+                    return {'allowed': True, 'reason': f'Not all last {n_count} trades were losses'}
                 
                 # ✅ Все сделки в минус - логируем детали
-                logger.warning(f"[NEW_BOT_{self.symbol}] 🚫 ВСЕ {loss_reentry_count} последних сделок в МИНУС! PnL: {', '.join(pnl_details)}")
+                logger.warning(f"[NEW_BOT_{self.symbol}] 🚫 ВСЕ {n_count} последних сделок в МИНУС! PnL: {', '.join(pnl_details)}")
                 
                 # ✅ Все последние N сделок были в минус - проверяем количество прошедших свечей
                 # Берем самую последнюю закрытую убыточную сделку (первая в списке после сортировки по exit_timestamp DESC)
@@ -991,13 +997,13 @@ class NewTradingBot:
                 if candles_passed < loss_reentry_candles_int:
                     logger.error(
                         f"[NEW_BOT_{self.symbol}] 🚫🚫🚫 ФИЛЬТР ЗАБЛОКИРОВАЛ ВХОД! 🚫🚫🚫\n"
-                        f"  - Последние {loss_reentry_count} сделок в минус\n"
+                        f"  - Последние {n_count} сделок в минус\n"
                         f"  - Прошло только {candles_passed} свечей (требуется {loss_reentry_candles_int})\n"
                         f"  - ВХОД ЗАБЛОКИРОВАН!"
                     )
                     return {
                         'allowed': False,  # ⬅️ БЛОКИРУЕМ вход
-                        'reason': f'Last {loss_reentry_count} trades were losses, only {candles_passed} candles passed (need {loss_reentry_candles_int})'
+                        'reason': f'Last {n_count} trades were losses, only {candles_passed} candles passed (need {loss_reentry_candles_int})'
                     }
                 else:
                     logger.info(
