@@ -139,6 +139,42 @@ class BotsDatabase:
         self.db_path = db_path
         self.lock = threading.RLock()
 
+        # Ремонт при перезапуске: предыдущий запуск не смог удалить/перенести повреждённую БД (WinError 32).
+        # Сейчас процесс только стартовал — файлы никто не держит, удаляем и создаём новую БД (или из .sql).
+        _pending_repair = Path(self.db_path).parent / '.pending_repair_bots'
+        if _pending_repair.exists():
+            try:
+                _pending_repair.unlink(missing_ok=True)
+                logger.info("🔧 Выполняю отложенный ремонт БД (после перезапуска, файлы свободны)...")
+                try:
+                    os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+                except OSError:
+                    pass
+                for _p in [self.db_path, self.db_path + '-wal', self.db_path + '-shm']:
+                    if os.path.exists(_p):
+                        try:
+                            os.remove(_p)
+                        except OSError:
+                            pass
+                backup_dir = _get_project_root() / 'data' / 'backups'
+                if backup_dir.exists():
+                    sql_backups = sorted(
+                        [f for f in backup_dir.glob("bots_data_*.sql") if f.is_file() and f.stat().st_size > 0],
+                        key=lambda f: f.stat().st_mtime,
+                        reverse=True
+                    )
+                    if sql_backups:
+                        latest_sql = str(sql_backups[0])
+                        with open(latest_sql, 'r', encoding='utf-8') as _f:
+                            _sql = _f.read()
+                        _conn = sqlite3.connect(self.db_path)
+                        _conn.executescript(_sql)
+                        _conn.close()
+                        logger.info(f"✅ БД восстановлена из SQL-бэкапа: {latest_sql}")
+                # Если бэкапов не было — файла нет, _init_database() создаст пустую БД ниже
+            except Exception as _e:
+                logger.warning(f"⚠️ Ошибка отложенного ремонта: {_e}")
+
         # Автовосстановление при перезапуске: если предыдущий запуск не смог восстановить (файлы были заняты),
         # он записал сюда путь к бэкапу и перезапустил процесс. Сейчас мы первые — файлы свободны.
         _pending = Path(self.db_path).parent / '.pending_restore_bots'
@@ -582,15 +618,30 @@ class BotsDatabase:
                 time.sleep(1.5)
                 try:
                     if os.path.exists(self.db_path):
-                        if _move_safe(self.db_path, str(corrupted_path)):
-                            logger.info(f"💾 Повреждённая БД сохранена как: {corrupted_path}")
-                        else:
+                        if not _move_safe(self.db_path, str(corrupted_path)):
+                            _flag = Path(self.db_path).parent / '.pending_repair_bots'
+                            try:
+                                _flag.write_text('1', encoding='utf-8')
+                                logger.warning("🔄 Файл БД занят. Записан флаг .pending_repair_bots — перезапуск для ремонта...")
+                                os.execv(sys.executable, [sys.executable] + sys.argv)
+                            except Exception as e:
+                                logger.error(f"❌ Не удалось перезапустить процесс: {e}")
                             return False
+                        logger.info(f"💾 Повреждённая БД сохранена как: {corrupted_path}")
                     for suf in ('-wal', '-shm'):
                         src = self.db_path + suf
                         _remove_safe(src)
                     return True
                 except OSError as move_err:
+                    winerr = getattr(move_err, 'winerror', None)
+                    if winerr == 32:
+                        _flag = Path(self.db_path).parent / '.pending_repair_bots'
+                        try:
+                            _flag.write_text('1', encoding='utf-8')
+                            logger.warning("🔄 Файл БД занят (WinError 32). Записан флаг — перезапуск для ремонта...")
+                            os.execv(sys.executable, [sys.executable] + sys.argv)
+                        except Exception as e:
+                            logger.error(f"❌ Не удалось перезапустить процесс: {e}")
                     logger.error(f"❌ Не удалось перенести повреждённую БД (файл занят?): {move_err}")
                     return False
             # Берём самый свежий целостный бэкап

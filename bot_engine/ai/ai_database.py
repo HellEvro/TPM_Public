@@ -76,6 +76,40 @@ class AIDatabase:
         self.db_path = db_path
         self.lock = threading.RLock()
 
+        # Отложенный ремонт: предыдущий запуск не смог удалить повреждённую БД (WinError 32)
+        _pending_repair = Path(self.db_path).parent / '.pending_repair_ai'
+        if _pending_repair.exists():
+            try:
+                _pending_repair.unlink(missing_ok=True)
+                logger.info("🔧 Выполняю отложенный ремонт AI БД (после перезапуска)...")
+                try:
+                    os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+                except OSError:
+                    pass
+                for _p in [self.db_path, self.db_path + '-wal', self.db_path + '-shm']:
+                    if os.path.exists(_p):
+                        try:
+                            os.remove(_p)
+                        except OSError:
+                            pass
+                backup_dir = _get_project_root() / 'data' / 'backups'
+                if backup_dir.exists():
+                    sql_backups = sorted(
+                        [f for f in backup_dir.glob("ai_data_*.sql") if f.is_file() and f.stat().st_size > 0],
+                        key=lambda f: f.stat().st_mtime,
+                        reverse=True
+                    )
+                    if sql_backups:
+                        latest_sql = str(sql_backups[0])
+                        with open(latest_sql, 'r', encoding='utf-8') as _f:
+                            _sql = _f.read()
+                        _conn = sqlite3.connect(self.db_path)
+                        _conn.executescript(_sql)
+                        _conn.close()
+                        logger.info(f"✅ AI БД восстановлена из SQL-бэкапа: {latest_sql}")
+            except Exception as _e:
+                logger.warning(f"⚠️ Ошибка отложенного ремонта AI БД: {_e}")
+
         # Автовосстановление при перезапуске (как в bots_database)
         _pending = Path(self.db_path).parent / '.pending_restore_ai'
         if _pending.exists():
@@ -281,35 +315,32 @@ class AIDatabase:
             has_data = self._check_database_has_data()
             
             if has_data:
-                # Если есть данные - ОБЯЗАТЕЛЬНО создаем резервную копию
                 backup_path = self._backup_database()
                 if not backup_path:
-                    # Не удаляем БД если не удалось создать резервную копию!
-                    logger.error(f"❌ КРИТИЧНО: Не удалось создать резервную копию БД с данными!")
-                    logger.error(f"❌ БД НЕ БУДЕТ УДАЛЕНА для защиты данных!")
-                    raise Exception("Не удалось создать резервную копию БД с данными - удаление отменено")
-                logger.warning(f"⚠️ ВНИМАНИЕ: БД содержит данные, создана резервная копия: {backup_path}")
+                    logger.error(f"❌ Не удалось создать резервную копию (БД повреждена?). Пытаемся удалить и создать новую пустую БД.")
+                    backup_path = None
+                else:
+                    logger.warning(f"⚠️ ВНИМАНИЕ: БД содержит данные, создана резервная копия: {backup_path}")
             else:
                 backup_path = self._backup_database()
             # Удаляем поврежденный файл и связанные файлы WAL/SHM
             wal_file = self.db_path + '-wal'
             shm_file = self.db_path + '-shm'
-            if os.path.exists(wal_file):
-                try:
-                    os.remove(wal_file)
-                except OSError:
-                    pass
-            if os.path.exists(shm_file):
-                try:
-                    os.remove(shm_file)
-                except OSError:
-                    pass
-            if os.path.exists(self.db_path):
-                try:
-                    os.remove(self.db_path)
-                except OSError as e:
-                    logger.error(f"❌ Ошибка удаления поврежденной БД: {e}")
-                    raise
+            _flag_repair = Path(self.db_path).parent / '.pending_repair_ai'
+            for _path in [wal_file, shm_file, self.db_path]:
+                if os.path.exists(_path):
+                    try:
+                        os.remove(_path)
+                    except OSError as e:
+                        if getattr(e, 'winerror', None) == 32:
+                            try:
+                                _flag_repair.write_text('1', encoding='utf-8')
+                                logger.warning("🔄 Файл AI БД занят (WinError 32). Записан флаг — перезапуск для ремонта...")
+                                os.execv(sys.executable, [sys.executable] + sys.argv)
+                            except Exception as ex:
+                                logger.error(f"❌ Не удалось перезапустить процесс: {ex}")
+                        logger.error(f"❌ Ошибка удаления поврежденной БД: {e}")
+                        raise
             logger.warning(f"🗑️ Удалена поврежденная БД: {self.db_path}")
             # Создаём новую БД и заносим дамп из бэкапа
             if backup_path and os.path.exists(backup_path) and backup_path.endswith('.sql'):
