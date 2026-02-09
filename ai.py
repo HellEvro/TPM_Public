@@ -523,4 +523,22 @@ except Exception:
 
 
 if __name__ == '__main__':
+    # Планировщик бэкапов только ai_data.db (своя БД ai.py)
+    try:
+        import threading
+        from configs.app_config import DATABASE_BACKUP
+        from bot_engine.backup_service import run_backup_scheduler_loop
+        _cfg = DATABASE_BACKUP if isinstance(DATABASE_BACKUP, dict) else {}
+        _cfg = {**_cfg, 'APP_ENABLED': False, 'AI_ENABLED': True, 'BOTS_ENABLED': False}
+        if _cfg.get('ENABLED', True) and _cfg.get('AI_ENABLED', False):
+            _t = threading.Thread(
+                target=run_backup_scheduler_loop,
+                args=(_cfg,),
+                name='DatabaseBackupScheduler',
+                daemon=True
+            )
+            _t.start()
+            sys.stderr.write("[AI] 💾 Планировщик бэкапов AI БД (ai_data.db) запущен\n")
+    except Exception:
+        pass
     _protected_module.main()

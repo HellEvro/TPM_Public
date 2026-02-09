@@ -71,28 +71,21 @@ class DatabaseBackupService:
             raise
     
     def create_backup(self, include_ai: bool = True, include_bots: bool = True,
-                     max_retries: int = 3, keep_last_n: int = 5) -> Dict[str, Any]:
+                     include_app: bool = False, max_retries: int = 3,
+                     keep_last_n: int = 5) -> Dict[str, Any]:
         """
         Создает резервные копии указанных баз данных.
         После создания оставляет только последние keep_last_n бэкапов для каждой системы.
         
         Args:
-            include_ai: Создавать бэкап AI БД
-            include_bots: Создавать бэкап Bots БД
+            include_ai: Создавать бэкап AI БД (ai_data.db)
+            include_bots: Создавать бэкап Bots БД (bots_data.db)
+            include_app: Создавать бэкап App БД (app_data.db)
             max_retries: Максимальное количество попыток при блокировке файла
             keep_last_n: Сколько последних бэкапов хранить для каждой БД (остальные удаляются)
         
         Returns:
-            Словарь с результатами бэкапа:
-            {
-                'success': bool,
-                'timestamp': str,
-                'backups': {
-                    'ai': {'path': str, 'size_mb': float} или None,
-                    'bots': {'path': str, 'size_mb': float} или None
-                },
-                'errors': List[str]
-            }
+            Словарь с результатами бэкапа (backups: ai, bots, app).
         """
         with self.lock:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -101,7 +94,8 @@ class DatabaseBackupService:
                 'timestamp': timestamp,
                 'backups': {
                     'ai': None,
-                    'bots': None
+                    'bots': None,
+                    'app': None
                 },
                 'errors': []
             }
@@ -110,6 +104,31 @@ class DatabaseBackupService:
             project_root = _get_project_root()
             ai_db_path = str((project_root / 'data' / 'ai_data.db').resolve())
             bots_db_path = str((project_root / 'data' / 'bots_data.db').resolve())
+            app_db_path = str((project_root / 'data' / 'app_data.db').resolve())
+            
+            # Бэкап App БД (только из app.py)
+            if include_app:
+                try:
+                    app_backup = self._backup_database(
+                        db_path=app_db_path,
+                        db_name='app_data',
+                        timestamp=timestamp,
+                        max_retries=max_retries
+                    )
+                    if app_backup:
+                        result['backups']['app'] = app_backup
+                        logger.info(f"✅ Создан бэкап App БД: {app_backup['path']}")
+                    else:
+                        if not os.path.exists(app_db_path):
+                            result['errors'].append(f"App БД не найдена: {app_db_path}")
+                            logger.warning(f"⚠️ App БД не найдена: {app_db_path}")
+                        else:
+                            result['success'] = False
+                            result['errors'].append("Не удалось создать бэкап App БД")
+                except Exception as e:
+                    result['success'] = False
+                    result['errors'].append(f"Ошибка создания бэкапа App БД: {e}")
+                    logger.error(f"❌ Ошибка создания бэкапа App БД: {e}")
             
             # Бэкап AI БД
             if include_ai:
@@ -164,7 +183,11 @@ class DatabaseBackupService:
                     logger.error(f"❌ {error_msg}")
             
             # Считаем успешным, если создан хотя бы один бэкап
-            has_backups = result['backups']['ai'] is not None or result['backups']['bots'] is not None
+            has_backups = (
+                result['backups']['app'] is not None
+                or result['backups']['ai'] is not None
+                or result['backups']['bots'] is not None
+            )
             if has_backups:
                 if result['errors']:
                     logger.warning(f"⚠️ Бэкап создан с предупреждениями: {timestamp}")
@@ -301,7 +324,7 @@ class DatabaseBackupService:
         Получает список всех бэкапов
         
         Args:
-            db_name: Фильтр по имени БД ('ai_data' или 'bots_data'), None для всех
+            db_name: Фильтр по имени БД ('ai_data', 'bots_data', 'app_data'), None для всех
         
         Returns:
             Список словарей с информацией о бэкапах
@@ -390,7 +413,7 @@ class DatabaseBackupService:
         
         Args:
             backup_path: Путь к файлу бэкапа
-            db_name: Имя БД ('ai_data' или 'bots_data'), если None определяется автоматически
+            db_name: Имя БД ('ai_data', 'bots_data', 'app_data'), если None определяется автоматически
         
         Returns:
             True если восстановление успешно, False в противном случае
@@ -406,6 +429,8 @@ class DatabaseBackupService:
                 db_name = 'ai_data'
             elif filename.startswith('bots_data'):
                 db_name = 'bots_data'
+            elif filename.startswith('app_data'):
+                db_name = 'app_data'
             else:
                 logger.error(f"❌ Не удалось определить имя БД из имени файла: {filename}")
                 return False
@@ -416,6 +441,8 @@ class DatabaseBackupService:
             target_db_path = str((project_root / 'data' / 'ai_data.db').resolve())
         elif db_name == 'bots_data':
             target_db_path = str((project_root / 'data' / 'bots_data.db').resolve())
+        elif db_name == 'app_data':
+            target_db_path = str((project_root / 'data' / 'app_data.db').resolve())
         else:
             logger.error(f"❌ Неизвестное имя БД: {db_name}")
             return False
@@ -536,6 +563,7 @@ class DatabaseBackupService:
         result = {
             'ai_data': 0,
             'bots_data': 0,
+            'app_data': 0,
             'total': 0
         }
         try:
@@ -548,7 +576,8 @@ class DatabaseBackupService:
                 backups_by_type[db_name].append(backup)
 
             for db_name, db_backups in backups_by_type.items():
-                # Уже отсортировано по created_at, новые первыми (reverse=True в list_backups)
+                if db_name not in result:
+                    result[db_name] = 0
                 to_keep = db_backups[:keep_count]
                 to_delete = db_backups[keep_count:]
                 for backup in to_delete:
@@ -559,7 +588,7 @@ class DatabaseBackupService:
             if result['total'] > 0:
                 logger.info(
                     f"🗑️ Удалено лишних бэкапов (оставлено по {keep_count} на систему): "
-                    f"{result['total']} (ai_data: {result['ai_data']}, bots_data: {result['bots_data']})"
+                    f"{result['total']} (ai: {result.get('ai_data', 0)}, bots: {result.get('bots_data', 0)}, app: {result.get('app_data', 0)})"
                 )
         except Exception as e:
             logger.error(f"❌ Ошибка очистки лишних бэкапов: {e}")
@@ -579,6 +608,7 @@ class DatabaseBackupService:
         result = {
             'ai_data': 0,
             'bots_data': 0,
+            'app_data': 0,
             'total': 0
         }
         
@@ -586,7 +616,6 @@ class DatabaseBackupService:
             cutoff_date = datetime.now() - timedelta(days=days)
             backups = self.list_backups()
             
-            # Группируем по типу БД
             backups_by_type = {}
             for backup in backups:
                 db_name = backup.get('db_name', 'unknown')
@@ -594,8 +623,9 @@ class DatabaseBackupService:
                     backups_by_type[db_name] = []
                 backups_by_type[db_name].append(backup)
             
-            # Удаляем старые бэкапы
             for db_name, db_backups in backups_by_type.items():
+                if db_name not in result:
+                    result[db_name] = 0
                 # Сортируем по дате (старые первыми)
                 db_backups.sort(key=lambda x: x['created_at'])
                 
@@ -618,7 +648,10 @@ class DatabaseBackupService:
                         result['total'] += 1
             
             if result['total'] > 0:
-                logger.info(f"🗑️ Удалено старых бэкапов: {result['total']} (AI: {result['ai_data']}, Bots: {result['bots_data']})")
+                logger.info(
+                    f"🗑️ Удалено старых бэкапов: {result['total']} "
+                    f"(ai: {result.get('ai_data', 0)}, bots: {result.get('bots_data', 0)}, app: {result.get('app_data', 0)})"
+                )
             else:
                 logger.info("ℹ️ Старые бэкапы не найдены")
             
@@ -641,8 +674,10 @@ class DatabaseBackupService:
             'total_size_mb': 0,
             'ai_data_backups': 0,
             'bots_data_backups': 0,
+            'app_data_backups': 0,
             'ai_data_size_mb': 0,
             'bots_data_size_mb': 0,
+            'app_data_size_mb': 0,
             'oldest_backup': None,
             'newest_backup': None,
             'invalid_backups': 0
@@ -650,7 +685,6 @@ class DatabaseBackupService:
         
         for backup in backups:
             stats['total_size_mb'] += backup['size_mb']
-            
             db_name = backup.get('db_name', '')
             if db_name == 'ai_data':
                 stats['ai_data_backups'] += 1
@@ -658,6 +692,9 @@ class DatabaseBackupService:
             elif db_name == 'bots_data':
                 stats['bots_data_backups'] += 1
                 stats['bots_data_size_mb'] += backup['size_mb']
+            elif db_name == 'app_data':
+                stats['app_data_backups'] += 1
+                stats['app_data_size_mb'] += backup['size_mb']
             
             if not backup.get('valid', True):
                 stats['invalid_backups'] += 1
@@ -672,12 +709,13 @@ class DatabaseBackupService:
 
 
 def _run_backup_job(backup_service: 'DatabaseBackupService', backup_config: dict) -> None:
-    """Запускает единичный цикл резервного копирования."""
+    """Запускает единичный цикл резервного копирования (только выбранные БД: app / ai / bots)."""
     backup_logger = logging.getLogger('BackupScheduler')
-    include_ai = backup_config.get('AI_ENABLED', True)
-    include_bots = backup_config.get('BOTS_ENABLED', True)
+    include_app = backup_config.get('APP_ENABLED', False)
+    include_ai = backup_config.get('AI_ENABLED', False)
+    include_bots = backup_config.get('BOTS_ENABLED', False)
 
-    if not include_ai and not include_bots:
+    if not include_app and not include_ai and not include_bots:
         backup_logger.info("[Backup] Нет активных БД для резервного копирования, задание пропущено")
         return
 
@@ -685,6 +723,7 @@ def _run_backup_job(backup_service: 'DatabaseBackupService', backup_config: dict
     keep_last_n = backup_config.get('KEEP_LAST_N', 5)
     try:
         result = backup_service.create_backup(
+            include_app=include_app,
             include_ai=include_ai,
             include_bots=include_bots,
             max_retries=max_retries,
@@ -700,7 +739,7 @@ def _run_backup_job(backup_service: 'DatabaseBackupService', backup_config: dict
     else:
         backup_logger.warning(f"[Backup] Резервное копирование завершено с ошибками (timestamp={timestamp})")
 
-    for db_key in ('ai', 'bots'):
+    for db_key in ('app', 'ai', 'bots'):
         backup_info = result.get('backups', {}).get(db_key)
         if backup_info:
             backup_logger.info(
@@ -720,8 +759,8 @@ def run_backup_scheduler_loop(
     stop_event: Optional[threading.Event] = None
 ) -> None:
     """
-    Фоновый планировщик регулярных бэкапов БД (AI и Bots).
-    Вызывается из процесса, который владеет этими БД (bots.py), а не из app.py.
+    Фоновый планировщик регулярных бэкапов. Каждый процесс бэкапит только свою БД:
+    app.py → app_data, bots.py → bots_data, ai.py → ai_data.
     """
     backup_logger = logging.getLogger('BackupScheduler')
     backup_config = backup_config or {}
@@ -730,7 +769,12 @@ def run_backup_scheduler_loop(
         backup_logger.info("[Backup] Автоматическое резервное копирование выключено настройками")
         return
 
-    if not (backup_config.get('AI_ENABLED', True) or backup_config.get('BOTS_ENABLED', True)):
+    has_any = (
+        backup_config.get('APP_ENABLED', False)
+        or backup_config.get('AI_ENABLED', False)
+        or backup_config.get('BOTS_ENABLED', False)
+    )
+    if not has_any:
         backup_logger.info("[Backup] Ни одна база не выбрана для резервного копирования, поток остановлен")
         return
 

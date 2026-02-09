@@ -125,13 +125,14 @@ from bot_engine.app_database import get_app_database
 # Конфигурация резервного копирования (значения по умолчанию)
 _DATABASE_BACKUP_DEFAULTS = {
     'ENABLED': True,
-    'INTERVAL_MINUTES': 180,  # 3 часа = 1 раз в 3 часа
+    'INTERVAL_MINUTES': 180,
     'RUN_ON_START': True,
-    'AI_ENABLED': True,
-    'BOTS_ENABLED': True,
+    'APP_ENABLED': True,   # app.py бэкапит только app_data.db
+    'AI_ENABLED': False,
+    'BOTS_ENABLED': False,
     'BACKUP_DIR': None,
     'MAX_RETRIES': 3,
-    'KEEP_LAST_N': 5,  # хранить только 5 последних бэкапов для каждой БД (AI и Bots)
+    'KEEP_LAST_N': 5,
 }
 
 if 'DATABASE_BACKUP' not in globals() or not isinstance(globals().get('DATABASE_BACKUP'), dict):
@@ -163,6 +164,7 @@ from exchanges.exchange_factory import ExchangeFactory
 import json
 import logging
 from utils.color_logger import setup_color_logging
+from bot_engine.backup_service import run_backup_scheduler_loop
 
 # Проверка валидности API ключей
 def check_api_keys():
@@ -2511,6 +2513,18 @@ if __name__ == '__main__':
     cache_cleanup_thread = threading.Thread(target=background_cache_cleanup)
     cache_cleanup_thread.daemon = True
     cache_cleanup_thread.start()
+
+    # Планировщик бэкапов только app_data.db (своя БД app.py)
+    if DATABASE_BACKUP.get('ENABLED', True) and DATABASE_BACKUP.get('APP_ENABLED', True):
+        _app_backup_cfg = {**DATABASE_BACKUP, 'APP_ENABLED': True, 'AI_ENABLED': False, 'BOTS_ENABLED': False}
+        _backup_thread = threading.Thread(
+            target=run_backup_scheduler_loop,
+            args=(_app_backup_cfg,),
+            name='DatabaseBackupScheduler',
+            daemon=True
+        )
+        _backup_thread.start()
+        app_logger.info("[APP] 💾 Планировщик бэкапов App БД (app_data.db) запущен")
 
     # Запускаем поток синхронизации времени (только для Windows)
     if TIME_SYNC.get('ENABLED', False) and sys.platform == 'win32':

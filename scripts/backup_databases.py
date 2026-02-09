@@ -71,27 +71,39 @@ def cmd_create(args):
     
     service = get_backup_service()
     
-    include_ai = not args.bots_only
-    include_bots = not args.ai_only
-    
-    if args.ai_only:
+    app_only = getattr(args, 'app_only', False)
+    if app_only:
+        include_app, include_ai, include_bots = True, False, False
+    elif args.ai_only:
+        include_app, include_ai, include_bots = False, True, False
+    elif args.bots_only:
+        include_app, include_ai, include_bots = False, False, True
+    else:
+        include_app, include_ai, include_bots = True, True, True
+
+    if app_only:
+        print("Создание бэкапа App БД...")
+    elif args.ai_only:
         print("Создание бэкапа AI БД...")
     elif args.bots_only:
         print("Создание бэкапа Bots БД...")
     else:
-        print("Создание бэкапа обеих БД...")
-    
+        print("Создание бэкапа всех БД (app, ai, bots)...")
     print()
-    
+
     result = service.create_backup(
+        include_app=include_app,
         include_ai=include_ai,
         include_bots=include_bots,
         max_retries=3,
         keep_last_n=5
     )
-    
-    # Проверяем, создан ли хотя бы один бэкап
-    has_backups = result['backups']['ai'] is not None or result['backups']['bots'] is not None
+
+    has_backups = (
+        result['backups'].get('app') is not None
+        or result['backups'].get('ai') is not None
+        or result['backups'].get('bots') is not None
+    )
     
     if has_backups:
         if result['errors']:
@@ -102,7 +114,17 @@ def cmd_create(args):
         print(f"Timestamp: {result['timestamp']}")
         print()
         
-        if result['backups']['ai']:
+        if result['backups'].get('app'):
+            app_backup = result['backups']['app']
+            print(f"App БД:")
+            print(f"   Путь: {app_backup['path']}")
+            print(f"   Размер: {format_size(app_backup['size_mb'])}")
+            print(f"   Целостность: {'[OK]' if app_backup.get('valid', True) else '[ERROR]'}")
+            print()
+        elif include_app:
+            print(f"App БД: [SKIP] БД не найдена")
+            print()
+        if result['backups'].get('ai'):
             ai_backup = result['backups']['ai']
             print(f"AI БД:")
             print(f"   Путь: {ai_backup['path']}")
@@ -112,8 +134,7 @@ def cmd_create(args):
         elif include_ai:
             print(f"AI БД: [SKIP] БД не найдена")
             print()
-        
-        if result['backups']['bots']:
+        if result['backups'].get('bots'):
             bots_backup = result['backups']['bots']
             print(f"Bots БД:")
             print(f"   Путь: {bots_backup['path']}")
@@ -148,29 +169,35 @@ def cmd_list(args):
     service = get_backup_service()
     
     db_name = None
-    if args.ai:
+    if getattr(args, 'app', False):
+        db_name = 'app_data'
+    elif args.ai:
         db_name = 'ai_data'
     elif args.bots:
         db_name = 'bots_data'
-    
+
     backups = service.list_backups(db_name=db_name)
-    
+
     if not backups:
         print("[INFO] Бэкапы не найдены")
         print()
         return
-    
-    # Группируем по типу БД
+
+    app_backups = [b for b in backups if b.get('db_name') == 'app_data']
     ai_backups = [b for b in backups if b.get('db_name') == 'ai_data']
     bots_backups = [b for b in backups if b.get('db_name') == 'bots_data']
-    other_backups = [b for b in backups if b.get('db_name') not in ['ai_data', 'bots_data']]
+    other_backups = [b for b in backups if b.get('db_name') not in ['app_data', 'ai_data', 'bots_data']]
     
+    if app_backups:
+        print(f"App БД бэкапы ({len(app_backups)}):")
+        print("-" * 80)
+        for backup in app_backups:
+            print_backup_info(backup)
     if ai_backups:
         print(f"AI БД бэкапы ({len(ai_backups)}):")
         print("-" * 80)
         for backup in ai_backups:
             print_backup_info(backup)
-    
     if bots_backups:
         print(f"Bots БД бэкапы ({len(bots_backups)}):")
         print("-" * 80)
@@ -210,7 +237,9 @@ def cmd_restore(args):
     
     # Определяем имя БД
     filename = os.path.basename(backup_path)
-    if filename.startswith('ai_data'):
+    if filename.startswith('app_data'):
+        db_name = 'app_data'
+    elif filename.startswith('ai_data'):
         db_name = 'ai_data'
     elif filename.startswith('bots_data'):
         db_name = 'bots_data'
@@ -365,12 +394,14 @@ def main():
     # Команда create
     create_parser = subparsers.add_parser('create', help='Создать бэкап БД')
     create_group = create_parser.add_mutually_exclusive_group()
+    create_group.add_argument('--app-only', action='store_true', help='Создать бэкап только App БД (app_data.db)')
     create_group.add_argument('--ai-only', action='store_true', help='Создать бэкап только AI БД')
     create_group.add_argument('--bots-only', action='store_true', help='Создать бэкап только Bots БД')
     
     # Команда list
     list_parser = subparsers.add_parser('list', help='Показать список бэкапов')
     list_group = list_parser.add_mutually_exclusive_group()
+    list_group.add_argument('--app', action='store_true', help='Показать только бэкапы App БД')
     list_group.add_argument('--ai', action='store_true', help='Показать только бэкапы AI БД')
     list_group.add_argument('--bots', action='store_true', help='Показать только бэкапы Bots БД')
     
