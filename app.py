@@ -131,6 +131,7 @@ _DATABASE_BACKUP_DEFAULTS = {
     'BOTS_ENABLED': True,
     'BACKUP_DIR': None,
     'MAX_RETRIES': 3,
+    'KEEP_LAST_N': 5,  # хранить только 5 последних бэкапов для каждой БД (AI и Bots)
 }
 
 if 'DATABASE_BACKUP' not in globals() or not isinstance(globals().get('DATABASE_BACKUP'), dict):
@@ -469,11 +470,13 @@ def _run_backup_job(backup_service, backup_config):
 
     max_retries = backup_config.get('MAX_RETRIES', 3)
 
+    keep_last_n = backup_config.get('KEEP_LAST_N', 5)
     try:
         result = backup_service.create_backup(
             include_ai=include_ai,
             include_bots=include_bots,
-            max_retries=max_retries
+            max_retries=max_retries,
+            keep_last_n=keep_last_n
         )
     except Exception as exc:
         backup_logger.exception(f"[Backup] Ошибка выполнения резервного копирования: {exc}")

@@ -12,6 +12,7 @@
     python scripts/backup_databases.py list --bots          # Показать список бэкапов Bots БД
     python scripts/backup_databases.py restore <path>      # Восстановить из бэкапа
     python scripts/backup_databases.py delete <path>        # Удалить бэкап
+    python scripts/backup_databases.py prune                # Оставить по 5 последних на систему
     python scripts/backup_databases.py cleanup              # Удалить старые бэкапы
     python scripts/backup_databases.py stats                # Показать статистику
 """
@@ -85,7 +86,8 @@ def cmd_create(args):
     result = service.create_backup(
         include_ai=include_ai,
         include_bots=include_bots,
-        max_retries=3
+        max_retries=3,
+        keep_last_n=5
     )
     
     # Проверяем, создан ли хотя бы один бэкап
@@ -265,8 +267,26 @@ def cmd_delete(args):
         sys.exit(1)
 
 
+def cmd_prune(args):
+    """Оставляет только N последних бэкапов для каждой системы (AI, Bots), остальные удаляет."""
+    print("=" * 80)
+    print("ОЧИСТКА ЛИШНИХ БЭКАПОВ (оставить по N последних на систему)")
+    print("=" * 80)
+    print()
+    service = get_backup_service()
+    print(f"Оставляем по {args.keep} последних бэкапов для каждой БД (AI и Bots)...")
+    print()
+    result = service.cleanup_excess_backups(keep_count=args.keep)
+    print()
+    print("Результаты:")
+    print(f"   AI БД: удалено {result['ai_data']} бэкапов")
+    print(f"   Bots БД: удалено {result['bots_data']} бэкапов")
+    print(f"   Всего: удалено {result['total']} бэкапов")
+    print()
+
+
 def cmd_cleanup(args):
-    """Удаляет старые бэкапы"""
+    """Удаляет старые бэкапы (по возрасту и с учётом минимума на тип)"""
     print("=" * 80)
     print("ОЧИСТКА СТАРЫХ БЭКАПОВ")
     print("=" * 80)
@@ -333,7 +353,9 @@ def main():
   python scripts/backup_databases.py list
   python scripts/backup_databases.py restore data/backups/ai_data_20240101_120000.db
   python scripts/backup_databases.py delete data/backups/ai_data_20240101_120000.db
-  python scripts/backup_databases.py cleanup --days 30 --keep 10
+  python scripts/backup_databases.py prune              # Оставить по 5 последних на систему (рекомендуется)
+  python scripts/backup_databases.py prune --keep 5
+  python scripts/backup_databases.py cleanup --days 30 --keep 5
   python scripts/backup_databases.py stats
         """
     )
@@ -361,10 +383,14 @@ def main():
     delete_parser.add_argument('path', nargs='?', help='Путь к файлу бэкапа')
     delete_parser.add_argument('--force', action='store_true', help='Удалить без подтверждения')
     
+    # Команда prune — оставить только N последних на систему (рекомендуемая политика)
+    prune_parser = subparsers.add_parser('prune', help='Оставить только N последних бэкапов для каждой БД')
+    prune_parser.add_argument('--keep', type=int, default=5, help='Сколько последних бэкапов хранить (по умолчанию: 5)')
+    
     # Команда cleanup
-    cleanup_parser = subparsers.add_parser('cleanup', help='Удалить старые бэкапы')
+    cleanup_parser = subparsers.add_parser('cleanup', help='Удалить старые бэкапы (по возрасту)')
     cleanup_parser.add_argument('--days', type=int, default=30, help='Удалять бэкапы старше N дней (по умолчанию: 30)')
-    cleanup_parser.add_argument('--keep', type=int, default=10, help='Минимум бэкапов для сохранения (по умолчанию: 10)')
+    cleanup_parser.add_argument('--keep', type=int, default=5, help='Минимум бэкапов для сохранения (по умолчанию: 5)')
     
     # Команда stats
     subparsers.add_parser('stats', help='Показать статистику по бэкапам')
@@ -384,6 +410,8 @@ def main():
             cmd_restore(args)
         elif args.command == 'delete':
             cmd_delete(args)
+        elif args.command == 'prune':
+            cmd_prune(args)
         elif args.command == 'cleanup':
             cmd_cleanup(args)
         elif args.command == 'stats':

@@ -128,7 +128,8 @@ DATABASE_BACKUP = {                        # Настройки фонового
     'AI_ENABLED': True,          # Включить бэкап AI БД
     'BOTS_ENABLED': True,        # Включить бэкап Bots БД
     'BACKUP_DIR': None,          # Кастомная директория (None = data/backups)
-    'MAX_RETRIES': 3                       # Макс. попыток при ошибке бэкапа
+    'MAX_RETRIES': 3,            # Макс. попыток при ошибке бэкапа
+    'KEEP_LAST_N': 5,            # Хранить только 5 последних бэкапов для каждой системы (AI и Bots)
 }
 TIME_SYNC = {                              # Синхронизация времени с NTP (только Windows)
     'ENABLED': False,            # Включить автоматическую синхронизацию времени

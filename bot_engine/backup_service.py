@@ -69,15 +69,17 @@ class DatabaseBackupService:
             logger.error(f"❌ Ошибка создания директории бэкапов: {e}")
             raise
     
-    def create_backup(self, include_ai: bool = True, include_bots: bool = True, 
-                     max_retries: int = 3) -> Dict[str, Any]:
+    def create_backup(self, include_ai: bool = True, include_bots: bool = True,
+                     max_retries: int = 3, keep_last_n: int = 5) -> Dict[str, Any]:
         """
-        Создает резервные копии указанных баз данных
+        Создает резервные копии указанных баз данных.
+        После создания оставляет только последние keep_last_n бэкапов для каждой системы.
         
         Args:
             include_ai: Создавать бэкап AI БД
             include_bots: Создавать бэкап Bots БД
             max_retries: Максимальное количество попыток при блокировке файла
+            keep_last_n: Сколько последних бэкапов хранить для каждой БД (остальные удаляются)
         
         Returns:
             Словарь с результатами бэкапа:
@@ -170,6 +172,13 @@ class DatabaseBackupService:
             else:
                 result['success'] = False
                 logger.warning(f"⚠️ Бэкап не создан: {timestamp}")
+
+            # Оставляем только последние keep_last_n бэкапов для каждой системы
+            if keep_last_n > 0:
+                try:
+                    self.cleanup_excess_backups(keep_count=keep_last_n)
+                except Exception as e:
+                    logger.warning(f"⚠️ Очистка лишних бэкапов не выполнена: {e}")
             
             return result
     
@@ -496,6 +505,49 @@ class DatabaseBackupService:
             logger.error(f"❌ Ошибка удаления бэкапа: {e}")
             return False
     
+    def cleanup_excess_backups(self, keep_count: int = 5) -> Dict[str, int]:
+        """
+        Оставляет только последние keep_count бэкапов для каждой системы (AI, Bots).
+        Все остальные бэкапы удаляются независимо от возраста.
+        
+        Args:
+            keep_count: Сколько последних бэкапов сохранять для каждой БД (по умолчанию 5)
+        
+        Returns:
+            Словарь с количеством удаленных бэкапов по типам
+        """
+        result = {
+            'ai_data': 0,
+            'bots_data': 0,
+            'total': 0
+        }
+        try:
+            backups = self.list_backups()
+            backups_by_type = {}
+            for backup in backups:
+                db_name = backup.get('db_name', 'unknown')
+                if db_name not in backups_by_type:
+                    backups_by_type[db_name] = []
+                backups_by_type[db_name].append(backup)
+
+            for db_name, db_backups in backups_by_type.items():
+                # Уже отсортировано по created_at, новые первыми (reverse=True в list_backups)
+                to_keep = db_backups[:keep_count]
+                to_delete = db_backups[keep_count:]
+                for backup in to_delete:
+                    if self.delete_backup(backup['path']):
+                        result[db_name] = result.get(db_name, 0) + 1
+                        result['total'] += 1
+
+            if result['total'] > 0:
+                logger.info(
+                    f"🗑️ Удалено лишних бэкапов (оставлено по {keep_count} на систему): "
+                    f"{result['total']} (ai_data: {result['ai_data']}, bots_data: {result['bots_data']})"
+                )
+        except Exception as e:
+            logger.error(f"❌ Ошибка очистки лишних бэкапов: {e}")
+        return result
+
     def cleanup_old_backups(self, days: int = 30, keep_count: int = 10) -> Dict[str, int]:
         """
         Удаляет старые бэкапы
