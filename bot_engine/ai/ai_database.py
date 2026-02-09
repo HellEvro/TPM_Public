@@ -165,57 +165,28 @@ class AIDatabase:
     
     def _backup_database(self, max_retries: int = 3) -> Optional[str]:
         """
-        Создает резервную копию БД в data/backups.
-        
-        Args:
-            max_retries: Максимальное количество попыток при блокировке файла
-        
-        Returns:
-            Путь к резервной копии или None если не удалось создать
+        Создаёт резервную копию БД в виде SQL-дампа (.sql) в data/backups.
+        Через iterdump — не копируем файл, нет блокировок.
         """
         if not os.path.exists(self.db_path):
             return None
-        
-        import shutil
         from datetime import datetime
-        
         project_root = _get_project_root()
         backup_dir = project_root / 'data' / 'backups'
         backup_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = backup_dir / f"ai_data_{timestamp}.db"
+        backup_path = backup_dir / f"ai_data_{timestamp}.sql"
         backup_path = str(backup_path)
-        
-        # Пытаемся создать резервную копию с retry логикой
         for attempt in range(max_retries):
             try:
                 if attempt > 0:
-                    try:
-                        pass
-                    except MemoryError:
-                        pass
                     time.sleep(1.0 * attempt)
-                
-                try:
-                    shutil.copy2(self.db_path, backup_path)
-                except MemoryError:
-                    print("⚠️ Нехватка памяти при создании резервной копии БД")
-                    return None
-                
-                wal_file = self.db_path + '-wal'
-                shm_file = self.db_path + '-shm'
-                if os.path.exists(wal_file):
-                    try:
-                        shutil.copy2(wal_file, backup_path + '-wal')
-                    except Exception as e:
-                        pass
-                if os.path.exists(shm_file):
-                    try:
-                        shutil.copy2(shm_file, backup_path + '-shm')
-                    except Exception as e:
-                        pass
-                
-                logger.warning(f"💾 Создана резервная копия БД: {backup_path}")
+                conn = sqlite3.connect(self.db_path, timeout=30.0)
+                with open(backup_path, 'w', encoding='utf-8') as f:
+                    for line in conn.iterdump():
+                        f.write(line + '\n')
+                conn.close()
+                logger.warning(f"💾 Создана резервная копия БД (SQL): {backup_path}")
                 return backup_path
             except MemoryError:
                 # КРИТИЧНО: Нехватка памяти - не пытаемся создавать резервную копию
@@ -319,21 +290,36 @@ class AIDatabase:
                     raise Exception("Не удалось создать резервную копию БД с данными - удаление отменено")
                 logger.warning(f"⚠️ ВНИМАНИЕ: БД содержит данные, создана резервная копия: {backup_path}")
             else:
-                # Если данных нет - все равно создаем резервную копию на всякий случай
-                self._backup_database()
-            
+                backup_path = self._backup_database()
             # Удаляем поврежденный файл и связанные файлы WAL/SHM
             wal_file = self.db_path + '-wal'
             shm_file = self.db_path + '-shm'
-            
             if os.path.exists(wal_file):
-                os.remove(wal_file)
+                try:
+                    os.remove(wal_file)
+                except OSError:
+                    pass
             if os.path.exists(shm_file):
-                os.remove(shm_file)
-            os.remove(self.db_path)
-            
+                try:
+                    os.remove(shm_file)
+                except OSError:
+                    pass
+            if os.path.exists(self.db_path):
+                try:
+                    os.remove(self.db_path)
+                except OSError as e:
+                    logger.error(f"❌ Ошибка удаления поврежденной БД: {e}")
+                    raise
             logger.warning(f"🗑️ Удалена поврежденная БД: {self.db_path}")
-            if has_data:
+            # Создаём новую БД и заносим дамп из бэкапа
+            if backup_path and os.path.exists(backup_path) and backup_path.endswith('.sql'):
+                with open(backup_path, 'r', encoding='utf-8') as f:
+                    sql_dump = f.read()
+                conn = sqlite3.connect(self.db_path)
+                conn.executescript(sql_dump)
+                conn.close()
+                logger.info(f"✅ Новая БД создана и загружена из SQL-бэкапа: {backup_path}")
+            if has_data and backup_path:
                 logger.warning(f"💾 Данные сохранены в резервной копии - можно восстановить при необходимости")
         except Exception as e:
             logger.error(f"❌ Ошибка удаления поврежденной БД: {e}")
@@ -5653,9 +5639,11 @@ class AIDatabase:
         return 0
     
     def _check_backup_integrity(self, backup_path: str) -> bool:
-        """Проверяет целостность файла бэкапа (PRAGMA integrity_check). True только если бэкап целый."""
+        """Проверяет целостность бэкапа: для .sql — файл непустой; для .db — PRAGMA integrity_check."""
         if not backup_path or not os.path.exists(backup_path):
             return False
+        if backup_path.endswith('.sql'):
+            return os.path.getsize(backup_path) > 0
         try:
             conn = sqlite3.connect(backup_path, timeout=5.0)
             cursor = conn.cursor()
@@ -5680,20 +5668,19 @@ class AIDatabase:
                 return backups
             
             for filename in os.listdir(backup_dir):
-                if not filename.startswith("ai_data_") or not filename.endswith(".db"):
+                if not filename.startswith("ai_data_"):
                     continue
-                if filename.count(".db") != 1 or "-wal" in filename or "-shm" in filename:
+                is_sql = filename.endswith(".sql")
+                if not is_sql and (not filename.endswith(".db") or filename.count(".db") != 1 or "-wal" in filename or "-shm" in filename):
                     continue
                 backup_path = os.path.join(backup_dir, filename)
                 try:
                     file_size = os.path.getsize(backup_path)
-                    # ai_data_20260127_020021.db -> 20260127_020021
-                    timestamp_str = filename.replace("ai_data_", "").replace(".db", "")
+                    timestamp_str = filename.replace("ai_data_", "").replace(".sql", "").replace(".db", "")
                     try:
                         backup_time = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
                     except Exception:
                         backup_time = datetime.fromtimestamp(os.path.getmtime(backup_path))
-                    
                     backups.append({
                         'path': backup_path,
                         'filename': filename,
@@ -5701,7 +5688,7 @@ class AIDatabase:
                         'created_at': backup_time.isoformat(),
                         'timestamp': timestamp_str
                     })
-                except Exception as e:
+                except Exception:
                     pass
             
             backups.sort(key=lambda x: x['created_at'], reverse=True)
@@ -5739,20 +5726,47 @@ class AIDatabase:
                 s = str(e).lower()
                 return err in (32, 33, 1224) or 'занят' in s or 'сопоставленной секцией' in s or 'cannot access' in s
 
-            wal_backup = f"{backup_path}-wal"
-            shm_backup = f"{backup_path}-shm"
+            def _remove_safe(path: str, max_retries: int = 5) -> bool:
+                for attempt in range(max_retries):
+                    try:
+                        if not os.path.exists(path):
+                            return True
+                        os.remove(path)
+                        return True
+                    except OSError as e:
+                        if _file_in_use(e) and attempt < max_retries - 1:
+                            time.sleep(1.0 * (attempt + 1))
+                            continue
+                        logger.warning(f"⚠️ Не удалось удалить {path}: {e}")
+                        return False
+                return False
+
             wal_file = self.db_path + '-wal'
             shm_file = self.db_path + '-shm'
-
             max_restore_retries = 3
             restore_ok = False
             for restore_attempt in range(max_restore_retries):
                 if restore_attempt > 0:
                     time.sleep(3)
                     logger.info(f"🔄 Повтор восстановления ({restore_attempt + 1}/{max_restore_retries})...")
-
                 try:
-                    shutil.copy2(backup_path, self.db_path)
+                    _remove_safe(wal_file)
+                    _remove_safe(shm_file)
+                    _remove_safe(self.db_path)
+                    if backup_path.endswith('.sql'):
+                        with open(backup_path, 'r', encoding='utf-8') as f:
+                            sql_dump = f.read()
+                        conn = sqlite3.connect(self.db_path)
+                        conn.executescript(sql_dump)
+                        conn.close()
+                        restore_ok = True
+                        break
+                    else:
+                        shutil.copy2(backup_path, self.db_path)
+                        _remove_safe(wal_file)
+                        _remove_safe(shm_file)
+                        restore_ok = True
+                        break
                 except OSError as copy_err:
                     if _file_in_use(copy_err):
                         if restore_attempt < max_restore_retries - 1:
@@ -5762,32 +5776,6 @@ class AIDatabase:
                         try:
                             _pending.write_text(_abs_backup, encoding='utf-8')
                             logger.warning("🔄 Файл AI БД занят. Записан флаг — перезапуск процесса для гарантированного восстановления...")
-                            os.execv(sys.executable, [sys.executable] + sys.argv)
-                        except Exception as e:
-                            logger.error(f"❌ Не удалось перезапустить процесс для восстановления: {e}")
-                        return False
-                    raise
-
-                try:
-                    if os.path.exists(wal_backup):
-                        shutil.copy2(wal_backup, wal_file)
-                    elif os.path.exists(wal_file):
-                        os.remove(wal_file)
-                    if os.path.exists(shm_backup):
-                        shutil.copy2(shm_backup, shm_file)
-                    elif os.path.exists(shm_file):
-                        os.remove(shm_file)
-                    restore_ok = True
-                    break
-                except OSError as e:
-                    if _file_in_use(e):
-                        if restore_attempt < max_restore_retries - 1:
-                            continue
-                        _pending = Path(self.db_path).parent / '.pending_restore_ai'
-                        _abs_backup = os.path.abspath(backup_path)
-                        try:
-                            _pending.write_text(_abs_backup, encoding='utf-8')
-                            logger.warning("🔄 Файлы AI БД (-wal/-shm) заняты. Записан флаг — перезапуск процесса для гарантированного восстановления...")
                             os.execv(sys.executable, [sys.executable] + sys.argv)
                         except Exception as e:
                             logger.error(f"❌ Не удалось перезапустить процесс для восстановления: {e}")

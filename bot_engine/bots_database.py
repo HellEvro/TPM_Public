@@ -546,17 +546,49 @@ class BotsDatabase:
                 ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                 corrupted_name = f"bots_data_corrupted_{ts}.db"
                 corrupted_path = backup_dir / corrupted_name
+
+                def _remove_safe(path: str, max_retries: int = 5) -> bool:
+                    for attempt in range(max_retries):
+                        try:
+                            if not os.path.exists(path):
+                                return True
+                            os.remove(path)
+                            return True
+                        except OSError as e:
+                            winerr = getattr(e, 'winerror', None)
+                            if winerr == 32 and attempt < max_retries - 1:
+                                time.sleep(1.0 * (attempt + 1))
+                                continue
+                            logger.warning(f"⚠️ Не удалось удалить {path}: {e}")
+                            return False
+                    return False
+
+                def _move_safe(src: str, dst: str, max_retries: int = 5) -> bool:
+                    for attempt in range(max_retries):
+                        try:
+                            if not os.path.exists(src):
+                                return True
+                            shutil.move(src, dst)
+                            return True
+                        except OSError as e:
+                            winerr = getattr(e, 'winerror', None)
+                            if winerr == 32 and attempt < max_retries - 1:
+                                time.sleep(1.0 * (attempt + 1))
+                                continue
+                            raise
+                    return False
+
+                # Даём ОС время освободить хэндлы после закрытия соединения
+                time.sleep(1.5)
                 try:
                     if os.path.exists(self.db_path):
-                        shutil.move(self.db_path, str(corrupted_path))
-                        logger.info(f"💾 Повреждённая БД сохранена как: {corrupted_path}")
+                        if _move_safe(self.db_path, str(corrupted_path)):
+                            logger.info(f"💾 Повреждённая БД сохранена как: {corrupted_path}")
+                        else:
+                            return False
                     for suf in ('-wal', '-shm'):
                         src = self.db_path + suf
-                        if os.path.exists(src):
-                            try:
-                                os.remove(src)
-                            except OSError:
-                                pass
+                        _remove_safe(src)
                     return True
                 except OSError as move_err:
                     logger.error(f"❌ Не удалось перенести повреждённую БД (файл занят?): {move_err}")
@@ -6307,9 +6339,11 @@ class BotsDatabase:
             return {}
     
     def _check_backup_integrity(self, backup_path: str) -> bool:
-        """Проверяет целостность файла бэкапа (PRAGMA integrity_check). Возвращает True только если бэкап целый."""
+        """Проверяет целостность бэкапа: для .sql — файл непустой; для .db — PRAGMA integrity_check."""
         if not backup_path or not os.path.exists(backup_path):
             return False
+        if backup_path.endswith('.sql'):
+            return os.path.getsize(backup_path) > 0
         try:
             conn = sqlite3.connect(backup_path, timeout=5.0)
             cursor = conn.cursor()
@@ -6334,19 +6368,22 @@ class BotsDatabase:
                 return backups
             
             for filename in os.listdir(backup_dir):
-                if not filename.startswith("bots_data_") or not filename.endswith(".db"):
+                if not filename.startswith("bots_data_"):
                     continue
-                if filename.count(".db") != 1 or "-wal" in filename or "-shm" in filename:
+                is_sql = filename.endswith(".sql")
+                if not is_sql and (not filename.endswith(".db") or filename.count(".db") != 1 or "-wal" in filename or "-shm" in filename):
                     continue
                 backup_path = os.path.join(backup_dir, filename)
                 try:
                     file_size = os.path.getsize(backup_path)
-                    timestamp_str = filename.replace("bots_data_", "").replace(".db", "")
+                    if is_sql:
+                        timestamp_str = filename.replace("bots_data_", "").replace(".sql", "")
+                    else:
+                        timestamp_str = filename.replace("bots_data_", "").replace(".db", "")
                     try:
                         backup_time = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
                     except Exception:
                         backup_time = datetime.fromtimestamp(os.path.getmtime(backup_path))
-                    
                     backups.append({
                         'path': backup_path,
                         'filename': filename,
@@ -6354,7 +6391,7 @@ class BotsDatabase:
                         'created_at': backup_time.isoformat(),
                         'timestamp': timestamp_str
                     })
-                except Exception as e:
+                except Exception:
                     pass
             
             backups.sort(key=lambda x: x['created_at'], reverse=True)
@@ -6394,49 +6431,50 @@ class BotsDatabase:
                 s = str(e).lower()
                 return err in (32, 33, 1224) or 'занят' in s or 'сопоставленной секцией' in s or 'cannot access' in s
 
-            wal_backup = f"{backup_path}-wal"
-            shm_backup = f"{backup_path}-shm"
+            def _remove_safe(path: str, max_retries: int = 5) -> bool:
+                for attempt in range(max_retries):
+                    try:
+                        if not os.path.exists(path):
+                            return True
+                        os.remove(path)
+                        return True
+                    except OSError as e:
+                        if _file_in_use(e) and attempt < max_retries - 1:
+                            time.sleep(1.0 * (attempt + 1))
+                            continue
+                        logger.warning(f"⚠️ Не удалось удалить {path}: {e}")
+                        return False
+                return False
+
             wal_file = f"{self.db_path}-wal"
             shm_file = f"{self.db_path}-shm"
-
-            # Пауза и повторы: даём другим потокам (auto_save и т.д.) освободить -wal/-shm
+            # Удаляем старую БД и -wal/-shm; создаём новую и заносим дамп
             max_restore_retries = 3
             restore_ok = False
             for restore_attempt in range(max_restore_retries):
                 if restore_attempt > 0:
                     time.sleep(3)
                     logger.info(f"🔄 Повтор восстановления ({restore_attempt + 1}/{max_restore_retries})...")
-
                 try:
-                    shutil.copy2(backup_path, self.db_path)
+                    _remove_safe(wal_file)
+                    _remove_safe(shm_file)
+                    _remove_safe(self.db_path)
+                    if backup_path.endswith('.sql'):
+                        with open(backup_path, 'r', encoding='utf-8') as f:
+                            sql_dump = f.read()
+                        conn = sqlite3.connect(self.db_path)
+                        conn.executescript(sql_dump)
+                        conn.close()
+                        restore_ok = True
+                        break
+                    else:
+                        shutil.copy2(backup_path, self.db_path)
+                        _remove_safe(wal_file)
+                        _remove_safe(shm_file)
+                        restore_ok = True
+                        break
                 except OSError as copy_err:
                     if _file_in_use(copy_err):
-                        if restore_attempt < max_restore_retries - 1:
-                            continue
-                        _pending = Path(self.db_path).parent / '.pending_restore_bots'
-                        _abs_backup = os.path.abspath(backup_path)
-                        try:
-                            _pending.write_text(_abs_backup, encoding='utf-8')
-                            logger.warning("🔄 Файл БД занят. Записан флаг восстановления — перезапуск процесса для гарантированного восстановления...")
-                            os.execv(sys.executable, [sys.executable] + sys.argv)
-                        except Exception as e:
-                            logger.error(f"❌ Не удалось перезапустить процесс для восстановления: {e}")
-                        return False
-                    raise
-
-                try:
-                    if os.path.exists(wal_backup):
-                        shutil.copy2(wal_backup, wal_file)
-                    elif os.path.exists(wal_file):
-                        os.remove(wal_file)
-                    if os.path.exists(shm_backup):
-                        shutil.copy2(shm_backup, shm_file)
-                    elif os.path.exists(shm_file):
-                        os.remove(shm_file)
-                    restore_ok = True
-                    break
-                except OSError as e:
-                    if _file_in_use(e):
                         if restore_attempt < max_restore_retries - 1:
                             continue
                         _pending = Path(self.db_path).parent / '.pending_restore_bots'

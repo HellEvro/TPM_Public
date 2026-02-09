@@ -208,66 +208,31 @@ class DatabaseBackupService:
             
             return result
     
-    def _backup_database(self, db_path: str, db_name: str, timestamp: str, 
+    def _backup_database(self, db_path: str, db_name: str, timestamp: str,
                         max_retries: int = 3) -> Optional[Dict[str, Any]]:
         """
-        Создает резервную копию одной БД
-        
-        Args:
-            db_path: Путь к файлу БД
-            db_name: Имя БД (для формирования имени файла)
-            timestamp: Timestamp для имени файла
-            max_retries: Максимальное количество попыток
-        
-        Returns:
-            Словарь с информацией о бэкапе или None
+        Создаёт резервную копию одной БД в виде SQL-дампа (.sql).
+        Через запрос/iterdump — не копируем файл, нет блокировок.
         """
         if not os.path.exists(db_path):
             logger.warning(f"⚠️ БД не найдена: {db_path}")
             return None
-        
-        # Формируем путь к бэкапу
-        backup_filename = f"{db_name}_{timestamp}.db"
+
+        backup_filename = f"{db_name}_{timestamp}.sql"
         backup_path = os.path.join(self.backup_dir, backup_filename)
-        
-        # Пытаемся создать резервную копию с retry логикой
+
         for attempt in range(max_retries):
             try:
                 if attempt > 0:
-                    pass
-                    import time
                     time.sleep(1.0 * attempt)
-                
-                # Копируем БД
-                shutil.copy2(db_path, backup_path)
-                
-                # Копируем WAL и SHM файлы если есть
-                wal_file = db_path + '-wal'
-                shm_file = db_path + '-shm'
-                wal_backup = backup_path + '-wal'
-                shm_backup = backup_path + '-shm'
-                
-                if os.path.exists(wal_file):
-                    try:
-                        shutil.copy2(wal_file, wal_backup)
-                    except Exception as e:
-                        pass
-                
-                if os.path.exists(shm_file):
-                    try:
-                        shutil.copy2(shm_file, shm_backup)
-                    except Exception as e:
-                        pass
-                
-                # Проверяем целостность бэкапа
-                is_valid, error_msg = self._check_backup_integrity(backup_path)
-                if not is_valid:
-                    logger.warning(f"⚠️ Бэкап создан, но проверка целостности не прошла: {error_msg}")
-                
-                # Получаем размер файла
+                conn = sqlite3.connect(db_path, timeout=30.0)
+                with open(backup_path, 'w', encoding='utf-8') as f:
+                    for line in conn.iterdump():
+                        f.write(line + '\n')
+                conn.close()
                 file_size = os.path.getsize(backup_path)
                 size_mb = file_size / (1024 * 1024)
-                
+                is_valid = file_size > 0
                 return {
                     'path': backup_path,
                     'size_mb': size_mb,
@@ -275,47 +240,32 @@ class DatabaseBackupService:
                     'valid': is_valid,
                     'created_at': datetime.now().isoformat()
                 }
-                
-            except PermissionError as e:
-                if attempt < max_retries - 1:
-                    pass
-                    continue
-                else:
-                    logger.error(f"❌ Не удалось создать бэкап после {max_retries} попыток: {e}")
+            except sqlite3.Error as e:
+                logger.warning(f"⚠️ Ошибка дампа БД (попытка {attempt + 1}): {e}")
+                if attempt == max_retries - 1:
                     return None
             except Exception as e:
-                logger.error(f"❌ Ошибка создания бэкапа: {e}")
+                logger.error(f"❌ Ошибка создания SQL-бэкапа: {e}")
                 return None
-        
         return None
     
     def _check_backup_integrity(self, backup_path: str) -> Tuple[bool, Optional[str]]:
         """
-        Проверяет целостность бэкапа БД
-        
-        Args:
-            backup_path: Путь к файлу бэкапа
-        
-        Returns:
-            (is_valid, error_message)
+        Проверяет целостность бэкапа: для .sql — файл непустой; для .db — PRAGMA integrity_check.
         """
         if not os.path.exists(backup_path):
             return False, "Файл бэкапа не найден"
-        
+        if backup_path.endswith('.sql'):
+            return (os.path.getsize(backup_path) > 0, None)
         try:
             conn = sqlite3.connect(backup_path)
             cursor = conn.cursor()
-            
-            # Проверяем целостность
             cursor.execute("PRAGMA integrity_check")
             result = cursor.fetchone()
             conn.close()
-            
             if result and result[0] == "ok":
                 return True, None
-            else:
-                return False, result[0] if result else "Неизвестная ошибка"
-                
+            return False, result[0] if result else "Неизвестная ошибка"
         except Exception as e:
             return False, str(e)
     
@@ -336,54 +286,35 @@ class DatabaseBackupService:
                 return backups
             
             for filename in os.listdir(self.backup_dir):
-                # Пропускаем WAL и SHM файлы
                 if filename.endswith('-wal') or filename.endswith('-shm'):
                     continue
-                
-                # Фильтруем по имени БД если указано
+                is_sql = filename.endswith('.sql')
+                if not is_sql and not filename.endswith('.db'):
+                    continue
                 if db_name and not filename.startswith(db_name):
                     continue
-                
-                # Проверяем формат имени: {db_name}_{timestamp}.db
-                if not filename.endswith('.db'):
-                    continue
-                
                 backup_path = os.path.join(self.backup_dir, filename)
-                
                 try:
-                    # Извлекаем timestamp из имени файла
-                    name_without_ext = filename[:-3]  # Убираем .db
+                    name_without_ext = filename[:-4] if is_sql else filename[:-3]
                     parts = name_without_ext.split('_')
-                    
-                    # Ищем timestamp (формат: YYYYMMDD_HHMMSS)
                     timestamp_str = None
                     db_name_from_file = None
-                    
                     for i in range(len(parts) - 1):
-                        # Пытаемся найти паттерн даты и времени
                         potential_timestamp = '_'.join(parts[i:])
                         if len(potential_timestamp) == 15 and potential_timestamp.replace('_', '').isdigit():
                             timestamp_str = potential_timestamp
                             db_name_from_file = '_'.join(parts[:i])
                             break
-                    
                     if not timestamp_str:
-                        # Пробуем использовать время модификации файла
                         timestamp_str = datetime.fromtimestamp(os.path.getmtime(backup_path)).strftime("%Y%m%d_%H%M%S")
                         db_name_from_file = name_without_ext.rsplit('_', 2)[0] if '_' in name_without_ext else name_without_ext
-                    
-                    # Парсим timestamp
                     try:
                         backup_time = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
                     except ValueError:
                         backup_time = datetime.fromtimestamp(os.path.getmtime(backup_path))
-                    
                     file_size = os.path.getsize(backup_path)
                     size_mb = file_size / (1024 * 1024)
-                    
-                    # Проверяем целостность
                     is_valid, error_msg = self._check_backup_integrity(backup_path)
-                    
                     backups.append({
                         'path': backup_path,
                         'filename': filename,
@@ -395,8 +326,7 @@ class DatabaseBackupService:
                         'valid': is_valid,
                         'error': error_msg if not is_valid else None
                     })
-                    
-                except Exception as e:
+                except Exception:
                     pass
             
             # Сортируем по дате создания (новые первыми)
@@ -449,56 +379,27 @@ class DatabaseBackupService:
         
         try:
             logger.info(f"📦 Восстановление {db_name} из бэкапа: {backup_path}")
-            
-            # Создаем бэкап текущей БД перед восстановлением
-            if os.path.exists(target_db_path):
-                current_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                current_backup_path = os.path.join(
-                    self.backup_dir,
-                    f"{db_name}_before_restore_{current_timestamp}.db"
-                )
-                try:
-                    shutil.copy2(target_db_path, current_backup_path)
-                    logger.info(f"💾 Текущая БД сохранена в: {current_backup_path}")
-                except Exception as e:
-                    logger.warning(f"⚠️ Не удалось создать бэкап текущей БД: {e}")
-            
-            # Копируем бэкап на место основной БД
-            shutil.copy2(backup_path, target_db_path)
-            
-            # Восстанавливаем WAL и SHM файлы если есть
-            wal_backup = backup_path + '-wal'
-            shm_backup = backup_path + '-shm'
-            wal_file = target_db_path + '-wal'
-            shm_file = target_db_path + '-shm'
-            
-            if os.path.exists(wal_backup):
-                shutil.copy2(wal_backup, wal_file)
-                pass
-            elif os.path.exists(wal_file):
-                os.remove(wal_file)
-                pass
-            
-            if os.path.exists(shm_backup):
-                shutil.copy2(shm_backup, shm_file)
-                pass
-            elif os.path.exists(shm_file):
-                os.remove(shm_file)
-                pass
-            
-            # Проверяем целостность восстановленной БД
+            # Удаляем старую БД (и -wal, -shm), создаём новую и загружаем дамп
+            for path in [target_db_path, target_db_path + '-wal', target_db_path + '-shm']:
+                self._remove_file_safe(path)
+            if backup_path.endswith('.sql'):
+                with open(backup_path, 'r', encoding='utf-8') as f:
+                    sql_dump = f.read()
+                conn = sqlite3.connect(target_db_path)
+                conn.executescript(sql_dump)
+                conn.close()
+            else:
+                shutil.copy2(backup_path, target_db_path)
+                self._remove_file_safe(target_db_path + '-wal')
+                self._remove_file_safe(target_db_path + '-shm')
             is_valid, error_msg = self._check_backup_integrity(target_db_path)
             if is_valid:
                 logger.info(f"✅ БД {db_name} успешно восстановлена из бэкапа")
                 return True
-            else:
-                logger.error(f"❌ Восстановленная БД повреждена: {error_msg}")
-                return False
-                
+            logger.error(f"❌ Восстановленная БД повреждена: {error_msg}")
+            return False
         except Exception as e:
             logger.error(f"❌ Ошибка восстановления БД из бэкапа: {e}")
-            import traceback
-            pass
             return False
     
     def _remove_file_safe(self, path: str, max_retries: int = 3) -> bool:
@@ -794,10 +695,7 @@ def run_backup_scheduler_loop(
 
     interval_seconds = max(60, int(interval_minutes * 60))
     backup_logger.info(
-        "[Backup] Планировщик запущен: каждые %s минут (%.0f секунд). Директория: %s",
-        interval_minutes,
-        interval_seconds,
-        backup_dir or 'data/backups'
+        f"[Backup] Планировщик запущен: каждые {interval_minutes} мин ({interval_seconds} сек). Директория: {backup_dir or 'data/backups'}"
     )
 
     if backup_config.get('RUN_ON_START', True):
