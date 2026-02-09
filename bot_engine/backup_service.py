@@ -14,6 +14,7 @@ import os
 import shutil
 import sqlite3
 import threading
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
@@ -173,9 +174,11 @@ class DatabaseBackupService:
                 result['success'] = False
                 logger.warning(f"⚠️ Бэкап не создан: {timestamp}")
 
-            # Оставляем только последние keep_last_n бэкапов для каждой системы
+            # Оставляем только последние keep_last_n бэкапов для каждой системы.
+            # Небольшая пауза перед удалением, чтобы снизить WinError 32 (файл занят) на Windows.
             if keep_last_n > 0:
                 try:
+                    time.sleep(2)
                     self.cleanup_excess_backups(keep_count=keep_last_n)
                 except Exception as e:
                     logger.warning(f"⚠️ Очистка лишних бэкапов не выполнена: {e}")
@@ -471,39 +474,53 @@ class DatabaseBackupService:
             pass
             return False
     
+    def _remove_file_safe(self, path: str, max_retries: int = 3) -> bool:
+        """
+        Удаляет файл с повторами при WinError 32 / EBUSY (файл занят другим процессом).
+        Returns True если удалён или файла нет, False если не удалось.
+        """
+        for attempt in range(max_retries):
+            try:
+                if not os.path.exists(path):
+                    return True
+                os.remove(path)
+                return True
+            except (PermissionError, OSError) as e:
+                # Windows: 32 = ERROR_SHARING_VIOLATION (файл занят)
+                # Unix: 13 EACCES, 16 EBUSY
+                is_busy = getattr(e, 'winerror', None) == 32 or getattr(e, 'errno', None) in (13, 16)
+                if is_busy and attempt < max_retries - 1:
+                    time.sleep(1.0 * (attempt + 1))
+                    continue
+                if is_busy:
+                    logger.warning(
+                        f"⚠️ Файл занят другим процессом, пропуск удаления (будет повтор при следующем бэкапе): {path}"
+                    )
+                else:
+                    logger.warning(f"⚠️ Не удалось удалить файл: {path}: {e}")
+                return False
+        return False
+
     def delete_backup(self, backup_path: str) -> bool:
         """
-        Удаляет бэкап
-        
-        Args:
-            backup_path: Путь к файлу бэкапа
-        
-        Returns:
-            True если удаление успешно, False в противном случае
+        Удаляет бэкап (основной файл и -wal/-shm при наличии).
+        При «файл занят» выполняет несколько попыток с паузой, затем пропускает без падения.
         """
-        try:
-            if not os.path.exists(backup_path):
-                logger.warning(f"⚠️ Бэкап не найден: {backup_path}")
-                return False
-            
-            # Удаляем основной файл
-            os.remove(backup_path)
-            
-            # Удаляем связанные WAL и SHM файлы если есть
-            wal_file = backup_path + '-wal'
-            shm_file = backup_path + '-shm'
-            
-            if os.path.exists(wal_file):
-                os.remove(wal_file)
-            if os.path.exists(shm_file):
-                os.remove(shm_file)
-            
-            logger.info(f"🗑️ Бэкап удален: {backup_path}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Ошибка удаления бэкапа: {e}")
+        if not os.path.exists(backup_path):
+            logger.warning(f"⚠️ Бэкап не найден: {backup_path}")
             return False
+
+        ok = self._remove_file_safe(backup_path)
+        if not ok:
+            return False
+
+        wal_file = backup_path + '-wal'
+        shm_file = backup_path + '-shm'
+        self._remove_file_safe(wal_file)
+        self._remove_file_safe(shm_file)
+
+        logger.info(f"🗑️ Бэкап удален: {backup_path}")
+        return True
     
     def cleanup_excess_backups(self, keep_count: int = 5) -> Dict[str, int]:
         """

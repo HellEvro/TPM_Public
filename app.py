@@ -125,7 +125,7 @@ from bot_engine.app_database import get_app_database
 # Конфигурация резервного копирования (значения по умолчанию)
 _DATABASE_BACKUP_DEFAULTS = {
     'ENABLED': True,
-    'INTERVAL_MINUTES': 1440,  # 24 часа = 1 раз в день
+    'INTERVAL_MINUTES': 180,  # 3 часа = 1 раз в 3 часа
     'RUN_ON_START': True,
     'AI_ENABLED': True,
     'BOTS_ENABLED': True,
@@ -524,12 +524,12 @@ def backup_scheduler_loop():
         backup_logger.exception(f"[Backup] Не удалось инициализировать сервис бэкапов: {exc}")
         return
 
-    interval_minutes = backup_config.get('INTERVAL_MINUTES', 60)
+    interval_minutes = backup_config.get('INTERVAL_MINUTES', 180)
     try:
         interval_minutes = float(interval_minutes)
     except (TypeError, ValueError):
-        backup_logger.warning("[Backup] Некорректное значение INTERVAL_MINUTES, используется 60 минут")
-        interval_minutes = 60
+        backup_logger.warning("[Backup] Некорректное значение INTERVAL_MINUTES, используется 180 минут (3 часа)")
+        interval_minutes = 180
 
     interval_seconds = max(60, int(interval_minutes * 60))
     backup_logger.info(
