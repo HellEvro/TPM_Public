@@ -534,16 +534,33 @@ class BotsDatabase:
 
             # Сначала список бэкапов, без создания нового из повреждённой БД
             backups = self.list_backups()
+            valid_backups = [b for b in backups if self._check_backup_integrity(b['path'])] if backups else []
+
             if not backups:
-                logger.error("❌ Нет резервных копий. Восстановление невозможно (создавать бэкап из повреждённой БД и восстанавливаться из него не делаем).")
-                return False
-
-            # Только бэкапы с целостной БД
-            valid_backups = [b for b in backups if self._check_backup_integrity(b['path'])]
+                logger.warning("⚠️ Нет резервных копий. Перенос повреждённой БД в архив и создание новой пустой БД...")
+            elif not valid_backups:
+                logger.warning("⚠️ Нет целостных резервных копий. Перенос повреждённой БД в архив и создание новой пустой БД...")
             if not valid_backups:
-                logger.error("❌ Нет целостных резервных копий (все проверены и повреждены). Восстановление невозможно.")
-                return False
-
+                backup_dir = _get_project_root() / 'data' / 'backups'
+                backup_dir.mkdir(parents=True, exist_ok=True)
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                corrupted_name = f"bots_data_corrupted_{ts}.db"
+                corrupted_path = backup_dir / corrupted_name
+                try:
+                    if os.path.exists(self.db_path):
+                        shutil.move(self.db_path, str(corrupted_path))
+                        logger.info(f"💾 Повреждённая БД сохранена как: {corrupted_path}")
+                    for suf in ('-wal', '-shm'):
+                        src = self.db_path + suf
+                        if os.path.exists(src):
+                            try:
+                                os.remove(src)
+                            except OSError:
+                                pass
+                    return True
+                except OSError as move_err:
+                    logger.error(f"❌ Не удалось перенести повреждённую БД (файл занят?): {move_err}")
+                    return False
             # Берём самый свежий целостный бэкап
             chosen = valid_backups[0]['path']
             logger.info(f"📦 Восстанавливаю из целостной резервной копии: {chosen}")
@@ -718,6 +735,9 @@ class BotsDatabase:
                             time.sleep(1)
                             continue
                         logger.error("❌ Не удалось исправить поврежденную БД")
+                    global _bots_database_init_failed, _bots_database_init_error
+                    _bots_database_init_failed = True
+                    _bots_database_init_error = e
                     raise
                 
                 # КРИТИЧНО: Обработка ошибки I/O при подключении
@@ -737,6 +757,9 @@ class BotsDatabase:
                             time.sleep(1)
                             continue
                         logger.error("❌ Не удалось исправить БД после I/O ошибки")
+                    global _bots_database_init_failed, _bots_database_init_error
+                    _bots_database_init_failed = True
+                    _bots_database_init_error = e
                     raise
                 
                 # Обработка "file is not a database"
@@ -6450,6 +6473,9 @@ class BotsDatabase:
 # Глобальный экземпляр базы данных
 _bots_database_instance = None
 _bots_database_lock = threading.Lock()
+# Кэш неудачной инициализации — не спамить десятками попыток при каждой операции
+_bots_database_init_failed = False
+_bots_database_init_error = None
 
 
 def get_bots_database(db_path: str = None) -> BotsDatabase:
@@ -6466,8 +6492,9 @@ def get_bots_database(db_path: str = None) -> BotsDatabase:
     Returns:
         Экземпляр BotsDatabase
     """
-    global _bots_database_instance
-    
+    global _bots_database_instance, _bots_database_init_failed, _bots_database_init_error
+    if _bots_database_init_failed and _bots_database_init_error is not None:
+        raise _bots_database_init_error
     with _bots_database_lock:
         if _bots_database_instance is None:
             logger.info("🔧 Инициализация Bots Database...")

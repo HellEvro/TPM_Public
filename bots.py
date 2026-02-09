@@ -695,6 +695,25 @@ if __name__ == '__main__':
         positions_monitor_thread.start()
         logger.info("📊 Positions Monitor Worker запущен (обновление каждые 5с)")
 
+        # ✅ Планировщик бэкапов БД (AI и Bots) — запускается здесь, т.к. bots.py владеет этими БД
+        try:
+            from configs.app_config import DATABASE_BACKUP
+            from bot_engine.backup_service import run_backup_scheduler_loop
+            _backup_cfg = DATABASE_BACKUP if isinstance(DATABASE_BACKUP, dict) else {}
+            if _backup_cfg.get('ENABLED', True) and (
+                _backup_cfg.get('AI_ENABLED', True) or _backup_cfg.get('BOTS_ENABLED', True)
+            ):
+                _backup_thread = threading.Thread(
+                    target=run_backup_scheduler_loop,
+                    args=(_backup_cfg,),
+                    name='DatabaseBackupScheduler',
+                    daemon=True
+                )
+                _backup_thread.start()
+                logger.info("💾 Планировщик бэкапов БД запущен (AI + Bots)")
+        except Exception as backup_err:
+            logger.debug("Планировщик бэкапов не запущен: %s", backup_err)
+
         # Инициализируем AI Manager (проверка лицензии и загрузка модулей)
         ai_manager = None
         try:

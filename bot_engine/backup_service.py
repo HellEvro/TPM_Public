@@ -671,6 +671,99 @@ class DatabaseBackupService:
         return stats
 
 
+def _run_backup_job(backup_service: 'DatabaseBackupService', backup_config: dict) -> None:
+    """Запускает единичный цикл резервного копирования."""
+    backup_logger = logging.getLogger('BackupScheduler')
+    include_ai = backup_config.get('AI_ENABLED', True)
+    include_bots = backup_config.get('BOTS_ENABLED', True)
+
+    if not include_ai and not include_bots:
+        backup_logger.info("[Backup] Нет активных БД для резервного копирования, задание пропущено")
+        return
+
+    max_retries = backup_config.get('MAX_RETRIES', 3)
+    keep_last_n = backup_config.get('KEEP_LAST_N', 5)
+    try:
+        result = backup_service.create_backup(
+            include_ai=include_ai,
+            include_bots=include_bots,
+            max_retries=max_retries,
+            keep_last_n=keep_last_n
+        )
+    except Exception as exc:
+        backup_logger.exception(f"[Backup] Ошибка выполнения резервного копирования: {exc}")
+        return
+
+    timestamp = result.get('timestamp', 'unknown')
+    if result.get('success'):
+        backup_logger.info(f"[Backup] Резервное копирование завершено успешно (timestamp={timestamp})")
+    else:
+        backup_logger.warning(f"[Backup] Резервное копирование завершено с ошибками (timestamp={timestamp})")
+
+    for db_key in ('ai', 'bots'):
+        backup_info = result.get('backups', {}).get(db_key)
+        if backup_info:
+            backup_logger.info(
+                "[Backup] %s: файл %s (%.2f MB, valid=%s)",
+                db_key.upper(),
+                backup_info.get('path', ''),
+                backup_info.get('size_mb', 0),
+                'yes' if backup_info.get('valid', True) else 'no'
+            )
+
+    for warning_msg in result.get('errors', []):
+        backup_logger.warning(f"[Backup] {warning_msg}")
+
+
+def run_backup_scheduler_loop(
+    backup_config: dict,
+    stop_event: Optional[threading.Event] = None
+) -> None:
+    """
+    Фоновый планировщик регулярных бэкапов БД (AI и Bots).
+    Вызывается из процесса, который владеет этими БД (bots.py), а не из app.py.
+    """
+    backup_logger = logging.getLogger('BackupScheduler')
+    backup_config = backup_config or {}
+
+    if not backup_config.get('ENABLED', True):
+        backup_logger.info("[Backup] Автоматическое резервное копирование выключено настройками")
+        return
+
+    if not (backup_config.get('AI_ENABLED', True) or backup_config.get('BOTS_ENABLED', True)):
+        backup_logger.info("[Backup] Ни одна база не выбрана для резервного копирования, поток остановлен")
+        return
+
+    backup_dir = backup_config.get('BACKUP_DIR')
+    try:
+        backup_svc = get_backup_service(backup_dir)
+    except Exception as exc:
+        backup_logger.exception(f"[Backup] Не удалось инициализировать сервис бэкапов: {exc}")
+        return
+
+    interval_minutes = backup_config.get('INTERVAL_MINUTES', 180)
+    try:
+        interval_minutes = float(interval_minutes)
+    except (TypeError, ValueError):
+        backup_logger.warning("[Backup] Некорректное значение INTERVAL_MINUTES, используется 180 минут (3 часа)")
+        interval_minutes = 180
+
+    interval_seconds = max(60, int(interval_minutes * 60))
+    backup_logger.info(
+        "[Backup] Планировщик запущен: каждые %s минут (%.0f секунд). Директория: %s",
+        interval_minutes,
+        interval_seconds,
+        backup_dir or 'data/backups'
+    )
+
+    if backup_config.get('RUN_ON_START', True):
+        _run_backup_job(backup_svc, backup_config)
+
+    ev = stop_event if stop_event is not None else threading.Event()
+    while not ev.wait(interval_seconds):
+        _run_backup_job(backup_svc, backup_config)
+
+
 # Глобальный экземпляр сервиса
 _backup_service_instance = None
 _backup_service_lock = threading.Lock()
