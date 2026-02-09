@@ -1702,7 +1702,6 @@ class NewTradingBot:
             else:
                 profit_percent = 0.0
 
-            # ✅ ИСПРАВЛЕНО: Добавлен вызов установки break-even стопа
             # Проверяем, активирована ли защита безубыточности
             config = self._get_effective_protection_config()
             break_even_enabled = bool(config.get('break_even_protection', True))
@@ -1712,8 +1711,6 @@ class NewTradingBot:
             ) or 0.0
             
             if break_even_enabled and break_even_trigger > 0:
-                # ✅ ИСПРАВЛЕНО: Если прибыль достигла триггера, активируем защиту
-                # Проверяем, нужно ли активировать защиту (даже если она уже была активирована ранее)
                 if profit_percent >= break_even_trigger:
                     if not self.break_even_activated:
                         self.break_even_activated = True
@@ -1721,24 +1718,18 @@ class NewTradingBot:
                             f"[NEW_BOT_{self.symbol}] 🛡️ Защита безубыточности активирована "
                             f"(прибыль {profit_percent:.2f}% >= триггер {break_even_trigger:.2f}%)"
                         )
-                    
-                    # Если защита активирована, устанавливаем/обновляем стоп
                     self._ensure_break_even_stop(current_price, force=False)
                 else:
-                    # ✅ ИСПРАВЛЕНО: Если прибыль упала ниже триггера, но защита уже была активирована,
-                    # защита остается активной (не деактивируем, чтобы защитить уже достигнутую прибыль)
                     if self.break_even_activated:
-                        # Защита остается активной, обновляем стоп
                         self._ensure_break_even_stop(current_price, force=False)
             else:
-                # Если защита отключена, деактивируем
                 if self.break_even_activated:
                     self.break_even_activated = False
                     self.break_even_stop_price = None
                     self.break_even_stop_set = False
                     logger.info(f"[NEW_BOT_{self.symbol}] 🛡️ Защита безубыточности деактивирована (отключена в конфиге)")
 
-            # ✅ ИСПРАВЛЕНО: Для trailing используем profit_percent (процент от стоимости сделки) для активации
+            # Для trailing используем profit_percent (процент от стоимости сделки) для активации
             # Это аналогично break-even защите - триггер активации должен быть процентом от стоимости сделки
             self._update_trailing_stops(current_price, profit_percent, price_change_percent)
 
@@ -1771,7 +1762,9 @@ class NewTradingBot:
         self.trailing_step_price = 0.0
         self.trailing_steps = 0
 
-        if stop_distance <= 0 or self.position_side not in ('LONG', 'SHORT'):
+        # Нормализуем сторону позиции (LONG/SHORT) — критично для корректного расчёта стопа/тейка
+        side = (self.position_side or '').strip().upper()
+        if stop_distance <= 0 or side not in ('LONG', 'SHORT'):
             self.trailing_active = False
             return result
 
@@ -1803,40 +1796,38 @@ class NewTradingBot:
                 return result
         else:
             reference = self._safe_float(self.trailing_reference_price, entry_price)
-            if self.position_side == 'LONG':
+            # LONG: reference = максимум цены (пик). SHORT: reference = минимум цены (дно) — иначе трейлинг считался бы как для лонга
+            if side == 'LONG':
                 reference = max(reference or entry_price, current_price)
-            else:
+            else:  # SHORT
                 reference = min(reference or entry_price, current_price)
             self.trailing_reference_price = reference
 
         reference_price = self._safe_float(self.trailing_reference_price, entry_price)
 
+        # LONG: стоп ниже reference (закрытие при откате вниз). SHORT: стоп выше reference (закрытие при откате вверх)
         stop_price = None
-        if self.position_side == 'LONG':
-            stop_price = reference_price * (1 - stop_distance / 100.0)
+        if side == 'LONG':
+            stop_price = reference_price * (1.0 - stop_distance / 100.0)
             stop_price = max(stop_price, entry_price)
             # ✅ ИСПРАВЛЕНО: Трейлинг-стоп должен быть не хуже защитного стопа (если он установлен)
-            # Но защитный стоп не должен сбивать трейлинг-стоп - трейлинг-стоп проверяется всегда
             if self.break_even_stop_price is not None and self.break_even_stop_set:
-                # Защитный стоп уже установлен на бирже - трейлинг-стоп должен быть лучше (выше)
                 stop_price = max(stop_price, self.break_even_stop_price)
-        else:
-            stop_price = reference_price * (1 + stop_distance / 100.0)
+        else:  # SHORT — стоп ВЫШЕ reference, не выше entry
+            stop_price = reference_price * (1.0 + stop_distance / 100.0)
             stop_price = min(stop_price, entry_price)
-            # ✅ ИСПРАВЛЕНО: Трейлинг-стоп должен быть не хуже защитного стопа (если он установлен)
-            # Но защитный стоп не должен сбивать трейлинг-стоп - трейлинг-стоп проверяется всегда
             if self.break_even_stop_price is not None and self.break_even_stop_set:
-                # Защитный стоп уже установлен на бирже - трейлинг-стоп должен быть лучше (ниже)
                 stop_price = min(stop_price, self.break_even_stop_price)
 
         stop_price = self._safe_float(stop_price)
         previous_stop = self._safe_float(self.trailing_stop_price)
 
+        # LONG: обновляем стоп только если новая цена стопа выше предыдущей. SHORT: только если ниже
         should_update_stop = False
-        if self.position_side == 'LONG':
+        if side == 'LONG':
             if stop_price is not None and (previous_stop is None or stop_price > previous_stop + tolerance):
                 should_update_stop = True
-        else:
+        else:  # SHORT
             if stop_price is not None and (previous_stop is None or stop_price < previous_stop - tolerance):
                 should_update_stop = True
 
@@ -1875,15 +1866,16 @@ class NewTradingBot:
         elif should_update_stop and not can_update_now:
             pass
 
+        # LONG: тейк ниже reference (фиксация при откате). SHORT: тейк НИЖЕ reference (фиксация при движении вниз), не как для лонга
         tp_price = None
         if take_distance > 0:
-            if self.position_side == 'LONG':
-                tp_price = reference_price * (1 - take_distance / 100.0)
+            if side == 'LONG':
+                tp_price = reference_price * (1.0 - take_distance / 100.0)
                 tp_price = max(tp_price, entry_price)
                 if stop_price is not None:
                     tp_price = max(tp_price, stop_price + tolerance)
-            else:
-                tp_price = reference_price * (1 + take_distance / 100.0)
+            else:  # SHORT — тейк-профит ниже reference (закрытие в плюсе при падении цены)
+                tp_price = reference_price * (1.0 - take_distance / 100.0)
                 tp_price = min(tp_price, entry_price)
                 if stop_price is not None:
                     tp_price = min(tp_price, stop_price - tolerance)
@@ -1892,10 +1884,10 @@ class NewTradingBot:
             previous_tp = self._safe_float(self.trailing_take_profit_price)
 
             update_take = False
-            if self.position_side == 'LONG':
+            if side == 'LONG':
                 if tp_price is not None and (previous_tp is None or tp_price > previous_tp + tolerance):
                     update_take = True
-            else:
+            else:  # SHORT
                 if tp_price is not None and (previous_tp is None or tp_price < previous_tp - tolerance):
                     update_take = True
 
@@ -1932,20 +1924,21 @@ class NewTradingBot:
 
         self.trailing_max_profit_usdt = max(self.trailing_max_profit_usdt, profit_percent)
         if stop_price and reference_price:
-            if self.position_side == 'LONG':
+            if side == 'LONG':
                 self.trailing_locked_profit = max(0.0, reference_price - stop_price)
-            else:
+            else:  # SHORT
                 self.trailing_locked_profit = max(0.0, stop_price - reference_price)
 
         effective_stop = stop_price if stop_price is not None else previous_stop
         if effective_stop is None:
             return result
 
-        if self.position_side == 'LONG' and current_price <= effective_stop:
+        # LONG: закрытие при цене <= стопа. SHORT: закрытие при цене >= стопа (откат вверх)
+        if side == 'LONG' and current_price <= effective_stop:
             logger.info(f"[NEW_BOT_{self.symbol}] 🚀 Trailing stop (LONG) достигнут: {effective_stop:.6f}")
             result['should_close'] = True
             result['reason'] = f'TRAILING_STOP_{profit_percent:.2f}%'
-        elif self.position_side == 'SHORT' and current_price >= effective_stop:
+        elif side == 'SHORT' and current_price >= effective_stop:
             logger.info(f"[NEW_BOT_{self.symbol}] 🚀 Trailing stop (SHORT) достигнут: {effective_stop:.6f}")
             result['should_close'] = True
             result['reason'] = f'TRAILING_STOP_{profit_percent:.2f}%'

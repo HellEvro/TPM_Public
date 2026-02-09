@@ -448,51 +448,60 @@ def analyze_bot_trades(
     avg_win = (sum(t.pnl for t in wins) / win_count) if win_count else 0.0
     avg_loss = (sum(t.pnl for t in losses) / loss_count) if loss_count else 0.0
 
-    by_close_reason: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"count": 0, "pnl": 0.0, "wins": 0, "losses": 0})
+    # Сделки с pnl=0 не считаем ни выигрышем, ни проигрышем (часто при RSI_EXIT без сохранённого размера позиции)
+    by_close_reason: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"count": 0, "pnl": 0.0, "wins": 0, "losses": 0, "neutral": 0})
     for t in closed:
         reason = t.close_reason or "UNKNOWN"
         by_close_reason[reason]["count"] += 1
         by_close_reason[reason]["pnl"] += t.pnl
         if t.pnl > 0:
             by_close_reason[reason]["wins"] += 1
-        else:
+        elif t.pnl < 0:
             by_close_reason[reason]["losses"] += 1
+        else:
+            by_close_reason[reason]["neutral"] += 1
 
-    by_symbol: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"count": 0, "pnl": 0.0, "wins": 0, "losses": 0})
+    by_symbol: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"count": 0, "pnl": 0.0, "wins": 0, "losses": 0, "neutral": 0})
     for t in closed:
         by_symbol[t.symbol]["count"] += 1
         by_symbol[t.symbol]["pnl"] += t.pnl
         if t.pnl > 0:
             by_symbol[t.symbol]["wins"] += 1
-        else:
+        elif t.pnl < 0:
             by_symbol[t.symbol]["losses"] += 1
+        else:
+            by_symbol[t.symbol]["neutral"] += 1
 
-    by_decision_source: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"count": 0, "pnl": 0.0, "wins": 0, "losses": 0})
+    by_decision_source: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"count": 0, "pnl": 0.0, "wins": 0, "losses": 0, "neutral": 0})
     for t in closed:
         src = t.decision_source or "UNKNOWN"
         by_decision_source[src]["count"] += 1
         by_decision_source[src]["pnl"] += t.pnl
         if t.pnl > 0:
             by_decision_source[src]["wins"] += 1
-        else:
+        elif t.pnl < 0:
             by_decision_source[src]["losses"] += 1
+        else:
+            by_decision_source[src]["neutral"] += 1
 
-    by_bot: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"count": 0, "pnl": 0.0, "wins": 0, "losses": 0})
+    by_bot: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"count": 0, "pnl": 0.0, "wins": 0, "losses": 0, "neutral": 0})
     for t in closed:
         bid = t.bot_id or "NO_BOT"
         by_bot[bid]["count"] += 1
         by_bot[bid]["pnl"] += t.pnl
         if t.pnl > 0:
             by_bot[bid]["wins"] += 1
-        else:
+        elif t.pnl < 0:
             by_bot[bid]["losses"] += 1
+        else:
+            by_bot[bid]["neutral"] += 1
 
     # По символам: разбивка по RSI на входе и по тренду на входе
     by_symbol_rsi: Dict[str, Dict[str, Dict[str, Any]]] = defaultdict(
-        lambda: defaultdict(lambda: {"count": 0, "pnl": 0.0, "wins": 0, "losses": 0})
+        lambda: defaultdict(lambda: {"count": 0, "pnl": 0.0, "wins": 0, "losses": 0, "neutral": 0})
     )
     by_symbol_trend: Dict[str, Dict[str, Dict[str, Any]]] = defaultdict(
-        lambda: defaultdict(lambda: {"count": 0, "pnl": 0.0, "wins": 0, "losses": 0})
+        lambda: defaultdict(lambda: {"count": 0, "pnl": 0.0, "wins": 0, "losses": 0, "neutral": 0})
     )
     for t in closed:
         rsi = _get_entry_rsi(t)
@@ -502,15 +511,19 @@ def analyze_bot_trades(
             by_symbol_rsi[t.symbol][bucket]["pnl"] += t.pnl
             if t.pnl > 0:
                 by_symbol_rsi[t.symbol][bucket]["wins"] += 1
-            else:
+            elif t.pnl < 0:
                 by_symbol_rsi[t.symbol][bucket]["losses"] += 1
+            else:
+                by_symbol_rsi[t.symbol][bucket]["neutral"] += 1
         trend = _get_entry_trend(t) or "UNKNOWN"
         by_symbol_trend[t.symbol][trend]["count"] += 1
         by_symbol_trend[t.symbol][trend]["pnl"] += t.pnl
         if t.pnl > 0:
             by_symbol_trend[t.symbol][trend]["wins"] += 1
-        else:
+        elif t.pnl < 0:
             by_symbol_trend[t.symbol][trend]["losses"] += 1
+        else:
+            by_symbol_trend[t.symbol][trend]["neutral"] += 1
 
     # Неудачные монеты: достаточно сделок и (отрицательный PnL или низкий Win Rate)
     unsuccessful_coins: List[Dict[str, Any]] = []

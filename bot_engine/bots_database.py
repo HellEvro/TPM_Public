@@ -5777,7 +5777,8 @@ class BotsDatabase:
                               status: Optional[str] = None,
                               decision_source: Optional[str] = None,
                               limit: Optional[int] = None,
-                              offset: int = 0) -> List[Dict[str, Any]]:
+                              offset: int = 0,
+                              days_back: Optional[int] = None) -> List[Dict[str, Any]]:
         """
         Загружает историю сделок ботов из БД
         
@@ -5788,6 +5789,7 @@ class BotsDatabase:
             decision_source: Фильтр по источнику решения (SCRIPT/AI/EXCHANGE_IMPORT)
             limit: Максимальное количество записей
             offset: Смещение для пагинации
+            days_back: Только сделки за последние N дней (по exit_timestamp для CLOSED, иначе по entry_timestamp)
         
         Returns:
             Список словарей с данными сделок
@@ -5815,6 +5817,19 @@ class BotsDatabase:
                 if decision_source:
                     query += " AND decision_source = ?"
                     params.append(decision_source)
+                
+                if days_back is not None and days_back > 0:
+                    from datetime import datetime, timedelta
+                    since = datetime.now() - timedelta(days=days_back)
+                    since_sec = since.timestamp()
+                    since_ms = since_sec * 1000
+                    # В БД timestamp часто в мс (>= 1e12); иначе в сек
+                    query += """ AND (
+                        (COALESCE(exit_timestamp, entry_timestamp) >= ? AND COALESCE(exit_timestamp, entry_timestamp) < 1e12)
+                        OR (COALESCE(exit_timestamp, entry_timestamp) >= ?)
+                    )"""
+                    params.append(since_sec)
+                    params.append(since_ms)
                 
                 # ✅ КРИТИЧНО: Для закрытых сделок сортируем по exit_timestamp (времени закрытия)
                 # чтобы получить самые последние закрытые сделки
