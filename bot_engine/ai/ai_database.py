@@ -211,53 +211,59 @@ class AIDatabase:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = backup_dir / f"ai_data_{timestamp}.sql"
         backup_path = str(backup_path)
+        backup_path_tmp = backup_path + '.tmp'
         for attempt in range(max_retries):
             try:
                 if attempt > 0:
                     time.sleep(1.0 * attempt)
                 conn = sqlite3.connect(self.db_path, timeout=30.0)
-                with open(backup_path, 'w', encoding='utf-8') as f:
-                    for line in conn.iterdump():
-                        f.write(line + '\n')
-                conn.close()
+                try:
+                    with open(backup_path_tmp, 'w', encoding='utf-8') as f:
+                        for line in conn.iterdump():
+                            f.write(line + '\n')
+                finally:
+                    conn.close()
+                if os.path.getsize(backup_path_tmp) == 0:
+                    try:
+                        os.remove(backup_path_tmp)
+                    except OSError:
+                        pass
+                    return None
+                os.replace(backup_path_tmp, backup_path)
                 logger.warning(f"💾 Создана резервная копия БД (SQL): {backup_path}")
                 return backup_path
             except MemoryError:
                 # КРИТИЧНО: Нехватка памяти - не пытаемся создавать резервную копию
                 print("⚠️ Нехватка памяти при создании резервной копии БД")
                 return None
-            except PermissionError as e:
-                # Файл заблокирован другим процессом
+            except (sqlite3.Error, PermissionError, OSError) as e:
+                if os.path.exists(backup_path_tmp):
+                    try:
+                        os.remove(backup_path_tmp)
+                    except OSError:
+                        pass
                 if attempt < max_retries - 1:
-                    try:
-                        pass
-                    except MemoryError:
-                        pass
                     continue
-                else:
-                    try:
-                        logger.error(f"❌ Не удалось создать резервную копию БД после {max_retries} попыток: {e}")
-                    except MemoryError:
-                        print(f"❌ Не удалось создать резервную копию БД: {e}")
-                    return None
+                logger.error(f"❌ Не удалось создать резервную копию БД после {max_retries} попыток: {e}")
+                return None
             except Exception as e:
+                if os.path.exists(backup_path_tmp):
+                    try:
+                        os.remove(backup_path_tmp)
+                    except OSError:
+                        pass
                 error_str = str(e).lower()
                 if "процесс не может получить доступ к файлу" in error_str or "file is locked" in error_str or "access" in error_str:
-                    # Файл заблокирован
                     if attempt < max_retries - 1:
-                        pass
                         continue
-                    else:
-                        logger.error(f"❌ Не удалось создать резервную копию БД после {max_retries} попыток: {e}")
-                        return None
-                else:
-                    # Другая ошибка - не повторяем
-                    try:
-                        logger.error(f"❌ Ошибка создания резервной копии БД: {e}")
-                    except MemoryError:
-                        print(f"❌ Ошибка создания резервной копии БД: {e}")
+                    logger.error(f"❌ Не удалось создать резервную копию БД после {max_retries} попыток: {e}")
                     return None
-        
+                try:
+                    logger.error(f"❌ Ошибка создания резервной копии БД: {e}")
+                except MemoryError:
+                    print(f"❌ Ошибка создания резервной копии БД: {e}")
+                return None
+
         return None
     
     def _check_database_has_data(self) -> bool:
@@ -331,7 +337,7 @@ class AIDatabase:
                 if os.path.exists(_path):
                     try:
                         os.remove(_path)
-                    except OSError as e:
+                    except (OSError, PermissionError) as e:
                         if getattr(e, 'winerror', None) == 32:
                             try:
                                 _flag_repair.write_text('1', encoding='utf-8')

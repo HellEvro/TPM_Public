@@ -220,31 +220,50 @@ class DatabaseBackupService:
 
         backup_filename = f"{db_name}_{timestamp}.sql"
         backup_path = os.path.join(self.backup_dir, backup_filename)
+        backup_path_tmp = backup_path + '.tmp'
 
         for attempt in range(max_retries):
             try:
                 if attempt > 0:
                     time.sleep(1.0 * attempt)
                 conn = sqlite3.connect(db_path, timeout=30.0)
-                with open(backup_path, 'w', encoding='utf-8') as f:
-                    for line in conn.iterdump():
-                        f.write(line + '\n')
-                conn.close()
+                try:
+                    with open(backup_path_tmp, 'w', encoding='utf-8') as f:
+                        for line in conn.iterdump():
+                            f.write(line + '\n')
+                finally:
+                    conn.close()
+                if os.path.getsize(backup_path_tmp) == 0:
+                    try:
+                        os.remove(backup_path_tmp)
+                    except OSError:
+                        pass
+                    return None
+                os.replace(backup_path_tmp, backup_path)
                 file_size = os.path.getsize(backup_path)
                 size_mb = file_size / (1024 * 1024)
-                is_valid = file_size > 0
                 return {
                     'path': backup_path,
                     'size_mb': size_mb,
                     'size_bytes': file_size,
-                    'valid': is_valid,
+                    'valid': True,
                     'created_at': datetime.now().isoformat()
                 }
             except sqlite3.Error as e:
+                if os.path.exists(backup_path_tmp):
+                    try:
+                        os.remove(backup_path_tmp)
+                    except OSError:
+                        pass
                 logger.warning(f"⚠️ Ошибка дампа БД (попытка {attempt + 1}): {e}")
                 if attempt == max_retries - 1:
                     return None
             except Exception as e:
+                if os.path.exists(backup_path_tmp):
+                    try:
+                        os.remove(backup_path_tmp)
+                    except OSError:
+                        pass
                 logger.error(f"❌ Ошибка создания SQL-бэкапа: {e}")
                 return None
         return None
