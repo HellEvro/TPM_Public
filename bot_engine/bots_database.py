@@ -612,8 +612,9 @@ class BotsDatabase:
             # Автоматический commit при выходе
         ```
         """
+        global _bots_database_init_failed, _bots_database_init_error
         last_error = None
-        
+
         for attempt in range(max_retries if retry_on_locked else 1):
             try:
                 # Перед подключением проверяем, нет ли заблокированных WAL файлов
@@ -735,7 +736,6 @@ class BotsDatabase:
                             time.sleep(1)
                             continue
                         logger.error("❌ Не удалось исправить поврежденную БД")
-                    global _bots_database_init_failed, _bots_database_init_error
                     _bots_database_init_failed = True
                     _bots_database_init_error = e
                     raise
@@ -757,7 +757,6 @@ class BotsDatabase:
                             time.sleep(1)
                             continue
                         logger.error("❌ Не удалось исправить БД после I/O ошибки")
-                    global _bots_database_init_failed, _bots_database_init_error
                     _bots_database_init_failed = True
                     _bots_database_init_error = e
                     raise
