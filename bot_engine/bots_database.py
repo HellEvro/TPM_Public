@@ -73,6 +73,7 @@ import sqlite3
 import json
 import os
 import stat
+import sys
 import threading
 import time
 import shutil
@@ -137,6 +138,28 @@ class BotsDatabase:
         
         self.db_path = db_path
         self.lock = threading.RLock()
+
+        # Автовосстановление при перезапуске: если предыдущий запуск не смог восстановить (файлы были заняты),
+        # он записал сюда путь к бэкапу и перезапустил процесс. Сейчас мы первые — файлы свободны.
+        _pending = Path(self.db_path).parent / '.pending_restore_bots'
+        if _pending.exists():
+            try:
+                _backup_path = _pending.read_text(encoding='utf-8').strip()
+                if _backup_path and os.path.exists(_backup_path):
+                    logger.info(f"📦 Автовосстановление БД из {_backup_path} (после перезапуска)...")
+                    shutil.copy2(_backup_path, self.db_path)
+                    for _suffix in ('-wal', '-shm'):
+                        _f = self.db_path + _suffix
+                        if os.path.exists(_f):
+                            try:
+                                os.remove(_f)
+                            except OSError:
+                                pass
+                    logger.info("✅ БД восстановлена автоматически")
+                _pending.unlink(missing_ok=True)
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка автовосстановления по .pending_restore_bots: {e}")
+                _pending.unlink(missing_ok=True)
         
         def _is_unc_path(p: str) -> bool:
             return isinstance(p, str) and (p.startswith('\\\\') or p.startswith('//'))
@@ -6393,56 +6416,76 @@ class BotsDatabase:
                 return False
             
             logger.info(f"📦 Восстановление БД из резервной копии: {backup_path}")
-            
-            # Закрываем все соединения перед восстановлением
-            # (в SQLite это не критично, но для чистоты)
-            
-            # Создаем резервную копию текущей БД перед восстановлением (на всякий случай)
-            if os.path.exists(self.db_path):
-                current_backup = self._backup_database()
-                if current_backup:
-                    logger.info(f"💾 Текущая БД сохранена в: {current_backup}")
-            
-            # Копируем резервную копию на место основной БД
-            try:
-                shutil.copy2(backup_path, self.db_path)
-            except OSError as copy_err:
-                err = getattr(copy_err, 'winerror', None)
-                if err in (32, 33, 1224) or 'занят' in str(copy_err).lower() or 'сопоставленной секцией' in str(copy_err):
-                    logger.error("❌ Файл БД занят другим процессом. Остановите bots.py и все воркеры, затем повторите восстановление вручную.")
-                    return False
-                raise
-
-            # Восстанавливаем WAL и SHM файлы если есть
-            wal_backup = f"{backup_path}-wal"
-            shm_backup = f"{backup_path}-shm"
-            wal_file = f"{self.db_path}-wal"
-            shm_file = f"{self.db_path}-shm"
 
             def _file_in_use(e: Exception) -> bool:
                 err = getattr(e, 'winerror', None)
                 s = str(e).lower()
                 return err in (32, 33, 1224) or 'занят' in s or 'сопоставленной секцией' in s or 'cannot access' in s
 
-            try:
-                if os.path.exists(wal_backup):
-                    shutil.copy2(wal_backup, wal_file)
-                    pass
-                elif os.path.exists(wal_file):
-                    os.remove(wal_file)
-                    pass
+            wal_backup = f"{backup_path}-wal"
+            shm_backup = f"{backup_path}-shm"
+            wal_file = f"{self.db_path}-wal"
+            shm_file = f"{self.db_path}-shm"
 
-                if os.path.exists(shm_backup):
-                    shutil.copy2(shm_backup, shm_file)
-                    pass
-                elif os.path.exists(shm_file):
-                    os.remove(shm_file)
-                    pass
-            except OSError as e:
-                if _file_in_use(e):
-                    logger.error("❌ Файлы БД (-wal/-shm) заняты. Остановите bots.py и воркеры, затем повторите восстановление вручную.")
-                    return False
-                raise
+            # Пауза и повторы: даём другим потокам (auto_save и т.д.) освободить -wal/-shm
+            max_restore_retries = 3
+            restore_ok = False
+            for restore_attempt in range(max_restore_retries):
+                if restore_attempt > 0:
+                    time.sleep(3)
+                    logger.info(f"🔄 Повтор восстановления ({restore_attempt + 1}/{max_restore_retries})...")
+
+                # Резервная копия текущей БД перед перезаписью (только при первой попытке)
+                if restore_attempt == 0 and os.path.exists(self.db_path):
+                    current_backup = self._backup_database()
+                    if current_backup:
+                        logger.info(f"💾 Текущая БД сохранена в: {current_backup}")
+
+                try:
+                    shutil.copy2(backup_path, self.db_path)
+                except OSError as copy_err:
+                    if _file_in_use(copy_err):
+                        if restore_attempt < max_restore_retries - 1:
+                            continue
+                        _pending = Path(self.db_path).parent / '.pending_restore_bots'
+                        _abs_backup = os.path.abspath(backup_path)
+                        try:
+                            _pending.write_text(_abs_backup, encoding='utf-8')
+                            logger.warning("🔄 Файл БД занят. Записан флаг восстановления — перезапуск процесса для гарантированного восстановления...")
+                            os.execv(sys.executable, [sys.executable] + sys.argv)
+                        except Exception as e:
+                            logger.error(f"❌ Не удалось перезапустить процесс для восстановления: {e}")
+                        return False
+                    raise
+
+                try:
+                    if os.path.exists(wal_backup):
+                        shutil.copy2(wal_backup, wal_file)
+                    elif os.path.exists(wal_file):
+                        os.remove(wal_file)
+                    if os.path.exists(shm_backup):
+                        shutil.copy2(shm_backup, shm_file)
+                    elif os.path.exists(shm_file):
+                        os.remove(shm_file)
+                    restore_ok = True
+                    break
+                except OSError as e:
+                    if _file_in_use(e):
+                        if restore_attempt < max_restore_retries - 1:
+                            continue
+                        _pending = Path(self.db_path).parent / '.pending_restore_bots'
+                        _abs_backup = os.path.abspath(backup_path)
+                        try:
+                            _pending.write_text(_abs_backup, encoding='utf-8')
+                            logger.warning("🔄 Файлы БД (-wal/-shm) заняты. Записан флаг — перезапуск процесса для гарантированного восстановления...")
+                            os.execv(sys.executable, [sys.executable] + sys.argv)
+                        except Exception as e:
+                            logger.error(f"❌ Не удалось перезапустить процесс для восстановления: {e}")
+                        return False
+                    raise
+
+            if not restore_ok:
+                return False
             
             # Проверяем целостность восстановленной БД
             is_ok, error_msg = self._check_integrity()

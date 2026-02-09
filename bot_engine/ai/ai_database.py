@@ -23,8 +23,10 @@
 import sqlite3
 import json
 import os
+import sys
 import threading
 import time
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Any, Tuple
@@ -73,6 +75,27 @@ class AIDatabase:
         
         self.db_path = db_path
         self.lock = threading.RLock()
+
+        # Автовосстановление при перезапуске (как в bots_database)
+        _pending = Path(self.db_path).parent / '.pending_restore_ai'
+        if _pending.exists():
+            try:
+                _backup_path = _pending.read_text(encoding='utf-8').strip()
+                if _backup_path and os.path.exists(_backup_path):
+                    logger.info(f"📦 Автовосстановление AI БД из {_backup_path} (после перезапуска)...")
+                    shutil.copy2(_backup_path, self.db_path)
+                    for _suffix in ('-wal', '-shm'):
+                        _f = self.db_path + _suffix
+                        if os.path.exists(_f):
+                            try:
+                                os.remove(_f)
+                            except OSError:
+                                pass
+                    logger.info("✅ AI БД восстановлена автоматически")
+                _pending.unlink(missing_ok=True)
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка автовосстановления по .pending_restore_ai: {e}")
+                _pending.unlink(missing_ok=True)
         
         # Создаем директорию если её нет (работает и с UNC путями)
         try:
@@ -5661,8 +5684,6 @@ class AIDatabase:
             True если восстановление успешно, False в противном случае
         """
         try:
-            import shutil
-            
             # Если путь не указан, используем последнюю резервную копию
             if backup_path is None:
                 backups = self.list_backups()
@@ -5676,31 +5697,74 @@ class AIDatabase:
                 logger.error(f"❌ Резервная копия не найдена: {backup_path}")
                 return False
             
-            # Создаем резервную копию текущей БД (если она существует)
-            if os.path.exists(self.db_path):
-                current_backup = self._backup_database()
-                if current_backup:
-                    logger.info(f"💾 Текущая БД сохранена как: {current_backup}")
-            
-            # Восстанавливаем БД
-            shutil.copy2(backup_path, self.db_path)
-            
-            # Восстанавливаем WAL и SHM файлы если есть
+            def _file_in_use(e: Exception) -> bool:
+                err = getattr(e, 'winerror', None)
+                s = str(e).lower()
+                return err in (32, 33, 1224) or 'занят' in s or 'сопоставленной секцией' in s or 'cannot access' in s
+
             wal_backup = f"{backup_path}-wal"
             shm_backup = f"{backup_path}-shm"
             wal_file = self.db_path + '-wal'
             shm_file = self.db_path + '-shm'
-            
-            if os.path.exists(wal_backup):
-                shutil.copy2(wal_backup, wal_file)
-            elif os.path.exists(wal_file):
-                os.remove(wal_file)
-            
-            if os.path.exists(shm_backup):
-                shutil.copy2(shm_backup, shm_file)
-            elif os.path.exists(shm_file):
-                os.remove(shm_file)
-            
+
+            max_restore_retries = 3
+            restore_ok = False
+            for restore_attempt in range(max_restore_retries):
+                if restore_attempt > 0:
+                    time.sleep(3)
+                    logger.info(f"🔄 Повтор восстановления ({restore_attempt + 1}/{max_restore_retries})...")
+
+                if restore_attempt == 0 and os.path.exists(self.db_path):
+                    current_backup = self._backup_database()
+                    if current_backup:
+                        logger.info(f"💾 Текущая БД сохранена как: {current_backup}")
+
+                try:
+                    shutil.copy2(backup_path, self.db_path)
+                except OSError as copy_err:
+                    if _file_in_use(copy_err):
+                        if restore_attempt < max_restore_retries - 1:
+                            continue
+                        _pending = Path(self.db_path).parent / '.pending_restore_ai'
+                        _abs_backup = os.path.abspath(backup_path)
+                        try:
+                            _pending.write_text(_abs_backup, encoding='utf-8')
+                            logger.warning("🔄 Файл AI БД занят. Записан флаг — перезапуск процесса для гарантированного восстановления...")
+                            os.execv(sys.executable, [sys.executable] + sys.argv)
+                        except Exception as e:
+                            logger.error(f"❌ Не удалось перезапустить процесс для восстановления: {e}")
+                        return False
+                    raise
+
+                try:
+                    if os.path.exists(wal_backup):
+                        shutil.copy2(wal_backup, wal_file)
+                    elif os.path.exists(wal_file):
+                        os.remove(wal_file)
+                    if os.path.exists(shm_backup):
+                        shutil.copy2(shm_backup, shm_file)
+                    elif os.path.exists(shm_file):
+                        os.remove(shm_file)
+                    restore_ok = True
+                    break
+                except OSError as e:
+                    if _file_in_use(e):
+                        if restore_attempt < max_restore_retries - 1:
+                            continue
+                        _pending = Path(self.db_path).parent / '.pending_restore_ai'
+                        _abs_backup = os.path.abspath(backup_path)
+                        try:
+                            _pending.write_text(_abs_backup, encoding='utf-8')
+                            logger.warning("🔄 Файлы AI БД (-wal/-shm) заняты. Записан флаг — перезапуск процесса для гарантированного восстановления...")
+                            os.execv(sys.executable, [sys.executable] + sys.argv)
+                        except Exception as e:
+                            logger.error(f"❌ Не удалось перезапустить процесс для восстановления: {e}")
+                        return False
+                    raise
+
+            if not restore_ok:
+                return False
+
             logger.info(f"✅ БД восстановлена из резервной копии: {backup_path}")
             
             # Проверяем, что БД работает
