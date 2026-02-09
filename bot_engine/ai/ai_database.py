@@ -81,9 +81,12 @@ class AIDatabase:
         if _pending.exists():
             try:
                 _backup_path = _pending.read_text(encoding='utf-8').strip()
+                _pending.unlink(missing_ok=True)
                 if _backup_path and os.path.exists(_backup_path):
-                    logger.info(f"📦 Автовосстановление AI БД из {_backup_path} (после перезапуска)...")
-                    shutil.copy2(_backup_path, self.db_path)
+                    valid_list = [b for b in self.list_backups() if self._check_backup_integrity(b['path'])]
+                    chosen_path = _backup_path if self._check_backup_integrity(_backup_path) else (valid_list[0]['path'] if valid_list else _backup_path)
+                    logger.info(f"📦 Автовосстановление AI БД из {chosen_path} (после перезапуска)...")
+                    shutil.copy2(chosen_path, self.db_path)
                     for _suffix in ('-wal', '-shm'):
                         _f = self.db_path + _suffix
                         if os.path.exists(_f):
@@ -91,11 +94,32 @@ class AIDatabase:
                                 os.remove(_f)
                             except OSError:
                                 pass
-                    logger.info("✅ AI БД восстановлена автоматически")
-                _pending.unlink(missing_ok=True)
+                    if not self._check_backup_integrity(self.db_path):
+                        for b in valid_list:
+                            if b['path'] == chosen_path:
+                                continue
+                            shutil.copy2(b['path'], self.db_path)
+                            for _s in ('-wal', '-shm'):
+                                _f2 = self.db_path + _s
+                                if os.path.exists(_f2):
+                                    try:
+                                        os.remove(_f2)
+                                    except OSError:
+                                        pass
+                            if self._check_backup_integrity(self.db_path):
+                                logger.info("✅ AI БД восстановлена из другой целостной копии")
+                                break
+                        else:
+                            logger.error("❌ После восстановления по флагу AI БД не целостна и нет другой целостной копии. Запуск прерван.")
+                            raise RuntimeError("Нет целостной резервной копии для восстановления AI БД")
+                    else:
+                        logger.info("✅ AI БД восстановлена автоматически")
+            except RuntimeError:
+                raise
             except Exception as e:
                 logger.warning(f"⚠️ Ошибка автовосстановления по .pending_restore_ai: {e}")
-                _pending.unlink(missing_ok=True)
+                if _pending.exists():
+                    _pending.unlink(missing_ok=True)
         
         # Создаем директорию если её нет (работает и с UNC путями)
         try:
@@ -755,29 +779,28 @@ class AIDatabase:
                 print("⚠️ Нехватка памяти при получении списка резервных копий")
                 backups = []
 
+            valid_backups = [b for b in backups] if backups else []
+            try:
+                valid_backups = [b for b in backups if self._check_backup_integrity(b['path'])]
+            except MemoryError:
+                valid_backups = []
+
             restored_ok = False
-            if backups:
-                # Если мы создали резервную копию только что, используем более старую
-                if backup_created and len(backups) > 1:
-                    older_backup = backups[1]['path']
-                    try:
-                        logger.info(f"📦 Восстанавливаю из более старой резервной копии: {older_backup}")
-                    except MemoryError:
-                        print("📦 Восстанавливаю из более старой резервной копии")
-                    try:
-                        restored_ok = self.restore_from_backup(older_backup)
-                    except MemoryError:
-                        print("⚠️ Нехватка памяти при восстановлении из резервной копии")
-                else:
-                    latest_backup = backups[0]['path']
-                    try:
-                        logger.info(f"📦 Восстанавливаю из резервной копии: {latest_backup}")
-                    except MemoryError:
-                        print("📦 Восстанавливаю из резервной копии")
-                    try:
-                        restored_ok = self.restore_from_backup(latest_backup)
-                    except MemoryError:
-                        print("⚠️ Нехватка памяти при восстановлении из резервной копии")
+            if valid_backups:
+                chosen = valid_backups[0]['path']
+                try:
+                    logger.info(f"📦 Восстанавливаю из целостной резервной копии: {chosen}")
+                except MemoryError:
+                    print("📦 Восстанавливаю из целостной резервной копии")
+                try:
+                    restored_ok = self.restore_from_backup(chosen)
+                except MemoryError:
+                    print("⚠️ Нехватка памяти при восстановлении из резервной копии")
+            elif backups:
+                try:
+                    logger.warning("⚠️ Нет целостных резервных копий (все проверены и повреждены), восстановление из бэкапа пропущено")
+                except MemoryError:
+                    print("⚠️ Нет целостных резервных копий")
 
             if restored_ok:
                 is_ok, _ = self._check_integrity()
@@ -5629,6 +5652,20 @@ class AIDatabase:
         pass
         return 0
     
+    def _check_backup_integrity(self, backup_path: str) -> bool:
+        """Проверяет целостность файла бэкапа (PRAGMA integrity_check). True только если бэкап целый."""
+        if not backup_path or not os.path.exists(backup_path):
+            return False
+        try:
+            conn = sqlite3.connect(backup_path, timeout=5.0)
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA integrity_check")
+            row = cursor.fetchone()
+            conn.close()
+            return row is not None and (row[0] == "ok" if isinstance(row[0], str) else row[0] == b"ok")
+        except Exception:
+            return False
+
     def list_backups(self) -> List[Dict[str, Any]]:
         """
         Список доступных резервных копий БД из data/backups.
@@ -5713,11 +5750,6 @@ class AIDatabase:
                 if restore_attempt > 0:
                     time.sleep(3)
                     logger.info(f"🔄 Повтор восстановления ({restore_attempt + 1}/{max_restore_retries})...")
-
-                if restore_attempt == 0 and os.path.exists(self.db_path):
-                    current_backup = self._backup_database()
-                    if current_backup:
-                        logger.info(f"💾 Текущая БД сохранена как: {current_backup}")
 
                 try:
                     shutil.copy2(backup_path, self.db_path)

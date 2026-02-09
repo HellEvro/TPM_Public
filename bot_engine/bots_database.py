@@ -145,9 +145,12 @@ class BotsDatabase:
         if _pending.exists():
             try:
                 _backup_path = _pending.read_text(encoding='utf-8').strip()
+                _pending.unlink(missing_ok=True)
                 if _backup_path and os.path.exists(_backup_path):
                     logger.info(f"📦 Автовосстановление БД из {_backup_path} (после перезапуска)...")
-                    shutil.copy2(_backup_path, self.db_path)
+                    valid_list = [b for b in self.list_backups() if self._check_backup_integrity(b['path'])]
+                    chosen_path = _backup_path if self._check_backup_integrity(_backup_path) else (valid_list[0]['path'] if valid_list else _backup_path)
+                    shutil.copy2(chosen_path, self.db_path)
                     for _suffix in ('-wal', '-shm'):
                         _f = self.db_path + _suffix
                         if os.path.exists(_f):
@@ -155,11 +158,32 @@ class BotsDatabase:
                                 os.remove(_f)
                             except OSError:
                                 pass
-                    logger.info("✅ БД восстановлена автоматически")
-                _pending.unlink(missing_ok=True)
+                    if not self._check_backup_integrity(self.db_path):
+                        for b in valid_list:
+                            if b['path'] == chosen_path:
+                                continue
+                            shutil.copy2(b['path'], self.db_path)
+                            for _s in ('-wal', '-shm'):
+                                _f2 = self.db_path + _s
+                                if os.path.exists(_f2):
+                                    try:
+                                        os.remove(_f2)
+                                    except OSError:
+                                        pass
+                            if self._check_backup_integrity(self.db_path):
+                                logger.info("✅ БД восстановлена из другой целостной копии")
+                                break
+                        else:
+                            logger.error("❌ После восстановления по флагу БД не целостна и нет другой целостной копии. Запуск прерван (без повторного перезапуска).")
+                            raise RuntimeError("Нет целостной резервной копии для восстановления Bots БД")
+                    else:
+                        logger.info("✅ БД восстановлена автоматически")
+            except RuntimeError:
+                raise
             except Exception as e:
                 logger.warning(f"⚠️ Ошибка автовосстановления по .pending_restore_bots: {e}")
-                _pending.unlink(missing_ok=True)
+                if _pending.exists():
+                    _pending.unlink(missing_ok=True)
         
         def _is_unc_path(p: str) -> bool:
             return isinstance(p, str) and (p.startswith('\\\\') or p.startswith('//'))
@@ -231,68 +255,27 @@ class BotsDatabase:
                 except Exception as e:
                     pass
                 
-                # Создаем новое соединение для проверки режима журнала
-                conn1 = sqlite3.connect(self.db_path, timeout=5.0)
-                cursor1 = conn1.cursor()
-                
-                # Проверяем режим журнала
-                pass
-                cursor1.execute("PRAGMA journal_mode")
-                journal_mode = cursor1.fetchone()[0]
-                pass
-                
-                # Если WAL режим - делаем checkpoint для синхронизации
-                if journal_mode.upper() == 'WAL':
-                    pass
-                    try:
-                        cursor1.execute("PRAGMA wal_checkpoint(PASSIVE)")
-                        conn1.commit()
-                        pass
-                    except Exception as e:
-                        pass
-                
-                conn1.close()
-                
-                # Создаем новое соединение для проверки целостности
-                conn2 = sqlite3.connect(self.db_path, timeout=5.0)
-                cursor2 = conn2.cursor()
-                
-                # Получаем информацию о БД перед проверкой
-                try:
-                    cursor2.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
-                    table_count = cursor2.fetchone()[0]
-                except Exception as e:
-                    pass
-                
-                # Устанавливаем таймаут для операции
-                cursor2.execute("PRAGMA busy_timeout = 2000")  # 2 секунды
-                # ⚡ ИСПРАВЛЕНО: Выполняем проверку целостности в том же потоке
-                import time
+                # Одно соединение: открываем в WAL (как в приложении), только читаем — НЕ делаем checkpoint,
+                # иначе после нормального выключения можно повредить или неверно увидеть состояние БД.
+                conn = sqlite3.connect(self.db_path, timeout=5.0)
+                cursor = conn.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA busy_timeout = 2000")
                 start_time = time.time()
-                
                 try:
-                    # Выполняем проверку напрямую в текущем потоке
-                    cursor2.execute("PRAGMA quick_check")
-                    result = cursor2.fetchone()[0]
-                    elapsed = time.time() - start_time
+                    cursor.execute("PRAGMA quick_check")
+                    result = cursor.fetchone()[0]
                 except Exception as e:
                     elapsed = time.time() - start_time
-                    logger.error(f"   [4/4] ❌ Ошибка при выполнении PRAGMA quick_check (после {elapsed:.2f}s): {e}")
-                    conn2.close()
-                    return True, None  # Считаем БД валидной при ошибке
-                
-                if result == "ok":
-                    pass
-                else:
-                    logger.warning(f"   [4/4] ⚠️ Обнаружены проблемы в БД: {result[:200]}")
-                
-                conn2.close()
+                    logger.warning(f"⚠️ Ошибка при PRAGMA quick_check (после {elapsed:.2f}s): {e}, считаем БД рабочей")
+                    conn.close()
+                    return True, None
+                finally:
+                    conn.close()
                 if result == "ok":
                     return True, None
-                else:
-                    # Есть проблемы - но не делаем полную проверку (она может быть очень долгой)
-                    logger.warning(f"⚠️ Обнаружены проблемы в БД: {result}")
-                    return False, result
+                logger.warning(f"⚠️ quick_check сообщил о проблемах: {result[:200]}")
+                return False, (result if isinstance(result, str) else str(result))
                     
             except sqlite3.OperationalError as e:
                 error_str = str(e).lower()
@@ -542,89 +525,38 @@ class BotsDatabase:
     
     def _repair_database(self) -> bool:
         """
-        Пытается исправить поврежденную БД
-        
-        Улучшенная логика:
-        - Retry для резервных копий (до 3 попыток)
-        - Использование существующих копий, если не удалось создать новую
-        - Пропуск VACUUM при критических повреждениях (malformed, disk i/o error)
-        - Умное восстановление (выбирает более старую копию, если была создана новая поврежденная)
-        
-        Returns:
-            True если удалось исправить, False в противном случае
+        Исправляет повреждённую БД: только восстановление из целостной резервной копии.
+        Не создаём бэкап повреждённой БД и не восстанавливаемся из него — сначала ищем
+        существующие бэкапы и выбираем только прошедшие проверку целостности.
         """
         try:
             logger.warning("🔧 Попытка исправления БД...")
-            
-            # Пытаемся создать резервную копию перед исправлением (с retry)
-            backup_path = self._backup_database(max_retries=3)
-            backup_created = backup_path is not None
-            
-            if not backup_created:
-                logger.warning("⚠️ Не удалось создать резервную копию перед исправлением (файл может быть заблокирован)")
-                logger.info("💡 Попробую использовать существующие резервные копии для восстановления...")
-            
-            # Пытаемся использовать VACUUM для исправления (только если БД не слишком повреждена)
-            vacuum_tried = False
-            try:
-                conn = sqlite3.connect(self.db_path, timeout=300.0)  # 5 минут для VACUUM
-                cursor = conn.cursor()
-                logger.info("🔧 Выполняю VACUUM для исправления БД (это может занять время)...")
-                cursor.execute("VACUUM")
-                conn.commit()
-                conn.close()
-                logger.info("✅ VACUUM выполнен")
-                vacuum_tried = True
-            except Exception as vacuum_error:
-                error_str = str(vacuum_error).lower()
-                if "malformed" in error_str or "disk i/o error" in error_str:
-                    logger.warning(f"⚠️ VACUUM невозможен из-за критического повреждения: {vacuum_error}")
-                    logger.info("💡 Пропускаю VACUUM, пытаюсь восстановить из резервной копии...")
-                else:
-                    logger.warning(f"⚠️ VACUUM не помог: {vacuum_error}")
-                try:
-                    conn.close()
-                except:
-                    pass
-            
-            # Проверяем, исправилась ли БД (только если VACUUM был выполнен)
-            if vacuum_tried:
-                is_ok, error_msg = self._check_integrity()
-                if is_ok:
-                    logger.info("✅ БД успешно исправлена с помощью VACUUM")
-                    return True
-                else:
-                    logger.warning(f"⚠️ БД все еще повреждена после VACUUM: {error_msg[:200]}...")
-            
-            # Пытаемся восстановить из резервной копии
-            logger.info("🔄 Попытка восстановления из резервной копии...")
+
+            # Сначала список бэкапов, без создания нового из повреждённой БД
             backups = self.list_backups()
-            
-            if backups:
-                # Если мы создали резервную копию только что, используем более старую
-                if backup_created and len(backups) > 1:
-                    # Используем предпоследнюю копию (последняя - это та, что мы только что создали)
-                    older_backup = backups[1]['path']
-                    logger.info(f"📦 Восстанавливаю из более старой резервной копии: {older_backup}")
-                    if self.restore_from_backup(older_backup):
-                        return True
-                else:
-                    # Используем последнюю доступную копию
-                    latest_backup = backups[0]['path']
-                    logger.info(f"📦 Восстанавливаю из резервной копии: {latest_backup}")
-                    if self.restore_from_backup(latest_backup):
-                        return True
-            
-            # Если не удалось восстановить
             if not backups:
-                logger.error("❌ Нет доступных резервных копий для восстановления")
-                if not backup_created:
-                    logger.error("❌ КРИТИЧНО: Не удалось создать резервную копию и нет существующих копий!")
-                    logger.error("⚠️ БД останется поврежденной. Рекомендуется:")
-                    logger.error("   1. Закрыть все процессы, использующие БД")
-                    logger.error("   2. Попробовать восстановить вручную: db.restore_from_backup()")
-                    logger.error("   3. Или создать новую БД (данные будут потеряны)")
-            
+                logger.error("❌ Нет резервных копий. Восстановление невозможно (создавать бэкап из повреждённой БД и восстанавливаться из него не делаем).")
+                return False
+
+            # Только бэкапы с целостной БД
+            valid_backups = [b for b in backups if self._check_backup_integrity(b['path'])]
+            if not valid_backups:
+                logger.error("❌ Нет целостных резервных копий (все проверены и повреждены). Восстановление невозможно.")
+                return False
+
+            # Берём самый свежий целостный бэкап
+            chosen = valid_backups[0]['path']
+            logger.info(f"📦 Восстанавливаю из целостной резервной копии: {chosen}")
+
+            # По желанию сохраняем текущую (повреждённую) копию для истории — не для восстановления
+            try:
+                self._backup_database(max_retries=1)
+            except Exception:
+                pass
+
+            if self.restore_from_backup(chosen):
+                return True
+
             return False
         except Exception as e:
             logger.error(f"❌ Ошибка исправления БД: {e}")
@@ -896,23 +828,27 @@ class BotsDatabase:
         if db_exists:
             logger.info("🔍 Проверка целостности БД...")
             is_ok, error_msg = self._check_integrity()
-            
             if not is_ok:
-                logger.error(f"❌ Обнаружены повреждения в БД: {error_msg}")
-                logger.warning("🔧 Попытка автоматического исправления...")
-                
-                if self._repair_database():
-                    logger.info("✅ БД успешно исправлена")
-                    # Проверяем еще раз после исправления
-                    is_ok, error_msg = self._check_integrity()
-                    if not is_ok:
-                        logger.error(f"❌ БД все еще повреждена после исправления: {error_msg}")
-                        logger.error("⚠️ Рекомендуется восстановить из резервной копии вручную")
-                else:
-                    logger.error("❌ Не удалось автоматически исправить БД")
-                    logger.error("⚠️ Попробуйте восстановить из резервной копии: db.restore_from_backup()")
-            else:
-                pass
+                # Не считаем БД сломанной только по quick_check — пробуем реально открыть и запрос выполнить.
+                # Ремонт только при фактической ошибке при работе (malformed / file is not a database).
+                try:
+                    with self._get_connection() as c:
+                        c.execute("SELECT 1")
+                    logger.warning(f"⚠️ quick_check сообщил о проблемах, но БД открывается и отвечает — продолжаем без восстановления: {error_msg[:100] if error_msg else '?'}")
+                except Exception as use_err:
+                    err_str = str(use_err).lower()
+                    if "malformed" in err_str or "file is not a database" in err_str or "not a database" in err_str:
+                        logger.error(f"❌ БД действительно повреждена при обращении: {use_err}")
+                        logger.warning("🔧 Попытка автоматического исправления...")
+                        if self._repair_database():
+                            logger.info("✅ БД успешно исправлена")
+                            is_ok2, _ = self._check_integrity()
+                            if not is_ok2:
+                                logger.error("❌ БД все еще повреждена после исправления")
+                        else:
+                            logger.error("❌ Не удалось автоматически исправить БД")
+                    else:
+                        logger.warning(f"⚠️ Ошибка при проверке БД: {use_err}, продолжаем...")
         else:
             logger.info(f"📁 Создается новая база данных: {self.db_path}")
         
@@ -6348,6 +6284,20 @@ class BotsDatabase:
             logger.error(f"❌ Ошибка получения статистики БД: {e}")
             return {}
     
+    def _check_backup_integrity(self, backup_path: str) -> bool:
+        """Проверяет целостность файла бэкапа (PRAGMA integrity_check). Возвращает True только если бэкап целый."""
+        if not backup_path or not os.path.exists(backup_path):
+            return False
+        try:
+            conn = sqlite3.connect(backup_path, timeout=5.0)
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA integrity_check")
+            row = cursor.fetchone()
+            conn.close()
+            return row is not None and (row[0] == "ok" if isinstance(row[0], str) else row[0] == b"ok")
+        except Exception:
+            return False
+
     def list_backups(self) -> List[Dict[str, Any]]:
         """
         Список доступных резервных копий БД из data/backups.
@@ -6434,12 +6384,6 @@ class BotsDatabase:
                 if restore_attempt > 0:
                     time.sleep(3)
                     logger.info(f"🔄 Повтор восстановления ({restore_attempt + 1}/{max_restore_retries})...")
-
-                # Резервная копия текущей БД перед перезаписью (только при первой попытке)
-                if restore_attempt == 0 and os.path.exists(self.db_path):
-                    current_backup = self._backup_database()
-                    if current_backup:
-                        logger.info(f"💾 Текущая БД сохранена в: {current_backup}")
 
                 try:
                     shutil.copy2(backup_path, self.db_path)
