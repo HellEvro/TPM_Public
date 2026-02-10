@@ -634,9 +634,12 @@
         </div>
 
                             <div class="setting-item">
-                                <label data-translate="take_profit_label">🎯 Защитный Take Profit (% прибыли):</label>
-                                <input type="number" id="takeProfitPercentDup" value="20.0" min="1" max="100" step="0.5" />
-        </div>
+                                <label>
+                                    <input type="checkbox" id="closeAtProfitEnabledDup" checked />
+                                    <span data-translate="close_at_profit_enabled_label">Закрывать по достижении</span>
+                                </label>
+                                <input type="number" id="takeProfitPercentDup" value="5.0" min="0" max="100" step="0.5" style="max-width: 5em; display: inline-block; margin-left: 0.5rem;" /> %
+                            </div>
 
                             <div class="setting-item">
                                 <label data-translate="trailing_stop_activation_label">🚀 Trailing Stop активация (%):</label>
@@ -1536,11 +1539,11 @@
                         
                         <div class="config-item">
                             <label class="config-label">
-                                <span class="label-icon">🎯</span>
-                                <span class="label-text" data-translate="take_profit_percent_label">Защитный Take Profit (% прибыли):</span>
+                                <input type="checkbox" id="closeAtProfitEnabled" checked />
+                                <span class="label-text" data-translate="close_at_profit_enabled_label">Закрывать по достижении</span>
                             </label>
-                            <input type="number" id="takeProfitPercent" value="20.0" min="1" max="100" step="0.5" class="config-input" />
-                            <small class="config-help" data-translate="take_profit_description">Защитный TP рассчитывается как стоп-лосс: % от стоимости входа. Основной выход по RSI 6h (65 для LONG, 35 для SHORT)</small>
+                            <input type="number" id="takeProfitPercent" value="5.0" min="0" max="100" step="0.5" class="config-input" style="max-width: 6em; display: inline-block; margin-left: 0.5rem;" /> %
+                            <small class="config-help" data-translate="close_at_profit_enabled_help">Включить автоматическое закрытие позиции при достижении заданного процента прибыли по монете (0 = не закрывать по этому правилу)</small>
                         </div>
                         
                         <div class="config-item">

@@ -97,16 +97,13 @@ def register_config_endpoints(app, state):
                             maturity_params_changed = True
                             logger.warning(f"[MATURITY] ⚠️ Изменен критерий зрелости: {key} ({old_config.get(key)} → {data[key]})")
                     
-                    # Обновляем конфигурацию
+                    # Обновляем конфигурацию (разрешаем добавление новых ключей, например close_at_profit_enabled)
                     for key, value in data.items():
-                        if key in state['bots_data']['auto_bot_config']:
-                            old_value = state['bots_data']['auto_bot_config'][key]
-                            if old_value != value:
-                                state['bots_data']['auto_bot_config'][key] = value
-                                changes_count += 1
-                                
-                                # Используем log_config_change с названием из словаря
-                                log_config_change(key, old_value, value)
+                        old_value = state['bots_data']['auto_bot_config'].get(key)
+                        if old_value != value:
+                            state['bots_data']['auto_bot_config'][key] = value
+                            changes_count += 1
+                            log_config_change(key, old_value, value)
                 
                 # Сохраняем конфигурацию
                 save_result = state['save_auto_bot_config_func']()

@@ -2290,10 +2290,28 @@ class BybitExchange(BaseExchange):
                 except (TypeError, ValueError):
                     return default
             
+            total_balance = _safe_float(account_data.get("totalWalletBalance"))
+            available_balance = _safe_float(account_data.get("totalAvailableBalance"))
+            # Режим маржи: при ISOLATED_MARGIN поле totalAvailableBalance не применимо (Bybit docs)
+            # — считаем доступный остаток по монете USDT так же, как в get_wallet_balance()
+            margin_mode = self._get_account_margin_mode()
+            use_isolated_calculation = (margin_mode == 'ISOLATED_MARGIN')
+            coin_list = account_data.get('coin') or []
+            if coin_list and (use_isolated_calculation or (available_balance <= 0 and total_balance > 0)):
+                for c in coin_list:
+                    if (c.get('coin') or '').upper() == 'USDT':
+                        wb = _safe_float(c.get('walletBalance'))
+                        pos_im = _safe_float(c.get('totalPositionIM'))
+                        order_im = _safe_float(c.get('totalOrderIM'))
+                        locked = _safe_float(c.get('locked'))
+                        bonus = _safe_float(c.get('bonus'))
+                        available_balance = max(0.0, wb - pos_im - order_im - locked - bonus)
+                        break
+            
             account_info = {
                 "total_equity": _safe_float(account_data.get("totalEquity")),
-                "total_wallet_balance": _safe_float(account_data.get("totalWalletBalance")),
-                "total_available_balance": _safe_float(account_data.get("totalAvailableBalance")),
+                "total_wallet_balance": total_balance,
+                "total_available_balance": available_balance,
                 "total_unrealized_pnl": _safe_float(account_data.get("totalPerpUPL")),
                 "total_margin_balance": _safe_float(account_data.get("totalMarginBalance")),
                 "account_type": "UNIFIED"

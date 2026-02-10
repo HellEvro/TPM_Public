@@ -3079,7 +3079,9 @@ class BotsManager {
         if (maxLossEl && maxLossEl.value) settings.max_loss_percent = parseFloat(maxLossEl.value);
         
         const takeProfitEl = document.getElementById('takeProfitPercentDup');
-        if (takeProfitEl && takeProfitEl.value) settings.take_profit_percent = parseFloat(takeProfitEl.value);
+        if (takeProfitEl && takeProfitEl.value !== '') settings.take_profit_percent = parseFloat(takeProfitEl.value);
+        const closeAtProfitEl = document.getElementById('closeAtProfitEnabledDup');
+        if (closeAtProfitEl) settings.close_at_profit_enabled = closeAtProfitEl.checked;
         
         const trailingActivationEl = document.getElementById('trailingStopActivationDup');
         if (trailingActivationEl && trailingActivationEl.value) settings.trailing_stop_activation = parseFloat(trailingActivationEl.value);
@@ -3534,6 +3536,7 @@ class BotsManager {
             rsi_exit_short_against_trend: 'rsiExitShortAgainstTrendDup',
             max_loss_percent: 'maxLossPercentDup',
             take_profit_percent: 'takeProfitPercentDup',
+            close_at_profit_enabled: 'closeAtProfitEnabledDup',
             trailing_stop_activation: 'trailingStopActivationDup',
             trailing_stop_distance: 'trailingStopDistanceDup',
             trailing_take_distance: 'trailingTakeDistanceDup',
@@ -3590,7 +3593,7 @@ class BotsManager {
             rsi_long_threshold: 29, rsi_short_threshold: 71,
             rsi_exit_long_with_trend: 65, rsi_exit_long_against_trend: 60,
             rsi_exit_short_with_trend: 35, rsi_exit_short_against_trend: 40,
-            max_loss_percent: 15.0, take_profit_percent: 20.0,
+            max_loss_percent: 15.0, take_profit_percent: 5.0, close_at_profit_enabled: true,
             trailing_stop_activation: 20.0, trailing_stop_distance: 5.0,
             trailing_take_distance: 0.5, trailing_update_interval: 3.0,
             max_position_hours: 0, break_even_protection: true,
@@ -3985,7 +3988,8 @@ class BotsManager {
             rsi_exit_short_with_trend: 35,
             rsi_exit_short_against_trend: 40,
             max_loss_percent: 15.0,
-            take_profit_percent: 20.0,
+            take_profit_percent: 5.0,
+            close_at_profit_enabled: true,
             trailing_stop_activation: 20.0,
             trailing_stop_distance: 5.0,
             trailing_take_distance: 0.5,
@@ -4040,6 +4044,8 @@ class BotsManager {
         setValue('rsiExitShortAgainstTrendDup', get('rsi_exit_short_against_trend', fallback.rsi_exit_short_against_trend));
         setValue('maxLossPercentDup', get('max_loss_percent', fallback.max_loss_percent));
         setValue('takeProfitPercentDup', get('take_profit_percent', fallback.take_profit_percent));
+        const closeAtProfitDupEl = document.getElementById('closeAtProfitEnabledDup');
+        if (closeAtProfitDupEl) closeAtProfitDupEl.checked = get('close_at_profit_enabled', true) !== false;
         setValue('trailingStopActivationDup', get('trailing_stop_activation', fallback.trailing_stop_activation));
         setValue('trailingStopDistanceDup', get('trailing_stop_distance', fallback.trailing_stop_distance));
         setValue('trailingTakeDistanceDup', get('trailing_take_distance', fallback.trailing_take_distance));
@@ -6741,8 +6747,14 @@ class BotsManager {
         
         const takeProfitPercentEl = document.getElementById('takeProfitPercent');
         if (takeProfitPercentEl) {
-            takeProfitPercentEl.value = autoBotConfig.take_profit_percent || 20.0;
-            console.log('[BotsManager] 🎯 Защитный TP:', takeProfitPercentEl.value);
+            takeProfitPercentEl.value = autoBotConfig.take_profit_percent ?? 5.0;
+            console.log('[BotsManager] 🎯 Защитный TP (%):', takeProfitPercentEl.value);
+        }
+        
+        const closeAtProfitEnabledEl = document.getElementById('closeAtProfitEnabled');
+        if (closeAtProfitEnabledEl) {
+            closeAtProfitEnabledEl.checked = autoBotConfig.close_at_profit_enabled !== false;
+            console.log('[BotsManager] 🎯 Закрывать по % прибыли:', closeAtProfitEnabledEl.checked);
         }
         
         const trailingStopActivationEl = document.getElementById('trailingStopActivation');
@@ -7367,6 +7379,7 @@ class BotsManager {
             'checkInterval': 'check_interval',
             'maxLossPercent': 'max_loss_percent',
             'takeProfitPercent': 'take_profit_percent',
+            'closeAtProfitEnabled': 'close_at_profit_enabled',
             'trailingStopActivation': 'trailing_stop_activation',
             'trailingStopDistance': 'trailing_stop_distance',
             'trailingTakeDistance': 'trailing_take_distance',
@@ -7915,6 +7928,7 @@ class BotsManager {
             const protectiveMechanisms = {
                 max_loss_percent: config.autoBot.max_loss_percent,
                 take_profit_percent: config.autoBot.take_profit_percent,
+                close_at_profit_enabled: config.autoBot.close_at_profit_enabled !== false,
                 trailing_stop_activation: config.autoBot.trailing_stop_activation,
                 trailing_stop_distance: config.autoBot.trailing_stop_distance,
                 trailing_take_distance: config.autoBot.trailing_take_distance,
@@ -8361,7 +8375,8 @@ class BotsManager {
                     default_position_mode: 'usdt',
                     check_interval: 180,
                     max_loss_percent: 15.0,
-                    take_profit_percent: 20.0,
+                    take_profit_percent: 5.0,
+                    close_at_profit_enabled: true,
                     trailing_stop_activation: 20.0,
                     trailing_stop_distance: 5.0,
                     trailing_take_distance: 0.5,
@@ -8517,8 +8532,8 @@ class BotsManager {
             errors.push('Стоп-лосс должен быть от 1% до 50%');
         }
         
-        if (config.autoBot.take_profit_percent <= 0 || config.autoBot.take_profit_percent > 100) {
-            errors.push('Защитный Take Profit должен быть от 1% до 100%');
+        if (config.autoBot.close_at_profit_enabled !== false && (config.autoBot.take_profit_percent <= 0 || config.autoBot.take_profit_percent > 100)) {
+            errors.push('При включённом «Закрывать по % прибыли» укажите Take Profit от 1% до 100%');
         }
         
         if (config.autoBot.trailing_stop_activation < config.autoBot.break_even_trigger) {
