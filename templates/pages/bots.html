@@ -634,11 +634,16 @@
         </div>
 
                             <div class="setting-item">
-                                <label>
-                                    <input type="checkbox" id="closeAtProfitEnabledDup" checked />
-                                    <span data-translate="close_at_profit_enabled_label">Закрывать по достижении</span>
+                                <label class="config-label">
+                                    <span data-translate="close_at_profit_enabled_label">Закрывать позицию при достижении % прибыли</span>
                                 </label>
-                                <input type="number" id="takeProfitPercentDup" value="5.0" min="0" max="100" step="0.5" style="max-width: 5em; display: inline-block; margin-left: 0.5rem;" /> %
+                                <div class="config-row">
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="closeAtProfitEnabledDup" checked />
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <input type="number" id="takeProfitPercentDup" value="5.0" min="0" max="100" step="0.5" class="config-input" style="max-width: 5em;" /> %
+                                </div>
                             </div>
 
                             <div class="setting-item">
@@ -1539,11 +1544,19 @@
                         
                         <div class="config-item">
                             <label class="config-label">
-                                <input type="checkbox" id="closeAtProfitEnabled" checked />
-                                <span class="label-text" data-translate="close_at_profit_enabled_label">Закрывать по достижении</span>
+                                <span class="label-text" data-translate="close_at_profit_enabled_label">Закрывать позицию при достижении % прибыли</span>
                             </label>
-                            <input type="number" id="takeProfitPercent" value="5.0" min="0" max="100" step="0.5" class="config-input" style="max-width: 6em; display: inline-block; margin-left: 0.5rem;" /> %
-                            <small class="config-help" data-translate="close_at_profit_enabled_help">Включить автоматическое закрытие позиции при достижении заданного процента прибыли по монете (0 = не закрывать по этому правилу)</small>
+                            <div class="config-row">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="closeAtProfitEnabled" checked />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <div class="break-even-trigger-group">
+                                    <input type="number" id="takeProfitPercent" value="5.0" min="0" max="100" step="0.5" class="config-input" title="0 = отключено" />
+                                    <span class="break-even-trigger-label">%</span>
+                                </div>
+                            </div>
+                            <small class="config-help" data-translate="close_at_profit_enabled_help">При включении бот закроет сделку при указанном проценте прибыли по монете. 0 = не закрывать.</small>
                         </div>
                         
                         <div class="config-item">

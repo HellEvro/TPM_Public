@@ -2399,6 +2399,17 @@ def _verify_ai_deps_for_venv(
 
 
 def main() -> None:
+    # Патчи обратной совместимости (обновление конфигов и т.д.) при каждом запуске лаунчера
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    try:
+        from patches.runner import run_patches
+        applied = run_patches(PROJECT_ROOT)
+        if applied:
+            print(f"[Patches] Применены патчи: {', '.join(applied)}")
+    except Exception as e:
+        print(f"[Patches] Ошибка применения патчей: {e}")
+
     manager = InfoBotManager()
     try:
         manager.mainloop()

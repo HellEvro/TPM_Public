@@ -263,9 +263,12 @@ def evaluate_protections(
     state.max_profit_percent = max(state.max_profit_percent or 0.0, profit_percent)
 
     # Выход по достижении заданного процента прибыли (вкл. close_at_profit_enabled, порог take_profit_percent)
+    # Минимум 1% — чтобы не закрывать при первом же выходе в плюс (шум/ошибка конфига)
     close_at_profit_enabled = config.get('close_at_profit_enabled', True)
     take_profit_percent = _safe_float(config.get('take_profit_percent'), 0.0) or 0.0
-    if close_at_profit_enabled and take_profit_percent > 0 and profit_percent >= take_profit_percent:
+    if take_profit_percent > 0 and take_profit_percent < 1.0:
+        take_profit_percent = 1.0
+    if close_at_profit_enabled and take_profit_percent >= 1.0 and profit_percent >= take_profit_percent:
         return ProtectionDecision(True, f'TAKE_PROFIT_{profit_percent:.2f}%', state, profit_percent)
 
     max_position_hours = _safe_float(config.get('max_position_hours'), 0.0) or 0.0
@@ -281,8 +284,11 @@ def evaluate_protections(
     ) or 0.0
     if break_even_trigger < 0:
         break_even_trigger = 0.0
+    # Не активируем break-even при триггере < 1% — иначе стоп у входа срабатывает на первом откате
+    if 0 < break_even_trigger < 1.0:
+        break_even_trigger = 1.0
 
-    if break_even_enabled and break_even_trigger > 0:
+    if break_even_enabled and break_even_trigger >= 1.0:
         if not state.break_even_activated and profit_percent >= break_even_trigger:
             state.break_even_activated = True
 

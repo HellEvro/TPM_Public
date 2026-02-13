@@ -83,6 +83,17 @@ try:
 except Exception:
     pass
 
+# Патчи обратной совместимости (например недостающие классы в configs/bot_config.py) — при запуске app.py и при лаунчере
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+try:
+    from patches.runner import run_patches
+    _applied = run_patches(_PROJECT_ROOT)
+    if _applied:
+        sys.stderr.write(f"[Patches] Применены патчи: {', '.join(_applied)}\n")
+except Exception as _e:
+    sys.stderr.write(f"[Patches] Ошибка применения патчей: {_e}\n")
+
 if not _CONFIG_PATH.exists():
     # Используем stderr, так как logger еще не настроен
     sys.stderr.write("\n" + "=" * 80 + "\n")

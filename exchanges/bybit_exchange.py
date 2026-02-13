@@ -1240,7 +1240,7 @@ class BybitExchange(BaseExchange):
             logger.error(f"Traceback: {traceback.format_exc()}")
             return []
 
-    @with_timeout(30)  # 30 секунд таймаут для получения данных графика
+    @with_timeout(45)  # 45 секунд — часть пар (API3, PYTH и др.) отвечают дольше 30s при проверке зрелости
     def get_chart_data(self, symbol, timeframe='1h', period='1w', bulk_mode=False, bulk_limit=None):
         """Получение данных для графика
         
