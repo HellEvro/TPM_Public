@@ -3395,35 +3395,13 @@ def set_filtered_coins_for_autobot(filtered_coins):
         return False
 
 def check_coin_maturity_stored_or_verify(symbol):
-    """Проверяет зрелость монеты из хранилища или выполняет проверку"""
+    """Проверяет зрелость монеты ТОЛЬКО по БД (хранилищу зрелых монет).
+    Свечи и расчёт зрелости уже делаются при загрузке RSI; результат сохраняется в БД.
+    Вызов API здесь не используется."""
     try:
-        # Сначала проверяем хранилище
-        if is_coin_mature_stored(symbol):
-            return True
-        
-        # Если нет в хранилище — проверка по текущему системному ТФ (1m, 6h и т.д.)
-        exch = get_exchange()
-        if not exch:
-            logger.warning(f"{symbol}: Биржа не инициализирована")
-            return False
-        
-        from bots_modules.maturity import get_maturity_timeframe
-        maturity_tf = get_maturity_timeframe()
-        chart_response = exch.get_chart_data(symbol, maturity_tf, '30d')
-        if not chart_response or not chart_response.get('success'):
-            logger.warning(f"{symbol}: Не удалось получить свечи")
-            return False
-        
-        candles = chart_response.get('data', {}).get('candles', [])
-        if not candles:
-            logger.warning(f"{symbol}: Нет свечей")
-            return False
-        
-        maturity_result = check_coin_maturity_with_storage(symbol, candles)
-        return maturity_result['is_mature']
-        
+        return is_coin_mature_stored(symbol)
     except Exception as e:
-        logger.error(f"{symbol}: Ошибка проверки зрелости: {e}")
+        logger.error(f"{symbol}: Ошибка проверки зрелости по БД: {e}")
         return False
 
 def update_is_mature_flags_in_rsi_data():

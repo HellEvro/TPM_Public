@@ -490,11 +490,13 @@ def positions_monitor_worker():
                                     continue
 
                                 # ✅ ОПТИМИЗАЦИЯ: Используем статический метод без создания объекта бота
-                                should_close, reason = NewTradingBot.check_should_close_by_rsi(symbol, current_rsi, position_side)
+                                rsi_should_close, rsi_reason = NewTradingBot.check_should_close_by_rsi(symbol, current_rsi, position_side)
+                                should_close, reason = NewTradingBot.check_exit_with_breakeven_wait(
+                                    symbol, bot_data, current_price, position_side, rsi_should_close, rsi_reason
+                                )
 
                                 if should_close:
-                                    logger.info(f" 🔴 {symbol}: Закрываем {position_side} (RSI={current_rsi:.2f})")
-                                    # Только теперь создаем объект бота для закрытия позиции
+                                    logger.info(f" 🔴 {symbol}: Закрываем {position_side} (RSI={current_rsi:.2f}, reason={reason})")
                                     trading_bot = NewTradingBot(symbol, bot_data, exchange_obj)
                                     close_result = trading_bot._close_position_on_exchange(reason)
                                     if close_result:

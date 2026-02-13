@@ -1308,6 +1308,105 @@ class NewTradingBot:
             logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка в idle состоянии: {e}")
             return {'success': False, 'error': str(e)}
     
+    def _calc_profit_percent(self, current_price):
+        """Процент PnL позиции (положительный = прибыль, отрицательный = убыток)."""
+        entry = self._safe_float(self.entry_price)
+        price = self._safe_float(current_price)
+        if entry is None or entry <= 0 or price is None:
+            return 0.0
+        if self.position_side == 'LONG':
+            return ((price - entry) / entry) * 100.0
+        return ((entry - price) / entry) * 100.0
+
+    def _should_defer_close_for_breakeven(self, close_reason, profit_percent):
+        """
+        Срабатывает, когда закрытие по RSI/тейкам (не по stop-loss), позиция в минусе,
+        и включена настройка exit_wait_breakeven_when_loss.
+        Возвращает True, если нужно отложить закрытие и ждать безубытка.
+        """
+        if profit_percent >= 0:
+            return False
+        reason = (close_reason or '').upper()
+        if 'STOP_LOSS' in reason:
+            return False
+        try:
+            cfg = bots_data.get('auto_bot_config', {})
+            if not cfg.get('exit_wait_breakeven_when_loss', False):
+                return False
+        except Exception:
+            return False
+        return True
+
+    def _set_exit_waiting_breakeven(self):
+        """Устанавливает флаг ожидания безубытка при выходе в минусе (в зоне RSI/тейков)."""
+        try:
+            with bots_data_lock:
+                if self.symbol in bots_data.get('bots', {}):
+                    bots_data['bots'][self.symbol]['exit_waiting_breakeven'] = True
+        except Exception as e:
+            logger.debug(f"[NEW_BOT_{self.symbol}] _set_exit_waiting_breakeven: {e}")
+
+    def _clear_exit_waiting_breakeven(self):
+        """Сбрасывает флаг ожидания безубытка."""
+        try:
+            with bots_data_lock:
+                if self.symbol in bots_data.get('bots', {}):
+                    bots_data['bots'][self.symbol]['exit_waiting_breakeven'] = False
+        except Exception as e:
+            logger.debug(f"[NEW_BOT_{self.symbol}] _clear_exit_waiting_breakeven: {e}")
+
+    @staticmethod
+    def check_exit_with_breakeven_wait(symbol, bot_data, current_price, position_side, rsi_should_close, rsi_reason):
+        """
+        Для монитора позиций (workers): проверяет выход с учётом «ждать безубыток».
+        Возвращает (should_close: bool, reason: str | None).
+        """
+        try:
+            entry_price = None
+            try:
+                ep = bot_data.get('entry_price')
+                if ep is not None:
+                    entry_price = float(ep)
+            except (TypeError, ValueError):
+                pass
+            if entry_price is None or entry_price <= 0 or current_price is None:
+                if rsi_should_close:
+                    return True, rsi_reason
+                return False, None
+
+            if position_side == 'LONG':
+                profit_percent = ((current_price - entry_price) / entry_price) * 100.0
+            else:
+                profit_percent = ((entry_price - current_price) / entry_price) * 100.0
+
+            exit_waiting = bool(bot_data.get('exit_waiting_breakeven', False))
+
+            if exit_waiting and profit_percent >= 0:
+                return True, 'BREAKEVEN_WAIT_EXIT'
+
+            if not rsi_should_close:
+                return False, None
+
+            cfg = bots_data.get('auto_bot_config', {})
+            if not cfg.get('exit_wait_breakeven_when_loss', False):
+                return True, rsi_reason
+
+            if profit_percent >= 0:
+                return True, rsi_reason
+
+            with bots_data_lock:
+                if symbol in bots_data.get('bots', {}):
+                    bots_data['bots'][symbol]['exit_waiting_breakeven'] = True
+            logger.info(
+                f" ⏳ {symbol}: RSI в зоне выхода ({rsi_reason}), позиция в минусе ({profit_percent:.2f}%) — ждём безубыток"
+            )
+            return False, None
+        except Exception as e:
+            logger.debug(f"check_exit_with_breakeven_wait {symbol}: {e}")
+            if rsi_should_close:
+                return True, rsi_reason
+            return False, None
+
     def _handle_position_state(self, rsi, trend, candles, price):
         """Обрабатывает состояние в позиции"""
         try:
@@ -1323,13 +1422,33 @@ class NewTradingBot:
                 price = market_price
 
             self.current_price = price
+            profit_percent = self._calc_profit_percent(price)
+
+            # 0. Ожидание безубытка: если ранее отложили закрытие (в зоне RSI/тейков + минус),
+            #    закрываем как только достигнут безубыток (независимо от RSI).
+            with bots_data_lock:
+                bot_data = bots_data.get('bots', {}).get(self.symbol, {})
+                exit_waiting = bool(bot_data.get('exit_waiting_breakeven', False))
+            if exit_waiting and profit_percent >= 0:
+                logger.info(f"[NEW_BOT_{self.symbol}] 🎯 Безубыток достигнут — закрываем (ожидание завершено)")
+                self._clear_exit_waiting_breakeven()
+                self._close_position_on_exchange('BREAKEVEN_WAIT_EXIT')
+                return {'success': True, 'action': f"CLOSE_{self.position_side}", 'reason': 'BREAKEVEN_WAIT_EXIT'}
 
             # 1. Проверяем защитные механизмы
             protection_result = self.check_protection_mechanisms(price)
             if protection_result['should_close']:
-                logger.info(f"[NEW_BOT_{self.symbol}] 🛡️ Закрываем: {protection_result['reason']}")
-                self._close_position_on_exchange(protection_result['reason'])
-                return {'success': True, 'action': f"CLOSE_{self.position_side}", 'reason': protection_result['reason']}
+                if self._should_defer_close_for_breakeven(protection_result['reason'], profit_percent):
+                    self._set_exit_waiting_breakeven()
+                    logger.info(
+                        f"[NEW_BOT_{self.symbol}] ⏳ В зоне закрытия ({protection_result['reason']}), "
+                        f"позиция в минусе ({profit_percent:.2f}%) — ждём безубыток"
+                    )
+                else:
+                    self._clear_exit_waiting_breakeven()
+                    logger.info(f"[NEW_BOT_{self.symbol}] 🛡️ Закрываем: {protection_result['reason']}")
+                    self._close_position_on_exchange(protection_result['reason'])
+                    return {'success': True, 'action': f"CLOSE_{self.position_side}", 'reason': protection_result['reason']}
             
             # 2. Проверяем условия закрытия по RSI (универсальная функция)
             # Адаптивно: мин. свечи ИЛИ мин. минуты (по ТФ) ИЛИ ранний выход, если цена уже сдвинулась на X%
@@ -1380,14 +1499,22 @@ class NewTradingBot:
                 else:
                         should_close, reason = self.should_close_position(rsi, price, self.position_side)
                         if should_close:
-                            logger.info(f"[NEW_BOT_{self.symbol}] 🔴 Закрываем {self.position_side} по RSI (RSI={rsi}, reason={reason})")
-                            close_success = self._close_position_on_exchange(reason)
-                            if close_success:
-                                logger.info(f"[NEW_BOT_{self.symbol}] ✅ {self.position_side} закрыта")
-                                return {'success': True, 'action': f'CLOSE_{self.position_side}', 'reason': reason}
+                            if self._should_defer_close_for_breakeven(reason, profit_percent):
+                                self._set_exit_waiting_breakeven()
+                                logger.info(
+                                    f"[NEW_BOT_{self.symbol}] ⏳ RSI в зоне выхода ({reason}), "
+                                    f"позиция в минусе ({profit_percent:.2f}%) — ждём безубыток"
+                                )
                             else:
-                                logger.error(f"[NEW_BOT_{self.symbol}] ❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось закрыть {self.position_side} позицию на бирже!")
-                                return {'success': False, 'error': 'Failed to close position on exchange', 'action': f'CLOSE_{self.position_side}_FAILED', 'reason': reason}
+                                self._clear_exit_waiting_breakeven()
+                                logger.info(f"[NEW_BOT_{self.symbol}] 🔴 Закрываем {self.position_side} по RSI (RSI={rsi}, reason={reason})")
+                                close_success = self._close_position_on_exchange(reason)
+                                if close_success:
+                                    logger.info(f"[NEW_BOT_{self.symbol}] ✅ {self.position_side} закрыта")
+                                    return {'success': True, 'action': f'CLOSE_{self.position_side}', 'reason': reason}
+                                else:
+                                    logger.error(f"[NEW_BOT_{self.symbol}] ❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось закрыть {self.position_side} позицию на бирже!")
+                                    return {'success': False, 'error': 'Failed to close position on exchange', 'action': f'CLOSE_{self.position_side}_FAILED', 'reason': reason}
                         else:
                             pass
 
@@ -2014,7 +2141,8 @@ class NewTradingBot:
             
             
             if close_result and close_result.get('success'):
-                
+                self._clear_exit_waiting_breakeven()
+
                 # Сохраняем историю закрытия позиции (для обучения ИИ)
                 try:
                     self._log_position_closed(reason, close_result)

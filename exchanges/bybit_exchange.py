@@ -129,7 +129,7 @@ class BybitExchange(BaseExchange):
             api_key=api_key,
             api_secret=api_secret,
             testnet=test_server,
-            timeout=30,
+            timeout=60,  # 60s — запросы свечей для проверки зрелости часто >30s (CHILLGUY, ALICE, API3 и др.)
             recv_window=20000
         )
         # Синхронизация времени с Bybit при старте (снижает ErrCode 10002 при рассинхроне часов)
@@ -1240,7 +1240,7 @@ class BybitExchange(BaseExchange):
             logger.error(f"Traceback: {traceback.format_exc()}")
             return []
 
-    @with_timeout(45)  # 45 секунд — часть пар (API3, PYTH и др.) отвечают дольше 30s при проверке зрелости
+    @with_timeout(60)  # 60s — запросы свечей для зрелости часто 35–39s (CHILLGUY, ALICE, FLUX, API3 и др.)
     def get_chart_data(self, symbol, timeframe='1h', period='1w', bulk_mode=False, bulk_limit=None):
         """Получение данных для графика
         

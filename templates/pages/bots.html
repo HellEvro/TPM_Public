@@ -1464,6 +1464,17 @@
                                 <input type="number" id="rsiExitMinMovePercentGlobal" value="0" min="0" max="20" step="0.1" class="config-input" />
                                 <small class="config-help" data-translate="rsi_exit_min_move_percent_help">0 = выкл. Если цена уже сдвинулась на этот % от входа — разрешить выход по RSI раньше мин. времени</small>
                             </div>
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">🎯</span>
+                                    <span class="label-text" data-translate="exit_wait_breakeven_when_loss_label">Ждать безубыток при выходе в минусе:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="exitWaitBreakevenWhenLoss" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help" data-translate="exit_wait_breakeven_when_loss_help">Если RSI/тейки в зоне закрытия, но позиция в минусе — не закрывать сразу, ждать пока цена дойдёт до безубытка. Стоп-лосс не затрагивается.</small>
+                            </div>
                         </div>
                     </div>
                     

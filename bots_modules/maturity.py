@@ -428,20 +428,31 @@ def check_coin_maturity(symbol, candles):
             'details': {}
         }
 
+def _get_candles_from_cache(candles_cache, symbol, timeframe):
+    """Достаёт свечи из candles_cache по символу и таймфрейму (без API)."""
+    if not candles_cache or symbol not in candles_cache:
+        return None
+    symbol_cache = candles_cache[symbol]
+    if not isinstance(symbol_cache, dict):
+        return None
+    # Новая структура: {timeframe: {candles: [...], ...}}
+    if timeframe in symbol_cache:
+        return symbol_cache[timeframe].get('candles')
+    # Старая структура: {candles: [...], timeframe: '1m'}
+    if symbol_cache.get('timeframe') == timeframe and 'candles' in symbol_cache:
+        return symbol_cache.get('candles')
+    return None
+
+
 def calculate_all_coins_maturity():
-    """🧮 УМНЫЙ расчет зрелости - ТОЛЬКО для незрелых монет!"""
+    """🧮 Расчёт зрелости ТОЛЬКО по уже загруженным свечам (candles_cache после загрузки RSI).
+    API не вызывается — все зрелые монеты заносятся в БД из данных загрузки RSI."""
     try:
-        logger.info("🧮 Начинаем УМНЫЙ расчет зрелости...")
+        logger.info("🧮 Начинаем расчёт зрелости (только из кэша свечей, без API)...")
         
-        from bots_modules.imports_and_globals import rsi_data_lock, coins_rsi_data, get_exchange, bots_data
-        
-        exchange = get_exchange()
-        if not exchange:
-            logger.error("❌ Биржа не инициализирована")
-            return False
+        from bots_modules.imports_and_globals import coins_rsi_data, bots_data
         
         # Получаем все монеты с RSI данными
-        # ⚡ БЕЗ БЛОКИРОВКИ: чтение словаря - атомарная операция
         all_coins = []
         for symbol, coin_data in coins_rsi_data['coins'].items():
             from bot_engine.config_loader import get_rsi_from_coin_data
@@ -450,10 +461,7 @@ def calculate_all_coins_maturity():
         
         logger.info(f"📊 Найдено {len(all_coins)} монет с RSI данными")
         
-        # 🚀 СУПЕР-ОПТИМИЗАЦИЯ: Пропускаем если конфиг + количество монет не изменились!
         global last_maturity_check
-        
-        # Получаем текущий конфиг зрелости
         config = bots_data.get('auto_bot_config', {})
         current_config_params = {
             'min_candles': config.get('min_candles_for_maturity', MIN_CANDLES_FOR_MATURITY),
@@ -463,84 +471,59 @@ def calculate_all_coins_maturity():
         current_config_hash = str(current_config_params)
         current_coins_count = len(all_coins)
         
-        # Проверяем: изменилось ли что-то с прошлого раза?
-        if (last_maturity_check['coins_count'] == current_coins_count and 
+        if (last_maturity_check['coins_count'] == current_coins_count and
             last_maturity_check['config_hash'] == current_config_hash):
             logger.info(f"⚡ ПРОПУСК: Конфиг и количество монет ({current_coins_count}) не изменились!")
-            logger.info(f"📊 Используем кэшированные данные о зрелости")
             return True
-        
-        logger.info(f"🔄 Обновление необходимо:")
-        if last_maturity_check['coins_count'] != current_coins_count:
-            logger.info(f"📊 Монеты: {last_maturity_check['coins_count']} → {current_coins_count}")
-        if last_maturity_check['config_hash'] != current_config_hash:
-            logger.info(f"⚙️ Конфиг зрелости изменился")
         
         if not all_coins:
             logger.warning("⚠️ Нет монет для проверки зрелости")
             return False
         
-        # 🎯 УМНАЯ ЛОГИКА: Проверяем ТОЛЬКО незрелые монеты!
+        maturity_tf = get_maturity_timeframe()
+        candles_cache = coins_rsi_data.get('candles_cache', {})
+        
         coins_to_check = []
         already_mature_count = 0
-        
         for symbol in all_coins:
-            # Проверяем, есть ли монета уже в кэше как зрелая
             if is_coin_mature_stored(symbol):
                 already_mature_count += 1
-                # Убрано избыточное логирование
             else:
                 coins_to_check.append(symbol)
-                # Убрано избыточное логирование
         
-        logger.info(f"🎯 УМНАЯ ФИЛЬТРАЦИЯ:")
-        logger.info(f"📊 Уже зрелые (пропускаем): {already_mature_count}")
-        logger.info(f"📊 Нужно проверить: {len(coins_to_check)}")
+        logger.info(f"🎯 Уже зрелые (БД): {already_mature_count}, проверим по кэшу: {len(coins_to_check)}")
         
         if not coins_to_check:
             logger.info("✅ Все монеты уже зрелые - пересчет не нужен!")
             return True
         
-        # Проверяем зрелость ТОЛЬКО для незрелых монет
         mature_count = 0
         immature_count = 0
+        skipped_no_candles = 0
         
         for i, symbol in enumerate(coins_to_check, 1):
             try:
-                # Логируем прогресс каждые 10 монет
                 if i == 1 or i % 10 == 0 or i == len(coins_to_check):
                     logger.info(f"📊 Прогресс: {i}/{len(coins_to_check)} монет ({round(i/len(coins_to_check)*100)}%)")
                 
-                # Свечи для зрелости — по текущему системному ТФ (1m, 6h и т.д.)
-                maturity_tf = get_maturity_timeframe()
-                chart_response = exchange.get_chart_data(symbol, maturity_tf, '30d')
-                if not chart_response or not chart_response.get('success'):
-                    pass
-                    immature_count += 1
-                    continue
-                
-                candles = chart_response.get('data', {}).get('candles', [])
+                candles = _get_candles_from_cache(candles_cache, symbol, maturity_tf)
                 if not candles:
-                    pass
+                    skipped_no_candles += 1
                     immature_count += 1
                     continue
                 
-                # Проверяем зрелость с сохранением в хранилище
                 maturity_result = check_coin_maturity_with_storage(symbol, candles)
-                
                 if maturity_result['is_mature']:
                     mature_count += 1
-                    # Убрано избыточное логирование
                 else:
                     immature_count += 1
-                    # Убрано избыточное логирование
-                
-                # Минимальная пауза между запросами (УСКОРЕННАЯ ВЕРСИЯ)
-                time.sleep(0.05)  # Уменьшили с 0.1 до 0.05
                 
             except Exception as e:
                 logger.error(f"❌ {symbol}: Ошибка проверки зрелости: {e}")
                 immature_count += 1
+        
+        if skipped_no_candles:
+            logger.info(f"📊 Без свечей в кэше по ТФ {maturity_tf} (остались незрелыми): {skipped_no_candles}")
         
         logger.info(f"✅ УМНЫЙ расчет зрелости завершен:")
         logger.info(f"📊 Уже были зрелыми: {already_mature_count}")

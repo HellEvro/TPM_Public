@@ -6721,6 +6721,10 @@ class BotsManager {
             const v = parseFloat(autoBotConfig.rsi_exit_min_move_percent);
             rsiExitMinMovePercentEl.value = (v !== undefined && !isNaN(v) && v >= 0) ? v : 0;
         }
+        const exitWaitBreakevenEl = document.getElementById('exitWaitBreakevenWhenLoss');
+        if (exitWaitBreakevenEl) {
+            exitWaitBreakevenEl.checked = autoBotConfig.exit_wait_breakeven_when_loss === true;
+        }
         
         // Торговые настройки (перенесены в блок Торговые параметры)
         const tradingEnabledEl = document.getElementById('tradingEnabled');
@@ -7373,6 +7377,7 @@ class BotsManager {
             'rsiExitMinCandlesGlobal': 'rsi_exit_min_candles',
             'rsiExitMinMinutesGlobal': 'rsi_exit_min_minutes',
             'rsiExitMinMovePercentGlobal': 'rsi_exit_min_move_percent',
+            'exitWaitBreakevenWhenLoss': 'exit_wait_breakeven_when_loss',
             'defaultPositionSize': 'default_position_size',
             'defaultPositionMode': 'default_position_mode',
             'leverage': 'leverage',
@@ -7820,6 +7825,10 @@ class BotsManager {
                 rsi_exit_min_candles: parseInt(config.autoBot.rsi_exit_min_candles, 10) || 0,
                 rsi_exit_min_minutes: parseInt(config.autoBot.rsi_exit_min_minutes, 10) || 0,
                 rsi_exit_min_move_percent: parseFloat(config.autoBot.rsi_exit_min_move_percent) || 0,
+                exit_wait_breakeven_when_loss: (() => {
+                    const el = document.getElementById('exitWaitBreakevenWhenLoss');
+                    return el ? el.checked : (config.autoBot.exit_wait_breakeven_when_loss === true);
+                })(),
                 default_position_size: config.autoBot.default_position_size,
                 default_position_mode: config.autoBot.default_position_mode,
                 leverage: config.autoBot.leverage,
@@ -8371,6 +8380,7 @@ class BotsManager {
                     rsi_exit_min_candles: 0,
                     rsi_exit_min_minutes: 0,
                     rsi_exit_min_move_percent: 0,
+                    exit_wait_breakeven_when_loss: false,
                     default_position_size: 10,
                     default_position_mode: 'usdt',
                     check_interval: 180,
