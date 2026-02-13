@@ -4,7 +4,7 @@
 """
 from pathlib import Path
 
-NEW_LINE = "    EXIT_WAIT_BREAKEVEN_WHEN_LOSS = False   # Ждать безубыток при выходе в минусе (RSI/тейки в зоне закрытия)\n"
+NEW_LINE = "    EXIT_WAIT_BREAKEVEN_WHEN_LOSS = True    # Не закрывать по RSI/тейкам в минусе, ждать безубыток\n"
 ANCHOR = "BREAK_EVEN_TRIGGER_PERCENT"
 SKIP_IF = "EXIT_WAIT_BREAKEVEN_WHEN_LOSS"
 

@@ -298,7 +298,9 @@ def evaluate_protections(
                 current_price=current_price,
                 realized_pnl_usdt=realized_pnl,
             )
-            if profit_percent <= 0:
+            # Закрывать только когда мы у входа или в мелком минусе (<= 0.05%). При реальном минусе (>0.05%)
+            # не считать это «безубытком» — пусть exit_wait_breakeven или стоп-лосс обработают.
+            if profit_percent <= 0.05 and profit_percent >= -0.05:
                 return ProtectionDecision(True, f'BREAK_EVEN_MAX_{state.max_profit_percent:.2f}%', state, profit_percent)
     else:
         state.break_even_activated = False

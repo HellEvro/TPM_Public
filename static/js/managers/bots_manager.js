@@ -7527,6 +7527,11 @@ class BotsManager {
         if (exitScamAutoLearnEl) {
             autoBotConfig.exit_scam_auto_learn_enabled = exitScamAutoLearnEl.checked;
         }
+        // ✅ КРИТИЧНО: exit_wait_breakeven_when_loss — всегда из DOM (иначе не сохраняется при переключении view)
+        const exitWaitBreakevenEl = document.getElementById('exitWaitBreakevenWhenLoss');
+        if (exitWaitBreakevenEl) {
+            autoBotConfig.exit_wait_breakeven_when_loss = exitWaitBreakevenEl.checked;
+        }
         
         const limitOrderRows = document.querySelectorAll('.limit-order-row');
         if (limitOrderRows.length > 0) {
@@ -8380,7 +8385,7 @@ class BotsManager {
                     rsi_exit_min_candles: 0,
                     rsi_exit_min_minutes: 0,
                     rsi_exit_min_move_percent: 0,
-                    exit_wait_breakeven_when_loss: false,
+                    exit_wait_breakeven_when_loss: true,
                     default_position_size: 10,
                     default_position_mode: 'usdt',
                     check_interval: 180,

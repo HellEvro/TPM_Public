@@ -1,5 +1,7 @@
 {
   "applied": [
-    "001_bot_config_missing_classes"
+    "001_bot_config_missing_classes",
+    "002_exit_wait_breakeven_when_loss",
+    "003_exit_wait_breakeven_default_true"
   ]
 }

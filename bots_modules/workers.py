@@ -491,6 +491,18 @@ def positions_monitor_worker():
 
                                 # ✅ ОПТИМИЗАЦИЯ: Используем статический метод без создания объекта бота
                                 rsi_should_close, rsi_reason = NewTradingBot.check_should_close_by_rsi(symbol, current_rsi, position_side)
+
+                                # ✅ КРИТИЧНО: Для проверки «в минусе / безубыток» используем актуальную цену с биржи,
+                                # а не кэш RSI (close последней свечи может быть устаревшим на 1m → закрытие в минус).
+                                if rsi_should_close or bot_data.get('exit_waiting_breakeven'):
+                                    try:
+                                        ticker = exchange_obj.get_ticker(symbol)
+                                        if ticker:
+                                            fresh_price = ticker.get('last') or ticker.get('markPrice') or ticker.get('mark')
+                                            if fresh_price and float(fresh_price) > 0:
+                                                current_price = float(fresh_price)
+                                    except Exception:
+                                        pass
                                 should_close, reason = NewTradingBot.check_exit_with_breakeven_wait(
                                     symbol, bot_data, current_price, position_side, rsi_should_close, rsi_reason
                                 )

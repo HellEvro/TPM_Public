@@ -1381,7 +1381,8 @@ class NewTradingBot:
 
             exit_waiting = bool(bot_data.get('exit_waiting_breakeven', False))
 
-            if exit_waiting and profit_percent >= 0:
+            # ✅ КРИТИЧНО: закрывать только при profit >= 0.05% (запас от округления/устаревшей цены)
+            if exit_waiting and profit_percent >= 0.05:
                 return True, 'BREAKEVEN_WAIT_EXIT'
 
             if not rsi_should_close:
@@ -1415,21 +1416,28 @@ class NewTradingBot:
                 self._sync_position_with_exchange()
             
             # Обновляем цену из биржи, чтобы trailing работал по реальному значению
-            market_price = self._get_market_price(price)
-            if market_price and market_price > 0:
-                if price and abs(market_price - price) / max(price, 1e-9) >= 0.01:
-                    pass  # обновили цену по бирже
-                price = market_price
+            with bots_data_lock:
+                bot_data = bots_data.get('bots', {}).get(self.symbol, {})
+                exit_waiting = bool(bot_data.get('exit_waiting_breakeven', False))
+            # ✅ КРИТИЧНО: при exit_waiting — ТОЛЬКО свежая цена с биржи (без fallback на свечи), иначе закрытие в минус
+            if exit_waiting:
+                market_price = self._get_market_price(None)  # без fallback: при ошибке тикера = None
+                if market_price and market_price > 0:
+                    price = market_price
+                else:
+                    logger.debug(f"[NEW_BOT_{self.symbol}] exit_waiting: нет свежей цены с биржи — не закрываем по безубытку")
+                    market_price = None
+            else:
+                market_price = self._get_market_price(price)
+                if market_price and market_price > 0:
+                    price = market_price
 
             self.current_price = price
             profit_percent = self._calc_profit_percent(price)
 
             # 0. Ожидание безубытка: если ранее отложили закрытие (в зоне RSI/тейков + минус),
-            #    закрываем как только достигнут безубыток (независимо от RSI).
-            with bots_data_lock:
-                bot_data = bots_data.get('bots', {}).get(self.symbol, {})
-                exit_waiting = bool(bot_data.get('exit_waiting_breakeven', False))
-            if exit_waiting and profit_percent >= 0:
+            #    закрываем только при profit >= 0.05% (запас от округления/шума) и только по свежей цене.
+            if exit_waiting and market_price and profit_percent >= 0.05:
                 logger.info(f"[NEW_BOT_{self.symbol}] 🎯 Безубыток достигнут — закрываем (ожидание завершено)")
                 self._clear_exit_waiting_breakeven()
                 self._close_position_on_exchange('BREAKEVEN_WAIT_EXIT')
