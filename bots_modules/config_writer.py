@@ -189,6 +189,8 @@ def _find_class_block(lines: list, class_name: str):
     """
     Находит блок класса в файле: начало (строка с "class ClassName") и конец (первая строка вне тела класса).
     Возвращает (start_idx, end_idx) или (None, None) если не найдено.
+    КРИТИЧНО: не считать концом тела строки только с ] или ) — это закрытие многострочного
+    WHITELIST/BLACKLIST; иначе новые ключи вставлялись бы перед ] и конфиг ломался.
     """
     start_idx = None
     for i, line in enumerate(lines):
@@ -197,7 +199,8 @@ def _find_class_block(lines: list, class_name: str):
             break
     if start_idx is None:
         return None, None
-    # Конец тела: первая строка с нулевым отступом после start_idx (пустые не считаем)
+    # Конец тела: первая строка с нулевым отступом, которая реально начинает новый блок
+    # (class / секция # ===), а НЕ закрывающая скобка ] или ) от списка/кортежа
     end_idx = len(lines)
     for i in range(start_idx + 1, len(lines)):
         line = lines[i]
@@ -205,8 +208,11 @@ def _find_class_block(lines: list, class_name: str):
         if not stripped:
             continue
         if line[0] != ' ' and line[0] != '\t':
-            end_idx = i
-            break
+            # Строка с нулевым отступом — конец тела только если это новый класс или секция
+            if re.match(r'^class\s+\w+\s*[:(]', stripped) or stripped.startswith('# ==='):
+                end_idx = i
+                break
+            # Иначе это ] или ) или что-то ещё — не конец класса, ищем дальше
     return start_idx, end_idx
 
 
@@ -325,15 +331,16 @@ def _update_attr_value_in_line(line: str, attr_upper: str, new_value: Any) -> Op
     """
     Если строка — атрибут класса вида "    ATTR = value  # comment", подменяет только value.
     Возвращает обновлённую строку или None, если строка не этот атрибут.
+    КРИТИЧНО: всегда пишем отступ 4 пробела, чтобы не тиражировать ошибочный отступ (8 пробелов).
     """
     match = re.match(r'^(\s+)([A-Z_0-9]+)\s*=\s*([^#\n]*?)(\s*(?:#.*)?)$', line)
     if not match:
         return None
-    _indent, name, _old_val, rest = match.groups()
+    name, _old_val, rest = match.group(2), match.group(3), match.group(4)
     if name != attr_upper:
         return None
     new_val_str = _format_python_value(new_value)
-    return f'{match.group(1)}{name} = {new_val_str}{rest.rstrip()}\n'
+    return f'    {name} = {new_val_str}{rest.rstrip()}\n'
 
 
 def save_auto_bot_config_current_to_py(config: Dict[str, Any]) -> bool:
@@ -355,6 +362,14 @@ def save_auto_bot_config_current_to_py(config: Dict[str, Any]) -> bool:
         start_idx, end_idx = _find_class_block(lines, 'AutoBotConfig')
         if start_idx is None or end_idx is None:
             logger.error(f"[CONFIG_WRITER] ❌ Не найден класс AutoBotConfig в {config_file}")
+            return False
+        # Защита от перезаписи повреждённого конфига: если после AutoBotConfig нет других классов — не трогать
+        content_after = ''.join(lines[end_idx:]) if end_idx < len(lines) else ''
+        if end_idx >= len(lines) or not re.search(r'\bclass\s+(SystemConfig|DefaultBotConfig|RiskConfig)\b', content_after):
+            logger.error(
+                "[CONFIG_WRITER] ❌ Файл конфига повреждён (нет класса SystemConfig/DefaultBotConfig после AutoBotConfig). "
+                "Восстановите configs/bot_config.py из configs/bot_config.example.py вручную."
+            )
             return False
         updated_lines = list(lines)
         keys_not_found: list = []  # (attr_upper, value) для вставки
