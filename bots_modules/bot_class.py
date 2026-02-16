@@ -1485,7 +1485,8 @@ class NewTradingBot:
                 else:
                     effective_min_candles = min_candles
                 allow_by_time = candles_in_position >= effective_min_candles if effective_min_candles > 0 else True
-                allow_by_move = False
+                # allow_by_move: при min_move_percent > 0 — выход по RSI разрешён только при движении цены >= X%
+                allow_by_move = True  # по умолчанию (когда min_move_percent=0)
                 if min_move_percent > 0 and self.entry_price and price and float(self.entry_price) > 0:
                     try:
                         entry_f = float(self.entry_price)
@@ -1496,13 +1497,23 @@ class NewTradingBot:
                             roi_pct = (entry_f - price_f) / entry_f * 100.0
                         allow_by_move = abs(roi_pct) >= min_move_percent
                     except (TypeError, ValueError, ZeroDivisionError):
-                        pass
-                allow_rsi_exit = allow_by_time or allow_by_move
-                if effective_min_candles > 0 and not allow_rsi_exit:
-                    # Не проверяем RSI-выход — рано (ни по времени, ни по движению)
+                        allow_by_move = False
+                # Вариант B: при min_move_percent > 0 блокируем RSI-выход до достижения мин. движения
+                allow_rsi_exit = allow_by_time and (allow_by_move or min_move_percent <= 0)
+                if not allow_rsi_exit:
+                    # Не проверяем RSI-выход — рано (мин. время или мин. движение не достигнуты)
+                    reason_part = []
+                    if effective_min_candles > 0 and candles_in_position < effective_min_candles:
+                        reason_part.append(f"свечей {candles_in_position:.0f}<{effective_min_candles}")
+                    if min_move_percent > 0 and not allow_by_move and self.entry_price and price:
+                        try:
+                            entry_f, price_f = float(self.entry_price), float(price)
+                            roi = (price_f - entry_f) / entry_f * 100.0 if self.position_side == 'LONG' else (entry_f - price_f) / entry_f * 100.0
+                            reason_part.append(f"движение {roi:.2f}%<{min_move_percent}%")
+                        except (TypeError, ValueError, ZeroDivisionError):
+                            reason_part.append(f"движение<{min_move_percent}%")
                     logger.debug(
-                        f"[NEW_BOT_{self.symbol}] RSI выход отложен: в позиции {candles_in_position:.0f} свечей (ТФ={tf}), "
-                        f"нужно мин. {effective_min_candles} (rsi_exit_min_candles/min_minutes); движение={min_move_percent}%"
+                        f"[NEW_BOT_{self.symbol}] RSI выход отложен: {'; '.join(reason_part) or 'условия не выполнены'}"
                     )
                 else:
                         should_close, reason = self.should_close_position(rsi, price, self.position_side)
