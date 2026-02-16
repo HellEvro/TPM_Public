@@ -528,16 +528,22 @@ def get_coin_candles_only(symbol, exchange_obj=None, timeframe=None, bulk_mode=F
             except Exception:
                 timeframe = TIMEFRAME
         
-        # Получаем ТОЛЬКО свечи с указанным таймфреймом (bulk_mode только для Bybit; лимит = min_candles_for_maturity, но не меньше 100)
-        if bulk_mode and getattr(exchange_to_use.__class__, '__name__', '') == 'BybitExchange':
-            try:
-                from bots_modules.imports_and_globals import MIN_CANDLES_FOR_MATURITY
-                bulk_limit = max(MIN_CANDLES_FOR_MATURITY or 400, 100)
-            except Exception:
-                bulk_limit = 400
-            chart_response = exchange_to_use.get_chart_data(symbol, timeframe, '30d', bulk_mode=True, bulk_limit=bulk_limit)
-        else:
-            chart_response = exchange_to_use.get_chart_data(symbol, timeframe, '30d')
+        # ⚡ СЕМАФОР: ограничиваем одновременные kline-запросы (Bybit 10 req/s)
+        global _exchange_api_semaphore
+        try:
+            _exchange_api_semaphore
+        except NameError:
+            _exchange_api_semaphore = threading.Semaphore(8)
+        with _exchange_api_semaphore:
+            if bulk_mode and getattr(exchange_to_use.__class__, '__name__', '') == 'BybitExchange':
+                try:
+                    from bots_modules.imports_and_globals import MIN_CANDLES_FOR_MATURITY
+                    bulk_limit = max(MIN_CANDLES_FOR_MATURITY or 400, 100)
+                except Exception:
+                    bulk_limit = 400
+                chart_response = exchange_to_use.get_chart_data(symbol, timeframe, '30d', bulk_mode=True, bulk_limit=bulk_limit)
+            else:
+                chart_response = exchange_to_use.get_chart_data(symbol, timeframe, '30d')
         
         if not chart_response or not chart_response.get('success'):
             return None
@@ -938,13 +944,19 @@ def get_coin_rsi_data_for_timeframe(symbol, exchange_obj=None, timeframe=None):
             if cached_timeframe == timeframe:
                 candles = symbol_cache.get('candles')
     
-    # Если нет в кэше - загружаем с биржи
+    # Если нет в кэше - загружаем с биржи (с семафором)
     if not candles:
         from bots_modules.imports_and_globals import get_exchange
         exchange_to_use = exchange_obj if exchange_obj is not None else get_exchange()
         if exchange_to_use:
             try:
-                chart_response = exchange_to_use.get_chart_data(symbol, timeframe, '30d')
+                global _exchange_api_semaphore
+                try:
+                    _exchange_api_semaphore
+                except NameError:
+                    _exchange_api_semaphore = threading.Semaphore(8)
+                with _exchange_api_semaphore:
+                    chart_response = exchange_to_use.get_chart_data(symbol, timeframe, '30d')
                 if chart_response and chart_response.get('success'):
                     candles = chart_response['data']['candles']
                     # Сохраняем в кэш
@@ -1177,7 +1189,7 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
     try:
         _exchange_api_semaphore
     except NameError:
-        _exchange_api_semaphore = threading.Semaphore(3)  # ⚡ 3 одновременных запроса — снижает rate limit Bybit (5 мин блок)
+        _exchange_api_semaphore = threading.Semaphore(8)  # ⚡ 8 одновременных kline — под лимит Bybit 10 req/s
     
     import time
     thread_start = time.time()
@@ -2081,7 +2093,8 @@ def load_all_coins_candles_fast():
             candles_cache = {}
             
             import concurrent.futures
-            current_max_workers = 80 if use_bulk else 10
+            # Bybit kline: 10 req/s — ограничиваем воркеры, семафор внутри get_coin_candles_only
+            current_max_workers = min(10, batch_size) if use_bulk else min(10, batch_size)
             batch_timeout = 15 if use_bulk else 45
             rate_limit_detected = False
             
@@ -2101,13 +2114,11 @@ def load_all_coins_candles_fast():
                 total_batches = (len(pairs_for_tf) + batch_size - 1)//batch_size
                 
                 if rate_limit_detected:
-                    current_max_workers = max(20 if use_bulk else 5, current_max_workers - (20 if use_bulk else 2))
+                    current_max_workers = max(5, current_max_workers - 2)
                     logger.warning(f"⚠️ Rate limit в предыдущем батче. Воркеры: {current_max_workers}")
                     rate_limit_detected = False
-                elif use_bulk and current_max_workers < 80:
-                    current_max_workers = 80
-                elif not use_bulk and current_max_workers < 10:
-                    current_max_workers = 10
+                else:
+                    current_max_workers = min(10, batch_size)
                 
                 delay_before_batch = current_exchange.current_request_delay if hasattr(current_exchange, 'current_request_delay') else None
                 
@@ -2496,6 +2507,8 @@ def load_all_coins_rsi():
             # ✅ ПАРАЛЛЕЛЬНАЯ загрузка с текстовым прогрессом (работает в лог-файле)
             batch_size = 100
             total_batches = (len(pairs_for_tf) + batch_size - 1) // batch_size
+            # Bybit kline 10 req/s — ограничиваем воркеры
+            rsi_max_workers = min(10, batch_size)
 
             for i in range(0, len(pairs_for_tf), batch_size):
                 if shutdown_flag.is_set():
@@ -2515,14 +2528,14 @@ def load_all_coins_rsi():
 
                 logger.info(
                     f"📦 RSI Batch {batch_num}/{total_batches} (ТФ={timeframe}): "
-                    f"size={len(batch)}, workers=50, delay={request_delay:.2f}s"
+                    f"size={len(batch)}, workers={rsi_max_workers}, delay={request_delay:.2f}s"
                 )
 
                 batch_success = 0
                 batch_fail = 0
 
-                # Параллельная обработка пакета
-                with ThreadPoolExecutor(max_workers=50) as executor:
+                # Параллельная обработка пакета (ограничено Bybit 10 req/s для kline)
+                with ThreadPoolExecutor(max_workers=rsi_max_workers) as executor:
                     # ✅ Передаем timeframe в get_coin_rsi_data_for_timeframe
                     future_to_symbol = {
                         executor.submit(
