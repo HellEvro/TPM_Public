@@ -154,9 +154,9 @@ class BybitExchange(BaseExchange):
         self.max_profit_values = {}
         self.max_loss_values = {}
         
-        # Управление задержкой между запросами для предотвращения rate limit
-        self.base_request_delay = 0.5  # Базовая задержка между запросами (500ms) - увеличено для стабильности
-        self.current_request_delay = 0.5  # Текущая задержка (может увеличиваться при rate limit)
+        # Управление задержкой между запросами для предотвращения rate limit (Bybit: "Access too frequent. Please try again in 5 minutes.")
+        self.base_request_delay = 1.0  # Базовая задержка 1с — снижает вероятность 5-мин блокировки
+        self.current_request_delay = 1.0  # Текущая задержка (может увеличиваться при rate limit)
         self.max_request_delay = 30.0  # Максимальная задержка между запросами при rate limit (30 с)
         self.rate_limit_error_count = 0  # Счетчик ошибок rate limit для агрессивного увеличения задержки
         self.last_rate_limit_time = 0  # Время последней ошибки rate limit
@@ -1254,9 +1254,10 @@ class BybitExchange(BaseExchange):
         Returns:
             dict: Данные для построения графика
         """
+        # КРИТИЧНО: Ждём окончания глобальной паузы — иначе новые запросы бьют в rate limit и продлевают блокировку
+        self._wait_api_cooldown()
         if not bulk_mode:
             time.sleep(self.current_request_delay)
-        # Глобальную паузу (_wait_api_cooldown) не вызываем здесь: боты не должны ждать. Пауза только в массовой загрузке RSI (filters.py).
 
         try:
             # Символ "all" не является торговой парой — не вызываем API (Bybit вернёт Symbol Is Invalid)
@@ -1305,13 +1306,17 @@ class BybitExchange(BaseExchange):
                                     limit=1000
                                 )
                                 
-                                # Обработка rate limiting в ответе
-                                if response.get('retCode') == 10006:
-                                    ret_msg = (response.get('retMsg') or '').lower()
+                                # Обработка rate limiting в ответе (retCode 10006 или формат {"error": "Access too frequent..."})
+                                ret_msg = (response.get('retMsg') or response.get('error') or '').lower()
+                                is_rate_limit_response = (
+                                    response.get('retCode') == 10006
+                                    or (isinstance(response.get('error'), str) and ('access too frequent' in (response.get('error') or '').lower() or '5 minutes' in (response.get('error') or '').lower()))
+                                )
+                                if is_rate_limit_response:
                                     # Bybit при жёстком лимите: «Access too frequent. Please try again in 5 minutes»
                                     if '5 minutes' in ret_msg or 'access too frequent' in ret_msg:
                                         cooldown = self._API_COOLDOWN_FULL  # 5 минут
-                                        self._set_api_cooldown(cooldown, "Bybit: повторить через 5 минут (10006)")
+                                        self._set_api_cooldown(cooldown, "Bybit: повторить через 5 минут (rate limit)")
                                         logger.warning(f"⏳ [BOTS] API rate limit. Ждём {cooldown}с перед повтором для {symbol} ({interval_name})...")
                                         time.sleep(cooldown)
                                     else:
@@ -1322,7 +1327,7 @@ class BybitExchange(BaseExchange):
                                         total_delay = delay + additional_delay
                                         time.sleep(total_delay)
                                     retry_count += 1
-                                    logger.error(f"❌ [BOTS] Too many visits. Exceeded the API Rate Limit. (ErrCode: 10006). Hit the API rate limit on https://api.bybit.com/v5/market/kline?category=linear&interval={interval}&limit=1000&symbol={clean_sym}USDT. Sleeping then trying again.")
+                                    logger.error(f"❌ [BOTS] Rate limit (10006/error). Пауза для {symbol} ({interval_name}). Не спамим API — ждём.")
                                     
                                     if retry_count < max_retries:
                                         logger.info(f"🔄 Повторная попытка {retry_count}/{max_retries} для {symbol} ({interval_name}) после паузы {total_delay:.1f}с...")
@@ -1529,11 +1534,15 @@ class BybitExchange(BaseExchange):
                             limit=kline_limit
                         )
                         
-                        # Обработка rate limiting в ответе
-                        if response.get('retCode') == 10006:
-                            ret_msg = (response.get('retMsg') or '').lower()
-                            if '5 minutes' in ret_msg or 'access too frequent' in ret_msg:
-                                self._set_api_cooldown(self._API_COOLDOWN_FULL, "Bybit kline: 5 минут (10006)")
+                        # Обработка rate limiting (retCode 10006 или {"error": "Access too frequent..."})
+                        ret_msg_std = (response.get('retMsg') or response.get('error') or '').lower()
+                        is_rate_limit_std = (
+                            response.get('retCode') == 10006
+                            or (isinstance(response.get('error'), str) and ('access too frequent' in (response.get('error') or '').lower() or '5 minutes' in (response.get('error') or '').lower()))
+                        )
+                        if is_rate_limit_std:
+                            if '5 minutes' in ret_msg_std or 'access too frequent' in ret_msg_std:
+                                self._set_api_cooldown(self._API_COOLDOWN_FULL, "Bybit kline: 5 минут (rate limit)")
                                 logger.error(f"❌ [BOTS] Too many visits (5 min). Пауза {self._API_COOLDOWN_FULL}с для {symbol}.")
                                 time.sleep(self._API_COOLDOWN_FULL)
                             else:
@@ -1579,7 +1588,8 @@ class BybitExchange(BaseExchange):
                         error_str = str(api_error).lower()
                         is_rate_limit = (
                             isinstance(api_error, KeyError) and api_error.args and api_error.args[0] == 'x-bapi-limit-reset-timestamp'
-                            or 'rate limit' in error_str or 'too many' in error_str or '10006' in error_str or 'x-bapi-limit-reset-timestamp' in error_str
+                            or 'rate limit' in error_str or 'too many' in error_str or '10006' in error_str
+                            or 'access too frequent' in error_str or 'x-bapi-limit-reset-timestamp' in error_str
                         )
                         if is_rate_limit:
                             hard_block = (

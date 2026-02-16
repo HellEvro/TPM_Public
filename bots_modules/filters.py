@@ -1177,7 +1177,7 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
     try:
         _exchange_api_semaphore
     except NameError:
-        _exchange_api_semaphore = threading.Semaphore(5)  # ⚡ Уменьшили до 5 для стабильности
+        _exchange_api_semaphore = threading.Semaphore(3)  # ⚡ 3 одновременных запроса — снижает rate limit Bybit (5 мин блок)
     
     import time
     thread_start = time.time()
