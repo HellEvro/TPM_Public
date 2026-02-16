@@ -775,7 +775,7 @@ class BotsManager {
             `;
         }
     }
-    async loadCoinsRsiData() {
+    async loadCoinsRsiData(forceUpdate = false) {
         if (!this.serviceOnline) {
             console.warn('[BotsManager] ⚠️ Сервис не онлайн, пропускаем загрузку');
             return;
@@ -796,9 +796,10 @@ class BotsManager {
             const data = await response.json();
             
             if (data.success) {
-                    // ✅ ОПТИМИЗАЦИЯ: Проверяем версию данных - обновляем UI только при изменениях
+                    // ✅ ОПТИМИЗАЦИЯ: Проверяем версию данных - обновляем UI только при изменениях.
+                    // При forceUpdate (например после обновления ручных позиций) всегда применяем данные.
                     const currentDataVersion = data.data_version || 0;
-                    if (currentDataVersion === this.lastDataVersion && this.coinsRsiData.length > 0) {
+                    if (!forceUpdate && currentDataVersion === this.lastDataVersion && this.coinsRsiData.length > 0) {
                         this.logDebug('[BotsManager] ⏭️ Данные не изменились (version=' + currentDataVersion + '), пропускаем обновление UI');
                         return;
                     }
@@ -10434,8 +10435,8 @@ class BotsManager {
                     const result = await response.json();
                     console.log('[BotsManager] ✅ Ручные позиции обновлены:', result);
                     
-                    // Обновляем данные и интерфейс
-                    await this.loadCoinsRsiData();
+                    // Принудительно обновляем список (без проверки data_version), чтобы применился новый manual_positions
+                    await this.loadCoinsRsiData(true);
                     
                     // Показываем уведомление
                     if (window.showToast) {
