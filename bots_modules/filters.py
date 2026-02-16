@@ -2292,11 +2292,35 @@ def load_all_coins_rsi():
     Рассчитывает RSI для:
     - Системного таймфрейма (для новых входов)
     - Всех entry_timeframe из ботов в позиции
+
+    При достижении max_concurrent ботов пропускает обновление — нет смысла опрашивать
+    все монеты, пока нельзя создавать новых ботов (снижает нагрузку на API).
     """
     global coins_rsi_data
 
     operation_start = time.time()
     logger.info("📊 RSI: запускаем полное обновление")
+
+    # ✅ Оптимизация: при лимите ботов не опрашиваем все монеты — новых всё равно нельзя создать
+    try:
+        from bots_modules.imports_and_globals import bots_data, bots_data_lock, BOT_STATUS
+        from bot_engine.config_loader import get_config_value
+        with bots_data_lock:
+            bots = bots_data.get('bots', {})
+            auto_config = bots_data.get('auto_bot_config', {})
+        max_concurrent = get_config_value(auto_config, 'max_concurrent')
+        current_active = sum(
+            1 for b in bots.values()
+            if b.get('status') not in [BOT_STATUS.get('IDLE'), BOT_STATUS.get('PAUSED')]
+        )
+        if current_active >= max_concurrent and max_concurrent > 0:
+            logger.info(
+                f"⏸️ RSI: пропуск полной загрузки — лимит ботов ({current_active}/{max_concurrent}). "
+                "Новых нельзя создать, опрос всех монет отложен до освобождения слотов."
+            )
+            return False
+    except Exception as _e:
+        pass  # при ошибке — продолжаем как обычно
 
     # ⚡ БЕЗ БЛОКИРОВКИ: проверяем флаг без блокировки
     if coins_rsi_data["update_in_progress"]:
