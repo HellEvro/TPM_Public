@@ -2222,6 +2222,8 @@ def load_all_coins_candles_fast():
                             existing[sym] = {}
                         existing[sym].update(tf_data)
                     coins_rsi_data['candles_cache'] = existing
+            elif reduced_mode and not merged_candles_cache:
+                pass  # Нет позиций — кэш свечей не трогаем
             else:
                 coins_rsi_data['candles_cache'] = merged_candles_cache
             coins_rsi_data['last_candles_update'] = datetime.now().isoformat()
@@ -2553,8 +2555,8 @@ def load_all_coins_rsi():
                             future.cancel()
                         break
 
-                    # Таймаут пакета: 100 символов при 50 воркерах и задержках API биржи могут не уложиться в 60 сек
-                    batch_timeout = 120
+                    # Таймаут пакета: 10 воркеров, семафор 8 — 100 символов могут занять до 3 мин при задержках API
+                    batch_timeout = 200
                     result_timeout = 30
                     try:
                         for future in concurrent.futures.as_completed(
@@ -2639,6 +2641,7 @@ def load_all_coins_rsi():
         # ✅ КРИТИЧНО: АТОМАРНОЕ обновление
         # reduced_mode: мержим только обновлённые монеты (позиции), не затираем остальные
         # full mode: полная замена
+        # ⚠️ reduced_mode + пустой temp: НЕ перезаписываем coins (иначе стёрли бы все данные!)
         if reduced_mode and temp_coins_data:
             with rsi_data_lock:
                 existing = coins_rsi_data.get("coins", {}) or {}
@@ -2648,6 +2651,8 @@ def load_all_coins_rsi():
                     else:
                         existing[sym] = data
                 coins_rsi_data["coins"] = existing
+        elif reduced_mode and not temp_coins_data:
+            pass  # Ничего не загрузили (нет позиций) — оставляем coins как есть
         else:
             coins_rsi_data["coins"] = temp_coins_data
         coins_rsi_data["last_update"] = datetime.now().isoformat()
