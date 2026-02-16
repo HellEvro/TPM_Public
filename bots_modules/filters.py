@@ -2588,8 +2588,8 @@ def load_all_coins_rsi():
                                 batch_fail += 1
                     except concurrent.futures.TimeoutError:
                         pending = [
-                            s for s, f in future_to_symbol.items()
-                            if not f.done()
+                            symbol for future, symbol in future_to_symbol.items()
+                            if not future.done()
                         ]
                         logger.error(
                             "⚠️ Timeout при загрузке RSI для пакета "
