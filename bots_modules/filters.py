@@ -1975,8 +1975,9 @@ def get_required_timeframes_for_rsi():
 
 def load_all_coins_candles_fast():
     """⚡ БЫСТРАЯ загрузка ТОЛЬКО свечей для всех монет БЕЗ расчетов
-    
-    ✅ ОПТИМИЗАЦИЯ: Загружает свечи для всех требуемых таймфреймов (системный + entry_timeframe ботов в позиции)
+
+    Свечи нужны для расчёта RSI и миниграфиков. При достижении max_concurrent ботов —
+    режим «только монеты с ботами»: загружаем свечи только для монет с активными ботами.
     """
     try:
         logger.info("📦 load_all_coins_candles_fast: ВХОД (загрузка начинается)")
@@ -1986,45 +1987,92 @@ def load_all_coins_candles_fast():
         if not current_exchange:
             logger.error("❌ Биржа не инициализирована")
             return False
-        
+
         if shutdown_flag.is_set():
             logger.warning("⏹️ Загрузка свечей отменена: система завершает работу")
             return False
 
-        # ✅ ОПТИМИЗАЦИЯ: Получаем все требуемые таймфреймы
-        logger.info("📦 Получаем требуемые таймфреймы (lock)...")
-        required_timeframes = get_required_timeframes()
-        logger.info(f"📦 Таймфреймы: {required_timeframes}")
-        if not required_timeframes:
+        # ✅ Режим при лимите ботов: только монеты с активными ботами
+        reduced_mode = False
+        bot_symbols_to_tf: dict[str, list[str]] = {}
+        try:
+            from bots_modules.imports_and_globals import bots_data, bots_data_lock, BOT_STATUS
+            from bot_engine.config_loader import get_config_value, get_current_timeframe, TIMEFRAME
+            with bots_data_lock:
+                bots = bots_data.get('bots', {})
+                auto_config = bots_data.get('auto_bot_config', {})
+            max_concurrent = get_config_value(auto_config, 'max_concurrent')
             try:
-                from bot_engine.config_loader import get_current_timeframe
-                required_timeframes = [get_current_timeframe()]
+                default_tf = get_current_timeframe() or TIMEFRAME
             except Exception:
-                from bot_engine.config_loader import TIMEFRAME
-                required_timeframes = [TIMEFRAME]
-        
-        logger.info(f"📦 Загружаем свечи для таймфреймов: {required_timeframes}")
+                default_tf = TIMEFRAME
+            current_active = sum(
+                1 for b in bots.values()
+                if b.get('status') not in [BOT_STATUS.get('IDLE'), BOT_STATUS.get('PAUSED')]
+            )
+            if current_active >= max_concurrent and max_concurrent > 0:
+                reduced_mode = True
+                for symbol, bot_data in bots.items():
+                    status = bot_data.get('status')
+                    if status in [BOT_STATUS.get('IN_POSITION_LONG'), BOT_STATUS.get('IN_POSITION_SHORT')]:
+                        entry_tf = bot_data.get('entry_timeframe') or default_tf
+                        if symbol not in bot_symbols_to_tf:
+                            bot_symbols_to_tf[symbol] = []
+                        if entry_tf not in bot_symbols_to_tf[symbol]:
+                            bot_symbols_to_tf[symbol].append(entry_tf)
+                if not bot_symbols_to_tf:
+                    logger.info(
+                        f"⏸️ Свечи: пропуск — лимит ({current_active}/{max_concurrent}), "
+                        "нет ботов в позиции."
+                    )
+                    return False
+                logger.info(
+                    f"📦 Свечи: режим «только с ботами» — лимит ({current_active}/{max_concurrent}). "
+                    f"Загружаем только {len(bot_symbols_to_tf)} монет."
+                )
+        except Exception as _e:
+            pass
 
-        # Получаем список всех пар (с таймаутом 30 сек — чтобы не зависнуть на API)
-        logger.info("📦 Получаем список пар с биржи (get_all_pairs, таймаут 30с)...")
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-            fut = ex.submit(current_exchange.get_all_pairs)
-            try:
-                pairs = fut.result(timeout=30)
-            except concurrent.futures.TimeoutError:
-                logger.error("❌ get_all_pairs: таймаут 30с — биржа не ответила. Проверьте сеть и API.")
-                return False
-        logger.info(f"📦 Получено пар: {len(pairs) if pairs else 0}")
+        if reduced_mode:
+            required_timeframes = sorted(set(tf for tfs in bot_symbols_to_tf.values() for tf in tfs))
+            pairs = list(bot_symbols_to_tf.keys())
+        else:
+            required_timeframes = get_required_timeframes()
+            if not required_timeframes:
+                try:
+                    from bot_engine.config_loader import get_current_timeframe
+                    required_timeframes = [get_current_timeframe()]
+                except Exception:
+                    from bot_engine.config_loader import TIMEFRAME
+                    required_timeframes = [TIMEFRAME]
+            logger.info(f"📦 Таймфреймы: {required_timeframes}")
+
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(current_exchange.get_all_pairs)
+                try:
+                    pairs = fut.result(timeout=30)
+                except concurrent.futures.TimeoutError:
+                    logger.error("❌ get_all_pairs: таймаут 30с — биржа не ответила. Проверьте сеть и API.")
+                    return False
+
+        logger.info(f"📦 Загружаем свечи для {len(pairs)} монет, ТФ: {required_timeframes}")
         if not pairs:
             logger.error("❌ Не удалось получить список пар")
             return False
         
         # Загружаем свечи для каждого требуемого таймфрейма
         all_candles_cache = {}
-        
+
         for timeframe in required_timeframes:
-            logger.info(f"📦 Загружаем свечи для таймфрейма {timeframe}...")
+            if reduced_mode:
+                pairs_for_tf = [s for s in pairs if timeframe in bot_symbols_to_tf.get(s, [])]
+                if not pairs_for_tf:
+                    continue
+            else:
+                pairs_for_tf = pairs
+
+            logger.info(f"📦 Загружаем свечи для таймфрейма {timeframe}... ({len(pairs_for_tf)} монет)")
             
             # bulk_mode: один запрос 100 свечей без задержки — агрессивный параллелизм для загрузки за ~10–30 с
             # Без bulk_mode: 10 воркеров, батч 10, таймаут 45 с (осторожно по rate limit)
@@ -2039,7 +2087,7 @@ def load_all_coins_candles_fast():
             
             shutdown_requested = False
 
-            for i in range(0, len(pairs), batch_size):
+            for i in range(0, len(pairs_for_tf), batch_size):
                 if shutdown_flag.is_set():
                     shutdown_requested = True
                     break
@@ -2048,9 +2096,9 @@ def load_all_coins_candles_fast():
                 if hasattr(current_exchange, '_wait_api_cooldown'):
                     current_exchange._wait_api_cooldown()
 
-                batch = pairs[i:i + batch_size]
+                batch = pairs_for_tf[i:i + batch_size]
                 batch_num = i//batch_size + 1
-                total_batches = (len(pairs) + batch_size - 1)//batch_size
+                total_batches = (len(pairs_for_tf) + batch_size - 1)//batch_size
                 
                 if rate_limit_detected:
                     current_max_workers = max(20 if use_bulk else 5, current_max_workers - (20 if use_bulk else 2))
@@ -2102,7 +2150,7 @@ def load_all_coins_candles_fast():
                     
                     # Прогресс загрузки свечей (видно в логе)
                     loaded = len(candles_cache)
-                    total_pairs = len(pairs)
+                    total_pairs = len(pairs_for_tf)
                     pct = (loaded * 100) // total_pairs if total_pairs else 0
                     logger.info(f"📦 Свечи {timeframe}: батч {batch_num}/{total_batches} — загружено {loaded}/{total_pairs} монет ({pct}%)")
                     
@@ -2151,14 +2199,25 @@ def load_all_coins_candles_fast():
                 merged_candles_cache[symbol][timeframe] = candle_data
         
         logger.info(f"✅ Загрузка завершена: {len(merged_candles_cache)} монет для {len(required_timeframes)} таймфреймов")
-        
-        # ⚡ ИСПРАВЛЕНИЕ DEADLOCK: Сохраняем в глобальный кэш БЕЗ блокировки
-        # rsi_data_lock может быть захвачен ContinuousDataLoader в другом потоке
+
+        # reduced_mode: мержим только обновлённые монеты, не затираем остальные
         try:
             logger.info(f"💾 Сохраняем кэш в глобальное хранилище...")
-            coins_rsi_data['candles_cache'] = merged_candles_cache
+            if reduced_mode and merged_candles_cache:
+                with rsi_data_lock:
+                    existing = coins_rsi_data.get('candles_cache', {}) or {}
+                    for sym, tf_data in merged_candles_cache.items():
+                        if sym not in existing:
+                            existing[sym] = {}
+                        existing[sym].update(tf_data)
+                    coins_rsi_data['candles_cache'] = existing
+            else:
+                coins_rsi_data['candles_cache'] = merged_candles_cache
             coins_rsi_data['last_candles_update'] = datetime.now().isoformat()
-            logger.info(f"✅ Кэш сохранен: {len(merged_candles_cache)} монет для {len(required_timeframes)} таймфреймов")
+            logger.info(
+                f"✅ Кэш сохранен: {len(merged_candles_cache)} монет для {len(required_timeframes)} таймфреймов"
+                + (" (режим «только с ботами», данные смержены)" if reduced_mode else "")
+            )
         except Exception as cache_error:
             logger.warning(f"⚠️ Ошибка сохранения кэша: {cache_error}")
         
