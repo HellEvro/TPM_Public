@@ -2953,6 +2953,82 @@ def individual_coin_settings(symbol):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ==================== ПРИИ: параметры по монетам (только при full_ai_control) ====================
+
+@bots_app.route('/api/bots/prii-coin-params', methods=['GET', 'POST'])
+def prii_coin_params_list():
+    """GET: список всех параметров ПРИИ по монетам. POST: массовое сохранение { "SYMBOL": {...}, ... }."""
+    try:
+        from bot_engine.bots_database import get_bots_database
+        db = get_bots_database()
+        if request.method == 'GET':
+            all_params = db.load_all_full_ai_coin_params()
+            return jsonify({'success': True, 'params': all_params})
+        if request.method == 'POST':
+            payload = request.get_json(silent=True)
+            if not payload or not isinstance(payload, dict):
+                return jsonify({'success': False, 'error': 'Invalid payload'}), 400
+            saved = {}
+            for sym, params in payload.items():
+                if not sym or not isinstance(params, dict):
+                    continue
+                norm = str(sym).upper()
+                if db.save_full_ai_coin_params(norm, params):
+                    saved[norm] = params
+            return jsonify({'success': True, 'saved': saved})
+    except Exception as e:
+        logger.exception(f"ПРИИ coin params: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bots_app.route('/api/bots/prii-trades-analysis', methods=['POST'])
+def prii_trades_analysis_run():
+    """Запуск анализа сделок ПРИИ (блок 7.4). Можно вызывать по расписанию (cron)."""
+    try:
+        from bots_modules.prii_trades_learner import run_prii_trades_analysis
+        payload = request.get_json(silent=True) or {}
+        days_back = int(payload.get('days_back', 7))
+        min_trades = int(payload.get('min_trades_per_symbol', 2))
+        result = run_prii_trades_analysis(days_back=days_back, min_trades_per_symbol=min_trades, adjust_params=True)
+        return jsonify(result)
+    except Exception as e:
+        logger.exception(f"ПРИИ trades analysis: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bots_app.route('/api/bots/prii-coin-params/<symbol>', methods=['GET', 'POST', 'DELETE'])
+def prii_coin_params_one(symbol):
+    """CRUD параметров ПРИИ для одной монеты."""
+    try:
+        if not symbol:
+            return jsonify({'success': False, 'error': 'Symbol is required'}), 400
+        from bot_engine.bots_database import get_bots_database
+        db = get_bots_database()
+        norm = str(symbol).upper()
+        if request.method == 'GET':
+            params = db.load_full_ai_coin_params(norm)
+            if params is None:
+                return jsonify({'success': False, 'error': 'Not found'}), 404
+            return jsonify({'success': True, 'symbol': norm, 'params': params})
+        if request.method == 'POST':
+            payload = request.get_json(silent=True)
+            if not payload or not isinstance(payload, dict):
+                return jsonify({'success': False, 'error': 'Invalid payload'}), 400
+            if db.save_full_ai_coin_params(norm, payload):
+                return jsonify({'success': True, 'symbol': norm, 'params': payload})
+            return jsonify({'success': False, 'error': 'Save failed'}), 500
+        if request.method == 'DELETE':
+            params = db.load_full_ai_coin_params(norm)
+            if not params:
+                return jsonify({'success': False, 'error': 'Not found'}), 404
+            if db.save_full_ai_coin_params(norm, {}):
+                return jsonify({'success': True, 'symbol': norm, 'removed': True})
+            return jsonify({'success': False, 'error': 'Delete failed'}), 500
+    except Exception as e:
+        logger.exception(f"ПРИИ coin params {symbol}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @bots_app.route('/api/bots/individual-settings/<symbol>/copy-to-all', methods=['POST'])
 def copy_individual_settings(symbol):
     """Копирует индивидуальные настройки монеты ко всем другим монетам"""

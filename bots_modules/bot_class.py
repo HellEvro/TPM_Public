@@ -1543,6 +1543,11 @@ class NewTradingBot:
                             reason_exit = decision.get('reason', 'PRII_EXIT')
                             logger.info(f"[NEW_BOT_{self.symbol}] 🧠 ПРИИ: закрытие — {reason_exit}")
                             self._close_position_on_exchange(reason_exit)
+                            try:
+                                from bots_modules.prii_trades_learner import run_prii_trades_analysis_after_close
+                                run_prii_trades_analysis_after_close(self.symbol)
+                            except Exception as _lerr:
+                                logger.debug(f"[NEW_BOT_{self.symbol}] ПРИИ learner после закрытия: {_lerr}")
                             return {'success': True, 'action': f"CLOSE_{self.position_side}", 'reason': reason_exit}
                     except Exception as e:
                         logger.exception(f"[NEW_BOT_{self.symbol}] ПРИИ выход: {e}")

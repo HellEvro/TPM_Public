@@ -1133,25 +1133,38 @@ class AIStrategyOptimizer:
                     logger.info(f"      💡 Эти параметры будут использоваться ботами вместо глобальных")
                     self._log_param_changes(symbol, best_params)
 
-                    # Сохраняем оптимальные параметры для монеты через API bots.py
+                    # Сохраняем оптимальные параметры: при ПРИИ — только в full_ai_coin_params; иначе — individual_coin_settings
                     try:
-                        import requests
-                        response = requests.post(
-                            'http://localhost:5001/api/bots/individual-settings/' + symbol,
-                            json=best_params,
-                            timeout=5
-                        )
-                        if response.status_code == 200:
-                            logger.info(f"   💾 Оптимизированные параметры сохранены для {symbol}")
-                        else:
-                            logger.warning(f"   ⚠️ Не удалось сохранить параметры через API: {response.status_code}")
-                            # Пробуем напрямую через импорт
+                        from bots_modules.imports_and_globals import bots_data, bots_data_lock
+                        with bots_data_lock:
+                            full_ai_control = (bots_data.get('auto_bot_config') or {}).get('full_ai_control', False)
+                        if full_ai_control:
                             try:
-                                from bots_modules.imports_and_globals import set_individual_coin_settings
-                                set_individual_coin_settings(symbol, best_params, persist=True)
-                                logger.info(f"   💾 Параметры сохранены напрямую для {symbol}")
-                            except Exception as direct_error:
-                                logger.error(f"   ❌ Ошибка прямого сохранения: {direct_error}")
+                                from bot_engine.bots_database import get_bots_database
+                                db = get_bots_database()
+                                if db.save_full_ai_coin_params(symbol, best_params):
+                                    logger.info(f"   💾 ПРИИ: параметры сохранены в full_ai_coin_params для {symbol}")
+                                else:
+                                    logger.warning(f"   ⚠️ ПРИИ: не удалось сохранить параметры для {symbol}")
+                            except Exception as prii_err:
+                                logger.error(f"   ❌ ПРИИ сохранение: {prii_err}")
+                        else:
+                            import requests
+                            response = requests.post(
+                                'http://localhost:5001/api/bots/individual-settings/' + symbol,
+                                json=best_params,
+                                timeout=5
+                            )
+                            if response.status_code == 200:
+                                logger.info(f"   💾 Оптимизированные параметры сохранены для {symbol}")
+                            else:
+                                logger.warning(f"   ⚠️ Не удалось сохранить параметры через API: {response.status_code}")
+                                try:
+                                    from bots_modules.imports_and_globals import set_individual_coin_settings
+                                    set_individual_coin_settings(symbol, best_params, persist=True)
+                                    logger.info(f"   💾 Параметры сохранены напрямую для {symbol}")
+                                except Exception as direct_error:
+                                    logger.error(f"   ❌ Ошибка прямого сохранения: {direct_error}")
                     except Exception as save_error:
                         logger.error(f"   ❌ Ошибка сохранения параметров: {save_error}")
                 else:
