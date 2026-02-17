@@ -932,13 +932,21 @@ def get_effective_auto_bot_config():
 
 def get_effective_coin_settings(symbol):
     """
-    Возвращает настройки по монете: при FullAI — из таблицы full_ai_coin_params,
+    Возвращает настройки по монете: при FullAI — из рейтинга комбинаций (fullai_scoring) или full_ai_coin_params,
     иначе — individual_coin_settings. Таймфрейм не входит в эти настройки.
     """
     with bots_data_lock:
         full_ai_control = (bots_data.get('auto_bot_config') or {}).get('full_ai_control', False)
     if not full_ai_control:
         return get_individual_coin_settings(symbol) or {}
+    try:
+        from bots_modules.fullai_scoring import get_effective_params_for_symbol
+        params = get_effective_params_for_symbol((symbol or '').upper())
+        return deepcopy(params) if params else {}
+    except ImportError:
+        pass
+    except Exception:
+        pass
     try:
         from bot_engine.storage import _get_bots_database
         db = _get_bots_database()

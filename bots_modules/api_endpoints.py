@@ -2953,6 +2953,37 @@ def individual_coin_settings(symbol):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ==================== FullAI: конфиг (включая адаптивный блок) ====================
+
+@bots_app.route('/api/bots/fullai-config', methods=['GET', 'POST'])
+def fullai_config_get_post():
+    """GET: конфиг FullAI (для UI, в т.ч. fullai_adaptive_*). POST: обновление (тело мержится в конфиг)."""
+    try:
+        from bots_modules.imports_and_globals import load_full_ai_config_from_db, save_full_ai_config_to_db
+        if request.method == 'GET':
+            cfg = load_full_ai_config_from_db() or {}
+            return jsonify({'success': True, 'config': cfg})
+        if request.method == 'POST':
+            payload = request.get_json(silent=True)
+            if not payload or not isinstance(payload, dict):
+                return jsonify({'success': False, 'error': 'Invalid payload'}), 400
+            cfg = load_full_ai_config_from_db() or {}
+            for key in (
+                'fullai_scoring_enabled',
+                'fullai_adaptive_enabled', 'fullai_adaptive_dead_candles',
+                'fullai_adaptive_virtual_success_count', 'fullai_adaptive_real_loss_to_retry',
+                'fullai_adaptive_virtual_round_size', 'fullai_adaptive_virtual_max_failures',
+            ):
+                if key in payload:
+                    cfg[key] = payload[key]
+            if save_full_ai_config_to_db(cfg):
+                return jsonify({'success': True, 'config': cfg})
+            return jsonify({'success': False, 'error': 'Save failed'}), 500
+    except Exception as e:
+        logger.exception("FullAI config: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ==================== FullAI: параметры по монетам (только при full_ai_control) ====================
 
 @bots_app.route('/api/bots/fullai-coin-params', methods=['GET', 'POST'])
@@ -3303,7 +3334,7 @@ def reset_all_individual_settings():
 
 
 def _patch_ai_config_after_auto_bot_save(data):
-    """После сохранения auto-bot подмешивает AI-ключи в RiskConfig/AIConfig в bot_config.py."""
+    """После сохранения auto-bot подмешивает AI-ключи в RiskConfig/AIConfig в configs/bot_config.py."""
     ai_keys = {
         'ai_optimal_entry_enabled': ('RiskConfig', 'AI_OPTIMAL_ENTRY_ENABLED'),
         'self_learning_enabled': ('AIConfig', 'AI_SELF_LEARNING_ENABLED'),
@@ -3323,7 +3354,7 @@ def _patch_ai_config_after_auto_bot_save(data):
         updates[(cls_name, attr)] = bool(val) if isinstance(val, (bool, int, float)) else val
     if not updates:
         return
-    config_path = os.path.join('bot_engine', 'bot_config.py')
+    config_path = os.path.join('configs', 'bot_config.py')
     if not os.path.exists(config_path):
         return
     try:
@@ -3358,7 +3389,7 @@ def _patch_ai_config_after_auto_bot_save(data):
         reload_config()
         logger.debug("[API] AI-настройки синхронизированы в RiskConfig/AIConfig")
     except Exception as e:
-        logger.warning(f"[API] Синхронизация AI в bot_config: {e}")
+        logger.warning("[API] Синхронизация AI в configs/bot_config: %s", e)
 
 
 @bots_app.route('/api/bots/auto-bot', methods=['GET', 'POST'])

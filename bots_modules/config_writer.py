@@ -2,7 +2,7 @@
 Модуль для безопасной записи конфигурации в bot_config.py.
 Сохранение: обновление каждого параметра в файле по отдельности (не перезапись всего блока).
 Загрузка: чтение файла и извлечение каждого параметра по строке с применением в конфиг.
-Миграция: перенос старых настроек из bot_engine/bot_config.py в configs/bot_config.py.
+Миграция: создание configs/bot_config.py из примера (при отсутствии). Конфиги только в configs/.
 """
 import ast
 import re
@@ -42,14 +42,12 @@ def _ensure_bot_config_exists(config_file: str) -> bool:
 
 def migrate_old_bot_config_to_configs(project_root: Optional[str] = None) -> bool:
     """
-    Переносит настройки из старого конфига (bot_engine/bot_config.py) в новый (configs/bot_config.py).
-    Вызывать при старте приложения, если configs/bot_config.py ещё не существует.
-    Возвращает True если миграция выполнена, False если не требовалась или не удалась.
+    Создаёт configs/bot_config.py из примера при отсутствии; накладывает data/auto_bot_config.json при миграции.
+    Конфиги только в configs/. Возвращает True если миграция/создание выполнены, False иначе.
     """
     if project_root is None:
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     configs_bot = os.path.join(project_root, 'configs', 'bot_config.py')
-    old_bot = os.path.join(project_root, 'bot_engine', 'bot_config.py')
     example_bot = os.path.join(project_root, 'configs', 'bot_config.example.py')
     data_json = os.path.join(project_root, 'data', 'auto_bot_config.json')
 
@@ -58,26 +56,7 @@ def migrate_old_bot_config_to_configs(project_root: Optional[str] = None) -> boo
 
     merged: Dict[str, Any] = {}
 
-    # 1) Загрузить старый конфиг из bot_engine/bot_config.py (DEFAULT_AUTO_BOT_CONFIG или AUTO_BOT_CONFIG)
-    if os.path.isfile(old_bot):
-        try:
-            spec = importlib.util.spec_from_file_location('_migrate_old_bot_config', old_bot)
-            if spec is None or spec.loader is None:
-                raise RuntimeError('spec_from_file_location failed')
-            old_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(old_module)
-            old_default = getattr(old_module, 'DEFAULT_AUTO_BOT_CONFIG', None)
-            old_user = getattr(old_module, 'AUTO_BOT_CONFIG', None)
-            if isinstance(old_default, dict):
-                merged = dict(old_default)
-            if isinstance(old_user, dict):
-                merged.update(old_user)
-            if merged:
-                logger.info("[CONFIG_WRITER] 📥 Загружен старый конфиг из bot_engine/bot_config.py")
-        except Exception as e:
-            logger.warning(f"[CONFIG_WRITER] ⚠️ Не удалось загрузить старый конфиг из bot_engine: {e}")
-
-    # 2) Наложить данные из data/auto_bot_config.json (если были)
+    # 1) Наложить данные из data/auto_bot_config.json (если были)
     if os.path.isfile(data_json):
         try:
             with open(data_json, 'r', encoding='utf-8') as f:
@@ -88,7 +67,7 @@ def migrate_old_bot_config_to_configs(project_root: Optional[str] = None) -> boo
         except Exception as e:
             logger.warning(f"[CONFIG_WRITER] ⚠️ Не удалось прочитать data/auto_bot_config.json: {e}")
 
-    # 3) Создать configs/bot_config.py из примера
+    # 2) Создать configs/bot_config.py из configs/bot_config.example.py
     if not os.path.isfile(example_bot):
         logger.error("[CONFIG_WRITER] ❌ configs/bot_config.example.py не найден, миграция отменена")
         return False

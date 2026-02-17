@@ -949,6 +949,38 @@
                     <span class="toggle-label" data-translate="full_ai_control_label">🧠 Полный Режим ИИ</span>
                     <span class="full-ai-mode-badge" id="fullAiModeBadge" data-translate="fullai_mode_standard">Режим: Стандартный</span>
                 </div>
+                <!-- FullAI Adaptive: таймаут мёртвых сделок и виртуальная обкатка -->
+                <div class="fullai-adaptive-block" id="fullaiAdaptiveBlock" style="display: none;">
+                    <div class="fullai-adaptive-header">
+                        <span data-translate="fullai_adaptive_title">⚙️ FullAI Adaptive</span>
+                        <label class="toggle-switch toggle-switch-sm">
+                            <input type="checkbox" id="fullaiAdaptiveEnabled" />
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="fullai-adaptive-fields">
+                        <div class="form-group form-group-sm">
+                            <label data-translate="fullai_adaptive_dead_candles">Свечей без сделок → смена параметров</label>
+                            <input type="number" id="fullaiAdaptiveDeadCandles" min="10" max="1000" step="1" value="100" class="form-control form-control-sm" />
+                        </div>
+                        <div class="form-group form-group-sm">
+                            <label data-translate="fullai_adaptive_virtual_success">Удачных виртуальных подряд → 1 реальная</label>
+                            <input type="number" id="fullaiAdaptiveVirtualSuccess" min="1" max="10" step="1" value="3" class="form-control form-control-sm" />
+                        </div>
+                        <div class="form-group form-group-sm">
+                            <label data-translate="fullai_adaptive_real_loss">Убыточных реальных → снова виртуальные</label>
+                            <input type="number" id="fullaiAdaptiveRealLoss" min="1" max="5" step="1" value="1" class="form-control form-control-sm" />
+                        </div>
+                        <div class="form-group form-group-sm">
+                            <label data-translate="fullai_adaptive_round_size">Размер серии виртуальных</label>
+                            <input type="number" id="fullaiAdaptiveRoundSize" min="1" max="10" step="1" value="3" class="form-control form-control-sm" />
+                        </div>
+                        <div class="form-group form-group-sm">
+                            <label data-translate="fullai_adaptive_max_failures">Макс. неудачных виртуальных в серии (0 = все удачны)</label>
+                            <input type="number" id="fullaiAdaptiveMaxFailures" min="0" max="5" step="1" value="0" class="form-control form-control-sm" />
+                        </div>
+                    </div>
+                </div>
                 
                 <!-- Массовые операции с ботами -->
                 <div class="bulk-bot-controls" id="bulkBotControls" style="display: none;">

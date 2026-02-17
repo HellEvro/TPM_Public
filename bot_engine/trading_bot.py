@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 import logging
 
-from .bot_config import (
+from .config_loader import (
     BotStatus, TrendDirection, VolumeMode,
     DEFAULT_BOT_CONFIG, TIMEFRAME, get_current_timeframe
 )

@@ -500,10 +500,37 @@ class NewTradingBot:
                     current_price = candles[-1].get('close', 0) if candles and len(candles) > 0 else 0
                     if current_price <= 0:
                         return False
+                    try:
+                        from bots_modules.fullai_adaptive import (
+                            is_adaptive_enabled,
+                            process_virtual_positions,
+                            on_candle_tick,
+                            get_next_action,
+                            record_virtual_open,
+                        )
+                        if is_adaptive_enabled():
+                            process_virtual_positions(self.symbol, candles, current_price, fullai_config, coin_params)
+                            candle_id = candles[-1].get('time') if candles else None
+                            on_candle_tick(self.symbol, candle_id)
+                    except ImportError:
+                        pass
                     decision = get_ai_entry_decision(
                         self.symbol, 'LONG', candles, current_price, fullai_config, coin_params
                     )
                     if decision.get('allowed'):
+                        try:
+                            from bots_modules.fullai_adaptive import get_next_action, record_virtual_open
+                            action = get_next_action(self.symbol, True)
+                            if action == 'real_open':
+                                logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход LONG (уверенность: {decision.get('confidence', 0):.2%})")
+                                self._set_decision_source('AI', decision)
+                                return True
+                            if action == 'virtual_open':
+                                record_virtual_open(self.symbol, 'LONG', current_price)
+                                logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI Adaptive: виртуальный LONG (уверенность: {decision.get('confidence', 0):.2%})")
+                                return False
+                        except ImportError:
+                            pass
                         logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход LONG (уверенность: {decision.get('confidence', 0):.2%})")
                         self._set_decision_source('AI', decision)
                         return True
@@ -634,10 +661,37 @@ class NewTradingBot:
                     current_price = candles[-1].get('close', 0) if candles and len(candles) > 0 else 0
                     if current_price <= 0:
                         return False
+                    try:
+                        from bots_modules.fullai_adaptive import (
+                            is_adaptive_enabled,
+                            process_virtual_positions,
+                            on_candle_tick,
+                            get_next_action,
+                            record_virtual_open,
+                        )
+                        if is_adaptive_enabled():
+                            process_virtual_positions(self.symbol, candles, current_price, fullai_config, coin_params)
+                            candle_id = candles[-1].get('time') if candles else None
+                            on_candle_tick(self.symbol, candle_id)
+                    except ImportError:
+                        pass
                     decision = get_ai_entry_decision(
                         self.symbol, 'SHORT', candles, current_price, fullai_config, coin_params
                     )
                     if decision.get('allowed'):
+                        try:
+                            from bots_modules.fullai_adaptive import get_next_action, record_virtual_open
+                            action = get_next_action(self.symbol, True)
+                            if action == 'real_open':
+                                logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход SHORT (уверенность: {decision.get('confidence', 0):.2%})")
+                                self._set_decision_source('AI', decision)
+                                return True
+                            if action == 'virtual_open':
+                                record_virtual_open(self.symbol, 'SHORT', current_price)
+                                logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI Adaptive: виртуальный SHORT (уверенность: {decision.get('confidence', 0):.2%})")
+                                return False
+                        except ImportError:
+                            pass
                         logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход SHORT (уверенность: {decision.get('confidence', 0):.2%})")
                         self._set_decision_source('AI', decision)
                         return True
@@ -1342,6 +1396,11 @@ class NewTradingBot:
             if self.should_open_long(rsi, trend, candles):
                 logger.info(f"[NEW_BOT_{self.symbol}] 🚀 Вход по рынку LONG (условия конфига)")
                 if self._open_position_on_exchange('LONG', price):
+                    try:
+                        from bots_modules.fullai_adaptive import on_trade_open
+                        on_trade_open(self.symbol)
+                    except ImportError:
+                        pass
                     self.update_status(BOT_STATUS['IN_POSITION_LONG'], price, 'LONG')
                     return {'success': True, 'action': 'OPEN_LONG', 'status': self.status}
                 logger.error(f"[NEW_BOT_{self.symbol}] ❌ Не удалось открыть LONG позицию")
@@ -1349,6 +1408,11 @@ class NewTradingBot:
             if self.should_open_short(rsi, trend, candles):
                 logger.info(f"[NEW_BOT_{self.symbol}] 🚀 Вход по рынку SHORT (условия конфига)")
                 if self._open_position_on_exchange('SHORT', price):
+                    try:
+                        from bots_modules.fullai_adaptive import on_trade_open
+                        on_trade_open(self.symbol)
+                    except ImportError:
+                        pass
                     self.update_status(BOT_STATUS['IN_POSITION_SHORT'], price, 'SHORT')
                     return {'success': True, 'action': 'OPEN_SHORT', 'status': self.status}
                 logger.error(f"[NEW_BOT_{self.symbol}] ❌ Не удалось открыть SHORT позицию")
@@ -1543,6 +1607,16 @@ class NewTradingBot:
                             reason_exit = decision.get('reason', 'FullAI_EXIT')
                             logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: закрытие — {reason_exit}")
                             self._close_position_on_exchange(reason_exit)
+                            try:
+                                from bots_modules.fullai_adaptive import record_real_close
+                                record_real_close(self.symbol, profit_percent)
+                            except ImportError:
+                                pass
+                            try:
+                                from bots_modules.fullai_scoring import record_trade_result
+                                record_trade_result(self.symbol, success=(profit_percent >= 0))
+                            except ImportError:
+                                pass
                             try:
                                 from bots_modules.fullai_trades_learner import run_fullai_trades_analysis_after_close
                                 run_fullai_trades_analysis_after_close(self.symbol)

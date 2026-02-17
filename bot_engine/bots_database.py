@@ -1378,6 +1378,22 @@ class BotsDatabase:
                 )
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_full_ai_coin_params_symbol ON full_ai_coin_params(symbol)")
+            # Рейтинг комбинаций параметров FullAI: очки, серии побед, иерархия для отката при провале
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS fullai_param_leaderboard (
+                    symbol TEXT NOT NULL,
+                    params_hash TEXT NOT NULL,
+                    params_json TEXT NOT NULL,
+                    score INTEGER NOT NULL DEFAULT 0,
+                    current_streak INTEGER NOT NULL DEFAULT 0,
+                    best_streak INTEGER NOT NULL DEFAULT 0,
+                    total_trades INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL,
+                    created_at TEXT,
+                    PRIMARY KEY (symbol, params_hash)
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fullai_leaderboard_symbol ON fullai_param_leaderboard(symbol)")
             
             # ==================== ТАБЛИЦА: КЭШ СВЕЧЕЙ (НОРМАЛИЗОВАННАЯ) ====================
             # Метаданные кэша свечей
@@ -1648,6 +1664,27 @@ class BotsDatabase:
                     logger.info("📦 Миграция: создана таблица full_ai_coin_params (FullAI)")
                 except Exception as e:
                     logger.warning(f"⚠️ Ошибка создания full_ai_coin_params: {e}")
+            if not self._table_exists(cursor, 'fullai_param_leaderboard'):
+                try:
+                    cursor.execute("""
+                        CREATE TABLE fullai_param_leaderboard (
+                            symbol TEXT NOT NULL,
+                            params_hash TEXT NOT NULL,
+                            params_json TEXT NOT NULL,
+                            score INTEGER NOT NULL DEFAULT 0,
+                            current_streak INTEGER NOT NULL DEFAULT 0,
+                            best_streak INTEGER NOT NULL DEFAULT 0,
+                            total_trades INTEGER NOT NULL DEFAULT 0,
+                            updated_at TEXT NOT NULL,
+                            created_at TEXT,
+                            PRIMARY KEY (symbol, params_hash)
+                        )
+                    """)
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_fullai_leaderboard_symbol ON fullai_param_leaderboard(symbol)")
+                    conn.commit()
+                    logger.info("📦 Миграция: создана таблица fullai_param_leaderboard (FullAI scoring)")
+                except Exception as e:
+                    logger.warning("⚠️ Ошибка создания fullai_param_leaderboard: %s", e)
             
             # ==================== МИГРАЦИЯ: Добавляем break_even_stop_set в таблицу bots ====================
             if self._table_exists(cursor, 'bots'):
@@ -4714,6 +4751,132 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки full_ai_coin_params: {e}")
             return {}
+    
+    # ==================== FullAI: рейтинг комбинаций параметров (очки, серии) ====================
+    
+    def _fullai_params_hash(self, params: Dict[str, Any]) -> str:
+        """Стабильный хэш комбинации параметров (игнорируем служебные ключи)."""
+        import hashlib
+        skip = {'optimized_at', 'optimization_win_rate', 'optimization_total_pnl', 'optimization_trades_count', 'exit_reasons_analysis', 'parameter_genome_version'}
+        clean = {k: v for k, v in sorted((params or {}).items()) if k not in skip and v is not None}
+        return hashlib.sha256(json.dumps(clean, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    
+    def fullai_leaderboard_upsert(self, symbol: str, params: Dict[str, Any], success: bool) -> bool:
+        """Обновляет запись в рейтинге: +1 очко и серия при успехе, -1 очко и сброс серии при минусе."""
+        try:
+            norm = (symbol or '').upper()
+            if not norm:
+                return False
+            ph = self._fullai_params_hash(params)
+            now = datetime.now().isoformat()
+            params_json = json.dumps(params, ensure_ascii=False)
+            with self.lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT score, current_streak, best_streak, total_trades, created_at FROM fullai_param_leaderboard WHERE symbol = ? AND params_hash = ?",
+                        (norm, ph)
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        score, cur_s, best_s, total, created = row[0], row[1], row[2], row[3], row[4] or now
+                        total = (total or 0) + 1
+                        if success:
+                            score = (score or 0) + 1
+                            cur_s = (cur_s or 0) + 1
+                            best_s = max(best_s or 0, cur_s)
+                        else:
+                            score = (score or 0) - 1
+                            cur_s = 0
+                        cursor.execute("""
+                            UPDATE fullai_param_leaderboard SET params_json = ?, score = ?, current_streak = ?, best_streak = ?, total_trades = ?, updated_at = ?
+                            WHERE symbol = ? AND params_hash = ?
+                        """, (params_json, score, cur_s, best_s, total, now, norm, ph))
+                    else:
+                        score = 1 if success else -1
+                        cur_s = 1 if success else 0
+                        best_s = cur_s
+                        cursor.execute("""
+                            INSERT INTO fullai_param_leaderboard (symbol, params_hash, params_json, score, current_streak, best_streak, total_trades, updated_at, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+                        """, (norm, ph, params_json, score, cur_s, best_s, now, now))
+                    conn.commit()
+            return True
+        except Exception as e:
+            logger.exception("fullai_leaderboard_upsert %s: %s", symbol, e)
+            return False
+    
+    def fullai_leaderboard_get(self, symbol: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Список комбинаций по символу, отсортированный по (current_streak DESC, best_streak DESC, score DESC)."""
+        try:
+            norm = (symbol or '').upper()
+            if not norm:
+                return []
+            with self.lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT params_hash, params_json, score, current_streak, best_streak, total_trades, updated_at
+                        FROM fullai_param_leaderboard WHERE symbol = ?
+                        ORDER BY current_streak DESC, best_streak DESC, score DESC
+                        LIMIT ?
+                    """, (norm, limit))
+                    rows = cursor.fetchall()
+            return [
+                {
+                    'params_hash': r[0], 'params': json.loads(r[1]) if r[1] else {},
+                    'score': r[2], 'current_streak': r[3], 'best_streak': r[4], 'total_trades': r[5], 'updated_at': r[6]
+                }
+                for r in rows
+            ]
+        except Exception as e:
+            logger.debug("fullai_leaderboard_get %s: %s", symbol, e)
+            return []
+    
+    def fullai_leaderboard_top_params(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Параметры топовой комбинации для символа (по очкам в серии)."""
+        entries = self.fullai_leaderboard_get(symbol, limit=1)
+        if not entries:
+            return None
+        return entries[0].get('params')
+    
+    def fullai_leaderboard_add(self, symbol: str, params: Dict[str, Any]) -> bool:
+        """Добавляет новую комбинацию с нулевыми очками (для перебора)."""
+        try:
+            norm = (symbol or '').upper()
+            if not norm:
+                return False
+            ph = self._fullai_params_hash(params)
+            now = datetime.now().isoformat()
+            params_json = json.dumps(params, ensure_ascii=False)
+            with self.lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO fullai_param_leaderboard (symbol, params_hash, params_json, score, current_streak, best_streak, total_trades, updated_at, created_at)
+                        VALUES (?, ?, ?, 0, 0, 0, 0, ?, ?)
+                    """, (norm, ph, params_json, now, now))
+                    conn.commit()
+            return True
+        except Exception as e:
+            logger.debug("fullai_leaderboard_add %s: %s", symbol, e)
+            return False
+    
+    def fullai_leaderboard_clear(self, symbol: str) -> bool:
+        """Очищает рейтинг по символу (переобучение с нуля)."""
+        try:
+            norm = (symbol or '').upper()
+            if not norm:
+                return False
+            with self.lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM fullai_param_leaderboard WHERE symbol = ?", (norm,))
+                    conn.commit()
+            return True
+        except Exception as e:
+            logger.debug("fullai_leaderboard_clear %s: %s", symbol, e)
+            return False
     
     # ==================== МЕТОДЫ ДЛЯ ЗРЕЛЫХ МОНЕТ ====================
     

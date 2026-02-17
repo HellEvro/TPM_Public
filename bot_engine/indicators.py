@@ -4,7 +4,7 @@
 import numpy as np
 import pandas as pd
 from typing import List, Optional, Tuple, Dict
-from .bot_config import (
+from .config_loader import (
     RSI_PERIOD, EMA_FAST, EMA_SLOW, TREND_CONFIRMATION_BARS,
     RSI_EXTREME_OVERSOLD, RSI_EXTREME_OVERBOUGHT, RSI_VOLATILITY_THRESHOLD_HIGH,
     RSI_VOLATILITY_THRESHOLD_LOW, RSI_DIVERGENCE_LOOKBACK, RSI_VOLUME_CONFIRMATION_MULTIPLIER,
@@ -534,7 +534,7 @@ class SignalGenerator:
         Returns:
             Словарь с действием и причиной
         """
-        from .bot_config import RSI_OVERSOLD, RSI_OVERBOUGHT
+        from .config_loader import RSI_OVERSOLD, RSI_OVERBOUGHT
         
         # Логика с учетом тренда для входов
         if rsi <= RSI_OVERSOLD:  # RSI ≤ 29 
@@ -568,7 +568,7 @@ class SignalGenerator:
         Returns:
             Словарь с действием и причиной
         """
-        from .bot_config import RSI_OVERSOLD, RSI_OVERBOUGHT, SystemConfig
+        from .config_loader import RSI_OVERSOLD, RSI_OVERBOUGHT, SystemConfig
         
         # Проверяем, включена ли улучшенная система RSI
         if not SystemConfig.ENHANCED_RSI_ENABLED:

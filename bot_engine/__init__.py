@@ -1,21 +1,6 @@
 # Торговый движок ботов
-# П.4 REVERTED_COMMITS_FIXES: автопатч — создание bot_config.py из example при первом импорте
-# Автопатч RSI: подмена устаревшего fallback rsi6h на делегирование в config_loader (без перезаписи configs/)
+# Конфиги только в configs/. Автопатч RSI: подмена устаревшего fallback rsi6h в configs/bot_config.py на делегирование в config_loader.
 from pathlib import Path
-
-def _ensure_bot_config():
-    import shutil
-    _root = Path(__file__).resolve().parent.parent
-    _config = _root / "bot_engine" / "bot_config.py"
-    _example = _root / "bot_engine" / "bot_config.example.py"
-    if _config.exists():
-        return
-    if _example.exists():
-        try:
-            shutil.copy2(_example, _config)
-        except OSError:
-            pass
-
 
 # Блок с безопасными функциями RSI/тренд (единый источник — config_loader, без fallback rsi6h)
 _RSI_SAFE_FUNCTIONS_BLOCK = '''
@@ -31,40 +16,6 @@ def get_trend_from_coin_data(coin_data, timeframe=None):
     return _get_trend(coin_data, timeframe=timeframe)
 
 '''
-
-
-def _patch_bot_config_rsi_if_needed():
-    """
-    Если в bot_engine/bot_config.py ещё старая логика с fallback на rsi6h/rsi —
-    бесшовно подменяем get_rsi_from_coin_data и get_trend_from_coin_data на делегирование в config_loader.
-    """
-    import re
-    _root = Path(__file__).resolve().parent.parent
-    _config = _root / "bot_engine" / "bot_config.py"
-    if not _config.exists():
-        return
-    try:
-        text = _config.read_text(encoding="utf-8")
-    except Exception:
-        return
-    if "get_rsi_from_coin_data as _get_rsi" in text or "get_trend_from_coin_data as _get_trend" in text:
-        return
-    has_old_rsi_fallback = "rsi6h" in text or ("timeframe == '6h'" in text and "get_rsi_from_coin_data" in text)
-    if not has_old_rsi_fallback:
-        return
-    pattern = re.compile(
-        r'(def get_rsi_from_coin_data\(coin_data, timeframe=None\):.*?)'
-        r'(\n# Статусы бота|\nclass BotStatus)',
-        re.DOTALL
-    )
-    match = pattern.search(text)
-    if not match:
-        return
-    new_text = text[: match.start(1)] + _RSI_SAFE_FUNCTIONS_BLOCK.rstrip() + "\n\n" + match.group(2) + text[match.end():]
-    try:
-        _config.write_text(new_text, encoding="utf-8")
-    except Exception:
-        return
 
 
 def _patch_configs_bot_config_rsi_if_needed():
@@ -107,14 +58,10 @@ def _patch_configs_bot_config_rsi_if_needed():
 
 def ensure_rsi_fix_applied():
     """
-    Вызвать при старте app/bots: применяет автопатч bot_engine/bot_config.py и configs/bot_config.py,
-    чтобы у всех пользователей (в т.ч. со старым конфигом) использовалась корректная логика RSI без fallback.
+    Вызвать при старте app/bots: применяет автопатч configs/bot_config.py (RSI без fallback rsi6h).
+    Конфиги только в configs/ — bot_engine/bot_config.py удалён.
     """
-    _ensure_bot_config()
-    _patch_bot_config_rsi_if_needed()
     _patch_configs_bot_config_rsi_if_needed()
 
 
-_ensure_bot_config()
-_patch_bot_config_rsi_if_needed()
 _patch_configs_bot_config_rsi_if_needed()

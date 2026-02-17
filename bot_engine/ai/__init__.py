@@ -141,6 +141,17 @@ class _StubAIManager:
         return None
     def get_final_recommendation(self, *args, **kwargs):
         return None
+    def get_status(self):
+        """Статус заглушки: ИИ недоступен (для API /api/ai/config и др.)."""
+        return {
+            'enabled': False,
+            'available': False,
+            'license_type': None,
+            'expires_at': None,
+            'features': {},
+            'license': {'valid': False, 'type': None, 'expires_at': None},
+            'modules': {},
+        }
 
 def _get_ai_manager_stub():
     return _StubAIManager()
