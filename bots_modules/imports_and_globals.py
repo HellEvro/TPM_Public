@@ -616,6 +616,7 @@ bots_data = {
     'bots': {},  # {symbol: bot_config}
     'auto_bot_config': DEFAULT_AUTO_BOT_CONFIG.copy(),  # Используем дефолтную конфигурацию
     'individual_coin_settings': {},  # {symbol: settings}
+    'full_ai_config': None,  # Кэш конфига ПРИИ (None = не загружен, dict = конфиг для Полного Режима ИИ)
     'global_stats': {
         'active_bots': 0,
         'bots_in_position': 0,
@@ -772,6 +773,19 @@ def load_auto_bot_config():
             bots_data['auto_bot_config'] = merged_config
             # ✅ Логирование leverage убрано (было слишком много спама) - логируется только при загрузке из файла
         
+        # ПРИИ (блок 9.3): при full_ai_control и невалидной лицензии ИИ — сбросить full_ai_control и сохранить
+        if merged_config.get('full_ai_control'):
+            try:
+                from bot_engine.ai import get_ai_manager
+                if not get_ai_manager().is_available():
+                    with bots_data_lock:
+                        bots_data['auto_bot_config']['full_ai_control'] = False
+                    from bots_modules.sync_and_cache import save_auto_bot_config
+                    save_auto_bot_config()
+                    logger.warning("[ПРИИ] full_ai_control сброшен в False: ИИ недоступен (лицензия не валидна). Сохранено в конфиг.")
+            except Exception as _e:
+                logger.debug(f"[ПРИИ] Проверка лицензии при загрузке конфига: {_e}")
+        
         # ✅ RSI пороги — логируем не чаще раза в 5 минут (при каждом цикле конфиг перезагружается → без throttle спам)
         _now = time.time()
         _last = getattr(load_auto_bot_config, '_rsi_log_last_time', 0)
@@ -801,6 +815,87 @@ def get_auto_bot_config():
     except Exception as e:
         logger.error(f" ❌ Ошибка получения конфигурации: {e}")
         return DEFAULT_AUTO_BOT_CONFIG.copy()
+
+
+# ===== ПРИИ (Полный Режим ИИ): конфиг и параметры по монетам =====
+
+def load_full_ai_config_from_db():
+    """Загружает конфиг ПРИИ из БД в bots_data['full_ai_config']."""
+    try:
+        from bot_engine.storage import _get_bots_database
+        db = _get_bots_database()
+        cfg = db.load_full_ai_config()
+        with bots_data_lock:
+            bots_data['full_ai_config'] = cfg if cfg is not None else {}
+        return bots_data.get('full_ai_config')
+    except Exception as e:
+        logger.debug(f"Загрузка конфига ПРИИ: {e}")
+        with bots_data_lock:
+            bots_data['full_ai_config'] = {}
+        return {}
+
+
+def save_full_ai_config_to_db(config):
+    """Сохраняет конфиг ПРИИ в БД."""
+    try:
+        from bot_engine.storage import _get_bots_database
+        db = _get_bots_database()
+        ok = db.save_full_ai_config(config)
+        if ok:
+            with bots_data_lock:
+                bots_data['full_ai_config'] = deepcopy(config)
+        return ok
+    except Exception as e:
+        logger.error(f"Сохранение конфига ПРИИ: {e}")
+        return False
+
+
+def get_effective_auto_bot_config():
+    """
+    Возвращает конфиг для принятия решений: при включённом ПРИИ — конфиг ПРИИ,
+    иначе — пользовательский auto_bot_config. Таймфрейм всегда из пользовательского конфига.
+    """
+    with bots_data_lock:
+        user_cfg = deepcopy(bots_data.get('auto_bot_config', DEFAULT_AUTO_BOT_CONFIG.copy()))
+        full_ai_control = user_cfg.get('full_ai_control', False)
+    if not full_ai_control:
+        return user_cfg
+    # ПРИИ включён: используем конфиг ПРИИ
+    with bots_data_lock:
+        prii = bots_data.get('full_ai_config')
+    if prii is None:
+        load_full_ai_config_from_db()
+        with bots_data_lock:
+            prii = bots_data.get('full_ai_config') or {}
+    if not prii:
+        # Первое включение: инициализируем копией пользовательского (без перезаписи пользовательского)
+        prii = deepcopy(user_cfg)
+        # Таймфрейм в конфиг ПРИИ не кладём — всегда берём из user_cfg
+        save_full_ai_config_to_db(prii)
+    out = deepcopy(prii)
+    # Таймфрейм всегда из пользовательского конфига
+    for key in ('system_timeframe', 'timeframe', 'SYSTEM_TIMEFRAME'):
+        if key in user_cfg:
+            out[key] = user_cfg[key]
+    return out
+
+
+def get_effective_coin_settings(symbol):
+    """
+    Возвращает настройки по монете: при ПРИИ — из таблицы full_ai_coin_params,
+    иначе — individual_coin_settings. Таймфрейм не входит в эти настройки.
+    """
+    with bots_data_lock:
+        full_ai_control = (bots_data.get('auto_bot_config') or {}).get('full_ai_control', False)
+    if not full_ai_control:
+        return get_individual_coin_settings(symbol) or {}
+    try:
+        from bot_engine.storage import _get_bots_database
+        db = _get_bots_database()
+        params = db.load_full_ai_coin_params((symbol or '').upper())
+        return deepcopy(params) if params else {}
+    except Exception:
+        return {}
 
 
 def get_config_snapshot(symbol=None, force_reload=False):

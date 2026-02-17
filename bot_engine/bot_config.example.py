@@ -219,6 +219,7 @@ DEFAULT_AUTO_BOT_CONFIG = {
     'ai_enabled': True,                 # Включить подтверждение сигналов AI
     'ai_min_confidence': 0.7,          # Минимальная уверенность AI (0.0-1.0)
     'ai_override_original': True,       # AI может блокировать решения скрипта
+    'full_ai_control': False,          # Полный режим ИИ: ИИ сам управляет входами/выходами (вкладка Управление)
     'anomaly_block_threshold': 0.7,     # Порог блокировки по аномалии (0.0-1.0)
     'anomaly_detection_enabled': True,
     'anomaly_log_enabled': True,

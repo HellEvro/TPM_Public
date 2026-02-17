@@ -2466,6 +2466,18 @@ body .bots-page .config-input {
     background: rgba(79, 172, 254, 0.03);
 }
 
+.full-ai-mode-badge {
+    margin-left: auto;
+    font-size: 0.85rem;
+    opacity: 0.9;
+}
+.full-ai-mode-badge.mode-standard {
+    color: var(--text-secondary, #888);
+}
+.full-ai-mode-badge.mode-full-ai {
+    color: var(--success-color, #28a745);
+}
+
 .toggle-switch {
     position: relative;
     display: inline-block;

@@ -3388,6 +3388,13 @@ def auto_bot_config():
                     config['exit_scam_effective_single_pct'] = get_config_value(config, 'exit_scam_single_candle_percent')
                     config['exit_scam_effective_multi_pct'] = get_config_value(config, 'exit_scam_multi_candle_percent')
                 
+                # Для UI: доступность переключателя «Полный Режим ИИ» только при ИИ и валидной лицензии
+                try:
+                    from bot_engine.ai import get_ai_manager
+                    config['ai_license_valid'] = get_ai_manager().is_available()
+                except Exception:
+                    config['ai_license_valid'] = False
+                
                 return jsonify({
                     'success': True,
                     'config': config

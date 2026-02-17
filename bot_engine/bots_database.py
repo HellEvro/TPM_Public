@@ -1358,6 +1358,27 @@ class BotsDatabase:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_delisted_symbol ON delisted(symbol)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_delisted_date ON delisted(delisted_at)")
             
+            # ==================== ТАБЛИЦЫ ПРИИ (Полный Режим ИИ) ====================
+            # Отдельный конфиг ПРИИ (одна строка)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS full_ai_config (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    config_json TEXT,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            # Параметры по монетам для ПРИИ
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS full_ai_coin_params (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT UNIQUE NOT NULL,
+                    params_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_full_ai_coin_params_symbol ON full_ai_coin_params(symbol)")
+            
             # ==================== ТАБЛИЦА: КЭШ СВЕЧЕЙ (НОРМАЛИЗОВАННАЯ) ====================
             # Метаданные кэша свечей
             cursor.execute("""
@@ -1596,6 +1617,37 @@ class BotsDatabase:
             except sqlite3.OperationalError:
                 # Таблица не существует или уже новая структура - ничего не делаем
                 pass
+            
+            # ==================== МИГРАЦИЯ: Таблицы ПРИИ (full_ai_config, full_ai_coin_params) ====================
+            if not self._table_exists(cursor, 'full_ai_config'):
+                try:
+                    cursor.execute("""
+                        CREATE TABLE full_ai_config (
+                            id INTEGER PRIMARY KEY CHECK (id = 1),
+                            config_json TEXT,
+                            updated_at TEXT NOT NULL
+                        )
+                    """)
+                    conn.commit()
+                    logger.info("📦 Миграция: создана таблица full_ai_config (ПРИИ)")
+                except Exception as e:
+                    logger.warning(f"⚠️ Ошибка создания full_ai_config: {e}")
+            if not self._table_exists(cursor, 'full_ai_coin_params'):
+                try:
+                    cursor.execute("""
+                        CREATE TABLE full_ai_coin_params (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            symbol TEXT UNIQUE NOT NULL,
+                            params_json TEXT NOT NULL,
+                            updated_at TEXT NOT NULL,
+                            created_at TEXT NOT NULL
+                        )
+                    """)
+                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_full_ai_coin_params_symbol ON full_ai_coin_params(symbol)")
+                    conn.commit()
+                    logger.info("📦 Миграция: создана таблица full_ai_coin_params (ПРИИ)")
+                except Exception as e:
+                    logger.warning(f"⚠️ Ошибка создания full_ai_coin_params: {e}")
             
             # ==================== МИГРАЦИЯ: Добавляем break_even_stop_set в таблицу bots ====================
             if self._table_exists(cursor, 'bots'):
@@ -4574,6 +4626,94 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка удаления индивидуальных настроек: {e}")
             return False
+    
+    # ==================== МЕТОДЫ ДЛЯ ПРИИ (Полный Режим ИИ) ====================
+    
+    def save_full_ai_config(self, config: Dict[str, Any]) -> bool:
+        """Сохраняет конфиг ПРИИ (одна строка в full_ai_config)."""
+        try:
+            now = datetime.now().isoformat()
+            config_json = json.dumps(config, ensure_ascii=False)
+            with self.lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT OR REPLACE INTO full_ai_config (id, config_json, updated_at) VALUES (1, ?, ?)",
+                        (config_json, now)
+                    )
+                    conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"❌ Ошибка сохранения конфига ПРИИ: {e}")
+            return False
+    
+    def load_full_ai_config(self) -> Optional[Dict[str, Any]]:
+        """Загружает конфиг ПРИИ из БД. Если нет записи — возвращает None."""
+        try:
+            with self.lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT config_json FROM full_ai_config WHERE id = 1")
+                    row = cursor.fetchone()
+            if row and row[0]:
+                return json.loads(row[0])
+            return None
+        except Exception as e:
+            logger.debug(f"Конфиг ПРИИ не найден или ошибка: {e}")
+            return None
+    
+    def save_full_ai_coin_params(self, symbol: str, params: Dict[str, Any]) -> bool:
+        """Сохраняет параметры ПРИИ для одной монеты."""
+        try:
+            now = datetime.now().isoformat()
+            params_json = json.dumps(params, ensure_ascii=False)
+            with self.lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT created_at FROM full_ai_coin_params WHERE symbol = ?", (symbol,)
+                    )
+                    existing = cursor.fetchone()
+                    created_at = existing[0] if existing else now
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO full_ai_coin_params (symbol, params_json, updated_at, created_at)
+                        VALUES (?, ?, ?, ?)
+                    """, (symbol, params_json, now, created_at))
+                    conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"❌ Ошибка сохранения full_ai_coin_params для {symbol}: {e}")
+            return False
+    
+    def load_full_ai_coin_params(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Загружает параметры ПРИИ для одной монеты."""
+        try:
+            with self.lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT params_json FROM full_ai_coin_params WHERE symbol = ?", (symbol,)
+                    )
+                    row = cursor.fetchone()
+            if row and row[0]:
+                return json.loads(row[0])
+            return None
+        except Exception as e:
+            logger.debug(f"Параметры ПРИИ для {symbol} не найдены: {e}")
+            return None
+    
+    def load_all_full_ai_coin_params(self) -> Dict[str, Dict[str, Any]]:
+        """Загружает все параметры ПРИИ по монетам: {symbol: params}."""
+        try:
+            with self.lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT symbol, params_json FROM full_ai_coin_params")
+                    rows = cursor.fetchall()
+            return {row[0]: json.loads(row[1]) for row in rows if row[1]}
+        except Exception as e:
+            logger.error(f"❌ Ошибка загрузки full_ai_coin_params: {e}")
+            return {}
     
     # ==================== МЕТОДЫ ДЛЯ ЗРЕЛЫХ МОНЕТ ====================
     

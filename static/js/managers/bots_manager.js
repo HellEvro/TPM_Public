@@ -7369,6 +7369,7 @@ class BotsManager {
             'aiEnabled': 'ai_enabled',  // мастер-переключатель AI
             'aiMinConfidence': 'ai_min_confidence',
             'aiOverrideOriginal': 'ai_override_original',
+            'fullAiControlToggle': 'full_ai_control',  // полный режим ИИ (входы/выходы)
             'rsiLongThreshold': 'rsi_long_threshold',
             'rsiShortThreshold': 'rsi_short_threshold',
             'rsiExitLongWithTrendGlobal': 'rsi_exit_long_with_trend',
@@ -7775,6 +7776,8 @@ class BotsManager {
             const config = this.collectConfigurationData();
             console.log('[BotsManager] 🔍 scope из collectConfigurationData():', config.autoBot.scope);
             
+            const fullAiControlEl = document.getElementById('fullAiControlToggle');
+            const fullAiControl = fullAiControlEl ? fullAiControlEl.checked : (config.autoBot.full_ai_control || false);
             const basicSettings = {
                 enabled: config.autoBot.enabled,
                 max_concurrent: config.autoBot.max_concurrent,
@@ -7782,7 +7785,8 @@ class BotsManager {
                 scope: scopeFromUI || config.autoBot.scope || 'all',  // ✅ Приоритет UI значению
                 ai_enabled: config.autoBot.ai_enabled,
                 ai_min_confidence: config.autoBot.ai_min_confidence,
-                ai_override_original: config.autoBot.ai_override_original
+                ai_override_original: config.autoBot.ai_override_original,
+                full_ai_control: fullAiControl
             };
             
             console.log('[BotsManager] 🔍 Основные настройки для сохранения:', basicSettings);
@@ -8576,6 +8580,30 @@ class BotsManager {
             const toggleLabel = globalAutoBotToggleEl.closest('.auto-bot-toggle')?.querySelector('.toggle-label');
             if (toggleLabel) {
                 toggleLabel.textContent = enabled ? '🤖 Auto Bot (ВКЛ)' : '🤖 Auto Bot (ВЫКЛ)';
+            }
+        }
+        // Синхронизируем переключатель «Полный Режим ИИ» на вкладке Управление
+        const fullAiControlToggleEl = document.getElementById('fullAiControlToggle');
+        if (fullAiControlToggleEl) {
+            const fullAiOn = config.full_ai_control === true;
+            fullAiControlToggleEl.checked = fullAiOn;
+            const aiEnabled = config.ai_enabled === true;
+            const aiLicenseValid = config.ai_license_valid === true;
+            const canUseFullAi = aiEnabled && aiLicenseValid;
+            fullAiControlToggleEl.disabled = !canUseFullAi;
+            fullAiControlToggleEl.title = canUseFullAi
+                ? (window.languageUtils?.translate?.('full_ai_control_tooltip') || 'ИИ сам решает когда входить и выходить')
+                : (window.languageUtils?.translate?.('full_ai_control_disabled_hint') || 'Включите ИИ и проверьте лицензию');
+            const fullAiLabel = fullAiControlToggleEl.closest('.full-ai-control-toggle')?.querySelector('.toggle-label');
+            if (fullAiLabel) {
+                fullAiLabel.textContent = fullAiOn ? '🧠 Полный Режим ИИ (ВКЛ)' : '🧠 Полный Режим ИИ';
+            }
+            const fullAiModeBadge = document.getElementById('fullAiModeBadge');
+            if (fullAiModeBadge) {
+                fullAiModeBadge.textContent = fullAiOn
+                    ? (window.languageUtils?.translate?.('prii_mode_full_ai') || 'Режим: Полный ИИ')
+                    : (window.languageUtils?.translate?.('prii_mode_standard') || 'Режим: Стандартный');
+                fullAiModeBadge.className = 'full-ai-mode-badge ' + (fullAiOn ? 'mode-full-ai' : 'mode-standard');
             }
         }
         

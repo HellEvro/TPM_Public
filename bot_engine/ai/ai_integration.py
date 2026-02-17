@@ -665,3 +665,114 @@ def update_ai_decision_result(decision_id: str, pnl: float, roi: float, is_succe
     except Exception as e:
         pass
 
+
+def get_ai_entry_decision(
+    symbol: str,
+    direction: str,
+    candles: List[Dict],
+    current_price: float,
+    prii_config: Dict = None,
+    coin_params: Dict = None
+) -> Dict[str, Any]:
+    """
+    Решение ИИ о входе в позицию (ПРИИ). Используется при full_ai_control.
+    Возвращает allowed, confidence, reason. Таймфрейм не входит в параметры — берётся из пользовательского конфига.
+    """
+    prii_config = prii_config or {}
+    coin_params = coin_params or {}
+    min_conf = _confidence_01(prii_config.get('ai_min_confidence', 0.7))
+    result = {'allowed': False, 'confidence': 0.0, 'reason': 'AI not available'}
+    try:
+        from bot_engine.ai import get_ai_manager
+        ai_manager = get_ai_manager()
+        if not ai_manager or not ai_manager.is_available():
+            result['reason'] = 'AI modules or license not available'
+            return result
+        coin_data = {'current_price': current_price}
+        analysis = ai_manager.analyze_coin(symbol, coin_data, candles or [])
+        if not analysis.get('available'):
+            result['reason'] = analysis.get('reason', 'AI analysis failed')
+            return result
+        # Голосование: LSTM, pattern, anomaly
+        votes_long = 0.0
+        votes_short = 0.0
+        if analysis.get('lstm_prediction'):
+            lp = analysis['lstm_prediction']
+            conf = _confidence_01(lp.get('confidence', 0))
+            if conf >= min_conf:
+                if lp.get('direction', 0) > 0:
+                    votes_long += conf
+                elif lp.get('direction', 0) < 0:
+                    votes_short += conf
+        if analysis.get('pattern_analysis') and analysis['pattern_analysis'].get('patterns'):
+            pa = analysis['pattern_analysis']
+            conf = _confidence_01(pa.get('confidence', 0))
+            if conf >= min_conf:
+                sig = (pa.get('signal') or '').upper()
+                if sig == 'BULLISH':
+                    votes_long += conf
+                elif sig == 'BEARISH':
+                    votes_short += conf
+        if analysis.get('anomaly_score') and analysis['anomaly_score'].get('is_anomaly'):
+            result['allowed'] = False
+            result['reason'] = 'Anomaly detected (block entry)'
+            result['confidence'] = 0.0
+            return result
+        if direction == 'LONG':
+            result['allowed'] = votes_long >= min_conf and votes_long >= votes_short
+            result['confidence'] = votes_long
+        else:
+            result['allowed'] = votes_short >= min_conf and votes_short >= votes_long
+            result['confidence'] = votes_short
+        result['reason'] = f"AI vote LONG={votes_long:.2f} SHORT={votes_short:.2f}"
+        return result
+    except Exception as e:
+        logger.exception(f"get_ai_entry_decision {symbol} {direction}: {e}")
+        result['reason'] = str(e)
+        return result
+
+
+def get_ai_exit_decision(
+    symbol: str,
+    position: Dict,
+    candles: List[Dict],
+    pnl_percent: float,
+    prii_config: Dict = None,
+    coin_params: Dict = None
+) -> Dict[str, Any]:
+    """
+    Решение ИИ о закрытии позиции сейчас (ПРИИ). При full_ai_control решение о выходе принимает только ИИ.
+    Возвращает close_now, reason, confidence. Таймфрейм из пользовательского конфига.
+    """
+    prii_config = prii_config or {}
+    coin_params = coin_params or {}
+    result = {'close_now': False, 'reason': 'Hold', 'confidence': 0.0}
+    try:
+        # Простая эвристика: сильная прибыль или сильный убыток — закрыть (далее можно заменить на модель)
+        tp = float(prii_config.get('take_profit_percent') or coin_params.get('take_profit_percent') or 15)
+        sl = float(prii_config.get('max_loss_percent') or coin_params.get('max_loss_percent') or 10)
+        if pnl_percent >= tp:
+            result['close_now'] = True
+            result['reason'] = f'Take profit ({pnl_percent:.2f}% >= {tp}%)'
+            result['confidence'] = 1.0
+            return result
+        if pnl_percent <= -sl:
+            result['close_now'] = True
+            result['reason'] = f'Stop loss ({pnl_percent:.2f}% <= -{sl}%)'
+            result['confidence'] = 1.0
+            return result
+        # Опционально: вызов AIManager для более сложного решения (LSTM/pattern на выход)
+        from bot_engine.ai import get_ai_manager
+        ai_manager = get_ai_manager()
+        if ai_manager and ai_manager.is_available() and candles and len(candles) >= 5:
+            coin_data = {'current_price': candles[-1].get('close'), 'in_position': True}
+            analysis = ai_manager.analyze_coin(symbol, coin_data, candles)
+            if analysis.get('anomaly_score', {}).get('is_anomaly'):
+                result['close_now'] = True
+                result['reason'] = 'Anomaly: exit'
+                result['confidence'] = 0.9
+        return result
+    except Exception as e:
+        logger.exception(f"get_ai_exit_decision {symbol}: {e}")
+        return result
+

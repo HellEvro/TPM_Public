@@ -490,6 +490,31 @@ class NewTradingBot:
             # Получаем настройки из конфига (ВАЖНО: сначала индивидуальные настройки бота, потом глобальные)
             with bots_data_lock:
                 auto_config = bots_data.get('auto_bot_config', {})
+            full_ai_control = auto_config.get('full_ai_control', False)
+            if full_ai_control:
+                try:
+                    from bots_modules.imports_and_globals import get_effective_auto_bot_config, get_effective_coin_settings
+                    from bot_engine.ai.ai_integration import get_ai_entry_decision
+                    prii_config = get_effective_auto_bot_config()
+                    coin_params = get_effective_coin_settings(self.symbol)
+                    current_price = candles[-1].get('close', 0) if candles and len(candles) > 0 else 0
+                    if current_price <= 0:
+                        return False
+                    decision = get_ai_entry_decision(
+                        self.symbol, 'LONG', candles, current_price, prii_config, coin_params
+                    )
+                    if decision.get('allowed'):
+                        logger.info(f"[NEW_BOT_{self.symbol}] 🧠 ПРИИ: вход LONG (уверенность: {decision.get('confidence', 0):.2%})")
+                        self._set_decision_source('AI', decision)
+                        return True
+                    logger.info(f"[NEW_BOT_{self.symbol}] 🧠 ПРИИ: отказ LONG — {decision.get('reason', '')}")
+                    return False
+                except Exception as e:
+                    logger.exception(f"[NEW_BOT_{self.symbol}] ПРИИ вход LONG: {e}")
+                    return False
+            
+            with bots_data_lock:
+                auto_config = bots_data.get('auto_bot_config', {})
                 # Используем индивидуальные настройки из self.config если есть, иначе из auto_config
                 from bot_engine.config_loader import get_config_value
                 rsi_long_threshold = self.config.get('rsi_long_threshold') or get_config_value(auto_config, 'rsi_long_threshold')
@@ -596,6 +621,31 @@ class NewTradingBot:
                 delisting_info = delisted_coins[self.symbol]
                 logger.warning(f"[NEW_BOT_{self.symbol}] 🚨 ДЕЛИСТИНГ! Не открываем SHORT - {delisting_info.get('reason', 'Delisting detected')}")
                 return False
+            
+            with bots_data_lock:
+                auto_config = bots_data.get('auto_bot_config', {})
+            full_ai_control = auto_config.get('full_ai_control', False)
+            if full_ai_control:
+                try:
+                    from bots_modules.imports_and_globals import get_effective_auto_bot_config, get_effective_coin_settings
+                    from bot_engine.ai.ai_integration import get_ai_entry_decision
+                    prii_config = get_effective_auto_bot_config()
+                    coin_params = get_effective_coin_settings(self.symbol)
+                    current_price = candles[-1].get('close', 0) if candles and len(candles) > 0 else 0
+                    if current_price <= 0:
+                        return False
+                    decision = get_ai_entry_decision(
+                        self.symbol, 'SHORT', candles, current_price, prii_config, coin_params
+                    )
+                    if decision.get('allowed'):
+                        logger.info(f"[NEW_BOT_{self.symbol}] 🧠 ПРИИ: вход SHORT (уверенность: {decision.get('confidence', 0):.2%})")
+                        self._set_decision_source('AI', decision)
+                        return True
+                    logger.info(f"[NEW_BOT_{self.symbol}] 🧠 ПРИИ: отказ SHORT — {decision.get('reason', '')}")
+                    return False
+                except Exception as e:
+                    logger.exception(f"[NEW_BOT_{self.symbol}] ПРИИ вход SHORT: {e}")
+                    return False
             
             # Получаем настройки из конфига (только из конфига)
             with bots_data_lock:
@@ -1461,61 +1511,97 @@ class NewTradingBot:
             # 2. Проверяем условия закрытия по RSI (универсальная функция)
             # Адаптивно: мин. свечи ИЛИ мин. минуты (по ТФ) ИЛИ ранний выход, если цена уже сдвинулась на X%
             if self.position_side in ['LONG', 'SHORT']:
-                min_candles = 0
-                min_minutes = 0
-                min_move_percent = 0.0
-                try:
-                    with bots_data_lock:
-                        cfg = bots_data.get('auto_bot_config', {})
+                with bots_data_lock:
+                    _cfg = bots_data.get('auto_bot_config', {})
+                    _full_ai_control = _cfg.get('full_ai_control', False)
+                if _full_ai_control:
+                    try:
+                        from bots_modules.imports_and_globals import get_effective_auto_bot_config, get_effective_coin_settings
+                        from bot_engine.ai.ai_integration import get_ai_exit_decision
+                        prii_config = get_effective_auto_bot_config()
+                        coin_params = get_effective_coin_settings(self.symbol)
+                        candles_exit = []
+                        try:
+                            from bot_engine.config_loader import get_current_timeframe
+                            _tf = getattr(self, 'entry_timeframe', None) or get_current_timeframe()
+                            chart_res = self.exchange.get_chart_data(
+                                self.symbol, _tf, '1w', bulk_mode=True, bulk_limit=50
+                            )
+                            if chart_res and chart_res.get('success'):
+                                candles_exit = chart_res.get('data', {}).get('candles', []) or []
+                        except Exception:
+                            pass
+                        position_info = {
+                            'entry_price': self.entry_price,
+                            'position_side': self.position_side,
+                            'position_size_coins': getattr(self, 'position_size_coins', None),
+                        }
+                        decision = get_ai_exit_decision(
+                            self.symbol, position_info, candles_exit, profit_percent, prii_config, coin_params
+                        )
+                        if decision.get('close_now'):
+                            reason_exit = decision.get('reason', 'PRII_EXIT')
+                            logger.info(f"[NEW_BOT_{self.symbol}] 🧠 ПРИИ: закрытие — {reason_exit}")
+                            self._close_position_on_exchange(reason_exit)
+                            return {'success': True, 'action': f"CLOSE_{self.position_side}", 'reason': reason_exit}
+                    except Exception as e:
+                        logger.exception(f"[NEW_BOT_{self.symbol}] ПРИИ выход: {e}")
+                if not _full_ai_control:
+                    min_candles = 0
+                    min_minutes = 0
+                    min_move_percent = 0.0
+                    try:
+                        with bots_data_lock:
+                            cfg = bots_data.get('auto_bot_config', {})
                         min_candles = int(cfg.get('rsi_exit_min_candles', 0) or 0)
                         min_minutes = int(cfg.get('rsi_exit_min_minutes', 0) or 0)
                         min_move_percent = float(cfg.get('rsi_exit_min_move_percent', 0) or 0)
-                except Exception:
-                    min_candles = min_minutes = 0
-                    min_move_percent = 0.0
-                from bot_engine.config_loader import get_current_timeframe
-                tf = getattr(self, 'entry_timeframe', None) or get_current_timeframe()
-                tf_sec = {'1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600}.get(tf, 60)
-                age_sec = (datetime.now() - self.position_start_time).total_seconds() if self.position_start_time else 0
-                candles_in_position = age_sec / tf_sec if tf_sec else 0
-                # Эффективный минимум свечей: приоритет у минут (адаптивно по ТФ)
-                if min_minutes > 0:
-                    import math
-                    effective_min_candles = max(1, int(math.ceil(min_minutes * 60.0 / tf_sec)))
-                else:
-                    effective_min_candles = min_candles
-                allow_by_time = candles_in_position >= effective_min_candles if effective_min_candles > 0 else True
-                # allow_by_move: при min_move_percent > 0 — выход по RSI разрешён только при движении цены >= X%
-                allow_by_move = True  # по умолчанию (когда min_move_percent=0)
-                if min_move_percent > 0 and self.entry_price and price and float(self.entry_price) > 0:
-                    try:
-                        entry_f = float(self.entry_price)
-                        price_f = float(price)
-                        if self.position_side == 'LONG':
-                            roi_pct = (price_f - entry_f) / entry_f * 100.0
-                        else:
-                            roi_pct = (entry_f - price_f) / entry_f * 100.0
-                        allow_by_move = abs(roi_pct) >= min_move_percent
-                    except (TypeError, ValueError, ZeroDivisionError):
-                        allow_by_move = False
-                # Вариант B: при min_move_percent > 0 блокируем RSI-выход до достижения мин. движения
-                allow_rsi_exit = allow_by_time and (allow_by_move or min_move_percent <= 0)
-                if not allow_rsi_exit:
-                    # Не проверяем RSI-выход — рано (мин. время или мин. движение не достигнуты)
-                    reason_part = []
-                    if effective_min_candles > 0 and candles_in_position < effective_min_candles:
-                        reason_part.append(f"свечей {candles_in_position:.0f}<{effective_min_candles}")
-                    if min_move_percent > 0 and not allow_by_move and self.entry_price and price:
+                    except Exception:
+                        min_candles = min_minutes = 0
+                        min_move_percent = 0.0
+                    from bot_engine.config_loader import get_current_timeframe
+                    tf = getattr(self, 'entry_timeframe', None) or get_current_timeframe()
+                    tf_sec = {'1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600}.get(tf, 60)
+                    age_sec = (datetime.now() - self.position_start_time).total_seconds() if self.position_start_time else 0
+                    candles_in_position = age_sec / tf_sec if tf_sec else 0
+                    # Эффективный минимум свечей: приоритет у минут (адаптивно по ТФ)
+                    if min_minutes > 0:
+                        import math
+                        effective_min_candles = max(1, int(math.ceil(min_minutes * 60.0 / tf_sec)))
+                    else:
+                        effective_min_candles = min_candles
+                    allow_by_time = candles_in_position >= effective_min_candles if effective_min_candles > 0 else True
+                    # allow_by_move: при min_move_percent > 0 — выход по RSI разрешён только при движении цены >= X%
+                    allow_by_move = True  # по умолчанию (когда min_move_percent=0)
+                    if min_move_percent > 0 and self.entry_price and price and float(self.entry_price) > 0:
                         try:
-                            entry_f, price_f = float(self.entry_price), float(price)
-                            roi = (price_f - entry_f) / entry_f * 100.0 if self.position_side == 'LONG' else (entry_f - price_f) / entry_f * 100.0
-                            reason_part.append(f"движение {roi:.2f}%<{min_move_percent}%")
+                            entry_f = float(self.entry_price)
+                            price_f = float(price)
+                            if self.position_side == 'LONG':
+                                roi_pct = (price_f - entry_f) / entry_f * 100.0
+                            else:
+                                roi_pct = (entry_f - price_f) / entry_f * 100.0
+                            allow_by_move = abs(roi_pct) >= min_move_percent
                         except (TypeError, ValueError, ZeroDivisionError):
-                            reason_part.append(f"движение<{min_move_percent}%")
-                    logger.debug(
-                        f"[NEW_BOT_{self.symbol}] RSI выход отложен: {'; '.join(reason_part) or 'условия не выполнены'}"
-                    )
-                else:
+                            allow_by_move = False
+                    # Вариант B: при min_move_percent > 0 блокируем RSI-выход до достижения мин. движения
+                    allow_rsi_exit = allow_by_time and (allow_by_move or min_move_percent <= 0)
+                    if not allow_rsi_exit:
+                        # Не проверяем RSI-выход — рано (мин. время или мин. движение не достигнуты)
+                        reason_part = []
+                        if effective_min_candles > 0 and candles_in_position < effective_min_candles:
+                            reason_part.append(f"свечей {candles_in_position:.0f}<{effective_min_candles}")
+                        if min_move_percent > 0 and not allow_by_move and self.entry_price and price:
+                            try:
+                                entry_f, price_f = float(self.entry_price), float(price)
+                                roi = (price_f - entry_f) / entry_f * 100.0 if self.position_side == 'LONG' else (entry_f - price_f) / entry_f * 100.0
+                                reason_part.append(f"движение {roi:.2f}%<{min_move_percent}%")
+                            except (TypeError, ValueError, ZeroDivisionError):
+                                reason_part.append(f"движение<{min_move_percent}%")
+                        logger.debug(
+                            f"[NEW_BOT_{self.symbol}] RSI выход отложен: {'; '.join(reason_part) or 'условия не выполнены'}"
+                        )
+                    else:
                         should_close, reason = self.should_close_position(rsi, price, self.position_side)
                         if should_close:
                             if self._should_defer_close_for_breakeven(reason, profit_percent):
