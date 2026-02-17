@@ -2953,11 +2953,11 @@ def individual_coin_settings(symbol):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# ==================== ПРИИ: параметры по монетам (только при full_ai_control) ====================
+# ==================== FullAI: параметры по монетам (только при full_ai_control) ====================
 
-@bots_app.route('/api/bots/prii-coin-params', methods=['GET', 'POST'])
-def prii_coin_params_list():
-    """GET: список всех параметров ПРИИ по монетам. POST: массовое сохранение { "SYMBOL": {...}, ... }."""
+@bots_app.route('/api/bots/fullai-coin-params', methods=['GET', 'POST'])
+def fullai_coin_params_list():
+    """GET: список всех параметров FullAI по монетам. POST: массовое сохранение { "SYMBOL": {...}, ... }."""
     try:
         from bot_engine.bots_database import get_bots_database
         db = get_bots_database()
@@ -2977,28 +2977,28 @@ def prii_coin_params_list():
                     saved[norm] = params
             return jsonify({'success': True, 'saved': saved})
     except Exception as e:
-        logger.exception(f"ПРИИ coin params: {e}")
+        logger.exception("FullAI coin params: %s", e)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@bots_app.route('/api/bots/prii-trades-analysis', methods=['POST'])
-def prii_trades_analysis_run():
-    """Запуск анализа сделок ПРИИ (блок 7.4). Можно вызывать по расписанию (cron)."""
+@bots_app.route('/api/bots/fullai-trades-analysis', methods=['POST'])
+def fullai_trades_analysis_run():
+    """Запуск анализа сделок FullAI (блок 7.4). Можно вызывать по расписанию (cron)."""
     try:
-        from bots_modules.prii_trades_learner import run_prii_trades_analysis
+        from bots_modules.fullai_trades_learner import run_fullai_trades_analysis
         payload = request.get_json(silent=True) or {}
         days_back = int(payload.get('days_back', 7))
         min_trades = int(payload.get('min_trades_per_symbol', 2))
-        result = run_prii_trades_analysis(days_back=days_back, min_trades_per_symbol=min_trades, adjust_params=True)
+        result = run_fullai_trades_analysis(days_back=days_back, min_trades_per_symbol=min_trades, adjust_params=True)
         return jsonify(result)
     except Exception as e:
-        logger.exception(f"ПРИИ trades analysis: {e}")
+        logger.exception("FullAI trades analysis: %s", e)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@bots_app.route('/api/bots/prii-coin-params/<symbol>', methods=['GET', 'POST', 'DELETE'])
-def prii_coin_params_one(symbol):
-    """CRUD параметров ПРИИ для одной монеты."""
+@bots_app.route('/api/bots/fullai-coin-params/<symbol>', methods=['GET', 'POST', 'DELETE'])
+def fullai_coin_params_one(symbol):
+    """CRUD параметров FullAI для одной монеты."""
     try:
         if not symbol:
             return jsonify({'success': False, 'error': 'Symbol is required'}), 400
@@ -3025,7 +3025,7 @@ def prii_coin_params_one(symbol):
                 return jsonify({'success': True, 'symbol': norm, 'removed': True})
             return jsonify({'success': False, 'error': 'Delete failed'}), 500
     except Exception as e:
-        logger.exception(f"ПРИИ coin params {symbol}: {e}")
+        logger.exception("FullAI coin params %s: %s", symbol, e)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -3497,6 +3497,10 @@ def auto_bot_config():
                     'changed_params': []
                 }), 200
             
+            # FullAI: явное логирование при получении переключателя из UI (для отладки «не включается»)
+            if 'full_ai_control' in data:
+                logger.info(f"[API] [FullAI] Получен full_ai_control = {data['full_ai_control']!r} (из UI)")
+            
             # Проверяем изменение критериев зрелости
             maturity_params_changed = False
             maturity_keys = ['min_candles_for_maturity', 'min_rsi_low', 'max_rsi_high']
@@ -3589,8 +3593,63 @@ def auto_bot_config():
                 # ✅ Логируем только ИЗМЕНЕННЫЕ параметры
                 if len(changed_data) > 0:
                     logger.info(f"[API] 📋 Измененные параметры: {', '.join(changed_params_list[:10])}{'...' if len(changed_params_list) > 10 else ''}")
+                    if 'full_ai_control' in changed_data:
+                        logger.info(f"[API] [FullAI] full_ai_control применён в конфиг → {changed_data['full_ai_control']!r}, будет сохранён в файл")
                 else:
                     logger.info(f"[API] ⏭️ Нет изменений: все {len(data)} параметров без изменений")
+            
+            # FullAI: при включении — авто-включение ИИ (если лицензия валидна); при выключении — восстановление настроек
+            old_fullai = old_config.get('full_ai_control', False)
+            new_fullai = bots_data['auto_bot_config'].get('full_ai_control', False)
+            if new_fullai and not old_fullai:
+                try:
+                    from bots_modules.imports_and_globals import load_full_ai_config_from_db, save_full_ai_config_to_db
+                    from copy import deepcopy
+                    fullai_cfg = load_full_ai_config_from_db() or {}
+                    # Снимок для восстановления при выключении FullAI (если включаем ИИ автоматически)
+                    snapshot = fullai_cfg.get('user_ai_state_before_prii')
+                    # Конфиг FullAI считаем пустым, если нет «нормальных» ключей (только user_ai_state_before_prii или вообще пусто)
+                    has_real_config = any(k for k in (fullai_cfg or {}) if k != 'user_ai_state_before_prii')
+                    if not has_real_config:
+                        with bots_data_lock:
+                            initial_fullai = deepcopy(bots_data.get('auto_bot_config', {}))
+                        for _k in ('system_timeframe', 'timeframe', 'SYSTEM_TIMEFRAME'):
+                            initial_fullai.pop(_k, None)
+                        if snapshot is not None:
+                            initial_fullai['user_ai_state_before_prii'] = snapshot
+                        save_full_ai_config_to_db(initial_fullai)
+                        logger.info("[FullAI] Конфиг FullAI инициализирован → configs/fullai_config.json и БД")
+                    from bot_engine.ai import get_ai_manager
+                    if get_ai_manager().is_available():
+                        ai_before = bots_data['auto_bot_config'].get('ai_enabled', False)
+                        if not ai_before:
+                            fullai_cfg = load_full_ai_config_from_db() or {}
+                            fullai_cfg['user_ai_state_before_prii'] = {'ai_enabled': False}
+                            save_full_ai_config_to_db(fullai_cfg)
+                            with bots_data_lock:
+                                bots_data['auto_bot_config']['ai_enabled'] = True
+                            changed_data['ai_enabled'] = True
+                            changes_count += 1
+                            changed_params_list.append('ai_enabled: False → True (FullAI)')
+                            logger.info("[FullAI] ИИ автоматически включён при включении FullAI (лицензия валидна)")
+                except Exception as e:
+                    logger.debug(f"[FullAI] Авто-включение ИИ / инициализация конфига: {e}")
+            elif not new_fullai and old_fullai:
+                try:
+                    from bots_modules.imports_and_globals import load_full_ai_config_from_db, save_full_ai_config_to_db
+                    fullai_cfg = load_full_ai_config_from_db() or {}
+                    snapshot = fullai_cfg.pop('user_ai_state_before_prii', None)
+                    if snapshot and isinstance(snapshot, dict):
+                        with bots_data_lock:
+                            for k, v in snapshot.items():
+                                bots_data['auto_bot_config'][k] = v
+                                changed_data[k] = v
+                                changes_count += 1
+                                changed_params_list.append(f"{k} восстановлено (FullAI выкл)")
+                        save_full_ai_config_to_db(fullai_cfg)
+                        logger.info("[FullAI] Восстановлены настройки до включения FullAI: %s", list(snapshot.keys()))
+                except Exception as e:
+                    logger.debug(f"[FullAI] Восстановление настроек: {e}")
             
             # ✅ КРИТИЧЕСКИ ВАЖНО: Сохраняем фильтры (whitelist, blacklist, scope) в БД
             # И ВАЖНО: scope также должен быть в bots_data['auto_bot_config'] для сохранения в файл!

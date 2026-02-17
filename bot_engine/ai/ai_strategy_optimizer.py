@@ -41,6 +41,44 @@ DEFAULT_PARAMETER_GENOMES: Dict[str, Dict[str, Any]] = {
 
 DEFAULT_MAX_TESTS = 200
 
+
+def _log_prii_optimizer_changes(
+    symbol: str,
+    old_params: Dict[str, Any],
+    new_params: Dict[str, Any],
+    current_win_rate: float,
+    best_win_rate: float,
+    use_bayesian: bool,
+) -> None:
+    """Логирует изменения параметров FullAI от оптимизатора: что менялось, почему, на какой логике."""
+    method = "Bayesian (по свечам)" if use_bayesian else "перебор (по свечам)"
+    reason = (
+        f"Оптимизация: win_rate {current_win_rate:.1f}% → {best_win_rate:.1f}% (>= 80%%), "
+        f"метод={method}. Сохраняем т.к. достигнут порог 80%%."
+    )
+    changes = []
+    for key in sorted(new_params.keys()):
+        if key == 'exit_reasons_analysis':
+            continue
+        ov = old_params.get(key)
+        nv = new_params.get(key)
+        if ov != nv:
+            changes.append((key, ov, nv))
+    if changes:
+        logger.info(
+            "[FullAI изменения] Источник: оптимизатор (%s). Монета: %s. Причина: %s",
+            method, symbol, reason,
+        )
+        for key, ov, nv in changes:
+            logger.info("[FullAI изменения]   %s: %s → %s", key, ov, nv)
+        logger.info(
+            "[FullAI логика] Обучение на симуляции: подбор параметров по историческим свечам, "
+            "выбор комбинации с наилучшим win_rate (>= 80%%). Параметры записаны в full_ai_coin_params.",
+        )
+    else:
+        logger.info("[FullAI изменения] Источник: оптимизатор (%s). Монета: %s. Изменений нет (новые совпали с текущими). %s", method, symbol, reason)
+
+
 class AIStrategyOptimizer:
     """
     Класс для оптимизации торговых стратегий
@@ -1133,7 +1171,7 @@ class AIStrategyOptimizer:
                     logger.info(f"      💡 Эти параметры будут использоваться ботами вместо глобальных")
                     self._log_param_changes(symbol, best_params)
 
-                    # Сохраняем оптимальные параметры: при ПРИИ — только в full_ai_coin_params; иначе — individual_coin_settings
+                    # Сохраняем оптимальные параметры: при FullAI — только в full_ai_coin_params; иначе — individual_coin_settings
                     try:
                         from bots_modules.imports_and_globals import bots_data, bots_data_lock
                         with bots_data_lock:
@@ -1142,12 +1180,22 @@ class AIStrategyOptimizer:
                             try:
                                 from bot_engine.bots_database import get_bots_database
                                 db = get_bots_database()
+                                old_prii_params = db.load_full_ai_coin_params(symbol) or {}
                                 if db.save_full_ai_coin_params(symbol, best_params):
-                                    logger.info(f"   💾 ПРИИ: параметры сохранены в full_ai_coin_params для {symbol}")
+                                    logger.info(f"   💾 FullAI: параметры сохранены в full_ai_coin_params для {symbol}")
+                                    # Логирование изменений FullAI: что менялось, почему, на какой логике
+                                    _log_prii_optimizer_changes(
+                                        symbol=symbol,
+                                        old_params=old_prii_params,
+                                        new_params=best_params,
+                                        current_win_rate=current_win_rate,
+                                        best_win_rate=best_win_rate,
+                                        use_bayesian=use_bayesian,
+                                    )
                                 else:
-                                    logger.warning(f"   ⚠️ ПРИИ: не удалось сохранить параметры для {symbol}")
+                                    logger.warning(f"   ⚠️ FullAI: не удалось сохранить параметры для {symbol}")
                             except Exception as prii_err:
-                                logger.error(f"   ❌ ПРИИ сохранение: {prii_err}")
+                                logger.error(f"   ❌ FullAI сохранение: {prii_err}")
                         else:
                             import requests
                             response = requests.post(

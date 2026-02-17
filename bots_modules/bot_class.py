@@ -495,22 +495,22 @@ class NewTradingBot:
                 try:
                     from bots_modules.imports_and_globals import get_effective_auto_bot_config, get_effective_coin_settings
                     from bot_engine.ai.ai_integration import get_ai_entry_decision
-                    prii_config = get_effective_auto_bot_config()
+                    fullai_config = get_effective_auto_bot_config()
                     coin_params = get_effective_coin_settings(self.symbol)
                     current_price = candles[-1].get('close', 0) if candles and len(candles) > 0 else 0
                     if current_price <= 0:
                         return False
                     decision = get_ai_entry_decision(
-                        self.symbol, 'LONG', candles, current_price, prii_config, coin_params
+                        self.symbol, 'LONG', candles, current_price, fullai_config, coin_params
                     )
                     if decision.get('allowed'):
-                        logger.info(f"[NEW_BOT_{self.symbol}] 🧠 ПРИИ: вход LONG (уверенность: {decision.get('confidence', 0):.2%})")
+                        logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход LONG (уверенность: {decision.get('confidence', 0):.2%})")
                         self._set_decision_source('AI', decision)
                         return True
-                    logger.info(f"[NEW_BOT_{self.symbol}] 🧠 ПРИИ: отказ LONG — {decision.get('reason', '')}")
+                    logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: отказ LONG — {decision.get('reason', '')}")
                     return False
                 except Exception as e:
-                    logger.exception(f"[NEW_BOT_{self.symbol}] ПРИИ вход LONG: {e}")
+                    logger.exception(f"[NEW_BOT_{self.symbol}] FullAI вход LONG: {e}")
                     return False
             
             with bots_data_lock:
@@ -629,22 +629,22 @@ class NewTradingBot:
                 try:
                     from bots_modules.imports_and_globals import get_effective_auto_bot_config, get_effective_coin_settings
                     from bot_engine.ai.ai_integration import get_ai_entry_decision
-                    prii_config = get_effective_auto_bot_config()
+                    fullai_config = get_effective_auto_bot_config()
                     coin_params = get_effective_coin_settings(self.symbol)
                     current_price = candles[-1].get('close', 0) if candles and len(candles) > 0 else 0
                     if current_price <= 0:
                         return False
                     decision = get_ai_entry_decision(
-                        self.symbol, 'SHORT', candles, current_price, prii_config, coin_params
+                        self.symbol, 'SHORT', candles, current_price, fullai_config, coin_params
                     )
                     if decision.get('allowed'):
-                        logger.info(f"[NEW_BOT_{self.symbol}] 🧠 ПРИИ: вход SHORT (уверенность: {decision.get('confidence', 0):.2%})")
+                        logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход SHORT (уверенность: {decision.get('confidence', 0):.2%})")
                         self._set_decision_source('AI', decision)
                         return True
-                    logger.info(f"[NEW_BOT_{self.symbol}] 🧠 ПРИИ: отказ SHORT — {decision.get('reason', '')}")
+                    logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: отказ SHORT — {decision.get('reason', '')}")
                     return False
                 except Exception as e:
-                    logger.exception(f"[NEW_BOT_{self.symbol}] ПРИИ вход SHORT: {e}")
+                    logger.exception(f"[NEW_BOT_{self.symbol}] FullAI вход SHORT: {e}")
                     return False
             
             # Получаем настройки из конфига (только из конфига)
@@ -1518,7 +1518,7 @@ class NewTradingBot:
                     try:
                         from bots_modules.imports_and_globals import get_effective_auto_bot_config, get_effective_coin_settings
                         from bot_engine.ai.ai_integration import get_ai_exit_decision
-                        prii_config = get_effective_auto_bot_config()
+                        fullai_config = get_effective_auto_bot_config()
                         coin_params = get_effective_coin_settings(self.symbol)
                         candles_exit = []
                         try:
@@ -1537,20 +1537,20 @@ class NewTradingBot:
                             'position_size_coins': getattr(self, 'position_size_coins', None),
                         }
                         decision = get_ai_exit_decision(
-                            self.symbol, position_info, candles_exit, profit_percent, prii_config, coin_params
+                            self.symbol, position_info, candles_exit, profit_percent, fullai_config, coin_params
                         )
                         if decision.get('close_now'):
-                            reason_exit = decision.get('reason', 'PRII_EXIT')
-                            logger.info(f"[NEW_BOT_{self.symbol}] 🧠 ПРИИ: закрытие — {reason_exit}")
+                            reason_exit = decision.get('reason', 'FullAI_EXIT')
+                            logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: закрытие — {reason_exit}")
                             self._close_position_on_exchange(reason_exit)
                             try:
-                                from bots_modules.prii_trades_learner import run_prii_trades_analysis_after_close
-                                run_prii_trades_analysis_after_close(self.symbol)
+                                from bots_modules.fullai_trades_learner import run_fullai_trades_analysis_after_close
+                                run_fullai_trades_analysis_after_close(self.symbol)
                             except Exception as _lerr:
-                                logger.debug(f"[NEW_BOT_{self.symbol}] ПРИИ learner после закрытия: {_lerr}")
+                                logger.debug(f"[NEW_BOT_{self.symbol}] FullAI learner после закрытия: {_lerr}")
                             return {'success': True, 'action': f"CLOSE_{self.position_side}", 'reason': reason_exit}
                     except Exception as e:
-                        logger.exception(f"[NEW_BOT_{self.symbol}] ПРИИ выход: {e}")
+                        logger.exception(f"[NEW_BOT_{self.symbol}] FullAI выход: {e}")
                 if not _full_ai_control:
                     min_candles = 0
                     min_minutes = 0

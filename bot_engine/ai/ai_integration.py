@@ -675,7 +675,7 @@ def get_ai_entry_decision(
     coin_params: Dict = None
 ) -> Dict[str, Any]:
     """
-    Решение ИИ о входе в позицию (ПРИИ). Используется при full_ai_control.
+    Решение ИИ о входе в позицию (FullAI). Используется при full_ai_control.
     Возвращает allowed, confidence, reason. Таймфрейм не входит в параметры — берётся из пользовательского конфига.
     """
     prii_config = prii_config or {}
@@ -741,7 +741,7 @@ def get_ai_exit_decision(
     coin_params: Dict = None
 ) -> Dict[str, Any]:
     """
-    Решение ИИ о закрытии позиции сейчас (ПРИИ). При full_ai_control решение о выходе принимает только ИИ.
+    Решение ИИ о закрытии позиции сейчас (FullAI). При full_ai_control решение о выходе принимает только ИИ.
     Возвращает close_now, reason, confidence. Таймфрейм из пользовательского конфига.
     """
     prii_config = prii_config or {}

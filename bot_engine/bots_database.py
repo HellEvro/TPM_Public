@@ -1358,8 +1358,8 @@ class BotsDatabase:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_delisted_symbol ON delisted(symbol)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_delisted_date ON delisted(delisted_at)")
             
-            # ==================== ТАБЛИЦЫ ПРИИ (Полный Режим ИИ) ====================
-            # Отдельный конфиг ПРИИ (одна строка)
+            # ==================== ТАБЛИЦЫ FullAI (Полный Режим ИИ) ====================
+            # Отдельный конфиг FullAI (одна строка)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS full_ai_config (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -1367,7 +1367,7 @@ class BotsDatabase:
                     updated_at TEXT NOT NULL
                 )
             """)
-            # Параметры по монетам для ПРИИ
+            # Параметры по монетам для FullAI
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS full_ai_coin_params (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1618,7 +1618,7 @@ class BotsDatabase:
                 # Таблица не существует или уже новая структура - ничего не делаем
                 pass
             
-            # ==================== МИГРАЦИЯ: Таблицы ПРИИ (full_ai_config, full_ai_coin_params) ====================
+            # ==================== МИГРАЦИЯ: Таблицы FullAI (full_ai_config, full_ai_coin_params) ====================
             if not self._table_exists(cursor, 'full_ai_config'):
                 try:
                     cursor.execute("""
@@ -1629,7 +1629,7 @@ class BotsDatabase:
                         )
                     """)
                     conn.commit()
-                    logger.info("📦 Миграция: создана таблица full_ai_config (ПРИИ)")
+                    logger.info("📦 Миграция: создана таблица full_ai_config (FullAI)")
                 except Exception as e:
                     logger.warning(f"⚠️ Ошибка создания full_ai_config: {e}")
             if not self._table_exists(cursor, 'full_ai_coin_params'):
@@ -1645,7 +1645,7 @@ class BotsDatabase:
                     """)
                     cursor.execute("CREATE INDEX IF NOT EXISTS idx_full_ai_coin_params_symbol ON full_ai_coin_params(symbol)")
                     conn.commit()
-                    logger.info("📦 Миграция: создана таблица full_ai_coin_params (ПРИИ)")
+                    logger.info("📦 Миграция: создана таблица full_ai_coin_params (FullAI)")
                 except Exception as e:
                     logger.warning(f"⚠️ Ошибка создания full_ai_coin_params: {e}")
             
@@ -4627,10 +4627,10 @@ class BotsDatabase:
             logger.error(f"❌ Ошибка удаления индивидуальных настроек: {e}")
             return False
     
-    # ==================== МЕТОДЫ ДЛЯ ПРИИ (Полный Режим ИИ) ====================
+    # ==================== МЕТОДЫ ДЛЯ FullAI (Полный Режим ИИ) ====================
     
     def save_full_ai_config(self, config: Dict[str, Any]) -> bool:
-        """Сохраняет конфиг ПРИИ (одна строка в full_ai_config)."""
+        """Сохраняет конфиг FullAI (одна строка в full_ai_config)."""
         try:
             now = datetime.now().isoformat()
             config_json = json.dumps(config, ensure_ascii=False)
@@ -4644,11 +4644,11 @@ class BotsDatabase:
                     conn.commit()
             return True
         except Exception as e:
-            logger.error(f"❌ Ошибка сохранения конфига ПРИИ: {e}")
+            logger.error(f"❌ Ошибка сохранения конфига FullAI: {e}")
             return False
     
     def load_full_ai_config(self) -> Optional[Dict[str, Any]]:
-        """Загружает конфиг ПРИИ из БД. Если нет записи — возвращает None."""
+        """Загружает конфиг FullAI из БД. Если нет записи — возвращает None."""
         try:
             with self.lock:
                 with self._get_connection() as conn:
@@ -4659,11 +4659,11 @@ class BotsDatabase:
                 return json.loads(row[0])
             return None
         except Exception as e:
-            logger.debug(f"Конфиг ПРИИ не найден или ошибка: {e}")
+            logger.debug(f"Конфиг FullAI не найден или ошибка: {e}")
             return None
     
     def save_full_ai_coin_params(self, symbol: str, params: Dict[str, Any]) -> bool:
-        """Сохраняет параметры ПРИИ для одной монеты."""
+        """Сохраняет параметры FullAI для одной монеты."""
         try:
             now = datetime.now().isoformat()
             params_json = json.dumps(params, ensure_ascii=False)
@@ -4686,7 +4686,7 @@ class BotsDatabase:
             return False
     
     def load_full_ai_coin_params(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Загружает параметры ПРИИ для одной монеты."""
+        """Загружает параметры FullAI для одной монеты."""
         try:
             with self.lock:
                 with self._get_connection() as conn:
@@ -4699,11 +4699,11 @@ class BotsDatabase:
                 return json.loads(row[0])
             return None
         except Exception as e:
-            logger.debug(f"Параметры ПРИИ для {symbol} не найдены: {e}")
+            logger.debug(f"Параметры FullAI для {symbol} не найдены: {e}")
             return None
     
     def load_all_full_ai_coin_params(self) -> Dict[str, Dict[str, Any]]:
-        """Загружает все параметры ПРИИ по монетам: {symbol: params}."""
+        """Загружает все параметры FullAI по монетам: {symbol: params}."""
         try:
             with self.lock:
                 with self._get_connection() as conn:

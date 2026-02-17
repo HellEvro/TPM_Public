@@ -103,6 +103,7 @@ class DefaultAutoBotConfig:
     AI_ENABLED = True                       # Включить подтверждение сигналов ИИ
     AI_MIN_CONFIDENCE = 0.7                # Минимальная уверенность ИИ (0.0–1.0)
     AI_OVERRIDE_ORIGINAL = True             # ИИ может блокировать решение скрипта
+    FULL_AI_CONTROL = False                 # Полный режим ИИ: ИИ сам управляет входами/выходами (вкладка Управление)
     ANOMALY_BLOCK_THRESHOLD = 0.7           # Порог блокировки по аномалии
     ANOMALY_DETECTION_ENABLED = True        # Включить детекцию аномалий
     ANOMALY_LOG_ENABLED = True              # Логировать аномалии
@@ -249,6 +250,7 @@ class AutoBotConfig:
     AI_ENABLED = True                       # Включить подтверждение сигналов ИИ
     AI_MIN_CONFIDENCE = 0.7                 # Минимальная уверенность ИИ (0.0–1.0)
     AI_OVERRIDE_ORIGINAL = True             # ИИ может блокировать решение скрипта
+    FULL_AI_CONTROL = False                 # Полный режим ИИ: ИИ сам управляет входами/выходами (вкладка Управление)
     ANOMALY_BLOCK_THRESHOLD = 0.7           # Порог блокировки по аномалии
     ANOMALY_DETECTION_ENABLED = True        # Включить детекцию аномалий
     ANOMALY_LOG_ENABLED = True              # Логировать аномалии

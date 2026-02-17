@@ -1,0 +1,1 @@
+{"_comment":"FullAI (Полный Режим ИИ). Это только пример формата. Реальный configs/fullai_config.json создаётся автоматически при первом включении тумблера FullAI и содержит полную копию настроек Auto Bot (все ключи). Таймфрейм в FullAI не задаётся — всегда из configs/bot_config.py.","take_profit_percent":15,"max_loss_percent":10,"ai_min_confidence":0.7}

@@ -8194,22 +8194,22 @@ class BotsManager {
     }
     
     // ✅ ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ОТПРАВКИ КОНФИГУРАЦИИ
-    async sendConfigUpdate(endpoint, data, sectionName) {
+    // options: { forceSend: true } — не фильтровать по изменениям, всегда отправить (для тумблера FullAI)
+    async sendConfigUpdate(endpoint, data, sectionName, options = {}) {
         // БЕЗ БЛОКИРОВКИ - элементы остаются активными!
         
         try {
-            // ✅ ФИЛЬТРУЕМ ТОЛЬКО ИЗМЕНЕННЫЕ ПАРАМЕТРЫ
             const configType = endpoint === 'system-config' ? 'system' : 'autoBot';
-            const filteredData = this.filterChangedParams(data, configType);
+            const filteredData = options.forceSend ? data : this.filterChangedParams(data, configType);
             
-            // Если нет изменений, не отправляем запрос
+            // Если нет изменений, не отправляем запрос (кроме forceSend)
             if (Object.keys(filteredData).length === 0) {
                 console.log(`[BotsManager] ℹ️ Нет изменений в ${sectionName}, пропускаем отправку`);
                 this.showNotification(`ℹ️ Нет изменений в ${sectionName}`, 'info');
                 return;
             }
             
-            console.log(`[BotsManager] 📤 Отправка измененных параметров ${sectionName}:`, filteredData);
+            console.log(`[BotsManager] 📤 Отправка ${sectionName}:`, filteredData);
             
             const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/${endpoint}`, {
                 method: 'POST',
@@ -8589,11 +8589,15 @@ class BotsManager {
             fullAiControlToggleEl.checked = fullAiOn;
             const aiEnabled = config.ai_enabled === true;
             const aiLicenseValid = config.ai_license_valid === true;
-            const canUseFullAi = aiEnabled && aiLicenseValid;
-            fullAiControlToggleEl.disabled = !canUseFullAi;
-            fullAiControlToggleEl.title = canUseFullAi
-                ? (window.languageUtils?.translate?.('full_ai_control_tooltip') || 'ИИ сам решает когда входить и выходить')
-                : (window.languageUtils?.translate?.('full_ai_control_disabled_hint') || 'Включите ИИ и проверьте лицензию');
+            // Тумблер FullAI всегда активен — при включении бэкенд при необходимости включит ИИ; при невалидной лицензии FullAI сбросится при загрузке
+            fullAiControlToggleEl.disabled = false;
+            if (!aiEnabled) {
+                fullAiControlToggleEl.title = (window.languageUtils?.translate?.('full_ai_control_disabled_hint') || 'При включении FullAI ИИ будет включён автоматически, если лицензия валидна');
+            } else if (!aiLicenseValid) {
+                fullAiControlToggleEl.title = (window.languageUtils?.translate?.('full_ai_control_license_warning') || 'При невалидной лицензии FullAI будет сброшен при загрузке');
+            } else {
+                fullAiControlToggleEl.title = (window.languageUtils?.translate?.('full_ai_control_tooltip') || 'ИИ сам решает когда входить и выходить');
+            }
             const fullAiLabel = fullAiControlToggleEl.closest('.full-ai-control-toggle')?.querySelector('.toggle-label');
             if (fullAiLabel) {
                 fullAiLabel.textContent = fullAiOn ? '🧠 Полный Режим ИИ (ВКЛ)' : '🧠 Полный Режим ИИ';
@@ -8601,8 +8605,8 @@ class BotsManager {
             const fullAiModeBadge = document.getElementById('fullAiModeBadge');
             if (fullAiModeBadge) {
                 fullAiModeBadge.textContent = fullAiOn
-                    ? (window.languageUtils?.translate?.('prii_mode_full_ai') || 'Режим: Полный ИИ')
-                    : (window.languageUtils?.translate?.('prii_mode_standard') || 'Режим: Стандартный');
+                    ? (window.languageUtils?.translate?.('fullai_mode_full_ai') || 'Режим: FullAI')
+                    : (window.languageUtils?.translate?.('fullai_mode_standard') || 'Режим: Стандартный');
                 fullAiModeBadge.className = 'full-ai-mode-badge ' + (fullAiOn ? 'mode-full-ai' : 'mode-standard');
             }
         }
@@ -9148,6 +9152,22 @@ class BotsManager {
             saveBasicBtn.setAttribute('data-initialized', 'true');
             saveBasicBtn.addEventListener('click', () => this.saveBasicSettings());
             console.log('[BotsManager] ✅ Кнопка "Сохранить основные настройки" инициализирована');
+        }
+        
+        // Тумблер «Полный Режим ИИ» — сохраняем сразу при переключении (всегда отправляем, без фильтра «нет изменений»)
+        const fullAiToggleEl = document.getElementById('fullAiControlToggle');
+        if (fullAiToggleEl && !fullAiToggleEl.hasAttribute('data-fullai-listener')) {
+            fullAiToggleEl.setAttribute('data-fullai-listener', 'true');
+            fullAiToggleEl.addEventListener('change', async () => {
+                const value = fullAiToggleEl.checked;
+                try {
+                    await this.sendConfigUpdate('auto-bot', { full_ai_control: value }, value ? 'Полный Режим ИИ включён' : 'Полный Режим ИИ выключен', { forceSend: true });
+                    this.syncDuplicateSettings(this.collectConfigurationData().autoBot || {});
+                } catch (e) {
+                    console.error('[BotsManager] Ошибка сохранения FullAI:', e);
+                    this.showNotification('Ошибка сохранения переключателя FullAI', 'error');
+                }
+            });
         }
         
         // Кнопка сброса всех монет к глобальным настройкам
