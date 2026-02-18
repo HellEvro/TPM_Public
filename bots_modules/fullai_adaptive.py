@@ -200,6 +200,8 @@ def get_next_action(symbol: str, decision_allowed: bool) -> str:
         return "none"
     ad = _get_adaptive_config()
     need_success = int(ad.get('fullai_adaptive_virtual_success_count') or 3)
+    if need_success <= 0:
+        return "real_open"  # виртуальная обкатка выключена (0) — сразу реальные сделки
     with _state_lock:
         s = _get_symbol_state(norm, lock=False)
         phase = s.get('phase', 'virtual')

@@ -317,9 +317,11 @@ class AIConfigManager {
                 </span>
             `;
         } else {
+            const reason = this.licenseInfo.reason || '';
             badge.innerHTML = `
                 <span class="badge badge-danger">
                     ❌ <span data-translate="license_invalid">Лицензия недействительна</span>
+                    ${reason ? `<br><small style="display:block;margin-top:6px;opacity:0.9;">${reason}</small>` : ''}
                 </span>
             `;
         }

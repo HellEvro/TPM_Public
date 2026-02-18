@@ -7369,7 +7369,8 @@ class BotsManager {
             'aiEnabled': 'ai_enabled',  // мастер-переключатель AI
             'aiMinConfidence': 'ai_min_confidence',
             'aiOverrideOriginal': 'ai_override_original',
-            'fullAiControlToggle': 'full_ai_control',  // полный режим ИИ (входы/выходы)
+            'fullAiControlToggle': 'full_ai_control',  // полный режим ИИ на вкладке Управление
+            'fullAiControlToggleConfig': 'full_ai_control',  // дубль на вкладке Конфигурация
             'rsiLongThreshold': 'rsi_long_threshold',
             'rsiShortThreshold': 'rsi_short_threshold',
             'rsiExitLongWithTrendGlobal': 'rsi_exit_long_with_trend',
@@ -7776,8 +7777,10 @@ class BotsManager {
             const config = this.collectConfigurationData();
             console.log('[BotsManager] 🔍 scope из collectConfigurationData():', config.autoBot.scope);
             
+            // Полный Режим ИИ: тумблер на Управлении или дубль на Конфигурации
             const fullAiControlEl = document.getElementById('fullAiControlToggle');
-            const fullAiControl = fullAiControlEl ? fullAiControlEl.checked : (config.autoBot.full_ai_control || false);
+            const fullAiControlConfigEl = document.getElementById('fullAiControlToggleConfig');
+            const fullAiControl = (fullAiControlEl?.checked ?? fullAiControlConfigEl?.checked ?? config.autoBot.full_ai_control) === true;
             const basicSettings = {
                 enabled: config.autoBot.enabled,
                 max_concurrent: config.autoBot.max_concurrent,
@@ -7800,6 +7803,16 @@ class BotsManager {
         }
     }
     
+    _updateFullaiAdaptiveDependentFields() {
+        const el = (id) => document.getElementById(id);
+        const virtualSuccess = parseInt(el('fullaiAdaptiveVirtualSuccess')?.value, 10);
+        const disabled = !Number.isFinite(virtualSuccess) || virtualSuccess <= 0;
+        const ids = ['fullaiAdaptiveRealLoss', 'fullaiAdaptiveRoundSize', 'fullaiAdaptiveMaxFailures'];
+        const groupIds = ['fullaiAdaptiveDependentGroup', 'fullaiAdaptiveDependentGroup2', 'fullaiAdaptiveDependentGroup3'];
+        ids.forEach(id => { const i = el(id); if (i) i.disabled = disabled; });
+        groupIds.forEach(id => { const g = el(id); if (g) g.style.opacity = disabled ? '0.6' : '1'; });
+    }
+
     async loadFullaiAdaptiveConfig() {
         try {
             const res = await fetch('/api/bots/fullai-config', { method: 'GET' });
@@ -7807,12 +7820,12 @@ class BotsManager {
             if (!data.success || !data.config) return;
             const c = data.config;
             const el = (id) => document.getElementById(id);
-            if (el('fullaiAdaptiveEnabled')) el('fullaiAdaptiveEnabled').checked = !!c.fullai_adaptive_enabled;
             if (el('fullaiAdaptiveDeadCandles')) el('fullaiAdaptiveDeadCandles').value = c.fullai_adaptive_dead_candles ?? 100;
             if (el('fullaiAdaptiveVirtualSuccess')) el('fullaiAdaptiveVirtualSuccess').value = c.fullai_adaptive_virtual_success_count ?? 3;
             if (el('fullaiAdaptiveRealLoss')) el('fullaiAdaptiveRealLoss').value = c.fullai_adaptive_real_loss_to_retry ?? 1;
             if (el('fullaiAdaptiveRoundSize')) el('fullaiAdaptiveRoundSize').value = c.fullai_adaptive_virtual_round_size ?? 3;
             if (el('fullaiAdaptiveMaxFailures')) el('fullaiAdaptiveMaxFailures').value = c.fullai_adaptive_virtual_max_failures ?? 0;
+            this._updateFullaiAdaptiveDependentFields();
         } catch (e) {
             console.warn('[BotsManager] loadFullaiAdaptiveConfig:', e);
         }
@@ -7821,10 +7834,13 @@ class BotsManager {
     async saveFullaiAdaptiveConfig() {
         try {
             const el = (id) => document.getElementById(id);
+            // Один переключатель: Full AI вкл → Adaptive вкл (второй выключатель убран)
+            const fullAiOn = el('fullAiControlToggleConfig')?.checked ?? el('fullAiControlToggle')?.checked ?? false;
+            const vs = parseInt(el('fullaiAdaptiveVirtualSuccess')?.value, 10);
             const payload = {
-                fullai_adaptive_enabled: el('fullaiAdaptiveEnabled')?.checked ?? false,
+                fullai_adaptive_enabled: fullAiOn,
                 fullai_adaptive_dead_candles: parseInt(el('fullaiAdaptiveDeadCandles')?.value, 10) || 100,
-                fullai_adaptive_virtual_success_count: parseInt(el('fullaiAdaptiveVirtualSuccess')?.value, 10) || 3,
+                fullai_adaptive_virtual_success_count: Number.isFinite(vs) ? vs : 3,
                 fullai_adaptive_real_loss_to_retry: parseInt(el('fullaiAdaptiveRealLoss')?.value, 10) || 1,
                 fullai_adaptive_virtual_round_size: parseInt(el('fullaiAdaptiveRoundSize')?.value, 10) || 3,
                 fullai_adaptive_virtual_max_failures: parseInt(el('fullaiAdaptiveMaxFailures')?.value, 10) || 0
@@ -7836,13 +7852,13 @@ class BotsManager {
             });
             const data = await res.json();
             if (data.success) {
-                this.showNotification('Настройки FullAI Adaptive сохранены', 'success');
+                this.showNotification('Параметры Full AI сохранены', 'success');
             } else {
-                this.showNotification('Ошибка сохранения FullAI Adaptive: ' + (data.error || res.status), 'error');
+                this.showNotification('Ошибка сохранения параметров Full AI: ' + (data.error || res.status), 'error');
             }
         } catch (e) {
             console.error('[BotsManager] saveFullaiAdaptiveConfig:', e);
-            this.showNotification('Ошибка сохранения FullAI Adaptive', 'error');
+            this.showNotification('Ошибка сохранения параметров Full AI', 'error');
         }
     }
     
@@ -8655,11 +8671,20 @@ class BotsManager {
                     : (window.languageUtils?.translate?.('fullai_mode_standard') || 'Режим: Стандартный');
                 fullAiModeBadge.className = 'full-ai-mode-badge ' + (fullAiOn ? 'mode-full-ai' : 'mode-standard');
             }
-            const fullaiAdaptiveBlock = document.getElementById('fullaiAdaptiveBlock');
-            if (fullaiAdaptiveBlock) {
-                fullaiAdaptiveBlock.style.display = fullAiOn ? 'block' : 'none';
-                if (fullAiOn) this.loadFullaiAdaptiveConfig();
+            // Дубль переключателя и бейджа на вкладке Конфигурация
+            const fullAiControlToggleConfigEl = document.getElementById('fullAiControlToggleConfig');
+            if (fullAiControlToggleConfigEl) {
+                fullAiControlToggleConfigEl.checked = fullAiOn;
             }
+            const fullAiModeBadgeConfig = document.getElementById('fullAiModeBadgeConfig');
+            if (fullAiModeBadgeConfig) {
+                fullAiModeBadgeConfig.textContent = fullAiOn
+                    ? (window.languageUtils?.translate?.('fullai_mode_full_ai') || 'Режим: FullAI')
+                    : (window.languageUtils?.translate?.('fullai_mode_standard') || 'Режим: Стандартный');
+                fullAiModeBadgeConfig.className = 'full-ai-mode-badge ' + (fullAiOn ? 'mode-full-ai' : 'mode-standard');
+            }
+            // Параметры обкатки (ниже переключателя) — подтягиваем при загрузке конфига
+            if (fullAiOn) this.loadFullaiAdaptiveConfig();
         }
         
         // Синхронизируем мобильный переключатель Auto Bot
@@ -9205,20 +9230,29 @@ class BotsManager {
             console.log('[BotsManager] ✅ Кнопка "Сохранить основные настройки" инициализирована');
         }
         
-        // Тумблер «Полный Режим ИИ» — сохраняем сразу при переключении (всегда отправляем, без фильтра «нет изменений»)
+        const applyFullAiControl = async (value) => {
+            try {
+                await this.sendConfigUpdate('auto-bot', { full_ai_control: value }, value ? 'Полный Режим ИИ включён' : 'Полный Режим ИИ выключен', { forceSend: true });
+                const autoBot = this.collectConfigurationData().autoBot || {};
+                this.syncDuplicateSettings({ ...autoBot, full_ai_control: value });
+                // Один переключатель управляет и Adaptive: синхронизируем fullai_config
+                await this.saveFullaiAdaptiveConfig();
+            } catch (e) {
+                console.error('[BotsManager] Ошибка сохранения FullAI:', e);
+                this.showNotification('Ошибка сохранения переключателя FullAI', 'error');
+            }
+        };
+        // Тумблер «Полный Режим ИИ» на вкладке Управление
         const fullAiToggleEl = document.getElementById('fullAiControlToggle');
         if (fullAiToggleEl && !fullAiToggleEl.hasAttribute('data-fullai-listener')) {
             fullAiToggleEl.setAttribute('data-fullai-listener', 'true');
-            fullAiToggleEl.addEventListener('change', async () => {
-                const value = fullAiToggleEl.checked;
-                try {
-                    await this.sendConfigUpdate('auto-bot', { full_ai_control: value }, value ? 'Полный Режим ИИ включён' : 'Полный Режим ИИ выключен', { forceSend: true });
-                    this.syncDuplicateSettings(this.collectConfigurationData().autoBot || {});
-                } catch (e) {
-                    console.error('[BotsManager] Ошибка сохранения FullAI:', e);
-                    this.showNotification('Ошибка сохранения переключателя FullAI', 'error');
-                }
-            });
+            fullAiToggleEl.addEventListener('change', () => applyFullAiControl(fullAiToggleEl.checked));
+        }
+        // Дубль переключателя на вкладке Конфигурация
+        const fullAiToggleConfigEl = document.getElementById('fullAiControlToggleConfig');
+        if (fullAiToggleConfigEl && !fullAiToggleConfigEl.hasAttribute('data-fullai-listener')) {
+            fullAiToggleConfigEl.setAttribute('data-fullai-listener', 'true');
+            fullAiToggleConfigEl.addEventListener('change', () => applyFullAiControl(fullAiToggleConfigEl.checked));
         }
         
         let fullaiAdaptiveSaveTimer = null;
@@ -9226,15 +9260,22 @@ class BotsManager {
             if (fullaiAdaptiveSaveTimer) clearTimeout(fullaiAdaptiveSaveTimer);
             fullaiAdaptiveSaveTimer = setTimeout(() => this.saveFullaiAdaptiveConfig(), 800);
         };
-        const fullaiAdaptiveIds = ['fullaiAdaptiveEnabled', 'fullaiAdaptiveDeadCandles', 'fullaiAdaptiveVirtualSuccess', 'fullaiAdaptiveRealLoss', 'fullaiAdaptiveRoundSize', 'fullaiAdaptiveMaxFailures'];
+        const fullaiAdaptiveIds = ['fullaiAdaptiveDeadCandles', 'fullaiAdaptiveVirtualSuccess', 'fullaiAdaptiveRealLoss', 'fullaiAdaptiveRoundSize', 'fullaiAdaptiveMaxFailures'];
         fullaiAdaptiveIds.forEach(id => {
             const el = document.getElementById(id);
             if (el && !el.hasAttribute('data-fullai-adaptive-listener')) {
                 el.setAttribute('data-fullai-adaptive-listener', 'true');
-                el.addEventListener('change', scheduleFullaiAdaptiveSave);
-                el.addEventListener('input', scheduleFullaiAdaptiveSave);
+                el.addEventListener('change', () => {
+                    if (id === 'fullaiAdaptiveVirtualSuccess') this._updateFullaiAdaptiveDependentFields();
+                    scheduleFullaiAdaptiveSave();
+                });
+                el.addEventListener('input', () => {
+                    if (id === 'fullaiAdaptiveVirtualSuccess') this._updateFullaiAdaptiveDependentFields();
+                    scheduleFullaiAdaptiveSave();
+                });
             }
         });
+        this._updateFullaiAdaptiveDependentFields();
         
         // Кнопка сброса всех монет к глобальным настройкам
         const resetAllCoinsBtn = document.getElementById('resetAllCoinsToGlobalBtn');

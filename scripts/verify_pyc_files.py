@@ -13,19 +13,7 @@ def check_pyc_files():
     """Проверяет наличие и совместимость .pyc файлов"""
     project_root = Path(__file__).resolve().parent.parent
     ai_dir = project_root / 'bot_engine' / 'ai'
-    
-    python_version = sys.version_info[:2]
-    
-    # Определяем целевую директорию
-    if python_version >= (3, 14):
-        target_dir = ai_dir / 'pyc_314'
-        version_name = "3.14"
-    elif python_version == (3, 12):
-        target_dir = ai_dir / 'pyc_312'
-        version_name = "3.12"
-    else:
-        target_dir = ai_dir
-        version_name = f"{python_version[0]}.{python_version[1]}"
+    target_dir = ai_dir
     
     required_files = [
         '_ai_launcher.pyc',
@@ -37,7 +25,7 @@ def check_pyc_files():
     missing_files = []
     incompatible_files = []
     
-    print(f"Проверка .pyc файлов для Python {version_name}...")
+    print("Проверка .pyc файлов...")
     print(f"Целевая директория: {target_dir}")
     print()
     
@@ -87,7 +75,7 @@ def check_pyc_files():
             import subprocess
             try:
                 result = subprocess.run(
-                    [sys.executable, str(compile_script), '--version-only'],
+                    [sys.executable, str(compile_script)],
                     cwd=project_root,
                     capture_output=True,
                     text=True,

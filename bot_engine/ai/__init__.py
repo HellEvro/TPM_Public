@@ -92,17 +92,13 @@ def _detect_project_root() -> Path:
 
 # Экспорты будут добавлены по мере создания модулей
 # ВАЖНО: Используем .pyc файлы для защиты логики лицензирования
-# .pyc файлы должны быть скомпилированы при сборке проекта через license_generator/compile_all.py
-# Поддерживаются версионированные .pyc файлы для Python 3.12+ (pyc_312 для 3.12, pyc_314 для 3.14+)
+# .pyc файлы компилируются через license_generator/compile_all.py в bot_engine/ai/
 
 def _get_module_pyc_path(module_name):
-    """Определяет путь к .pyc модулю (без версионирования)."""
+    """Путь к .pyc в bot_engine/ai/."""
     base_dir = Path(__file__).resolve().parent
     pyc_path = base_dir / f"{module_name}.pyc"
-    
-    if pyc_path.exists():
-        return pyc_path
-    return None
+    return pyc_path if pyc_path.exists() else None
 
 def _load_pyc_module(module_name, module_import_name):
     """Загружает .pyc модуль используя importlib."""
@@ -149,7 +145,12 @@ class _StubAIManager:
             'license_type': None,
             'expires_at': None,
             'features': {},
-            'license': {'valid': False, 'type': None, 'expires_at': None},
+            'license': {
+                'valid': False,
+                'type': None,
+                'expires_at': None,
+                'reason': 'Модуль AI не загружен. Положите .lic в корень проекта (рядом с app.py) и перезапустите. Проверьте логи.',
+            },
             'modules': {},
         }
 
