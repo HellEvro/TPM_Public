@@ -2137,9 +2137,9 @@ const CHART_THEMES = {
     }
 };
 
-// Значения по умолчанию
+// Значения по умолчанию (единственный источник правды для порога PnL и др.)
 const DEFAULTS = {
-    PNL_THRESHOLD: 100,
+    PNL_THRESHOLD: 10,
     SORT_ORDER: 'pnl_desc',
     PAGE_SIZE: 10
 }; 

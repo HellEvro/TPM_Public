@@ -10,7 +10,7 @@ class PositionsManager {
 
         // Инициализируем состояние из StateManager
         const state = stateManager.getState('positions');
-        this.pnlThreshold = state.pnlThreshold || parseFloat(localStorage.getItem('pnl_threshold')) || 100;
+        this.pnlThreshold = state.pnlThreshold || parseFloat(localStorage.getItem('pnl_threshold')) || (typeof DEFAULTS !== 'undefined' ? DEFAULTS.PNL_THRESHOLD : 10);
         this.reduceLoad = state.reduceLoad || false;
 
         // Сохраняем начальное состояние
@@ -166,7 +166,7 @@ class PositionsManager {
     // Добавляем вспомогательные методы
     setPnlThreshold(value) {
         try {
-            const newValue = parseFloat(value) || 100;
+            const newValue = parseFloat(value) || (typeof DEFAULTS !== 'undefined' ? DEFAULTS.PNL_THRESHOLD : 10);
             stateManager.setState('positions.pnlThreshold', newValue);
         } catch (error) {
             Logger.error('POSITIONS', 'Error setting PNL threshold:', error);

@@ -34,6 +34,7 @@ class PositionsManager {
         const filterInput = domUtils.getElement(DOM_IDS.PNL_FILTER_INPUT);
         if (filterInput) {
             filterInput.value = this.pnlThreshold;
+            this.updateBlockHeader('PROFITABLE', 0);
             filterInput.addEventListener('input', (e) => {
                 const newValue = parseFloat(e.target.value) || DEFAULTS.PNL_THRESHOLD;
                 this.pnlThreshold = newValue;
@@ -491,6 +492,8 @@ class PositionsManager {
             //     finalSize: positionSize
             // });
             
+            const isVirtual = !!pos.is_virtual;
+            const virtualBadge = isVirtual ? `<span class="position-badge-virtual" style="background:#9c27b0;color:white;padding:2px 6px;border-radius:8px;font-size:10px;font-weight:600;margin-left:4px;">${languageUtils.translate('fullai_virtual_position') || 'Виртуальная'}</span>` : '';
             const positionFooter = `
                 <div class="position-footer">
                     <span class="${pos.high_roi ? CSS_CLASSES.HIGH_ROI : ''} ${roiDirection}">
@@ -498,26 +501,31 @@ class PositionsManager {
                     </span>
                     <div class="position-actions">
                         <span class="position-side ${pos.side.toLowerCase()}">${pos.side}</span>
-                        <button class="close-positions-btn single-close" 
+                        ${!isVirtual ? `<button class="close-positions-btn single-close" 
                                 data-column="${blockType.replace('-positions', '')}"
                                 data-symbol="${pos.symbol}"
                                 data-side="${pos.side}"
-                                data-size="${positionSize}">✕</button>
+                                data-size="${positionSize}">✕</button>` : ''}
                     </div>
                 </div>
             `;
 
+            const pnlDisplay = isVirtual
+                ? `${formatUtils.formatNumber(pos.unrealized_pnl_percent != null ? pos.unrealized_pnl_percent : pos.roi)}%`
+                : `${formatUtils.formatUsdt(pos.pnl)} USDT <span class="max-value">(Max: ${formatUtils.formatUsdt(pos.pnl > 0 ? pos.max_profit : pos.max_loss)})</span>`;
+
             return `
-                <div class="position ${blockType.includes('profitable') ? 'profitable' : 'losing'}" 
+                <div class="position ${blockType.includes('profitable') ? 'profitable' : 'losing'} ${isVirtual ? 'position-virtual' : ''}" 
                      data-symbol="${pos.symbol}"
                      data-size="${positionSize}"
                      data-side="${pos.side}"
-                     data-pnl="${pos.pnl}"
-                     data-column="${blockType}">
+                     data-pnl="${isVirtual ? (pos.unrealized_pnl_percent != null ? pos.unrealized_pnl_percent : pos.roi) : pos.pnl}"
+                     data-column="${blockType}"
+                     data-is-virtual="${isVirtual}">
                     <div class="position-header">
                         <div class="ticker">
                             <a href="${createTickerLink(pos.symbol, window.app?.exchangeManager?.getSelectedExchange())}" 
-                               target="_blank">${pos.symbol}</a>
+                               target="_blank">${pos.symbol}</a>${virtualBadge}
                         </div>
                         ${!this.reduceLoad ? `
                         <div style="display: flex; align-items: center; gap: 8px;">
@@ -538,9 +546,8 @@ class PositionsManager {
                         </div>
                         ` : ''}
                     </div>
-                    <div class="${pos.pnl > 1000 ? CSS_CLASSES.HIGH_PNL : ''}">
-                        ${formatUtils.formatUsdt(pos.pnl)} USDT 
-                        <span class="max-value">(Max: ${formatUtils.formatUsdt(pos.pnl > 0 ? pos.max_profit : pos.max_loss)})</span>
+                    <div class="${!isVirtual && pos.pnl > 1000 ? CSS_CLASSES.HIGH_PNL : ''}">
+                        ${pnlDisplay}
                     </div>
                     ${positionFooter}
                 </div>
@@ -553,17 +560,20 @@ class PositionsManager {
             console.warn('Invalid positions array:', positions);
             return [];
         }
+        const sortPnl = (pos) => pos.is_virtual ? (pos.unrealized_pnl_percent != null ? pos.unrealized_pnl_percent : pos.roi || 0) : (pos.pnl || 0);
 
         return [...positions].sort((a, b) => {
+            const aPnl = sortPnl(a);
+            const bPnl = sortPnl(b);
             switch(sortBy) {
                 case 'pnl_desc':
-                    return isLosing ? a.pnl - b.pnl : b.pnl - a.pnl;
+                    return isLosing ? aPnl - bPnl : bPnl - aPnl;
                 case 'pnl_asc':
-                    return isLosing ? b.pnl - a.pnl : a.pnl - b.pnl;
+                    return isLosing ? bPnl - aPnl : aPnl - bPnl;
                 case 'roi_desc':
-                    return b.roi - a.roi;
+                    return (b.roi ?? bPnl) - (a.roi ?? aPnl);
                 case 'roi_asc':
-                    return a.roi - b.roi;
+                    return (a.roi ?? aPnl) - (b.roi ?? bPnl);
                 case 'alphabet_asc':
                     return a.symbol.localeCompare(b.symbol);
                 case 'alphabet_desc':

@@ -261,7 +261,7 @@ from functools import partial
 # Добавим константы
 # BOTS_SERVICE_URL теперь определяется динамически на клиенте через JavaScript
 class DEFAULTS:
-    PNL_THRESHOLD = 100
+    PNL_THRESHOLD = 10
 
 # Инициализация БД для app.py
 app_db = None
@@ -817,7 +817,7 @@ def background_update():
                         max_loss_values[symbol] = pnl
                 
                 if pnl > 0:
-                    if pnl >= 100:
+                    if pnl >= DEFAULTS.PNL_THRESHOLD:
                         high_profitable.append(position)
                     else:
                         profitable.append(position)
@@ -957,12 +957,57 @@ def analyze_pairs_parallel(pairs, max_workers=10):
 
 @app.route('/get_positions')
 def get_positions():
-    pnl_threshold = float(request.args.get('pnl_threshold', 100))
+    pnl_threshold = float(request.args.get('pnl_threshold', DEFAULTS.PNL_THRESHOLD))
     
     all_available_pairs = []  # Больше не используется
     
-    if not positions_data['high_profitable'] and not positions_data['profitable'] and not positions_data['losing']:
-        # Получаем данные аккаунта даже если нет позиций
+    all_positions = (positions_data['high_profitable'] +
+                    positions_data['profitable'] +
+                    positions_data['losing'])
+
+    # Виртуальные позиции ПРИИ — получаем до проверки «пусто», чтобы показывать только виртуальные
+    virtual_positions = []
+    try:
+        from bots_modules.fullai_adaptive import get_virtual_positions_for_api, is_adaptive_enabled
+        if is_adaptive_enabled() and current_exchange:
+            vp_list = get_virtual_positions_for_api()
+            for vp in vp_list:
+                sym = (vp.get('symbol') or '').strip()
+                if not sym:
+                    continue
+                sym_usdt = sym if sym.endswith('USDT') else (sym + 'USDT')
+                entry = float(vp.get('entry_price') or 0)
+                direction = (vp.get('direction') or 'LONG').upper()
+                try:
+                    ticker = current_exchange.get_ticker(sym_usdt)
+                    current_price = float(ticker.get('last_price') or ticker.get('mark_price') or 0) if ticker else 0
+                except Exception:
+                    current_price = 0
+                if entry and current_price:
+                    if direction == 'LONG':
+                        pnl_percent = (current_price - entry) / entry * 100
+                    else:
+                        pnl_percent = (entry - current_price) / entry * 100
+                else:
+                    pnl_percent = 0.0
+                virtual_positions.append({
+                    'symbol': sym_usdt,
+                    'side': 'Long' if direction == 'LONG' else 'Short',
+                    'pnl': 0,
+                    'roi': round(pnl_percent, 2),
+                    'unrealized_pnl_percent': round(pnl_percent, 2),
+                    'max_profit': 0,
+                    'max_loss': 0,
+                    'size': 0,
+                    'qty': 0,
+                    'quantity': 0,
+                    'entry_price': entry,
+                    'is_virtual': True,
+                })
+    except Exception:
+        pass
+
+    if not all_positions and not virtual_positions:
         try:
             wallet_data = current_exchange.get_wallet_balance()
         except Exception as e:
@@ -973,7 +1018,6 @@ def get_positions():
                 'available_balance': 0,
                 'realized_pnl': 0
             }
-        
         return jsonify({
             'high_profitable': [],
             'profitable': [],
@@ -1000,26 +1044,37 @@ def get_positions():
             }
         })
 
-    # Получаем все позиции
-    all_positions = (positions_data['high_profitable'] + 
-                    positions_data['profitable'] + 
-                    positions_data['losing'])
-    
-    # Создаем множество символов из активных позиций
-    active_position_symbols = set(position['symbol'] for position in all_positions)
+    all_positions_with_virtual = all_positions + virtual_positions
+    active_position_symbols = set(p['symbol'] for p in all_positions_with_virtual)
     
     # Фильтруем доступные пары
     available_pairs = [pair for pair in all_available_pairs if pair not in active_position_symbols]
     
-    # Распределяем позиции по категориям
+    # Распределяем позиции по категориям (виртуальные не участвуют в total_profit/total_loss/total_trades)
     high_profitable = []
     profitable = []
     losing = []
     total_profit = 0
     total_loss = 0
-    
-    for position in all_positions:
-        pnl = position['pnl']
+
+    def _pnl_sort_key(pos):
+        if pos.get('is_virtual'):
+            return pos.get('unrealized_pnl_percent', 0)
+        return pos.get('pnl', 0)
+
+    for position in all_positions_with_virtual:
+        is_virtual = position.get('is_virtual', False)
+        pnl = position.get('pnl', 0)
+        if is_virtual:
+            pnl_for_cat = position.get('unrealized_pnl_percent', 0)
+            if pnl_for_cat >= 0:
+                if pnl_for_cat >= 5:
+                    high_profitable.append(position)
+                else:
+                    profitable.append(position)
+            else:
+                losing.append(position)
+            continue
         if pnl > 0:
             if pnl >= pnl_threshold:
                 high_profitable.append(position)
@@ -1030,18 +1085,17 @@ def get_positions():
             losing.append(position)
             total_loss += pnl
 
-    # Сортируем позиции
-    high_profitable.sort(key=lambda x: x['pnl'], reverse=True)
-    profitable.sort(key=lambda x: x['pnl'], reverse=True)
-    losing.sort(key=lambda x: x['pnl'])
-    
-    # Получаем TOP-3
-    all_profitable = high_profitable + profitable
-    all_profitable.sort(key=lambda x: x['pnl'], reverse=True)
-    top_profitable = all_profitable[:3] if all_profitable else []
-    top_losing = losing[:3] if losing else []
+    high_profitable.sort(key=_pnl_sort_key, reverse=True)
+    profitable.sort(key=_pnl_sort_key, reverse=True)
+    losing.sort(key=_pnl_sort_key)
 
-    # Формируем статистику
+    # TOP-3 и total_trades — только по реальным позициям
+    real_profitable = [p for p in high_profitable + profitable if not p.get('is_virtual')]
+    real_losing = [p for p in losing if not p.get('is_virtual')]
+    real_profitable.sort(key=lambda x: x['pnl'], reverse=True)
+    top_profitable = real_profitable[:3] if real_profitable else []
+    top_losing = real_losing[:3] if real_losing else []
+
     stats = {
         'total_pnl': total_profit + total_loss,
         'total_profit': total_profit,
@@ -1051,7 +1105,7 @@ def get_positions():
         'losing_count': len(losing),
         'top_profitable': top_profitable,
         'top_losing': top_losing,
-        'total_trades': len(all_positions)
+        'total_trades': len(all_positions),
     }
     
     # Получаем данные аккаунта
@@ -1162,7 +1216,7 @@ def calculate_statistics(positions):
     for position in positions:
         pnl = position['pnl']
         if pnl > 0:
-            if pnl >= 100:
+            if pnl >= DEFAULTS.PNL_THRESHOLD:
                 high_profitable.append(position)
             else:
                 profitable.append(position)
@@ -2441,7 +2495,7 @@ if __name__ == '__main__':
                 for position in positions:
                     pnl = position['pnl']
                     if pnl > 0:
-                        if pnl >= 100:
+                        if pnl >= DEFAULTS.PNL_THRESHOLD:
                             high_profitable.append(position)
                         else:
                             profitable.append(position)
