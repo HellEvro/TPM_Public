@@ -776,17 +776,12 @@ def load_auto_bot_config():
             bots_data['auto_bot_config'] = merged_config
             # ✅ Логирование leverage убрано (было слишком много спама) - логируется только при загрузке из файла
         
-        # FullAI (блок 9.3): при full_ai_control и невалидной лицензии ИИ — сбросить full_ai_control только при первой загрузке за процесс
-        # ✅ КРИТИЧНО: иначе при каждом GET после включения FullAI через UI конфиг перезагружался и сбрасывал full_ai_control → в UI снова «выкл»
+        # FullAI (блок 9.3): при full_ai_control и валидной лицензии — авто-включение ИИ; при невалидной — НЕ сбрасываем full_ai_control (сохраняем выбор пользователя после перезапуска)
         if merged_config.get('full_ai_control') and _fullai_check_is_first_load:
             try:
                 from bot_engine.ai import get_ai_manager
                 if not get_ai_manager().is_available():
-                    with bots_data_lock:
-                        bots_data['auto_bot_config']['full_ai_control'] = False
-                    from bots_modules.sync_and_cache import save_auto_bot_config
-                    save_auto_bot_config()
-                    logger.warning("[FullAI] full_ai_control сброшен в False: ИИ недоступен (лицензия не валидна). Сохранено в конфиг.")
+                    logger.warning("[FullAI] Полный режим ИИ включён в конфиге, но ИИ недоступен (лицензия не валидна). Переключатель оставлен включённым — после исправления лицензии режим заработает.")
                 else:
                     # FullAI включён через конфиг и лицензия валидна — авто-включение ИИ, если был выключен
                     ai_before = merged_config.get('ai_enabled', False)
