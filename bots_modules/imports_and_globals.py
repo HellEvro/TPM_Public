@@ -839,12 +839,38 @@ def _get_fullai_config_file_path():
     return os.path.join(_root, 'configs', 'fullai_config.json')
 
 
+def _ensure_fullai_config_file_exists(fullai_path: str, current_cfg: dict) -> None:
+    """Если configs/fullai_config.json отсутствует — создаёт его из fullai_config.example.json (current_cfg перекрывает)."""
+    if os.path.isfile(fullai_path):
+        return
+    configs_dir = os.path.dirname(fullai_path)
+    example_path = os.path.join(configs_dir, 'fullai_config.example.json')
+    if not os.path.isfile(example_path):
+        return
+    try:
+        with open(example_path, 'r', encoding='utf-8') as f:
+            example = json.load(f)
+        if not isinstance(example, dict):
+            return
+        # Убираем служебные ключи из примера; текущий конфиг перекрывает
+        base = {k: v for k, v in example.items() if not k.startswith('_')}
+        merged = {**base, **current_cfg} if current_cfg else base
+        os.makedirs(configs_dir, exist_ok=True)
+        to_file = {k: v for k, v in merged.items() if k != 'user_ai_state_before_prii'}
+        with open(fullai_path, 'w', encoding='utf-8') as f:
+            json.dump(to_file, f, ensure_ascii=False, indent=2)
+        logger.info("[FullAI] Создан configs/fullai_config.json из fullai_config.example.json (файл отсутствовал)")
+    except Exception as _e:
+        logger.debug(f"FullAI: не удалось создать fullai_config.json из примера: {_e}")
+
+
 def load_full_ai_config_from_db():
-    """Загружает конфиг FullAI: сначала из configs/fullai_config.json (или prii_config.json для совместимости), иначе из БД. Результат в bots_data['full_ai_config']."""
+    """Загружает конфиг FullAI: сначала из configs/fullai_config.json (или prii_config.json для совместимости), иначе из БД. Результат в bots_data['full_ai_config']. Если файла нет — создаёт fullai_config.json из fullai_config.example.json."""
     try:
         fullai_path = _get_fullai_config_file_path()
         _legacy_path = os.path.join(os.path.dirname(fullai_path), 'prii_config.json')
         cfg = None
+        file_was_read = False
         for path in (fullai_path, _legacy_path):
             if os.path.isfile(path):
                 try:
@@ -853,6 +879,7 @@ def load_full_ai_config_from_db():
                     if isinstance(cfg, dict) and cfg:
                         from bot_engine.storage import _get_bots_database
                         _get_bots_database().save_full_ai_config(cfg)
+                    file_was_read = True
                     break
                 except Exception as _e:
                     logger.debug(f"FullAI: не удалось загрузить из {path}: {_e}")
@@ -860,6 +887,19 @@ def load_full_ai_config_from_db():
             from bot_engine.storage import _get_bots_database
             db = _get_bots_database()
             cfg = db.load_full_ai_config()
+        # Если рабочего файла не было — создаём fullai_config.json из примера (чтобы был обычный конфиг, а не только example)
+        if not file_was_read:
+            _ensure_fullai_config_file_exists(fullai_path, cfg if isinstance(cfg, dict) else {})
+            # Перечитать только что созданный файл, чтобы в памяти и БД был полный конфиг
+            if os.path.isfile(fullai_path):
+                try:
+                    with open(fullai_path, 'r', encoding='utf-8') as f:
+                        cfg = json.load(f)
+                    if isinstance(cfg, dict) and cfg:
+                        from bot_engine.storage import _get_bots_database
+                        _get_bots_database().save_full_ai_config(cfg)
+                except Exception as _e:
+                    logger.debug(f"FullAI: перечитать созданный fullai_config.json: {_e}")
         with bots_data_lock:
             bots_data['full_ai_config'] = cfg if cfg is not None else {}
         return bots_data.get('full_ai_config')
@@ -911,9 +951,21 @@ def get_effective_auto_bot_config():
         with bots_data_lock:
             fullai_cfg = bots_data.get('full_ai_config') or {}
     if not fullai_cfg:
-        # Первое включение: инициализируем копией пользовательского (без перезаписи пользовательского)
-        fullai_cfg = deepcopy(user_cfg)
-        # Таймфрейм в конфиг FullAI не кладём — всегда берём из user_cfg
+        # Первое включение: инициализируем из примера + пользовательский конфиг (чтобы в fullai_config.json были все ключи FullAI)
+        example_path = os.path.join(os.path.dirname(_get_fullai_config_file_path()), 'fullai_config.example.json')
+        base = {}
+        if os.path.isfile(example_path):
+            try:
+                with open(example_path, 'r', encoding='utf-8') as f:
+                    ex = json.load(f)
+                if isinstance(ex, dict):
+                    base = {k: v for k, v in ex.items() if not k.startswith('_')}
+            except Exception:
+                pass
+        fullai_cfg = deepcopy(base)
+        for k, v in user_cfg.items():
+            if k not in ('system_timeframe', 'timeframe', 'SYSTEM_TIMEFRAME'):
+                fullai_cfg[k] = v
         save_full_ai_config_to_db(fullai_cfg)
     out = deepcopy(fullai_cfg)
     # Служебный ключ восстановления при выключении FullAI — не часть конфига
