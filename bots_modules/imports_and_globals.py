@@ -694,16 +694,11 @@ def load_auto_bot_config():
         except Exception:
             pass
 
-        from bot_engine.config_loader import DEFAULT_AUTO_BOT_CONFIG
         from bots_modules.config_writer import load_auto_bot_config_from_file
-        # Загружаем из файла каждый параметр отдельно (не копируем весь модуль)
+        # Загружаем ТОЛЬКО из класса AutoBotConfig (рабочий конфиг). Default — только при «Сбросить к стандарту», не при загрузке.
         file_config = load_auto_bot_config_from_file(config_file_path)
-        merged_config = DEFAULT_AUTO_BOT_CONFIG.copy()
-        for key, value in file_config.items():
-            merged_config[key] = value
-        
-        # Ключи, которые ВСЕГДА должны быть в auto_bot_config (старые configs/bot_config.py могли их не содержать).
-        # Отсутствие ключа — ошибка конфига; подставляем дефолт при загрузке, чтобы ключ не отсутствовал.
+        merged_config = dict(file_config) if file_config else {}
+        # Минимальный fallback только для обязательных ключей (старые конфиги без этих полей), не из Default-класса
         _required_auto_bot_keys = {
             'rsi_time_filter_enabled': True,
             'rsi_time_filter_candles': 8,

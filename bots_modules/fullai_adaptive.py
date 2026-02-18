@@ -339,6 +339,27 @@ def process_virtual_positions(
             success = pnl_percent >= 0
             record_virtual_close(norm, success)
             to_remove.append(i)
+            # Сохраняем виртуальную сделку для страницы «Закрытые PnL»
+            try:
+                import time as _time
+                from bot_engine.app_database import get_app_database
+                db = get_app_database()
+                entry_ts = pos.get('entry_time')
+                entry_ts_ms = int(entry_ts * 1000) if entry_ts else None
+                close_ts = int(_time.time() * 1000)
+                side = 'Long' if direction == 'LONG' else 'Short'
+                db.save_virtual_closed_pnl(
+                    symbol=norm,
+                    side=side,
+                    entry_price=entry,
+                    exit_price=current_price,
+                    closed_pnl_percent=pnl_percent,
+                    close_timestamp=close_ts,
+                    entry_timestamp=entry_ts_ms,
+                    size=0,
+                )
+            except Exception as _e:
+                logger.debug("Сохранение виртуальной сделки в БД: %s", _e)
     with _state_lock:
         if norm in _virtual_positions:
             for idx in reversed(to_remove):
@@ -383,3 +404,20 @@ def record_real_close(symbol: str, pnl_percent: float) -> None:
 def get_adaptive_settings_for_api() -> Dict[str, Any]:
     """Текущие настройки адаптивного блока для API/UI."""
     return _get_adaptive_config()
+
+
+def get_virtual_positions_for_api() -> List[Dict[str, Any]]:
+    """Список виртуальных позиций ПРИИ для API/UI. По одной записи на каждую открытую виртуальную позицию."""
+    with _state_lock:
+        result: List[Dict[str, Any]] = []
+        for symbol, positions in _virtual_positions.items():
+            for pos in positions:
+                direction = (pos.get('direction') or 'LONG').upper()
+                result.append({
+                    'symbol': symbol,
+                    'direction': direction,
+                    'entry_price': pos.get('entry_price'),
+                    'entry_time': pos.get('entry_time'),
+                    'is_virtual': True,
+                })
+        return result

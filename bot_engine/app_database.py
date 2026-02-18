@@ -287,6 +287,25 @@ class AppDatabase:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_closed_pnl_closed_pnl ON closed_pnl(closed_pnl)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_closed_pnl_exchange ON closed_pnl(exchange)")
             
+            # ==================== ТАБЛИЦА: ВИРТУАЛЬНЫЕ ЗАКРЫТЫЕ PNL (ПРИИ) ====================
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS virtual_closed_pnl (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT NOT NULL,
+                    side TEXT,
+                    entry_price REAL,
+                    exit_price REAL,
+                    size REAL,
+                    closed_pnl REAL,
+                    closed_pnl_percent REAL,
+                    close_timestamp INTEGER NOT NULL,
+                    entry_timestamp INTEGER,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_virtual_closed_pnl_symbol ON virtual_closed_pnl(symbol)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_virtual_closed_pnl_close_timestamp ON virtual_closed_pnl(close_timestamp)")
+            
             # ==================== ТАБЛИЦА: МАКСИМАЛЬНЫЕ ЗНАЧЕНИЯ ====================
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS max_values (
@@ -422,6 +441,17 @@ class AppDatabase:
                     logger.info("📦 Миграция: переименовываю data_json в extra_data_json для closed_pnl")
                     cursor.execute("ALTER TABLE closed_pnl RENAME COLUMN data_json TO extra_data_json")
                     logger.info("✅ Миграция closed_pnl завершена")
+            except Exception as e:
+                pass
+            
+            # ==================== МИГРАЦИЯ: Колонка is_virtual для виртуальных сделок ПРИИ ====================
+            try:
+                cursor.execute("PRAGMA table_info(closed_pnl)")
+                columns = [col[1] for col in cursor.fetchall()]
+                if 'is_virtual' not in columns:
+                    logger.info("📦 Миграция: добавляю колонку is_virtual в closed_pnl")
+                    cursor.execute("ALTER TABLE closed_pnl ADD COLUMN is_virtual INTEGER NOT NULL DEFAULT 0")
+                    logger.info("✅ Миграция closed_pnl.is_virtual завершена")
             except Exception as e:
                 pass
             
@@ -709,7 +739,7 @@ class AppDatabase:
                                 extra_data[key] = value
                         extra_data_json = json.dumps(extra_data, ensure_ascii=False) if extra_data else None
                         
-                        # Вставляем или обновляем запись
+                        # Вставляем или обновляем запись (реальные сделки; виртуальные — в virtual_closed_pnl)
                         cursor.execute("""
                             INSERT OR REPLACE INTO closed_pnl (
                                 symbol, side, entry_price, exit_price, size,
@@ -741,6 +771,26 @@ class AppDatabase:
             logger.error(f"❌ Ошибка сохранения closed_pnl: {e}")
             import traceback
             pass
+            return False
+    
+    def save_virtual_closed_pnl(self, symbol: str, side: str, entry_price: float, exit_price: float,
+                                closed_pnl_percent: float, close_timestamp: int,
+                                entry_timestamp: Optional[int] = None, size: float = 0) -> bool:
+        """Сохраняет одну виртуальную закрытую сделку ПРИИ для отображения на странице Закрытые PnL."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                now = datetime.now().isoformat()
+                cursor.execute("""
+                    INSERT INTO virtual_closed_pnl (
+                        symbol, side, entry_price, exit_price, size,
+                        closed_pnl, closed_pnl_percent, close_timestamp, entry_timestamp, created_at
+                    ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+                """, (symbol, side, entry_price, exit_price, size,
+                      closed_pnl_percent, close_timestamp, entry_timestamp or close_timestamp, now))
+                return True
+        except Exception as e:
+            logger.debug("Ошибка сохранения виртуальной сделки: %s", e)
             return False
     
     def get_closed_pnl(self, sort_by: str = 'time', period: str = 'all', 
@@ -852,6 +902,7 @@ class AppDatabase:
                 
                 result = []
                 for row in rows:
+                    ts = row['close_timestamp'] or 0
                     pnl_data = {
                         'symbol': row['symbol'],
                         'side': row['side'],
@@ -861,10 +912,12 @@ class AppDatabase:
                         'closed_pnl': row['closed_pnl'],
                         'closed_pnl_percent': row['closed_pnl_percent'],
                         'fee': row['fee'],
-                        'close_timestamp': row['close_timestamp'],
+                        'close_timestamp': ts,
+                        'close_time': datetime.fromtimestamp(ts / 1000).strftime('%Y-%m-%d %H:%M:%S') if ts else '',
                         'entry_timestamp': row['entry_timestamp'],
                         'duration_seconds': row['duration_seconds'],
-                        'exchange': row['exchange']
+                        'exchange': row['exchange'],
+                        'is_virtual': False,
                     }
                     
                     # Загружаем дополнительные данные из extra_data_json
@@ -877,7 +930,39 @@ class AppDatabase:
                     
                     result.append(pnl_data)
                 
-                pass
+                # Виртуальные сделки ПРИИ: подмешиваем из virtual_closed_pnl
+                cursor.execute("""
+                    SELECT symbol, side, entry_price, exit_price, size,
+                           closed_pnl, closed_pnl_percent, close_timestamp, entry_timestamp
+                    FROM virtual_closed_pnl
+                    WHERE close_timestamp >= ? AND close_timestamp <= ?
+                """, (period_start, period_end))
+                vrows = cursor.fetchall()
+                for row in vrows:
+                    ts = row['close_timestamp'] or 0
+                    result.append({
+                        'symbol': row['symbol'],
+                        'side': row['side'],
+                        'entry_price': row['entry_price'],
+                        'exit_price': row['exit_price'],
+                        'size': row['size'] or 0,
+                        'closed_pnl': row['closed_pnl'] or 0,
+                        'closed_pnl_percent': row['closed_pnl_percent'],
+                        'fee': 0,
+                        'close_timestamp': ts,
+                        'close_time': datetime.fromtimestamp(ts / 1000).strftime('%Y-%m-%d %H:%M:%S') if ts else '',
+                        'entry_timestamp': row['entry_timestamp'],
+                        'duration_seconds': None,
+                        'exchange': 'virtual',
+                        'is_virtual': True,
+                    })
+                
+                # Сортировка объединённого списка
+                if sort_by == 'pnl':
+                    result.sort(key=lambda x: abs(float(x.get('closed_pnl') or 0)), reverse=True)
+                else:
+                    result.sort(key=lambda x: int(x.get('close_timestamp') or 0), reverse=True)
+                
                 return result
                 
         except Exception as e:

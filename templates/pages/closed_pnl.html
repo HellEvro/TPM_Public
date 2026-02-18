@@ -51,6 +51,10 @@
             <option value="time" data-translate="sortNew">От нового к старому</option>
             <option value="pnl" data-translate="sortPnl">По размеру PNL</option>
         </select>
+        <label style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="showVirtualClosedPnl" checked onchange="window.app.updateClosedPnlTable()" />
+            <span data-translate="showVirtualTrades">Показывать виртуальные</span>
+        </label>
     </div>
     <div id="closedPnlLoading" class="loader-container" style="display: none; padding: 40px;">
         <div class="loader"></div>

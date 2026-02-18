@@ -938,6 +938,28 @@ def get_bots_list():
             }
         }
         
+        # Виртуальные позиции ПРИИ (FullAI Adaptive) — показываем в списке «Боты в работе» с пометкой «Виртуальная»
+        try:
+            ac = bots_data.get('auto_bot_config') or {}
+            if ac.get('full_ai_control'):
+                from bots_modules.fullai_adaptive import get_virtual_positions_for_api, is_adaptive_enabled
+                if is_adaptive_enabled():
+                    vp_list = get_virtual_positions_for_api()
+                    # Подмешиваем текущую цену из RSI-кэша для отображения в карточке
+                    with rsi_data_lock:
+                        coins = coins_rsi_data.get('coins') or {}
+                        for pos in vp_list:
+                            sym = pos.get('symbol')
+                            if sym and sym in coins:
+                                pos['current_price'] = coins[sym].get('price')
+                    response_data['virtual_positions'] = vp_list
+                else:
+                    response_data['virtual_positions'] = []
+            else:
+                response_data['virtual_positions'] = []
+        except Exception:
+            response_data['virtual_positions'] = []
+        
         # ✅ Не логируем частые запросы списка ботов
         return jsonify(response_data)
         
@@ -2959,8 +2981,15 @@ def individual_coin_settings(symbol):
 def fullai_config_get_post():
     """GET: конфиг FullAI (для UI, в т.ч. fullai_adaptive_*). POST: обновление (тело мержится в конфиг)."""
     try:
-        from bots_modules.imports_and_globals import load_full_ai_config_from_db, save_full_ai_config_to_db, bots_data, bots_data_lock
+        from bots_modules.imports_and_globals import load_full_ai_config_from_db, save_full_ai_config_to_db, load_auto_bot_config, bots_data, bots_data_lock
         if request.method == 'GET':
+            # Сначала подтягиваем рабочий конфиг из bot_config.py (иначе auto_bot_config может быть дефолтом и UI покажет 100 вместо 10)
+            try:
+                if hasattr(load_auto_bot_config, '_last_mtime'):
+                    load_auto_bot_config._last_mtime = 0
+                load_auto_bot_config()
+            except Exception:
+                pass
             cfg = load_full_ai_config_from_db() or {}
             # Подмешиваем значения из рабочего конфига (bot_config.py AutoBotConfig), чтобы UI показывал реальные настройки
             with bots_data_lock:
@@ -2988,6 +3017,25 @@ def fullai_config_get_post():
                 cfg['fullai_adaptive_virtual_max_failures'] = auto['fullai_adaptive_virtual_max_failures']
             elif auto.get('fullai_adaptive_max_failures') is not None:
                 cfg['fullai_adaptive_virtual_max_failures'] = auto['fullai_adaptive_max_failures']
+            # Источник истины для UI: класс AutoBotConfig из bot_config.py (гарантирует совпадение с файлом)
+            try:
+                from bot_engine.config_loader import AutoBotConfig
+                if getattr(AutoBotConfig, 'FULL_AI_CONTROL', None) is not None:
+                    cfg['full_ai_control'] = bool(AutoBotConfig.FULL_AI_CONTROL)
+                if getattr(AutoBotConfig, 'FULLAI_ADAPTIVE_ENABLED', None) is not None:
+                    cfg['fullai_adaptive_enabled'] = bool(AutoBotConfig.FULLAI_ADAPTIVE_ENABLED)
+                if getattr(AutoBotConfig, 'FULLAI_ADAPTIVE_DEAD_CANDLES', None) is not None:
+                    cfg['fullai_adaptive_dead_candles'] = int(AutoBotConfig.FULLAI_ADAPTIVE_DEAD_CANDLES)
+                if getattr(AutoBotConfig, 'FULLAI_ADAPTIVE_VIRTUAL_SUCCESS', None) is not None:
+                    cfg['fullai_adaptive_virtual_success_count'] = int(AutoBotConfig.FULLAI_ADAPTIVE_VIRTUAL_SUCCESS)
+                if getattr(AutoBotConfig, 'FULLAI_ADAPTIVE_REAL_LOSS', None) is not None:
+                    cfg['fullai_adaptive_real_loss_to_retry'] = int(AutoBotConfig.FULLAI_ADAPTIVE_REAL_LOSS)
+                if getattr(AutoBotConfig, 'FULLAI_ADAPTIVE_ROUND_SIZE', None) is not None:
+                    cfg['fullai_adaptive_virtual_round_size'] = int(AutoBotConfig.FULLAI_ADAPTIVE_ROUND_SIZE)
+                if getattr(AutoBotConfig, 'FULLAI_ADAPTIVE_MAX_FAILURES', None) is not None:
+                    cfg['fullai_adaptive_virtual_max_failures'] = int(AutoBotConfig.FULLAI_ADAPTIVE_MAX_FAILURES)
+            except Exception as _fullai_err:
+                logger.debug("FullAI из AutoBotConfig в fullai-config: %s", _fullai_err)
             return jsonify({'success': True, 'config': cfg})
         if request.method == 'POST':
             payload = request.get_json(silent=True)
@@ -3506,6 +3554,25 @@ def auto_bot_config():
                     config['log_patterns'] = getattr(AIConfig, 'AI_LOG_PATTERNS', config.get('log_patterns', False))
                 except Exception as _ai_merge_err:
                     logger.debug(f" AI-merge в auto-bot: {_ai_merge_err}")
+                # ✅ FullAI: источник истины для UI — класс AutoBotConfig из bot_config.py (после reload в load_auto_bot_config)
+                try:
+                    from bot_engine.config_loader import AutoBotConfig
+                    if getattr(AutoBotConfig, 'FULL_AI_CONTROL', None) is not None:
+                        config['full_ai_control'] = bool(AutoBotConfig.FULL_AI_CONTROL)
+                    if getattr(AutoBotConfig, 'FULLAI_ADAPTIVE_ENABLED', None) is not None:
+                        config['fullai_adaptive_enabled'] = bool(AutoBotConfig.FULLAI_ADAPTIVE_ENABLED)
+                    if getattr(AutoBotConfig, 'FULLAI_ADAPTIVE_DEAD_CANDLES', None) is not None:
+                        config['fullai_adaptive_dead_candles'] = int(AutoBotConfig.FULLAI_ADAPTIVE_DEAD_CANDLES)
+                    if getattr(AutoBotConfig, 'FULLAI_ADAPTIVE_VIRTUAL_SUCCESS', None) is not None:
+                        config['fullai_adaptive_virtual_success_count'] = int(AutoBotConfig.FULLAI_ADAPTIVE_VIRTUAL_SUCCESS)
+                    if getattr(AutoBotConfig, 'FULLAI_ADAPTIVE_REAL_LOSS', None) is not None:
+                        config['fullai_adaptive_real_loss_to_retry'] = int(AutoBotConfig.FULLAI_ADAPTIVE_REAL_LOSS)
+                    if getattr(AutoBotConfig, 'FULLAI_ADAPTIVE_ROUND_SIZE', None) is not None:
+                        config['fullai_adaptive_virtual_round_size'] = int(AutoBotConfig.FULLAI_ADAPTIVE_ROUND_SIZE)
+                    if getattr(AutoBotConfig, 'FULLAI_ADAPTIVE_MAX_FAILURES', None) is not None:
+                        config['fullai_adaptive_virtual_max_failures'] = int(AutoBotConfig.FULLAI_ADAPTIVE_MAX_FAILURES)
+                except Exception as _fullai_merge_err:
+                    logger.debug("FullAI merge в auto-bot: %s", _fullai_merge_err)
                 
                 # ✅ Фильтры уже загружены в load_auto_bot_config() выше и находятся в bots_data['auto_bot_config']
                 # Не нужно повторно загружать их из БД - используем уже загруженные значения

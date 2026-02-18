@@ -535,6 +535,39 @@ class BotsManager {
         });
     }
 
+    /** Виртуальные позиции ПРИИ в виде объектов как у ботов — для отображения в списке «Боты в работе» с бейджем «Виртуальная». */
+    getVirtualPositionsAsBots() {
+        const list = Array.isArray(this.activeVirtualPositions) ? this.activeVirtualPositions : [];
+        const filter = this.activeBotsFilter;
+        return list
+            .filter(v => {
+                if (filter === 'long') return (v.direction || '').toUpperCase() === 'LONG';
+                if (filter === 'short') return (v.direction || '').toUpperCase() === 'SHORT';
+                return true;
+            })
+            .map((v, i) => {
+                const entry = parseFloat(v.entry_price) || 0;
+                const current = parseFloat(v.current_price) || 0;
+                const isLong = (v.direction || '').toUpperCase() === 'LONG';
+                const pnlPct = entry ? (isLong ? (current - entry) / entry : (entry - current) / entry) * 100 : 0;
+                const pnlUsdt = 0; // виртуальная позиция без объёма в USDT
+                return {
+                    symbol: v.symbol,
+                    is_virtual: true,
+                    _virtualIndex: i,
+                    position_side: isLong ? 'Long' : 'Short',
+                    status: isLong ? 'virtual_long' : 'virtual_short',
+                    entry_price: v.entry_price,
+                    current_price: v.current_price,
+                    unrealized_pnl_usdt: pnlUsdt,
+                    unrealized_pnl: pnlPct,
+                    config: {},
+                    volume_value: 0,
+                    position_size: 0
+                };
+            });
+    }
+
     updateActiveBotsFilterCounts() {
         const bots = Array.isArray(this.activeBots) ? this.activeBots : [];
         const counts = {
@@ -5826,7 +5859,8 @@ class BotsManager {
             if (botsData.success) {
                 console.log(`[DEBUG] loadActiveBotsData: получены данные ботов:`, botsData.bots);
                 this.activeBots = botsData.bots;
-                console.log(`[DEBUG] loadActiveBotsData: this.activeBots установлен:`, this.activeBots);
+                this.activeVirtualPositions = Array.isArray(botsData.virtual_positions) ? botsData.virtual_positions : [];
+                console.log(`[DEBUG] loadActiveBotsData: this.activeBots установлен:`, this.activeBots, 'virtual:', this.activeVirtualPositions?.length);
                 this.renderActiveBotsDetails();
                 
                 // Обновляем индикаторы активных ботов в списке монет
@@ -5916,10 +5950,13 @@ class BotsManager {
         const currentBots = hasActiveBots ? this.activeBots.map(bot => bot.symbol) : [];
         const needsFullRedraw = JSON.stringify(existingBots.sort()) !== JSON.stringify(currentBots.sort());
         const filteredBots = this.getFilteredActiveBotsForDetails();
-        const existingDetailsBots = detailsElement ? Array.from(detailsElement.querySelectorAll('.active-bot-item')).map(i => i.dataset.symbol).sort() : [];
-        const filteredBotSymbols = filteredBots.map(b => b.symbol).sort();
+        const virtualAsBots = this.getVirtualPositionsAsBots();
+        const displayListForDetails = filteredBots.concat(virtualAsBots);
+        const detailsKey = (b) => b.is_virtual ? `${b.symbol}_v${b._virtualIndex}` : b.symbol;
+        const existingDetailsBots = detailsElement ? Array.from(detailsElement.querySelectorAll('.active-bot-item')).map(i => (i.dataset.isVirtual === 'true' ? `${i.dataset.symbol}_v${i.dataset.virtualIndex || 0}` : i.dataset.symbol)).sort() : [];
+        const displayKeys = displayListForDetails.map(detailsKey).sort();
         const needsDetailsRedraw = needsFullRedraw || (this.activeBotsFilter !== this._lastActiveBotsFilter) ||
-            JSON.stringify(filteredBotSymbols) !== JSON.stringify(existingDetailsBots);
+            JSON.stringify(displayKeys) !== JSON.stringify(existingDetailsBots);
         
         console.log(`[DEBUG] Проверка перерисовки:`, { existingBots, currentBots, needsFullRedraw, needsDetailsRedraw });
 
@@ -6036,9 +6073,9 @@ class BotsManager {
             }
         }
 
-        // Обновляем вкладку "Боты в работе" (используем отфильтрованный список)
+        // Обновляем вкладку "Боты в работе" (реальные боты + виртуальные позиции ПРИИ)
         if (detailsElement) {
-            const hasFilteredBots = filteredBots.length > 0;
+            const hasFilteredBots = displayListForDetails.length > 0;
             if (!hasFilteredBots) {
                 const currentLang = document.documentElement.lang || 'ru';
                 const noActiveBotsText = TRANSLATIONS[currentLang]['no_active_bots'] || 'Нет активных ботов';
@@ -6057,38 +6094,33 @@ class BotsManager {
                     this._lastActiveBotsFilter = this.activeBotsFilter;
                     console.log(`[DEBUG] Полная перерисовка вкладки "Боты в работе"`);
                     
-                    const rightPanelHtml = filteredBots.map(bot => {
-                    // Определяем статус бота (активен если running, idle, или в позиции)
-                    const isActive = bot.status === 'running' || bot.status === 'idle' || 
+                    const rightPanelHtml = displayListForDetails.map(bot => {
+                    const isVirtual = !!bot.is_virtual;
+                    const isActive = isVirtual || bot.status === 'running' || bot.status === 'idle' || 
                                     bot.status === 'in_position_long' || bot.status === 'in_position_short' ||
                                     bot.status === 'armed_up' || bot.status === 'armed_down';
-                    
                     const statusColor = isActive ? '#4caf50' : '#ff5722';
-                    const statusText = isActive ? window.languageUtils.translate('active_status') : (bot.status === 'paused' ? window.languageUtils.translate('paused_status') : (bot.status === 'idle' ? window.languageUtils.translate('waiting_status') : window.languageUtils.translate('stopped_status')));
-                    
-                    // Определяем информацию о позиции
-                    console.log(`[DEBUG] renderActiveBotsDetails для ${bot.symbol}:`, {
-                        position_side: bot.position_side,
-                        entry_price: bot.entry_price,
-                        current_price: bot.current_price,
-                        rsi_data: bot.rsi_data
-                    });
+                    const statusText = isVirtual ? (window.languageUtils?.translate('fullai_virtual_position') || 'Виртуальная') : (isActive ? window.languageUtils.translate('active_status') : (bot.status === 'paused' ? window.languageUtils.translate('paused_status') : (bot.status === 'idle' ? window.languageUtils.translate('waiting_status') : window.languageUtils.translate('stopped_status'))));
                     
                     const d = this.getCompactCardData(bot);
                     const t = k => window.languageUtils?.translate(k) || this.getTranslation(k);
                     const exchangeUrl = this.getExchangeLink(bot.symbol, 'bybit');
-                    const isLong = (bot.position_side || '').toUpperCase() === 'LONG';
-                    const cardBg = isLong ? 'rgba(76, 175, 80, 0.08)' : 'rgba(244, 67, 54, 0.08)';
+                    // Цвет карточки по PnL: зелёный — прибыль, красный — убыток (направление Long/Short уже показано подписью)
+                    const pnlValue = isVirtual ? (bot.unrealized_pnl ?? 0) : (bot.unrealized_pnl_usdt ?? bot.unrealized_pnl ?? 0);
+                    const isProfit = Number(pnlValue) >= 0;
+                    const cardBg = isVirtual ? 'rgba(156, 39, 176, 0.12)' : (isProfit ? 'rgba(76, 175, 80, 0.08)' : 'rgba(244, 67, 54, 0.08)');
+                    const virtualAttrs = isVirtual ? ` data-is-virtual="true" data-virtual-index="${bot._virtualIndex || 0}"` : '';
+                    const pnlVal = isVirtual ? (bot.unrealized_pnl != null ? `${(bot.unrealized_pnl || 0).toFixed(2)}%` : '-') : `$${(bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0).toFixed(3)}`;
                     const htmlResult = `
-                        <div class="active-bot-item clickable-bot-item active-bot-card" data-symbol="${bot.symbol}" data-exchange-url="${exchangeUrl}" data-card-bg="${cardBg.replace(/"/g, '&quot;')}" style="border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; background: ${cardBg}; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" onmouseover="this.style.backgroundColor='var(--hover-bg, var(--button-bg))'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="var b=this.dataset.cardBg; this.style.backgroundColor=b||'var(--section-bg)'; this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)'">
+                        <div class="active-bot-item clickable-bot-item active-bot-card" data-symbol="${bot.symbol}" data-bot-symbol="${bot.symbol}"${virtualAttrs} data-exchange-url="${exchangeUrl}" data-card-bg="${cardBg.replace(/"/g, '&quot;')}" style="border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; background: ${cardBg}; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" onmouseover="this.style.backgroundColor='var(--hover-bg, var(--button-bg))'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="var b=this.dataset.cardBg; this.style.backgroundColor=b||'var(--section-bg)'; this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)'">
                             <div class="bot-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; gap: 6px;">
                                 <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                                     <span style="color: var(--text-color); font-weight: bold; font-size: 17px;">${bot.symbol}</span>
-                                    <span style="background: ${statusColor}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;">${statusText}</span>
+                                    <span style="background: ${isVirtual ? '#9c27b0' : statusColor}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;">${statusText}</span>
                                     <span class="bot-direction" style="color: ${d.positionColor}; font-weight: 600; font-size: 12px;">${d.position}</span>
                                     <a href="${exchangeUrl}" target="_blank" class="bot-exchange-link" title="Открыть на бирже" onclick="event.stopPropagation();">↗</a>
                                 </div>
-                                <div style="color: ${(bot.unrealized_pnl || bot.unrealized_pnl_usdt || 0) >= 0 ? 'var(--green-color)' : 'var(--red-color)'}; font-weight: bold; font-size: 15px;">$${(bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0).toFixed(3)}</div>
+                                <div style="color: ${(bot.unrealized_pnl != null ? bot.unrealized_pnl : (bot.unrealized_pnl_usdt || 0)) >= 0 ? 'var(--green-color)' : 'var(--red-color)'}; font-weight: bold; font-size: 15px;">${isVirtual ? pnlVal : '$' + (bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0).toFixed(3)}</div>
                             </div>
                             <div class="bot-details bot-details-compact" style="margin-bottom: 8px;">
                                 <div class="compact-row"><span class="compact-lbl">${t('position_volume')}</span><span class="compact-val">${d.volume}</span></div>
@@ -6098,12 +6130,11 @@ class BotsManager {
                                 <div class="compact-row"><span class="compact-lbl">${t('stop_loss_label_detailed')}</span><span class="compact-val" style="color: var(--red-color)">${d.stopLoss}</span></div>
                             </div>
                             <div class="bot-card-controls" style="display: flex; gap: 6px; justify-content: flex-end; padding-top: 6px; border-top: 1px solid var(--border-color);">
-                                ${this.getBotDetailButtonsHtml(bot)}
+                                ${isVirtual ? '<span class="text-muted" style="font-size: 11px;">ПРИИ виртуальная обкатка</span>' : this.getBotDetailButtonsHtml(bot)}
                             </div>
                         </div>
                     `;
                     
-                    console.log(`[DEBUG] Финальный HTML для ${bot.symbol}:`, htmlResult);
                     return htmlResult;
                 }).join('');
 
@@ -6117,10 +6148,10 @@ class BotsManager {
                         });
                     });
                 } else {
-                    // Обновляем только данные в существующих карточках
+                    // Обновляем только данные в существующих карточках (только реальные боты; виртуальные обновляются при полной перерисовке)
                     console.log(`[DEBUG] Обновление данных в "Боты в работе" без перерисовки`);
                     filteredBots.forEach(bot => {
-                        const botItem = detailsElement.querySelector(`.active-bot-item[data-symbol="${bot.symbol}"]`);
+                        const botItem = detailsElement.querySelector(`.active-bot-item[data-symbol="${bot.symbol}"]:not([data-is-virtual="true"])`);
                         if (botItem) {
                             const pnlValue = (bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0);
                             const pnlElement = botItem.querySelector('.bot-header > div:last-child');
@@ -6316,7 +6347,7 @@ class BotsManager {
         if (this._lastBotDisplay[bot.symbol] === key) return;
         this._lastBotDisplay[bot.symbol] = key;
         
-        const botElement = document.querySelector(`[data-bot-symbol="${bot.symbol}"]`);
+        const botElement = document.querySelector(`[data-bot-symbol="${bot.symbol}"]:not([data-is-virtual="true"])`);
         if (!botElement) return;
         
         const pnlElement = botElement.querySelector('.bot-pnl');
@@ -6451,15 +6482,12 @@ class BotsManager {
         console.log('[BotsManager] 🌐 Отправка запросов к API...');
         
         try {
-            // Параллельная загрузка данных Auto Bot и системных настроек
-            const [autoBotResponse, systemResponse] = await Promise.all([
+            // Один раз загружаем ВСЁ параллельно: auto-bot, system-config, fullai-config — чтобы не было подмены (100→10, ПРИИ выкл→вкл)
+            const [autoBotResponse, systemResponse, fullaiResponse] = await Promise.all([
                 fetch(`${this.BOTS_SERVICE_URL}/api/bots/auto-bot`),
-                fetch(`${this.BOTS_SERVICE_URL}/api/bots/system-config`)
+                fetch(`${this.BOTS_SERVICE_URL}/api/bots/system-config`),
+                fetch(`${this.BOTS_SERVICE_URL}/api/bots/fullai-config`)
             ]);
-            
-            console.log('[BotsManager] 📡 Ответы API получены');
-            console.log('   Auto Bot status:', autoBotResponse.status);
-            console.log('   System config status:', systemResponse.status);
             
             if (!autoBotResponse.ok || !systemResponse.ok) {
                 throw new Error(`HTTP ${autoBotResponse.status} или ${systemResponse.status}`);
@@ -6467,34 +6495,36 @@ class BotsManager {
             
             const autoBotData = await autoBotResponse.json();
             const systemData = await systemResponse.json();
-            
-            console.log('[BotsManager] 📋 Данные получены:');
-            console.log('   Auto Bot:', autoBotData);
-            console.log('   System:', systemData);
+            const fullaiData = fullaiResponse.ok ? await fullaiResponse.json() : { success: false, config: {} };
             
             if (autoBotData.success && systemData.success) {
+                // Мержим fullai-config в autoBot ДО первой отрисовки — чтобы тумблер ПРИИ и «Свечей без сделок» сразу были правильные, без подмены
+                const autoBotMerged = { ...(autoBotData.config || {}) };
+                if (fullaiData.success && fullaiData.config && typeof fullaiData.config === 'object') {
+                    const fc = fullaiData.config;
+                    if (fc.full_ai_control !== undefined) autoBotMerged.full_ai_control = fc.full_ai_control;
+                    if (fc.fullai_adaptive_enabled !== undefined) autoBotMerged.fullai_adaptive_enabled = fc.fullai_adaptive_enabled;
+                    if (fc.fullai_adaptive_dead_candles !== undefined) autoBotMerged.fullai_adaptive_dead_candles = fc.fullai_adaptive_dead_candles;
+                    if (fc.fullai_adaptive_virtual_success_count !== undefined) autoBotMerged.fullai_adaptive_virtual_success_count = fc.fullai_adaptive_virtual_success_count;
+                    if (fc.fullai_adaptive_real_loss_to_retry !== undefined) autoBotMerged.fullai_adaptive_real_loss_to_retry = fc.fullai_adaptive_real_loss_to_retry;
+                    if (fc.fullai_adaptive_virtual_round_size !== undefined) autoBotMerged.fullai_adaptive_virtual_round_size = fc.fullai_adaptive_virtual_round_size;
+                    if (fc.fullai_adaptive_virtual_max_failures !== undefined) autoBotMerged.fullai_adaptive_virtual_max_failures = fc.fullai_adaptive_virtual_max_failures;
+                }
+                
                 const config = {
-                    autoBot: autoBotData.config,
+                    autoBot: autoBotMerged,
                     system: systemData.config
                 };
                 
-                // Загружаем таймфрейм отдельно
                 const timeframeData = await this.loadTimeframe();
                 if (timeframeData) {
                     config.system = config.system || {};
                     config.system.timeframe = timeframeData;
                 }
                 
-                console.log('[BotsManager] 📋 Заполнение формы данными...');
-                console.log('[BotsManager] 🚀 ВЫЗОВ populateConfigurationForm с config:', config);
+                // Одна отрисовка с уже правильными данными — без подмены 100→10 и без переключения ПРИИ при смене вкладки
                 this.populateConfigurationForm(config);
-                console.log('[BotsManager] 🎯 populateConfigurationForm завершена');
-                
-                // Сразу синхронизируем дублированные элементы (в т.ч. тумблер Full AI), без задержки и без второго запроса
-                this.syncDuplicateSettings(autoBotData.config);
-                if (autoBotData.config.full_ai_control === true) {
-                    this.loadFullaiAdaptiveConfig();
-                }
+                this.syncDuplicateSettings(autoBotMerged);
                 
                 // КРИТИЧЕСКИ ВАЖНО: Инициализируем глобальный переключатель Auto Bot
                 console.log('[BotsManager] 🤖 Инициализация глобального переключателя Auto Bot...');
@@ -6645,6 +6675,28 @@ class BotsManager {
         if (optimalEntryEl) {
             optimalEntryEl.checked = Boolean(autoBotConfig.ai_optimal_entry_enabled);
             console.log('[BotsManager] 🎯 AI оптимальный вход:', optimalEntryEl.checked);
+        }
+        
+        // ✅ FullAI адаптивные параметры (из auto-bot ответа; GET auto-bot уже подмешивает значения из AutoBotConfig)
+        const deadCandles = autoBotConfig.fullai_adaptive_dead_candles;
+        if (deadCandles !== undefined && document.getElementById('fullaiAdaptiveDeadCandles')) {
+            document.getElementById('fullaiAdaptiveDeadCandles').value = parseInt(deadCandles, 10) || 10;
+        }
+        const virtualSuccess = autoBotConfig.fullai_adaptive_virtual_success_count ?? autoBotConfig.fullai_adaptive_virtual_success;
+        if (virtualSuccess !== undefined && document.getElementById('fullaiAdaptiveVirtualSuccess')) {
+            document.getElementById('fullaiAdaptiveVirtualSuccess').value = parseInt(virtualSuccess, 10) || 3;
+        }
+        const realLoss = autoBotConfig.fullai_adaptive_real_loss_to_retry ?? autoBotConfig.fullai_adaptive_real_loss;
+        if (realLoss !== undefined && document.getElementById('fullaiAdaptiveRealLoss')) {
+            document.getElementById('fullaiAdaptiveRealLoss').value = parseInt(realLoss, 10) || 1;
+        }
+        const roundSize = autoBotConfig.fullai_adaptive_virtual_round_size ?? autoBotConfig.fullai_adaptive_round_size;
+        if (roundSize !== undefined && document.getElementById('fullaiAdaptiveRoundSize')) {
+            document.getElementById('fullaiAdaptiveRoundSize').value = parseInt(roundSize, 10) || 3;
+        }
+        const maxFailures = autoBotConfig.fullai_adaptive_virtual_max_failures ?? autoBotConfig.fullai_adaptive_max_failures;
+        if (maxFailures !== undefined && document.getElementById('fullaiAdaptiveMaxFailures')) {
+            document.getElementById('fullaiAdaptiveMaxFailures').value = parseInt(maxFailures, 10) || 0;
         }
         
         // Торговые параметры
@@ -7821,7 +7873,7 @@ class BotsManager {
 
     async loadFullaiAdaptiveConfig() {
         try {
-            const res = await fetch('/api/bots/fullai-config', { method: 'GET' });
+            const res = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/fullai-config`, { method: 'GET' });
             const data = await res.json();
             if (!data.success || !data.config) return;
             const c = data.config;
@@ -7851,7 +7903,7 @@ class BotsManager {
                 fullai_adaptive_virtual_round_size: parseInt(el('fullaiAdaptiveRoundSize')?.value, 10) || 3,
                 fullai_adaptive_virtual_max_failures: parseInt(el('fullaiAdaptiveMaxFailures')?.value, 10) || 0
             };
-            const res = await fetch('/api/bots/fullai-config', {
+            const res = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/fullai-config`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -8373,11 +8425,14 @@ class BotsManager {
             if (!config.autoBot || Object.keys(config.autoBot).length === 0) {
                 console.log('[BotsManager] ⚠️ Auto Bot конфигурация пуста, пропускаем сохранение');
             } else {
+                // ПРИИ (full_ai_control) не трогаем при «Сохранить все» — только при явном переключении тумблера (иначе баг UI может выключить ПРИИ)
+                const autoBotPayload = { ...config.autoBot };
+                delete autoBotPayload.full_ai_control;
                 // Сохраняем Auto Bot настройки
                 const autoBotResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/auto-bot`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(config.autoBot)
+                    body: JSON.stringify(autoBotPayload)
                 });
                 const autoBotData = await autoBotResponse.json();
                 if (!autoBotData.success) {
@@ -9020,7 +9075,7 @@ class BotsManager {
         
         try {
             // Используем account-info сервиса ботов (баланс + флаг недостатка средств)
-            const response = await fetch('/api/bots/account-info');
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/account-info`);
             const data = await response.json();
             
             if (data.success && (data.total_wallet_balance !== undefined || data.total_available_balance !== undefined)) {
@@ -9248,17 +9303,28 @@ class BotsManager {
                 this.showNotification('Ошибка сохранения переключателя FullAI', 'error');
             }
         };
-        // Тумблер «Полный Режим ИИ» на вкладке Управление
+        // Тумблер «Полный Режим ИИ» на вкладке Управление и дубль на Конфигурации — синхронизируем при изменении любого
         const fullAiToggleEl = document.getElementById('fullAiControlToggle');
+        const fullAiToggleConfigEl = document.getElementById('fullAiControlToggleConfig');
+        const syncFullAiToggles = (sourceEl, value) => {
+            if (fullAiToggleEl && fullAiToggleEl !== sourceEl) fullAiToggleEl.checked = value;
+            if (fullAiToggleConfigEl && fullAiToggleConfigEl !== sourceEl) fullAiToggleConfigEl.checked = value;
+        };
         if (fullAiToggleEl && !fullAiToggleEl.hasAttribute('data-fullai-listener')) {
             fullAiToggleEl.setAttribute('data-fullai-listener', 'true');
-            fullAiToggleEl.addEventListener('change', () => applyFullAiControl(fullAiToggleEl.checked));
+            fullAiToggleEl.addEventListener('change', () => {
+                const value = fullAiToggleEl.checked;
+                syncFullAiToggles(fullAiToggleEl, value);
+                applyFullAiControl(value);
+            });
         }
-        // Дубль переключателя на вкладке Конфигурация
-        const fullAiToggleConfigEl = document.getElementById('fullAiControlToggleConfig');
         if (fullAiToggleConfigEl && !fullAiToggleConfigEl.hasAttribute('data-fullai-listener')) {
             fullAiToggleConfigEl.setAttribute('data-fullai-listener', 'true');
-            fullAiToggleConfigEl.addEventListener('change', () => applyFullAiControl(fullAiToggleConfigEl.checked));
+            fullAiToggleConfigEl.addEventListener('change', () => {
+                const value = fullAiToggleConfigEl.checked;
+                syncFullAiToggles(fullAiToggleConfigEl, value);
+                applyFullAiControl(value);
+            });
         }
         
         let fullaiAdaptiveSaveTimer = null;

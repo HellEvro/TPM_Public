@@ -469,8 +469,7 @@ class App {
                 this.allClosedPnlData = data.closed_pnl;
                 this.updateClosedPnlTable(this.allClosedPnlData, false);
                 
-                // Пересчитываем и обновляем общий P&L за выбранный период
-                // ВАЖНО: всегда используем отфильтрованные данные closed_pnl, а не wallet_data.realized_pnl
+                // Пересчитываем и обновляем общий P&L за выбранный период (только реальные сделки; виртуальные не входят)
                 this.updatePeriodPnL(data.closed_pnl);
             } else {
                 console.error('Failed to get closed PNL data:', data.error);
@@ -520,8 +519,9 @@ class App {
             return;
         }
 
-        // Суммируем все закрытые PNL за период
+        // Суммируем только реальные закрытые PNL за период (виртуальные сделки ПРИИ не входят в общий P&L)
         const totalPnL = closedPnlData.reduce((sum, pnl) => {
+            if (pnl.is_virtual) return sum;
             return sum + parseFloat(pnl.closed_pnl || 0);
         }, 0);
 
@@ -583,13 +583,14 @@ class App {
             return;
         }
         
-        // Получаем текущий поисковый запрос
+        // Получаем текущий поисковый запрос и фильтр виртуальных
         const searchQuery = document.getElementById('tickerSearch')?.value.toUpperCase() || '';
+        const showVirtual = document.getElementById('showVirtualClosedPnl')?.checked !== false;
         
-        // Фильтруем данные по поисковому запросу
-        const filteredData = searchQuery ? 
-            displayData.filter(pnl => pnl.symbol.includes(searchQuery)) : 
-            displayData;
+        // Фильтруем по поиску и по «Показывать виртуальные»
+        let filteredData = displayData || [];
+        if (searchQuery) filteredData = filteredData.filter(pnl => pnl.symbol.includes(searchQuery));
+        if (!showVirtual) filteredData = filteredData.filter(pnl => !pnl.is_virtual);
         
         // Получаем текущую страницу и размер страницы
         const pageSize = parseInt(localStorage.getItem('pageSize') || '10');
@@ -603,13 +604,20 @@ class App {
         
         // Генерируем HTML таблицы
         const tableHtml = pageData.map(pnl => {
-            const isProfit = parseFloat(pnl.closed_pnl) >= 0;
+            const isVirtual = !!pnl.is_virtual;
             const pnlValue = parseFloat(pnl.closed_pnl);
+            const pnlPercent = pnl.closed_pnl_percent != null ? parseFloat(pnl.closed_pnl_percent) : null;
+            const isProfit = isVirtual ? (pnlPercent != null ? pnlPercent >= 0 : false) : (pnlValue >= 0);
+            const pnlDisplay = isVirtual && pnlPercent != null
+                ? `${isProfit ? '+' : ''}${pnlPercent.toFixed(2)}% (вирт.)`
+                : `${isProfit ? '+' : ''}${formatUtils.formatUsdt(pnlValue)} USDT`;
+            const virtualBadge = isVirtual ? ' <span class="virtual-pnl-badge" style="background:#9c27b0;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:4px;">Виртуальная</span>' : '';
+            const exchangeForLink = isVirtual ? 'bybit' : (pnl.exchange || 'bybit');
             return `
                 <tr>
                     <td class="ticker-cell">
-                        <span class="ticker">${pnl.symbol}</span>
-                        <a href="${createTickerLink(pnl.symbol, pnl.exchange)}" 
+                        <span class="ticker">${pnl.symbol}</span>${virtualBadge}
+                        <a href="${createTickerLink(pnl.symbol, exchangeForLink)}" 
                            target="_blank" 
                            class="external-link"
                            title="Открыть на бирже">
@@ -620,13 +628,13 @@ class App {
                             </svg>
                         </a>
                     </td>
-                    <td>${pnl.qty}</td>
-                    <td>${parseFloat(pnl.entry_price).toFixed(5)}</td>
-                    <td>${parseFloat(pnl.exit_price).toFixed(5)}</td>
+                    <td>${pnl.qty ?? pnl.size ?? '-'}</td>
+                    <td>${parseFloat(pnl.entry_price || 0).toFixed(5)}</td>
+                    <td>${parseFloat(pnl.exit_price || 0).toFixed(5)}</td>
                     <td class="${isProfit ? 'positive-pnl' : 'negative-pnl'}">
-                        ${isProfit ? '+' : ''}${formatUtils.formatUsdt(pnlValue)} USDT
+                        ${pnlDisplay}
                     </td>
-                    <td>${pnl.close_time}</td>
+                    <td>${pnl.close_time || '-'}</td>
                 </tr>
             `;
         }).join('');

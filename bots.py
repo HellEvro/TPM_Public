@@ -71,6 +71,16 @@ try:
 except Exception:
     pass
 
+# Патчи обратной совместимости (например FullAI в DefaultAutoBotConfig) — при любом запуске
+try:
+    from pathlib import Path
+    from patches.runner import run_patches
+    _applied = run_patches(Path(_root))
+    if _applied:
+        sys.stderr.write(f"[Bots] Применены патчи: {', '.join(_applied)}\n")
+except Exception:
+    pass
+
 # Настройка git skip-worktree для игнорирования локальных изменений в bot_config.py
 # Это позволяет файлу оставаться в git, но локальные изменения не будут коммититься
 # И защищает от перезаписи при git pull - локальная версия всегда имеет приоритет

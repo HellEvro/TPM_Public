@@ -518,6 +518,11 @@ class NewTradingBot:
                         self.symbol, 'LONG', candles, current_price, fullai_config, coin_params
                     )
                     if decision.get('allowed'):
+                        # ✅ КРИТИЧНО: Защита от повторного входа после убытка применяется и для FullAI
+                        loss_reentry_result = self.check_loss_reentry_protection(candles)
+                        if loss_reentry_result.get('allowed') is False:
+                            logger.error(f"[NEW_BOT_{self.symbol}] 🚫 FullAI LONG заблокирован защитой от повторных входов: {loss_reentry_result.get('reason', '')}")
+                            return False
                         try:
                             from bots_modules.fullai_adaptive import get_next_action, record_virtual_open
                             action = get_next_action(self.symbol, True)
@@ -679,6 +684,11 @@ class NewTradingBot:
                         self.symbol, 'SHORT', candles, current_price, fullai_config, coin_params
                     )
                     if decision.get('allowed'):
+                        # ✅ КРИТИЧНО: Защита от повторного входа после убытка применяется и для FullAI
+                        loss_reentry_result = self.check_loss_reentry_protection(candles)
+                        if loss_reentry_result.get('allowed') is False:
+                            logger.error(f"[NEW_BOT_{self.symbol}] 🚫 FullAI SHORT заблокирован защитой от повторных входов: {loss_reentry_result.get('reason', '')}")
+                            return False
                         try:
                             from bots_modules.fullai_adaptive import get_next_action, record_virtual_open
                             action = get_next_action(self.symbol, True)
@@ -962,9 +972,40 @@ class NewTradingBot:
                         import traceback
                         logger.error(traceback.format_exc())
                 
-                # ✅ КРИТИЧНО: Если нет закрытых сделок или недостаточно - РАЗРЕШАЕМ вход
-                # (фильтр не применяется, если недостаточно истории)
+                # ✅ КРИТИЧНО: Если в БД нет/недостаточно закрытых сделок — проверяем last_close_timestamp
+                # (закрытие могло только что произойти и ещё не попасть в БД; повторный вход блокируем по таймстампу)
                 if not closed_trades or len(closed_trades) < n_count:
+                    close_ts = self.config.get('last_position_close_timestamp')
+                    if not close_ts:
+                        try:
+                            with bots_data_lock:
+                                close_ts = (bots_data.get('last_close_timestamps') or {}).get(self.symbol)
+                        except Exception:
+                            close_ts = None
+                    if close_ts and loss_reentry_protection_enabled:
+                        try:
+                            from bot_engine.config_loader import get_current_timeframe
+                            current_timeframe = get_current_timeframe()
+                            timeframe_to_seconds = {
+                                '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800,
+                                '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600, '8h': 28800,
+                                '12h': 43200, '1d': 86400, '3d': 259200, '1w': 604800, '1M': 2592000
+                            }
+                            CANDLE_INTERVAL_SECONDS = timeframe_to_seconds.get(current_timeframe, 60)
+                            loss_reentry_candles_int = int(loss_reentry_candles) if loss_reentry_candles is not None else 3
+                            time_diff_seconds = time.time() - float(close_ts)
+                            candles_passed = max(0, int(time_diff_seconds / CANDLE_INTERVAL_SECONDS))
+                            if candles_passed < loss_reentry_candles_int:
+                                logger.warning(
+                                    f"[NEW_BOT_{self.symbol}] 🚫 ЗАЩИТА: закрытие недавно, в БД ещё нет сделки. "
+                                    f"Прошло {candles_passed} свечей (требуется {loss_reentry_candles_int}) — вход заблокирован"
+                                )
+                                return {
+                                    'allowed': False,
+                                    'reason': f'Недавнее закрытие: прошло {candles_passed} свечей (требуется {loss_reentry_candles_int})'
+                                }
+                        except (ValueError, TypeError) as e:
+                            logger.debug(f"[NEW_BOT_{self.symbol}] Ошибка проверки last_close_timestamp: {e}")
                     logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Защита от повторных входов: недостаточно закрытых сделок ({len(closed_trades) if closed_trades else 0} < {n_count}) - РАЗРЕШАЕМ вход")
                     return {'allowed': True, 'reason': f'Not enough closed trades ({len(closed_trades) if closed_trades else 0} < {n_count})'}
                 
@@ -2711,11 +2752,14 @@ class NewTradingBot:
                 current_timestamp = datetime.now().timestamp()
                 self.config['last_position_close_timestamp'] = current_timestamp
                 
-                # Также обновляем в bots_data для персистентности
+                # Также обновляем в bots_data для персистентности (и глобальный словарь для нового бота того же символа)
                 from bots_modules.imports_and_globals import bots_data, bots_data_lock
                 with bots_data_lock:
-                    if self.symbol in bots_data['bots']:
+                    if self.symbol in bots_data.get('bots', {}):
                         bots_data['bots'][self.symbol]['last_position_close_timestamp'] = current_timestamp
+                    if 'last_close_timestamps' not in bots_data:
+                        bots_data['last_close_timestamps'] = {}
+                    bots_data['last_close_timestamps'][self.symbol] = current_timestamp
                 
                 try:
                     from bot_engine.config_loader import get_current_timeframe
