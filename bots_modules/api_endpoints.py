@@ -2959,9 +2959,35 @@ def individual_coin_settings(symbol):
 def fullai_config_get_post():
     """GET: конфиг FullAI (для UI, в т.ч. fullai_adaptive_*). POST: обновление (тело мержится в конфиг)."""
     try:
-        from bots_modules.imports_and_globals import load_full_ai_config_from_db, save_full_ai_config_to_db
+        from bots_modules.imports_and_globals import load_full_ai_config_from_db, save_full_ai_config_to_db, bots_data, bots_data_lock
         if request.method == 'GET':
             cfg = load_full_ai_config_from_db() or {}
+            # Подмешиваем значения из рабочего конфига (bot_config.py AutoBotConfig), чтобы UI показывал реальные настройки
+            with bots_data_lock:
+                auto = (bots_data.get('auto_bot_config') or {}).copy()
+            for key in (
+                'full_ai_control', 'fullai_adaptive_enabled', 'fullai_adaptive_dead_candles',
+                'fullai_scoring_enabled',
+            ):
+                if key in auto and auto[key] is not None:
+                    cfg[key] = auto[key]
+            # Маппинг имён из файла (FULLAI_ADAPTIVE_VIRTUAL_SUCCESS) в ключи API (fullai_adaptive_virtual_success_count)
+            if auto.get('fullai_adaptive_virtual_success_count') is not None:
+                cfg['fullai_adaptive_virtual_success_count'] = auto['fullai_adaptive_virtual_success_count']
+            elif auto.get('fullai_adaptive_virtual_success') is not None:
+                cfg['fullai_adaptive_virtual_success_count'] = auto['fullai_adaptive_virtual_success']
+            if auto.get('fullai_adaptive_real_loss_to_retry') is not None:
+                cfg['fullai_adaptive_real_loss_to_retry'] = auto['fullai_adaptive_real_loss_to_retry']
+            elif auto.get('fullai_adaptive_real_loss') is not None:
+                cfg['fullai_adaptive_real_loss_to_retry'] = auto['fullai_adaptive_real_loss']
+            if auto.get('fullai_adaptive_virtual_round_size') is not None:
+                cfg['fullai_adaptive_virtual_round_size'] = auto['fullai_adaptive_virtual_round_size']
+            elif auto.get('fullai_adaptive_round_size') is not None:
+                cfg['fullai_adaptive_virtual_round_size'] = auto['fullai_adaptive_round_size']
+            if auto.get('fullai_adaptive_virtual_max_failures') is not None:
+                cfg['fullai_adaptive_virtual_max_failures'] = auto['fullai_adaptive_virtual_max_failures']
+            elif auto.get('fullai_adaptive_max_failures') is not None:
+                cfg['fullai_adaptive_virtual_max_failures'] = auto['fullai_adaptive_max_failures']
             return jsonify({'success': True, 'config': cfg})
         if request.method == 'POST':
             payload = request.get_json(silent=True)
@@ -2977,6 +3003,25 @@ def fullai_config_get_post():
                 if key in payload:
                     cfg[key] = payload[key]
             if save_full_ai_config_to_db(cfg):
+                # Синхронизируем в auto_bot_config и bot_config.py (только если рабочий конфиг уже загружен)
+                try:
+                    from bots_modules.imports_and_globals import bots_data, bots_data_lock
+                    from bots_modules.sync_and_cache import save_auto_bot_config
+                    with bots_data_lock:
+                        ac = bots_data.get('auto_bot_config')
+                    if ac is not None and isinstance(ac, dict):
+                        with bots_data_lock:
+                            for key in (
+                                'full_ai_control', 'fullai_adaptive_enabled', 'fullai_adaptive_dead_candles',
+                                'fullai_adaptive_virtual_success_count', 'fullai_adaptive_real_loss_to_retry',
+                                'fullai_adaptive_virtual_round_size', 'fullai_adaptive_virtual_max_failures',
+                                'fullai_scoring_enabled',
+                            ):
+                                if key in cfg and cfg[key] is not None:
+                                    ac[key] = cfg[key]
+                        save_auto_bot_config()
+                except Exception as sync_err:
+                    logger.debug("FullAI: синхронизация в bot_config.py: %s", sync_err)
                 return jsonify({'success': True, 'config': cfg})
             return jsonify({'success': False, 'error': 'Save failed'}), 500
     except Exception as e:
@@ -3648,6 +3693,7 @@ def auto_bot_config():
                             initial_fullai.pop(_k, None)
                         if snapshot is not None:
                             initial_fullai['user_ai_state_before_prii'] = snapshot
+                        initial_fullai['fullai_adaptive_enabled'] = True  # при включении Full AI обкатка по умолчанию вкл
                         save_full_ai_config_to_db(initial_fullai)
                         logger.info("[FullAI] Конфиг FullAI инициализирован → configs/fullai_config.json и БД")
                     from bot_engine.ai import get_ai_manager

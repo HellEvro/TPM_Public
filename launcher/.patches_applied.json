@@ -2,6 +2,7 @@
   "applied": [
     "001_bot_config_missing_classes",
     "002_exit_wait_breakeven_when_loss",
-    "003_exit_wait_breakeven_default_true"
+    "003_exit_wait_breakeven_default_true",
+    "004_fullai_default_config"
   ]
 }

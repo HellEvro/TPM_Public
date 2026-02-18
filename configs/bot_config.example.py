@@ -104,6 +104,12 @@ class DefaultAutoBotConfig:
     AI_MIN_CONFIDENCE = 0.7                # Минимальная уверенность ИИ (0.0–1.0)
     AI_OVERRIDE_ORIGINAL = True             # ИИ может блокировать решение скрипта
     FULL_AI_CONTROL = False                 # Полный режим ИИ: ИИ сам управляет входами/выходами (вкладка Управление)
+    FULLAI_ADAPTIVE_ENABLED = True          # Виртуальная обкатка (N успешных виртуальных → 1 реальная)
+    FULLAI_ADAPTIVE_DEAD_CANDLES = 100      # Свечей без сделок → смена параметров
+    FULLAI_ADAPTIVE_VIRTUAL_SUCCESS = 3     # Удачных виртуальных подряд → 1 реальная (0 = только реальные)
+    FULLAI_ADAPTIVE_REAL_LOSS = 1           # Убыточных реальных подряд → снова виртуальные
+    FULLAI_ADAPTIVE_ROUND_SIZE = 3          # Размер серии виртуальных
+    FULLAI_ADAPTIVE_MAX_FAILURES = 0        # Макс. неудачных виртуальных в серии (0 = все удачны)
     ANOMALY_BLOCK_THRESHOLD = 0.7           # Порог блокировки по аномалии
     ANOMALY_DETECTION_ENABLED = True        # Включить детекцию аномалий
     ANOMALY_LOG_ENABLED = True              # Логировать аномалии

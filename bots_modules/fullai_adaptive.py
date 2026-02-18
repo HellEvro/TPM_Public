@@ -50,7 +50,9 @@ def _get_adaptive_config() -> Dict[str, Any]:
 
 
 def is_adaptive_enabled() -> bool:
-    """FullAI включён и включён адаптивный режим (таймаут + виртуальная обкатка)."""
+    """FullAI включён и включён адаптивный режим (таймаут + виртуальная обкатка).
+    Обкатка считается включённой, если явно fullai_adaptive_enabled=True ИЛИ
+    задано «удачных виртуальных подряд» > 0 (тогда виртуальная обкатка нужна)."""
     try:
         from bots_modules.imports_and_globals import bots_data, bots_data_lock
         with bots_data_lock:
@@ -60,7 +62,16 @@ def is_adaptive_enabled() -> bool:
     except Exception:
         return False
     ad = _get_adaptive_config()
-    return bool(ad.get('fullai_adaptive_enabled', False))
+    if ad.get('fullai_adaptive_enabled', False):
+        return True
+    # При Full AI: если «удачных виртуальных подряд» > 0 — обкатка по смыслу включена
+    n = ad.get('fullai_adaptive_virtual_success_count') or 0
+    try:
+        if int(n) > 0:
+            return True
+    except (TypeError, ValueError):
+        pass
+    return False
 
 
 def _get_symbol_state(symbol: str, lock: bool = True) -> Dict[str, Any]:

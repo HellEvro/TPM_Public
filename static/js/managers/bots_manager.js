@@ -6490,6 +6490,12 @@ class BotsManager {
                 this.populateConfigurationForm(config);
                 console.log('[BotsManager] 🎯 populateConfigurationForm завершена');
                 
+                // Сразу синхронизируем дублированные элементы (в т.ч. тумблер Full AI), без задержки и без второго запроса
+                this.syncDuplicateSettings(autoBotData.config);
+                if (autoBotData.config.full_ai_control === true) {
+                    this.loadFullaiAdaptiveConfig();
+                }
+                
                 // КРИТИЧЕСКИ ВАЖНО: Инициализируем глобальный переключатель Auto Bot
                 console.log('[BotsManager] 🤖 Инициализация глобального переключателя Auto Bot...');
                 this.initializeGlobalAutoBotToggle();

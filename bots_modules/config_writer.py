@@ -226,10 +226,20 @@ def _parse_attr_line(line: str) -> Optional[tuple]:
     return (attr_upper.lower(), value)
 
 
-# Обратная совместимость: старые имена ключей в файле/импорте -> текущие имена (lowercase).
-# При загрузке ключ из файла подменяется на текущий, чтобы старые конфиги работали.
+# Обратная совместимость: при загрузке ключ из файла подменяется на текущий (API/код).
 CONFIG_KEY_ALIASES: Dict[str, str] = {
-    # Пример: 'old_setting_name': 'new_setting_name',
+    'fullai_adaptive_virtual_success': 'fullai_adaptive_virtual_success_count',
+    'fullai_adaptive_real_loss': 'fullai_adaptive_real_loss_to_retry',
+    'fullai_adaptive_round_size': 'fullai_adaptive_virtual_round_size',
+    'fullai_adaptive_max_failures': 'fullai_adaptive_virtual_max_failures',
+}
+
+# При сохранении: ключ в config (API) -> имя атрибута в bot_config.py (чтобы не дублировать строки).
+CONFIG_KEY_TO_FILE_ATTR: Dict[str, str] = {
+    'fullai_adaptive_virtual_success_count': 'FULLAI_ADAPTIVE_VIRTUAL_SUCCESS',
+    'fullai_adaptive_real_loss_to_retry': 'FULLAI_ADAPTIVE_REAL_LOSS',
+    'fullai_adaptive_virtual_round_size': 'FULLAI_ADAPTIVE_ROUND_SIZE',
+    'fullai_adaptive_virtual_max_failures': 'FULLAI_ADAPTIVE_MAX_FAILURES',
 }
 
 
@@ -353,7 +363,8 @@ def save_auto_bot_config_current_to_py(config: Dict[str, Any]) -> bool:
         updated_lines = list(lines)
         keys_not_found: list = []  # (attr_upper, value) для вставки
         for key, value in config.items():
-            attr_upper = key.upper() if isinstance(key, str) else key
+            key_str = key.lower() if isinstance(key, str) else key
+            attr_upper = CONFIG_KEY_TO_FILE_ATTR.get(key_str, key.upper() if isinstance(key, str) else key)
             found = False
             for i in range(start_idx + 1, end_idx):
                 new_line = _update_attr_value_in_line(updated_lines[i], attr_upper, value)
