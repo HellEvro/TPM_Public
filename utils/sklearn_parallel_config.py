@@ -37,6 +37,10 @@ import re
 import sys
 import warnings
 
+# Подавление FutureWarning LeafSpec (PyTorch/JAX — Python 3.14) — до импорта sklearn
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*LeafSpec.*")
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*TreeSpec.*is_leaf.*")
+
 # Исключаем воркеры loky — не создаём дочерние процессы (предупреждение идёт из воркеров).
 # По умолчанию ВСЕГДА 1 воркер, чтобы полностью убрать спам UserWarning про delayed/Parallel.
 # Чтобы снова включить параллелизм: INFOBOT_SKLEARN_PARALLEL=1 и LOKY_MAX_CPU_COUNT=N.
