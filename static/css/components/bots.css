@@ -3302,8 +3302,64 @@ input:checked + .toggle-slider:before {
     overflow-y: auto;
 }
 
-.analytics-header {
+.analytics-subtabs {
+    display: flex;
+    gap: 4px;
     margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0;
+}
+
+.analytics-subtab-btn {
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+    margin-bottom: -1px;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.analytics-subtab-btn:hover {
+    color: var(--text-color);
+}
+
+.analytics-subtab-btn.active {
+    color: var(--blue-color, #4facfe);
+    border-bottom-color: var(--blue-color, #4facfe);
+}
+
+.analytics-subtab-panels {
+    margin-top: 0;
+}
+
+.analytics-subtab-content {
+    display: none;
+    padding-top: 12px;
+}
+
+.analytics-subtab-content.active {
+    display: block;
+}
+
+.analytics-subtab-desc {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: 0 0 14px 0;
+}
+
+.analytics-subtab-desc code {
+    font-size: 12px;
+    background: var(--bg-secondary);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.analytics-header {
+    margin-bottom: 16px;
     text-align: center;
 }
 
@@ -3543,6 +3599,100 @@ input:checked + .toggle-slider:before {
     font-size: 12px;
     color: var(--text-muted);
     margin-top: 12px;
+}
+
+/* FullAI аналитика */
+.analytics-fullai {
+    margin-top: 16px;
+    padding-top: 16px;
+}
+
+.analytics-fullai h3 {
+    font-size: 18px;
+    margin: 0 0 8px 0;
+    color: var(--text-color);
+}
+
+.analytics-fullai-desc {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: 0 0 12px 0;
+}
+
+.analytics-fullai-desc code {
+    font-size: 12px;
+    background: var(--bg-secondary);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.fullai-summary-cards {
+    margin: 12px 0 16px 0;
+}
+
+.fullai-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.fullai-card {
+    display: flex;
+    flex-direction: column;
+    min-width: 120px;
+    padding: 10px 14px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.fullai-card-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.fullai-card-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.fullai-card-value.positive {
+    color: var(--green-color, #4caf50);
+}
+
+.fullai-card-value.negative {
+    color: var(--red-color, #e53935);
+}
+
+.fullai-events-table-wrap {
+    overflow-x: auto;
+    margin: 16px 0;
+}
+
+.fullai-events-table-wrap h4 {
+    margin: 0 0 8px 0;
+    font-size: 15px;
+    color: var(--text-color);
+}
+
+.fullai-events-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.fullai-events-table th,
+.fullai-events-table td {
+    padding: 8px 10px;
+    text-align: left;
+    border: 1px solid var(--border-color);
+}
+
+.fullai-events-table th {
+    background: var(--bg-secondary);
+    font-weight: 600;
 }
 
 /* Фильтры истории */

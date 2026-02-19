@@ -1393,6 +1393,29 @@
                         
                         <div class="config-item">
                             <label class="config-label">
+                                <span class="label-icon">📐</span>
+                                <span class="label-text">Вход лимитом по RSI:</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="rsiLimitEntryEnabled" />
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <small class="config-help">Рассчитывать цену по порогу RSI и выставлять лимитный ордер входа (меньше проскальзывания, вход строго в зоне)</small>
+                        </div>
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">📏</span>
+                                <span class="label-text">Смещение лимита по RSI (%):</span>
+                            </label>
+                            <div class="config-input-with-unit">
+                                <input type="number" id="rsiLimitOffsetPercentGlobal" value="0.2" min="0" max="5" step="0.1" class="config-input" />
+                                <span class="input-unit">%</span>
+                            </div>
+                            <small class="config-help">LONG: лимит ниже расчётной цены, SHORT: выше (чтобы ордер заполнялся в зоне RSI)</small>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label class="config-label">
                                 <span class="label-icon">💰</span>
                                 <span class="label-text" data-translate="position_size_label">Размер позиции:</span>
                             </label>
@@ -1525,6 +1548,28 @@
                                 </label>
                                 <input type="number" id="rsiExitMinMovePercentGlobal" value="0" min="0" max="20" step="0.1" class="config-input" />
                                 <small class="config-help" data-translate="rsi_exit_min_move_percent_help">0 = выкл. Если &gt; 0 — блокировать выход по RSI до движения цены &gt;= этого %</small>
+                            </div>
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">📐</span>
+                                    <span class="label-text">Выход лимитом по RSI:</span>
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="rsiLimitExitEnabled" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <small class="config-help">Рассчитывать цену выхода по порогу RSI и выставлять лимитный ордер закрытия (вместо рыночного)</small>
+                            </div>
+                            <div class="config-item">
+                                <label class="config-label">
+                                    <span class="label-icon">📏</span>
+                                    <span class="label-text">Смещение лимита выхода по RSI (%):</span>
+                                </label>
+                                <div class="config-input-with-unit">
+                                    <input type="number" id="rsiLimitExitOffsetPercentGlobal" value="0.2" min="0" max="5" step="0.1" class="config-input" />
+                                    <span class="input-unit">%</span>
+                                </div>
+                                <small class="config-help">LONG: лимит выше расчётной (RSI растёт), SHORT: ниже — чтобы ордер заполнялся в зоне RSI</small>
                             </div>
                             <div class="config-item">
                                 <label class="config-label">
@@ -2660,42 +2705,77 @@
         <div class="analytics-layout">
             <div class="analytics-header">
                 <h2 data-translate="analytics_title">📈 Аналитика торговли</h2>
-                <p data-translate="analytics_description">Полный анализ сделок ботов и биржи: сверка, метрики, неудачные монеты и настройки по RSI/тренду</p>
+                <p data-translate="analytics_description">Сводка по сделкам, FullAI и сверка RSI — выберите раздел ниже.</p>
             </div>
-            <div class="analytics-controls">
-                <label class="analytics-option">
-                    <input type="checkbox" id="analyticsIncludeExchange" />
-                    <span data-translate="analytics_include_exchange">Загружать сделки с биржи (сверка с биржей)</span>
-                </label>
-                <button type="button" class="btn btn-primary" id="analyticsRunBtn">
-                    <span data-translate="analytics_run">🔄 Запустить аналитику</span>
-                </button>
+            <div class="analytics-subtabs" role="tablist">
+                <button type="button" class="analytics-subtab-btn active" data-analytics-subtab="trade" role="tab" aria-selected="true">Торговая аналитика</button>
+                <button type="button" class="analytics-subtab-btn" data-analytics-subtab="fullai" role="tab" aria-selected="false">FullAI</button>
+                <button type="button" class="analytics-subtab-btn" data-analytics-subtab="rsi" role="tab" aria-selected="false">Аудит RSI</button>
             </div>
-            <div class="analytics-loading" id="analyticsLoading" style="display: none;">
-                <span class="analytics-spinner"></span>
-                <span data-translate="analytics_loading">Выполняется расчёт...</span>
-            </div>
-            <div class="analytics-result" id="analyticsResult">
-                <p class="analytics-placeholder" data-translate="analytics_placeholder">Нажмите «Запустить аналитику» для построения отчёта</p>
-            </div>
-            <hr class="analytics-divider" />
-            <div class="analytics-rsi-audit">
-                <h3 data-translate="rsi_audit_title">🔍 Аудит RSI: вход и выход</h3>
-                <p class="analytics-rsi-desc" data-translate="rsi_audit_desc">Сверка сделок с биржи с текущим конфигом: LONG — вход корректен при RSI ≤ порог; SHORT — при RSI ≥ порог. Вне диапазона — ошибочные входы (искать причину в коде/логах).</p>
-                <div class="analytics-controls">
-                    <label class="analytics-option">
-                        <span>Макс. сделок:</span>
-                        <input type="number" id="rsiAuditLimit" value="500" min="50" max="2000" step="50" style="width: 80px;" />
-                    </label>
-                    <button type="button" class="btn btn-secondary" id="rsiAuditRunBtn">
-                        <span data-translate="rsi_audit_run">Запустить аудит RSI</span>
-                    </button>
+            <div class="analytics-subtab-panels">
+                <div class="analytics-subtab-content active" id="analyticsPanelTrade" data-analytics-subtab="trade" role="tabpanel">
+                    <p class="analytics-subtab-desc">Полный анализ сделок ботов и биржи: сверка, метрики, неудачные монеты и настройки по RSI/тренду.</p>
+                    <div class="analytics-controls">
+                        <label class="analytics-option">
+                            <input type="checkbox" id="analyticsIncludeExchange" />
+                            <span data-translate="analytics_include_exchange">Загружать сделки с биржи (сверка с биржей)</span>
+                        </label>
+                        <button type="button" class="btn btn-primary" id="analyticsRunBtn">
+                            <span data-translate="analytics_run">🔄 Запустить аналитику</span>
+                        </button>
+                    </div>
+                    <div class="analytics-loading" id="analyticsLoading" style="display: none;">
+                        <span class="analytics-spinner"></span>
+                        <span data-translate="analytics_loading">Выполняется расчёт...</span>
+                    </div>
+                    <div class="analytics-result" id="analyticsResult">
+                        <p class="analytics-placeholder" data-translate="analytics_placeholder">Нажмите «Запустить аналитику» для построения отчёта</p>
+                    </div>
                 </div>
-                <div class="analytics-loading" id="rsiAuditLoading" style="display: none;">
-                    <span class="analytics-spinner"></span>
-                    <span>Расчёт RSI по сделкам...</span>
+                <div class="analytics-subtab-content" id="analyticsPanelFullai" data-analytics-subtab="fullai" role="tabpanel" hidden>
+                    <p class="analytics-subtab-desc">События ПРИИ: реальные и виртуальные входы/выходы, блокировки, отказы ИИ, смена параметров. БД: <code>data/fullai_analytics.db</code>.</p>
+                    <div class="analytics-controls">
+                        <label class="analytics-option">
+                            <span>Период:</span>
+                            <select id="fullaiAnalyticsPeriod">
+                                <option value="24">24 ч</option>
+                                <option value="168" selected>7 д</option>
+                                <option value="720">30 д</option>
+                            </select>
+                        </label>
+                        <label class="analytics-option">
+                            <span>Символ:</span>
+                            <input type="text" id="fullaiAnalyticsSymbol" placeholder="все" style="width: 90px;" />
+                        </label>
+                        <button type="button" class="btn btn-primary" id="fullaiAnalyticsRunBtn">Обновить</button>
+                    </div>
+                    <div class="analytics-loading" id="fullaiAnalyticsLoading" style="display: none;">
+                        <span class="analytics-spinner"></span>
+                        <span>Загрузка...</span>
+                    </div>
+                    <div id="fullaiAnalyticsSummary" class="fullai-summary-cards"></div>
+                    <div class="fullai-events-table-wrap">
+                        <h4>Последние события</h4>
+                        <div id="fullaiAnalyticsEvents"></div>
+                    </div>
                 </div>
-                <div class="analytics-rsi-result" id="rsiAuditResult"></div>
+                <div class="analytics-subtab-content" id="analyticsPanelRsi" data-analytics-subtab="rsi" role="tabpanel" hidden>
+                    <p class="analytics-subtab-desc" data-translate="rsi_audit_desc">Сверка сделок с биржи с текущим конфигом: LONG — вход при RSI ≤ порог; SHORT — при RSI ≥ порог. Вне диапазона — ошибочные входы.</p>
+                    <div class="analytics-controls">
+                        <label class="analytics-option">
+                            <span>Макс. сделок:</span>
+                            <input type="number" id="rsiAuditLimit" value="500" min="50" max="2000" step="50" style="width: 80px;" />
+                        </label>
+                        <button type="button" class="btn btn-secondary" id="rsiAuditRunBtn">
+                            <span data-translate="rsi_audit_run">Запустить аудит RSI</span>
+                        </button>
+                    </div>
+                    <div class="analytics-loading" id="rsiAuditLoading" style="display: none;">
+                        <span class="analytics-spinner"></span>
+                        <span>Расчёт RSI по сделкам...</span>
+                    </div>
+                    <div class="analytics-rsi-result" id="rsiAuditResult"></div>
+                </div>
             </div>
         </div>
     </div>

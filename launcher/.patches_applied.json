@@ -3,6 +3,12 @@
     "001_bot_config_missing_classes",
     "002_exit_wait_breakeven_when_loss",
     "003_exit_wait_breakeven_default_true",
-    "004_fullai_default_config"
+    "004_fullai_default_config",
+    "005_pnl_threshold_no_hardcode",
+    "006_positions_page_virtual_positions",
+    "007_active_bots_card_color_by_pnl",
+    "008_gitignore_fullai_config",
+    "009_config_defaults_comment",
+    "010_rsi_limit_entry"
   ]
 }

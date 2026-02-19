@@ -13,6 +13,7 @@ from .config_loader import (
 )
 from .indicators import SignalGenerator
 from .scaling_calculator import calculate_scaling_for_bot
+from .utils.rsi_utils import estimate_price_for_rsi
 
 # Символы, по которым уже вывели предупреждение о делистинге (один раз за сессию)
 _delisting_warned_symbols = set()
@@ -724,9 +725,58 @@ class TradingBot:
                 percent_steps = []
                 margin_amounts = []
             
-            # ✅ АВТОВХОД: при force_market_entry всегда по рынку, лимитные ордера не используем
+            # ✅ АВТОВХОД: при force_market_entry — по рынку или по лимиту RSI (если включено)
             if force_market_entry:
-                self.logger.info(f" {self.symbol}: 🚀 Автовход — вход строго по рынку (лимитные ордера не используются)")
+                rsi_limit_entry = self.config.get('rsi_limit_entry_enabled', False)
+                if rsi_limit_entry:
+                    # Расчёт цены лимитного входа по RSI и размещение лимитника
+                    tf_use = self.config.get('entry_timeframe') or get_current_timeframe()
+                    try:
+                        chart_response = self.exchange.get_chart_data(self.symbol, tf_use, '14d')
+                        candles = chart_response.get('data', {}).get('candles', []) if chart_response and chart_response.get('success') else []
+                        if candles and len(candles) >= 15:
+                            closes = [float(c.get('close', 0)) for c in candles]
+                            threshold = (self.config.get('rsi_long_threshold') if side == 'LONG' else self.config.get('rsi_short_threshold'))
+                            if threshold is None:
+                                threshold = 29 if side == 'LONG' else 71
+                            limit_price = estimate_price_for_rsi(closes, threshold, 14, side)
+                            if limit_price and limit_price > 0:
+                                offset_pct = float(self.config.get('rsi_limit_offset_percent', 0.2) or 0.2) / 100.0
+                                if side == 'LONG':
+                                    limit_price = limit_price * (1.0 - offset_pct)
+                                else:
+                                    limit_price = limit_price * (1.0 + offset_pct)
+                                # Не выставляем второй лимитник, если уже есть открытый ордер по этой стороне
+                                if hasattr(self.exchange, 'get_open_orders'):
+                                    try:
+                                        open_orders = self.exchange.get_open_orders(self.symbol)
+                                        limit_side = 'Buy' if side == 'LONG' else 'Sell'
+                                        if any(o.get('order_type', '').lower() == 'limit' and o.get('side') == limit_side for o in open_orders):
+                                            self.logger.info(f" {self.symbol}: Лимитный ордер входа по RSI уже есть, ждём исполнения")
+                                            return {'success': True, 'message': 'limit_order_pending'}
+                                    except Exception:
+                                        pass
+                                quantity = self._calculate_position_size()
+                                if quantity:
+                                    leverage = self.config.get('leverage')
+                                    order_result = self.exchange.place_order(
+                                        symbol=self.symbol,
+                                        side=side,
+                                        quantity=quantity,
+                                        order_type='limit',
+                                        price=limit_price,
+                                        leverage=leverage
+                                    )
+                                    if order_result.get('success'):
+                                        self.logger.info(f" {self.symbol}: Лимитный вход по RSI размещён @ {limit_price} (порог RSI={threshold})")
+                                        return {'success': True, 'message': 'limit_order_placed', 'order_id': order_result.get('order_id'), 'price': limit_price}
+                                    self.logger.warning(f" {self.symbol}: Не удалось разместить лимит по RSI: {order_result.get('message', '')}")
+                        else:
+                            self.logger.debug(f" {self.symbol}: Недостаточно свечей для расчёта цены по RSI, вход по рынку")
+                    except Exception as e:
+                        self.logger.warning(f" {self.symbol}: Ошибка расчёта лимита по RSI: {e}, вход по рынку")
+                if not rsi_limit_entry:
+                    self.logger.info(f" {self.symbol}: 🚀 Автовход — вход по рынку (лимит по RSI выключен)")
             # ✅ КРИТИЧНО: Если режим лимитных ордеров ВЫКЛЮЧЕН - пропускаем ВСЮ логику лимитных ордеров!
             # Если включен набор позиций лимитными ордерами (и не принудительный рыночный вход)
             elif limit_orders_enabled and percent_steps and margin_amounts:

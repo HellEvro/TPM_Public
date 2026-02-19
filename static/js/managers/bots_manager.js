@@ -6712,6 +6712,25 @@ class BotsManager {
             console.log('[BotsManager] 📈 RSI SHORT порог:', rsiShortEl.value);
         }
         
+        const rsiLimitEntryEl = document.getElementById('rsiLimitEntryEnabled');
+        if (rsiLimitEntryEl) {
+            rsiLimitEntryEl.checked = autoBotConfig.rsi_limit_entry_enabled === true;
+        }
+        const rsiLimitOffsetEl = document.getElementById('rsiLimitOffsetPercentGlobal');
+        if (rsiLimitOffsetEl) {
+            const v = parseFloat(autoBotConfig.rsi_limit_offset_percent);
+            rsiLimitOffsetEl.value = (!isNaN(v) && v >= 0) ? v : 0.2;
+        }
+        const rsiLimitExitEl = document.getElementById('rsiLimitExitEnabled');
+        if (rsiLimitExitEl) {
+            rsiLimitExitEl.checked = autoBotConfig.rsi_limit_exit_enabled === true;
+        }
+        const rsiLimitExitOffsetEl = document.getElementById('rsiLimitExitOffsetPercentGlobal');
+        if (rsiLimitExitOffsetEl) {
+            const v = parseFloat(autoBotConfig.rsi_limit_exit_offset_percent);
+            rsiLimitExitOffsetEl.value = (!isNaN(v) && v >= 0) ? v : 0.2;
+        }
+        
         const positionSizeEl = document.getElementById('defaultPositionSize');
         if (positionSizeEl) {
             positionSizeEl.value = autoBotConfig.default_position_size || 10;
@@ -7439,6 +7458,10 @@ class BotsManager {
             'rsiExitMinMinutesGlobal': 'rsi_exit_min_minutes',
             'rsiExitMinMovePercentGlobal': 'rsi_exit_min_move_percent',
             'exitWaitBreakevenWhenLoss': 'exit_wait_breakeven_when_loss',
+            'rsiLimitEntryEnabled': 'rsi_limit_entry_enabled',
+            'rsiLimitExitEnabled': 'rsi_limit_exit_enabled',
+            'rsiLimitExitOffsetPercentGlobal': 'rsi_limit_exit_offset_percent',
+            'rsiLimitOffsetPercentGlobal': 'rsi_limit_offset_percent',
             'defaultPositionSize': 'default_position_size',
             'defaultPositionMode': 'default_position_mode',
             'leverage': 'leverage',
@@ -7592,6 +7615,24 @@ class BotsManager {
         const exitWaitBreakevenEl = document.getElementById('exitWaitBreakevenWhenLoss');
         if (exitWaitBreakevenEl) {
             autoBotConfig.exit_wait_breakeven_when_loss = exitWaitBreakevenEl.checked;
+        }
+        const rsiLimitEntryEl = document.getElementById('rsiLimitEntryEnabled');
+        if (rsiLimitEntryEl) {
+            autoBotConfig.rsi_limit_entry_enabled = rsiLimitEntryEl.checked;
+        }
+        const rsiLimitOffsetEl = document.getElementById('rsiLimitOffsetPercentGlobal');
+        if (rsiLimitOffsetEl && rsiLimitOffsetEl.value !== '') {
+            const v = parseFloat(rsiLimitOffsetEl.value);
+            if (!isNaN(v) && v >= 0) autoBotConfig.rsi_limit_offset_percent = v;
+        }
+        const rsiLimitExitEl = document.getElementById('rsiLimitExitEnabled');
+        if (rsiLimitExitEl) {
+            autoBotConfig.rsi_limit_exit_enabled = rsiLimitExitEl.checked;
+        }
+        const rsiLimitExitOffsetEl = document.getElementById('rsiLimitExitOffsetPercentGlobal');
+        if (rsiLimitExitOffsetEl && rsiLimitExitOffsetEl.value !== '') {
+            const v = parseFloat(rsiLimitExitOffsetEl.value);
+            if (!isNaN(v) && v >= 0) autoBotConfig.rsi_limit_exit_offset_percent = v;
         }
         
         const limitOrderRows = document.querySelectorAll('.limit-order-row');
@@ -7958,6 +7999,30 @@ class BotsManager {
                 exit_wait_breakeven_when_loss: (() => {
                     const el = document.getElementById('exitWaitBreakevenWhenLoss');
                     return el ? el.checked : (config.autoBot.exit_wait_breakeven_when_loss === true);
+                })(),
+                rsi_limit_entry_enabled: (() => {
+                    const el = document.getElementById('rsiLimitEntryEnabled');
+                    return el ? el.checked : (config.autoBot.rsi_limit_entry_enabled === true);
+                })(),
+                rsi_limit_offset_percent: (() => {
+                    const el = document.getElementById('rsiLimitOffsetPercentGlobal');
+                    if (el && el.value !== '') {
+                        const v = parseFloat(el.value);
+                        return !isNaN(v) && v >= 0 ? v : 0.2;
+                    }
+                    return parseFloat(config.autoBot.rsi_limit_offset_percent) || 0.2;
+                })(),
+                rsi_limit_exit_enabled: (() => {
+                    const el = document.getElementById('rsiLimitExitEnabled');
+                    return el ? el.checked : (config.autoBot.rsi_limit_exit_enabled === true);
+                })(),
+                rsi_limit_exit_offset_percent: (() => {
+                    const el = document.getElementById('rsiLimitExitOffsetPercentGlobal');
+                    if (el && el.value !== '') {
+                        const v = parseFloat(el.value);
+                        return !isNaN(v) && v >= 0 ? v : 0.2;
+                    }
+                    return parseFloat(config.autoBot.rsi_limit_exit_offset_percent) || 0.2;
                 })(),
                 default_position_size: config.autoBot.default_position_size,
                 default_position_mode: config.autoBot.default_position_mode,
@@ -10794,6 +10859,99 @@ class BotsManager {
             rsiAuditBtn.setAttribute('data-rsi-audit-bound', 'true');
             rsiAuditBtn.addEventListener('click', () => this.runRsiAudit());
         }
+        const fullaiBtn = document.getElementById('fullaiAnalyticsRunBtn');
+        if (fullaiBtn && !fullaiBtn.hasAttribute('data-fullai-bound')) {
+            fullaiBtn.setAttribute('data-fullai-bound', 'true');
+            fullaiBtn.addEventListener('click', () => this.loadFullaiAnalytics());
+        }
+        const subtabBtns = document.querySelectorAll('.analytics-subtab-btn');
+        const subtabPanels = document.querySelectorAll('.analytics-subtab-content');
+        if (subtabBtns.length && !document.getElementById('analyticsTab').hasAttribute('data-subtabs-bound')) {
+            document.getElementById('analyticsTab').setAttribute('data-subtabs-bound', 'true');
+            subtabBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.getAttribute('data-analytics-subtab');
+                    subtabBtns.forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
+                    subtabPanels.forEach(p => {
+                        const on = p.getAttribute('data-analytics-subtab') === id;
+                        p.classList.toggle('active', on);
+                        p.hidden = !on;
+                    });
+                    btn.classList.add('active');
+                    btn.setAttribute('aria-selected', 'true');
+                });
+            });
+        }
+    }
+
+    /**
+     * Загрузка и отображение аналитики FullAI (события и сводка из data/fullai_analytics.db)
+     */
+    async loadFullaiAnalytics() {
+        const loadingEl = document.getElementById('fullaiAnalyticsLoading');
+        const summaryEl = document.getElementById('fullaiAnalyticsSummary');
+        const eventsEl = document.getElementById('fullaiAnalyticsEvents');
+        const periodHours = parseInt(document.getElementById('fullaiAnalyticsPeriod')?.value, 10) || 168;
+        const symbol = (document.getElementById('fullaiAnalyticsSymbol')?.value || '').trim().toUpperCase() || undefined;
+        const from_ts = (Date.now() / 1000) - periodHours * 3600;
+        const to_ts = Date.now() / 1000;
+        if (loadingEl) loadingEl.style.display = 'flex';
+        if (summaryEl) summaryEl.innerHTML = '';
+        if (eventsEl) eventsEl.innerHTML = '';
+        try {
+            const params = new URLSearchParams({ from_ts: String(from_ts), to_ts: String(to_ts), limit: '300' });
+            if (symbol) params.set('symbol', symbol);
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/fullai?${params}`);
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
+            if (!data.success) throw new Error(data.error || 'Нет данных');
+            this.renderFullaiAnalytics(data.summary || {}, data.events || [], summaryEl, eventsEl);
+        } catch (err) {
+            if (summaryEl) summaryEl.innerHTML = `<div class="analytics-error">❌ ${(err && err.message) || String(err)}</div>`;
+            if (eventsEl) eventsEl.innerHTML = '';
+            console.error('[BotsManager] Ошибка аналитики FullAI:', err);
+        } finally {
+            if (loadingEl) loadingEl.style.display = 'none';
+        }
+    }
+
+    renderFullaiAnalytics(summary, events, summaryEl, eventsEl) {
+        if (!summaryEl) return;
+        const s = summary;
+        const winRate = s.real_total > 0 ? ((s.real_wins / s.real_total) * 100).toFixed(1) : '—';
+        const virtualRate = s.virtual_total > 0 ? ((s.virtual_ok / s.virtual_total) * 100).toFixed(1) : '—';
+        let cards = '<div class="fullai-cards">';
+        cards += `<div class="fullai-card"><span class="fullai-card-label">Реальные входы</span><span class="fullai-card-value">${s.real_open || 0}</span></div>`;
+        cards += `<div class="fullai-card"><span class="fullai-card-label">Виртуальные входы</span><span class="fullai-card-value">${s.virtual_open || 0}</span></div>`;
+        cards += `<div class="fullai-card"><span class="fullai-card-label">Реальные закрытия</span><span class="fullai-card-value">${s.real_close || 0}</span></div>`;
+        cards += `<div class="fullai-card"><span class="fullai-card-label">Реальные в плюс</span><span class="fullai-card-value positive">${s.real_wins || 0}</span></div>`;
+        cards += `<div class="fullai-card"><span class="fullai-card-label">Реальные в минус</span><span class="fullai-card-value negative">${s.real_losses || 0}</span></div>`;
+        cards += `<div class="fullai-card"><span class="fullai-card-label">Win rate (реал.)</span><span class="fullai-card-value">${winRate}%</span></div>`;
+        cards += `<div class="fullai-card"><span class="fullai-card-label">Вирт. закрытий удачных</span><span class="fullai-card-value">${s.virtual_ok || 0}</span></div>`;
+        cards += `<div class="fullai-card"><span class="fullai-card-label">Вирт. закрытий неудачных</span><span class="fullai-card-value">${s.virtual_fail || 0}</span></div>`;
+        cards += `<div class="fullai-card"><span class="fullai-card-label">Успешность вирт.</span><span class="fullai-card-value">${virtualRate}%</span></div>`;
+        cards += `<div class="fullai-card"><span class="fullai-card-label">Блокировок входа</span><span class="fullai-card-value">${s.blocked || 0}</span></div>`;
+        cards += `<div class="fullai-card"><span class="fullai-card-label">Отказов ИИ</span><span class="fullai-card-value">${s.refused || 0}</span></div>`;
+        cards += `<div class="fullai-card"><span class="fullai-card-label">Смен параметров</span><span class="fullai-card-value">${s.params_change || 0}</span></div>`;
+        cards += `<div class="fullai-card"><span class="fullai-card-label">Раундов → реал.</span><span class="fullai-card-value">${s.round_success || 0}</span></div>`;
+        cards += '</div>';
+        summaryEl.innerHTML = cards;
+
+        if (!eventsEl) return;
+        const eventLabels = { real_open: 'Вход реал.', virtual_open: 'Вход вирт.', real_close: 'Закрытие реал.', virtual_close: 'Закрытие вирт.', blocked: 'Блок', refused: 'Отказ ИИ', params_change: 'Смена параметров', round_success: 'Раунд → реал.' };
+        if (events.length === 0) {
+            eventsEl.innerHTML = '<p class="analytics-placeholder">Нет событий за выбранный период.</p>';
+            return;
+        }
+        let table = '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Событие</th><th>Направление</th><th>Детали</th></tr></thead><tbody>';
+        events.forEach(ev => {
+            const label = eventLabels[ev.event_type] || ev.event_type;
+            const dir = ev.direction || '—';
+            const details = ev.reason || (ev.pnl_percent != null ? `PnL ${Number(ev.pnl_percent).toFixed(2)}%` : '') || (ev.extra && ev.extra.success !== undefined ? (ev.extra.success ? 'успех' : 'убыток') : '') || '—';
+            table += `<tr><td>${ev.ts_iso || ''}</td><td>${ev.symbol || ''}</td><td>${label}</td><td>${dir}</td><td>${details}</td></tr>`;
+        });
+        table += '</tbody></table>';
+        eventsEl.innerHTML = table;
     }
 
     /**

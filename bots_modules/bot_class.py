@@ -522,12 +522,22 @@ class NewTradingBot:
                         loss_reentry_result = self.check_loss_reentry_protection(candles)
                         if loss_reentry_result.get('allowed') is False:
                             logger.error(f"[NEW_BOT_{self.symbol}] 🚫 FullAI LONG заблокирован защитой от повторных входов: {loss_reentry_result.get('reason', '')}")
+                            try:
+                                from bot_engine.fullai_analytics import append_event, EVENT_BLOCKED
+                                append_event(symbol=self.symbol, event_type=EVENT_BLOCKED, direction='LONG', reason=loss_reentry_result.get('reason', ''))
+                            except Exception:
+                                pass
                             return False
                         try:
                             from bots_modules.fullai_adaptive import get_next_action, record_virtual_open
                             action = get_next_action(self.symbol, True)
                             if action == 'real_open':
                                 logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход LONG (уверенность: {decision.get('confidence', 0):.2%})")
+                                try:
+                                    from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
+                                    append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='LONG', is_virtual=False, confidence=decision.get('confidence'))
+                                except Exception:
+                                    pass
                                 self._set_decision_source('AI', decision)
                                 return True
                             if action == 'virtual_open':
@@ -537,9 +547,19 @@ class NewTradingBot:
                         except ImportError:
                             pass
                         logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход LONG (уверенность: {decision.get('confidence', 0):.2%})")
+                        try:
+                            from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
+                            append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='LONG', is_virtual=False, confidence=decision.get('confidence'))
+                        except Exception:
+                            pass
                         self._set_decision_source('AI', decision)
                         return True
                     logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: отказ LONG — {decision.get('reason', '')}")
+                    try:
+                        from bot_engine.fullai_analytics import append_event, EVENT_REFUSED
+                        append_event(symbol=self.symbol, event_type=EVENT_REFUSED, direction='LONG', reason=decision.get('reason', ''))
+                    except Exception:
+                        pass
                     return False
                 except Exception as e:
                     logger.exception(f"[NEW_BOT_{self.symbol}] FullAI вход LONG: {e}")
@@ -688,12 +708,22 @@ class NewTradingBot:
                         loss_reentry_result = self.check_loss_reentry_protection(candles)
                         if loss_reentry_result.get('allowed') is False:
                             logger.error(f"[NEW_BOT_{self.symbol}] 🚫 FullAI SHORT заблокирован защитой от повторных входов: {loss_reentry_result.get('reason', '')}")
+                            try:
+                                from bot_engine.fullai_analytics import append_event, EVENT_BLOCKED
+                                append_event(symbol=self.symbol, event_type=EVENT_BLOCKED, direction='SHORT', reason=loss_reentry_result.get('reason', ''))
+                            except Exception:
+                                pass
                             return False
                         try:
                             from bots_modules.fullai_adaptive import get_next_action, record_virtual_open
                             action = get_next_action(self.symbol, True)
                             if action == 'real_open':
                                 logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход SHORT (уверенность: {decision.get('confidence', 0):.2%})")
+                                try:
+                                    from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
+                                    append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='SHORT', is_virtual=False, confidence=decision.get('confidence'))
+                                except Exception:
+                                    pass
                                 self._set_decision_source('AI', decision)
                                 return True
                             if action == 'virtual_open':
@@ -703,9 +733,19 @@ class NewTradingBot:
                         except ImportError:
                             pass
                         logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход SHORT (уверенность: {decision.get('confidence', 0):.2%})")
+                        try:
+                            from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
+                            append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='SHORT', is_virtual=False, confidence=decision.get('confidence'))
+                        except Exception:
+                            pass
                         self._set_decision_source('AI', decision)
                         return True
                     logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: отказ SHORT — {decision.get('reason', '')}")
+                    try:
+                        from bot_engine.fullai_analytics import append_event, EVENT_REFUSED
+                        append_event(symbol=self.symbol, event_type=EVENT_REFUSED, direction='SHORT', reason=decision.get('reason', ''))
+                    except Exception:
+                        pass
                     return False
                 except Exception as e:
                     logger.exception(f"[NEW_BOT_{self.symbol}] FullAI вход SHORT: {e}")

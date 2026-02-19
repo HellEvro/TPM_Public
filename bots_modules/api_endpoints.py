@@ -1587,6 +1587,10 @@ CONFIG_NAMES = {
     'rsi_exit_min_candles': 'Мин. свечей до выхода по RSI',
     'rsi_exit_min_minutes': 'Мин. минут до выхода по RSI (адаптивно по ТФ)',
     'rsi_exit_min_move_percent': 'Мин. % движения для выхода по RSI (блокирует до достижения)',
+    'rsi_limit_entry_enabled': 'Вход лимитом по цене RSI (расчёт цены по порогу)',
+    'rsi_limit_exit_enabled': 'Выход лимитом по цене RSI',
+    'rsi_limit_offset_percent': 'Смещение лимита входа по RSI (%)',
+    'rsi_limit_exit_offset_percent': 'Смещение лимита выхода по RSI (%)',
     'rsi_time_filter_enabled': 'RSI Time Filter (фильтр по времени)',
     'rsi_time_filter_candles': 'RSI Time Filter - количество свечей',
     'rsi_time_filter_lower': 'RSI Time Filter - нижний порог',
@@ -5309,6 +5313,28 @@ def get_rsi_audit():
         return jsonify({'success': True, 'report': report})
     except Exception as e:
         logger.exception("Ошибка аудита RSI: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bots_app.route('/api/bots/analytics/fullai', methods=['GET'])
+def get_fullai_analytics():
+    """Аналитика FullAI: события и сводка из data/fullai_analytics.db (отдельная БД, не основная)."""
+    try:
+        from bot_engine.fullai_analytics import get_events, get_summary
+        symbol = request.args.get('symbol', '').strip().upper() or None
+        from_ts = request.args.get('from_ts', type=float)
+        to_ts = request.args.get('to_ts', type=float)
+        limit = request.args.get('limit', type=int) or 500
+        limit = min(max(1, limit), 2000)
+        summary = get_summary(symbol=symbol, from_ts=from_ts, to_ts=to_ts)
+        events = get_events(symbol=symbol, from_ts=from_ts, to_ts=to_ts, limit=limit)
+        return jsonify({
+            'success': True,
+            'summary': summary,
+            'events': events,
+        })
+    except Exception as e:
+        logger.exception("Ошибка аналитики FullAI: %s", e)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

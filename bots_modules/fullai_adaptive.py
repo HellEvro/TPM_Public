@@ -152,6 +152,11 @@ def mutate_params(symbol: str) -> bool:
                 new_params['take_profit_percent'],
                 new_params['max_loss_percent'],
             )
+            try:
+                from bot_engine.fullai_analytics import append_event, EVENT_PARAMS_CHANGE
+                append_event(symbol=norm, event_type=EVENT_PARAMS_CHANGE, reason='mutate')
+            except Exception:
+                pass
             return True
     except Exception as e:
         logger.exception("[FullAI Adaptive] mutate_params %s: %s", symbol, e)
@@ -243,6 +248,11 @@ def record_virtual_open(symbol: str, direction: str, entry_price: float, entry_t
             'entry_price': entry_price,
             'entry_time': entry_time or time.time(),
         })
+    try:
+        from bot_engine.fullai_analytics import append_event, EVENT_VIRTUAL_OPEN
+        append_event(symbol=norm, event_type=EVENT_VIRTUAL_OPEN, direction=(direction or 'LONG').upper(), is_virtual=True)
+    except Exception:
+        pass
 
 
 def _close_virtual_position(symbol: str, success: bool) -> None:
@@ -266,6 +276,11 @@ def _close_virtual_position(symbol: str, success: bool) -> None:
                 s['virtual_done_in_round'] = 0
                 s['virtual_failures_in_round'] = 0
                 logger.info("[FullAI Adaptive] %s: %s виртуальных успешны → разрешена 1 реальная сделка", symbol, need_success)
+                try:
+                    from bot_engine.fullai_analytics import append_event, EVENT_ROUND_SUCCESS
+                    append_event(symbol=symbol, event_type=EVENT_ROUND_SUCCESS, reason=f"{need_success} виртуальных успешны")
+                except Exception:
+                    pass
         else:
             s['virtual_failures_in_round'] = s.get('virtual_failures_in_round', 0) + 1
             fails = s['virtual_failures_in_round']
@@ -287,6 +302,11 @@ def record_virtual_close(symbol: str, success: bool) -> None:
     if not norm:
         return
     _close_virtual_position(norm, success)
+    try:
+        from bot_engine.fullai_analytics import append_event, EVENT_VIRTUAL_CLOSE
+        append_event(symbol=norm, event_type=EVENT_VIRTUAL_CLOSE, is_virtual=True, extra={'success': success})
+    except Exception:
+        pass
 
 
 def process_virtual_positions(
@@ -376,6 +396,11 @@ def record_real_close(symbol: str, pnl_percent: float) -> None:
     norm = (symbol or '').upper()
     if not norm:
         return
+    try:
+        from bot_engine.fullai_analytics import append_event, EVENT_REAL_CLOSE
+        append_event(symbol=norm, event_type=EVENT_REAL_CLOSE, pnl_percent=pnl_percent)
+    except Exception:
+        pass
     if not is_adaptive_enabled():
         return
     ad = _get_adaptive_config()

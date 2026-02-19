@@ -95,3 +95,46 @@ def calculate_rsi_history(prices, period=14):
     
     return rsi_history
 
+
+def estimate_price_for_rsi(closes, target_rsi, period=14, side='LONG'):
+    """
+    Оценка цены, при которой RSI будет равен target_rsi (при следующей свече с закрытием P).
+    Используется для расчёта лимитной цены входа/выхода по RSI.
+    closes: список цен закрытия (последняя — текущая свеча), минимум period+1 элемент.
+    side: 'LONG' — вход в лонг (нужен низкий RSI, цена ниже текущей) или выход из шорта;
+          'SHORT' — вход в шорт (высокий RSI, цена выше) или выход из лонга.
+    Возвращает цену или None при недостатке данных.
+    """
+    if not closes or len(closes) < period + 1:
+        return None
+    try:
+        target_rsi = float(target_rsi)
+    except (TypeError, ValueError):
+        return None
+    current = float(closes[-1])
+    if current <= 0:
+        return None
+    # Диапазон поиска: ±50% от текущей цены
+    low = current * 0.5
+    high = current * 1.5
+    for _ in range(60):
+        mid = (low + high) / 2.0
+        series = [float(c) for c in closes] + [mid]
+        rsi = calculate_rsi(series, period)
+        if rsi is None:
+            return None
+        if side.upper() == 'LONG':
+            # Низкий RSI → цена падает. Если RSI выше цели — снижаем mid
+            if rsi > target_rsi:
+                high = mid
+            else:
+                low = mid
+        else:
+            if rsi < target_rsi:
+                low = mid
+            else:
+                high = mid
+        if abs(rsi - target_rsi) < 0.3:
+            break
+    return round((low + high) / 2.0, 6)
+
