@@ -294,10 +294,13 @@ def apply_analytics_to_entry_decision(
     base_allowed: bool,
     base_confidence: float,
     base_reason: str,
+    full_ai_mode: bool = False,
 ) -> tuple:
     """
-    Применяет аналитику к решению о входе: блокирует/снижает уверенность на основе прошлых ошибок.
-    Возвращает (allowed, confidence, reason).
+    Применяет аналитику к решению о входе.
+
+    full_ai_mode=False (скрипты/конфиг): аналитика может ЖЕСТКО блокировать вход (wr<35, pnl<-50, bad RSI).
+    full_ai_mode=True (FullAI): аналитика только СНИЖАЕТ уверенность, никогда не блокирует — решение принимает модель.
     """
     ctx = _get_cached_analytics_for_entry(symbol)
     if not ctx:
@@ -306,12 +309,6 @@ def apply_analytics_to_entry_decision(
     confidence = base_confidence
     reason = base_reason
     problems = ctx.get("problems") or []
-    metrics = ctx.get("metrics") or {}
-    # unsuccessful_coins и unsuccessful_settings приходят из report, а не напрямую
-    # get_ai_analytics_context возвращает problems, recommendations, metrics
-    # Нужно передать unsuccessful_coins - они в ai_block. Проверим структуру get_ai_analytics_context
-    # - она вызывает get_analytics_for_ai который возвращает unsuccessful_coins, unsuccessful_settings
-    # Но get_ai_analytics_context не добавляет их в result! Добавлю.
     unsuccessful_coins = ctx.get("unsuccessful_coins") or []
     unsuccessful_settings = ctx.get("unsuccessful_settings") or []
     sym_upper = (symbol or "").upper()
@@ -319,11 +316,11 @@ def apply_analytics_to_entry_decision(
         if (uc.get("symbol") or "").upper() == sym_upper:
             wr = uc.get("win_rate_pct") or 0
             pnl = uc.get("pnl_usdt") or 0
-            if wr < 35 or pnl < -50:
+            if not full_ai_mode and (wr < 35 or pnl < -50):
                 allowed = False
                 reason = f"Аналитика: монета неудачная (Win Rate {wr}%, PnL {pnl} USDT). Блокировка входа."
                 return (allowed, 0.0, reason)
-            if allowed:
+            if full_ai_mode or allowed:
                 confidence = max(0, confidence - 0.15)
                 reason = base_reason + f" | Снижена уверенность: монета с низким WR ({wr}%)"
     for us in unsuccessful_settings:
@@ -341,9 +338,13 @@ def apply_analytics_to_entry_decision(
                         if len(parts) >= 2:
                             lo, hi = int(parts[0]), int(parts[1])
                             if lo <= rsi <= hi:
-                                allowed = False
-                                reason = f"Аналитика: RSI {rsi:.1f} в неудачном диапазоне {rng}"
-                                return (allowed, 0.0, reason)
+                                if not full_ai_mode:
+                                    allowed = False
+                                    reason = f"Аналитика: RSI {rsi:.1f} в неудачном диапазоне {rng}"
+                                    return (allowed, 0.0, reason)
+                                confidence = max(0, confidence - 0.2)
+                                reason = base_reason + f" | RSI {rsi:.1f} в неудачном диапазоне (снижена уверенность)"
+                                break
                     except (ValueError, IndexError, TypeError):
                         pass
         if trend and bad_trends:

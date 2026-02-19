@@ -718,19 +718,7 @@ def get_ai_entry_decision(
     min_conf = _confidence_01(prii_config.get('ai_min_confidence', 0.7))
     result = {'allowed': False, 'confidence': 0.0, 'reason': 'AI not available'}
     try:
-        # Аналитика: перед решением смотрим ошибки и пересчитываем
-        try:
-            from bot_engine.ai_analytics import apply_analytics_to_entry_decision
-            pre_allowed, pre_conf, pre_reason = apply_analytics_to_entry_decision(
-                symbol, direction, rsi, trend, base_allowed=True, base_confidence=1.0, base_reason=""
-            )
-            if not pre_allowed:
-                result['allowed'] = False
-                result['confidence'] = 0.0
-                result['reason'] = pre_reason
-                return result
-        except Exception as _ax:
-            logger.debug("apply_analytics_to_entry_decision: %s", _ax)
+        # FullAI: модель — основной решатель. Не блокируем до вызова ИИ; аналитика только снижает уверенность.
         from bot_engine.ai import get_ai_manager
         ai_manager = get_ai_manager()
         if not ai_manager or not ai_manager.is_available():
@@ -773,12 +761,13 @@ def get_ai_entry_decision(
             result['allowed'] = votes_short >= min_conf and votes_short >= votes_long
             result['confidence'] = votes_short
         result['reason'] = f"AI vote LONG={votes_long:.2f} SHORT={votes_short:.2f}"
-        # Применяем аналитику к итоговому решению (снижение уверенности, блокировка)
+        # FullAI: аналитика только снижает уверенность (признаки/веса), не блокирует — решение модели приоритет
         try:
             from bot_engine.ai_analytics import apply_analytics_to_entry_decision
             result['allowed'], result['confidence'], result['reason'] = apply_analytics_to_entry_decision(
                 symbol, direction, rsi, trend,
                 base_allowed=result['allowed'], base_confidence=result['confidence'], base_reason=result['reason'],
+                full_ai_mode=True,
             )
             if result['confidence'] < min_conf and result['allowed']:
                 result['allowed'] = False

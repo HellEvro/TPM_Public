@@ -2842,9 +2842,13 @@ class NewTradingBot:
             except Exception as bots_db_error:
                 logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка сохранения истории в bots_data.db: {bots_db_error}")
             
-            # Единая аналитика для ИИ: каждое закрытие позиции
+            # Единая аналитика для ИИ: каждое закрытие позиции (прибыль/убыток = хорошо/плохо для обучения)
             try:
                 from bot_engine.ai_analytics import log_trade_close
+                from bots_modules.imports_and_globals import bots_data, bots_data_lock
+                with bots_data_lock:
+                    _ac = bots_data.get('auto_bot_config', {})
+                _source = "FullAI" if _ac.get('full_ai_control', False) else "BOT"
                 log_trade_close(
                     symbol=self.symbol,
                     direction=self.position_side,
@@ -2854,7 +2858,7 @@ class NewTradingBot:
                     reason=reason,
                     entry_rsi=entry_rsi,
                     exit_rsi=exit_rsi,
-                    source="BOT",
+                    source=_source,
                 )
             except Exception as _ai_anal_err:
                 logger.debug(f"[NEW_BOT_{self.symbol}] ai_analytics log_trade_close: {_ai_anal_err}")
