@@ -1458,9 +1458,19 @@ class NewTradingBot:
         return fallback_price
 
     def _open_position_on_exchange(self, direction: str, price: Optional[float] = None) -> bool:
-        """Открывает позицию через TradingBot и логирует результат. Автовход — всегда по рынку."""
+        """Открывает позицию через TradingBot. Учитывает конфиг: лимитные ордера (limit_orders_entry_enabled / rsi_limit_entry_enabled) или по рынку."""
         try:
-            result = self.enter_position(direction, force_market_entry=True)
+            # Если в конфиге включены лимитные ордера на вход — НЕ принуждаем рыночный вход
+            force_market = True
+            try:
+                from bots_modules.imports_and_globals import bots_data, bots_data_lock
+                with bots_data_lock:
+                    cfg = bots_data.get('auto_bot_config', {})
+                if cfg.get('limit_orders_entry_enabled') or cfg.get('rsi_limit_entry_enabled'):
+                    force_market = False
+            except Exception:
+                pass
+            result = self.enter_position(direction, force_market_entry=force_market)
             return bool(result and result.get('success'))
         except Exception as e:
             logger.error(f"[NEW_BOT_{self.symbol}] ❌ Ошибка открытия позиции {direction}: {e}")
@@ -1475,7 +1485,7 @@ class NewTradingBot:
                 return {'success': True, 'status': self.status}
             # Направление и момент входа — только по настройкам конфига (should_open_long / should_open_short)
             if self.should_open_long(rsi, trend, candles):
-                logger.info(f"[NEW_BOT_{self.symbol}] 🚀 Вход по рынку LONG (условия конфига)")
+                logger.info(f"[NEW_BOT_{self.symbol}] 🚀 Вход LONG (условия конфига; лимит/рынок — по настройкам)")
                 if self._open_position_on_exchange('LONG', price):
                     try:
                         from bots_modules.fullai_adaptive import on_trade_open
@@ -1487,7 +1497,7 @@ class NewTradingBot:
                 logger.error(f"[NEW_BOT_{self.symbol}] ❌ Не удалось открыть LONG позицию")
                 return {'success': False, 'error': 'Failed to open LONG position'}
             if self.should_open_short(rsi, trend, candles):
-                logger.info(f"[NEW_BOT_{self.symbol}] 🚀 Вход по рынку SHORT (условия конфига)")
+                logger.info(f"[NEW_BOT_{self.symbol}] 🚀 Вход SHORT (условия конфига; лимит/рынок — по настройкам)")
                 if self._open_position_on_exchange('SHORT', price):
                     try:
                         from bots_modules.fullai_adaptive import on_trade_open
@@ -3013,10 +3023,10 @@ class NewTradingBot:
 
     def enter_position(self, direction: str, force_market_entry: bool = True):
         """
-        Открывает позицию через TradingBot, используя текущие настройки бота.
+        Открывает позицию через TradingBot. Использует текущие настройки бота.
         Args:
             direction: 'LONG' или 'SHORT'
-            force_market_entry: True — автовход, всегда по рынку (лимитные ордера не используются).
+            force_market_entry: True — принудительно по рынку; False — по конфигу (лимитные ордера при limit_orders_entry_enabled / rsi_limit_entry_enabled).
         """
         if not direction:
             raise ValueError("Direction is required")

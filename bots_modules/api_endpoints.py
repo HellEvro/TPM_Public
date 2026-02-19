@@ -1173,7 +1173,15 @@ def create_bot_endpoint():
                     
                     if direction:
                         trading_bot = RealTradingBot(symbol, get_exchange(), bot_state)
-                        result = trading_bot._enter_position(direction, force_market_entry=True)
+                        force_market = True
+                        try:
+                            with bots_data_lock:
+                                cfg = bots_data.get('auto_bot_config', {})
+                            if cfg.get('limit_orders_entry_enabled') or cfg.get('rsi_limit_entry_enabled'):
+                                force_market = False
+                        except Exception:
+                            pass
+                        result = trading_bot._enter_position(direction, force_market_entry=force_market)
                         if result and result.get('success'):
                             logger.info(f" ✅ Успешно вошли в {direction} позицию для {symbol}")
                             with bots_data_lock:

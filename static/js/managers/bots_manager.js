@@ -10936,23 +10936,23 @@ class BotsManager {
             const pnlStr = (botStats.total_pnl_usdt != null ? (botStats.total_pnl_usdt >= 0 ? '+' : '') + botStats.total_pnl_usdt : '—') + ' USDT';
             html += '<div class="fullai-bot-trades-block" style="margin-bottom:1rem;padding:0.75rem;background:var(--bg-secondary, #1a1a2e);border-radius:8px;border:1px solid var(--border, #333);">';
             html += '<strong>По сделкам бота (bots_data.db)</strong> — совпадает с монитором «Закрытые PNL»:<br>';
-            html += `<span>Сделок: ${botStats.total}</span> · <span class="positive">В плюс: ${botStats.wins || 0}</span> · <span class="negative">В минус: ${botStats.losses || 0}</span> · Win rate: ${wr} · Суммарный PnL: <span class="${pnlClass}">${pnlStr}</span></div>';
+            html += '<span>Сделок: ' + botStats.total + '</span> · <span class="positive">В плюс: ' + (botStats.wins || 0) + '</span> · <span class="negative">В минус: ' + (botStats.losses || 0) + '</span> · Win rate: ' + wr + ' · Суммарный PnL: <span class="' + pnlClass + '">' + pnlStr + '</span></div>';
         }
         let cards = '<div class="fullai-cards">';
-        cards += `<div class="fullai-card"><span class="fullai-card-label">Реальные входы</span><span class="fullai-card-value">${s.real_open || 0}</span></div>`;
-        cards += `<div class="fullai-card"><span class="fullai-card-label">Виртуальные входы</span><span class="fullai-card-value">${s.virtual_open || 0}</span></div>`;
-        cards += `<div class="fullai-card"><span class="fullai-card-label">Реальные закрытия</span><span class="fullai-card-value">${s.real_close || 0}</span></div>`;
-        cards += `<div class="fullai-card"><span class="fullai-card-label">Реальные в плюс</span><span class="fullai-card-value positive">${s.real_wins || 0}</span></div>`;
-        cards += `<div class="fullai-card"><span class="fullai-card-label">Реальные в минус</span><span class="fullai-card-value negative">${s.real_losses || 0}</span></div>`;
-        cards += `<div class="fullai-card"><span class="fullai-card-label">Win rate (реал.)</span><span class="fullai-card-value">${winRate}%</span></div>`;
-        cards += `<div class="fullai-card"><span class="fullai-card-label">Вирт. закрытий удачных</span><span class="fullai-card-value">${s.virtual_ok || 0}</span></div>`;
-        cards += `<div class="fullai-card"><span class="fullai-card-label">Вирт. закрытий неудачных</span><span class="fullai-card-value">${s.virtual_fail || 0}</span></div>`;
-        cards += `<div class="fullai-card"><span class="fullai-card-label">Успешность вирт.</span><span class="fullai-card-value">${virtualRate}%</span></div>`;
-        cards += `<div class="fullai-card"><span class="fullai-card-label">Блокировок входа</span><span class="fullai-card-value">${s.blocked || 0}</span></div>`;
-        cards += `<div class="fullai-card"><span class="fullai-card-label">Отказов ИИ</span><span class="fullai-card-value">${s.refused || 0}</span></div>`;
-        cards += `<div class="fullai-card"><span class="fullai-card-label">Смен параметров</span><span class="fullai-card-value">${s.params_change || 0}</span></div>`;
-        cards += `<div class="fullai-card"><span class="fullai-card-label">Раундов → реал.</span><span class="fullai-card-value">${s.round_success || 0}</span></div>`;
-        cards += `<div class="fullai-card"><span class="fullai-card-label">Решений держать</span><span class="fullai-card-value">${s.exit_hold || 0}</span></div>`;
+        cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные входы</span><span class="fullai-card-value">' + (s.real_open || 0) + '</span></div>';
+        cards += '<div class="fullai-card"><span class="fullai-card-label">Виртуальные входы</span><span class="fullai-card-value">' + (s.virtual_open || 0) + '</span></div>';
+        cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные закрытия</span><span class="fullai-card-value">' + (s.real_close || 0) + '</span></div>';
+        cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные в плюс</span><span class="fullai-card-value positive">' + (s.real_wins || 0) + '</span></div>';
+        cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные в минус</span><span class="fullai-card-value negative">' + (s.real_losses || 0) + '</span></div>';
+        cards += '<div class="fullai-card"><span class="fullai-card-label">Win rate (реал.)</span><span class="fullai-card-value">' + winRate + '%</span></div>';
+        cards += '<div class="fullai-card"><span class="fullai-card-label">Вирт. закрытий удачных</span><span class="fullai-card-value">' + (s.virtual_ok || 0) + '</span></div>';
+        cards += '<div class="fullai-card"><span class="fullai-card-label">Вирт. закрытий неудачных</span><span class="fullai-card-value">' + (s.virtual_fail || 0) + '</span></div>';
+        cards += '<div class="fullai-card"><span class="fullai-card-label">Успешность вирт.</span><span class="fullai-card-value">' + virtualRate + '%</span></div>';
+        cards += '<div class="fullai-card"><span class="fullai-card-label">Блокировок входа</span><span class="fullai-card-value">' + (s.blocked || 0) + '</span></div>';
+        cards += '<div class="fullai-card"><span class="fullai-card-label">Отказов ИИ</span><span class="fullai-card-value">' + (s.refused || 0) + '</span></div>';
+        cards += '<div class="fullai-card"><span class="fullai-card-label">Смен параметров</span><span class="fullai-card-value">' + (s.params_change || 0) + '</span></div>';
+        cards += '<div class="fullai-card"><span class="fullai-card-label">Раундов → реал.</span><span class="fullai-card-value">' + (s.round_success || 0) + '</span></div>';
+        cards += '<div class="fullai-card"><span class="fullai-card-label">Решений держать</span><span class="fullai-card-value">' + (s.exit_hold || 0) + '</span></div>';
         cards += '</div>';
         html += '<p class="fullai-events-note" style="font-size:0.85rem;color:var(--text-muted,#888);margin-top:0.25rem;">Карточки ниже — события FullAI (записываются только при включённом FullAI).</p>';
         summaryEl.innerHTML = html + cards;
@@ -10964,7 +10964,7 @@ class BotsManager {
             if (totalInDb === 0) {
                 hint = 'В БД 0 событий. Путь: ' + (dbPath || 'data/fullai_analytics.db') + '. Перезапустите сервис ботов после включения FullAI. В логах ботов при записи должна появиться строка «FullAI analytics: запись в БД». Если её нет — решения FullAI не доходят до записи (проверьте, что боты запущены и FullAI включён в Конфигурации).';
             } else if (totalInDb != null && totalInDb > 0) {
-                hint = `В БД всего событий: ${totalInDb}. За выбранный период — нет (попробуйте увеличить период).`;
+                hint = 'В БД всего событий: ' + totalInDb + '. За выбранный период — нет (попробуйте увеличить период).';
             }
             eventsEl.innerHTML = '<p class="analytics-placeholder">' + hint + '</p>';
             return;
@@ -10981,8 +10981,8 @@ class BotsManager {
             const tsPlaced = ex.ts_order_placed_exit != null ? (function() { const d = new Date(ex.ts_order_placed_exit * 1000); return d.toISOString ? d.toISOString().slice(0, 19).replace('T', ' ') : d.toLocaleString(); })() : '—';
             const slippage = ex.slippage_exit_pct != null ? Number(ex.slippage_exit_pct).toFixed(2) + '%' : '—';
             const delay = ex.delay_sec != null ? String(Number(ex.delay_sec).toFixed(1)) : '—';
-            const details = ev.reason || (ev.pnl_percent != null ? `PnL ${Number(ev.pnl_percent).toFixed(2)}%` : '') || (ev.extra && ev.extra.success !== undefined ? (ev.extra.success ? 'успех' : 'убыток') : '') || '—';
-            table += `<tr><td>${ev.ts_iso || ''}</td><td>${ev.symbol || ''}</td><td>${label}</td><td>${dir}</td><td>${entryPrice}</td><td>${exitPrice}</td><td>${limitExit}</td><td>${orderType}</td><td>${tsPlaced}</td><td>${slippage}</td><td>${delay}</td><td>${details}</td></tr>`;
+            const details = ev.reason || (ev.pnl_percent != null ? ('PnL ' + Number(ev.pnl_percent).toFixed(2) + '%') : '') || (ev.extra && ev.extra.success !== undefined ? (ev.extra.success ? 'успех' : 'убыток') : '') || '—';
+            table += '<tr><td>' + (ev.ts_iso || '') + '</td><td>' + (ev.symbol || '') + '</td><td>' + label + '</td><td>' + dir + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td>' + limitExit + '</td><td>' + orderType + '</td><td>' + tsPlaced + '</td><td>' + slippage + '</td><td>' + delay + '</td><td>' + details + '</td></tr>';
         });
         table += '</tbody></table>';
         eventsEl.innerHTML = table;
@@ -10999,13 +10999,13 @@ class BotsManager {
         if (loadingEl) loadingEl.style.display = 'flex';
         if (resultEl) resultEl.innerHTML = '';
         try {
-            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/rsi-audit?limit=${Math.min(2000, Math.max(50, limit))}`);
+            const response = await fetch(this.BOTS_SERVICE_URL + '/api/bots/analytics/rsi-audit?limit=' + Math.min(2000, Math.max(50, limit)));
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
             if (!data.success || !data.report) throw new Error(data.error || 'Нет данных отчёта');
             this.renderRsiAuditReport(data.report, resultEl);
         } catch (err) {
-            if (resultEl) resultEl.innerHTML = `<div class="analytics-error">❌ ${(err && err.message) || String(err)}</div>`;
+            if (resultEl) resultEl.innerHTML = '<div class="analytics-error">❌ ' + ((err && err.message) || String(err)) + '</div>';
             console.error('[BotsManager] Ошибка аудита RSI:', err);
         } finally {
             if (loadingEl) loadingEl.style.display = 'none';
@@ -11122,74 +11122,86 @@ class BotsManager {
         const series = bot.consecutive_series || {};
         const dd = bot.drawdown || {};
         const pfStr = bot.profit_factor != null ? (bot.profit_factor >= 999 ? '∞' : bot.profit_factor.toFixed(2)) : '—';
-        bodyHtml += `<div class="analytics-section" data-category="summary">
-            <h3>${categories[0].label}</h3>
-            <h4 style="margin-top:0;">Метрики торговли</h4>
-            <p>Сделок: <strong>${bot.total_trades != null ? bot.total_trades : botCountUnique}</strong> · Прибыльных: <strong>${bot.win_count ?? '—'}</strong> · Убыточных: <strong>${bot.loss_count ?? '—'}</strong> · Нулевых: <strong>${bot.neutral_count ?? '—'}</strong><br>
-            Win Rate: <strong>${s.bot_win_rate_pct != null ? s.bot_win_rate_pct + '%' : '—'}</strong> · Суммарный PnL: <strong>${s.bot_total_pnl_usdt != null ? s.bot_total_pnl_usdt + ' USDT' : '—'}</strong> · Profit Factor: <strong>${pfStr}</strong></p>
-            <p>Средняя прибыль на сделку: <strong>${bot.avg_win_usdt != null ? bot.avg_win_usdt + ' USDT' : '—'}</strong> · Средний убыток: <strong>${bot.avg_loss_usdt != null ? bot.avg_loss_usdt + ' USDT' : '—'}</strong></p>
-            <p>Макс. серия побед: <strong>${series.max_consecutive_wins ?? '—'}</strong> · Макс. серия убытков: <strong>${series.max_consecutive_losses ?? '—'}</strong>
-            · Просадка: <strong>${dd.max_drawdown_usdt != null ? dd.max_drawdown_usdt + ' USDT' : '—'}</strong>${dd.max_drawdown_pct != null ? ' (' + dd.max_drawdown_pct + '%)' : ''}</p>
-            ${(bot.possible_errors_count || 0) > 0 ? `<h4>⚠ Возможные ошибки по сделкам</h4><p>Найдено: <strong>${bot.possible_errors_count}</strong> (причина закрытия или extra_data содержат error/fail/exception). Показаны первые 20.</p><div class="analytics-stats-table-wrap"><table class="analytics-stats-table"><thead><tr><th>Символ</th><th>Время выхода</th><th>PnL</th><th>Причина</th><th>Bot ID</th></tr></thead><tbody>${(bot.possible_errors || []).slice(0, 20).map(e => '<tr><td>' + (e.symbol || '—') + '</td><td>' + (e.exit_timestamp ? new Date(e.exit_timestamp * 1000).toISOString().slice(0, 19) : '—') + '</td><td>' + (e.pnl != null ? e.pnl : '—') + '</td><td>' + (e.close_reason || '—').slice(0, 30) + '</td><td>' + (e.bot_id || '—') + '</td></tr>').join('')}</tbody></table></div>` : ''}
-            <h4>Сверка с биржей</h4>
-            <p><strong>С биржи (по API):</strong> ${exchangeCount} · <strong>В БД</strong> (закрытия ботов и ручные): <strong>${botCountUnique}</strong>${botCountNote}<br>
-            Совпадений: <strong>${s.reconciliation_matched ?? 0}</strong> · Только в ответе биржи: <strong>${s.reconciliation_only_exchange ?? 0}</strong>
-            · Только в БД (нет пары в ответе API): <strong>${onlyBots}</strong> · Расхождений PnL: <strong>${s.reconciliation_pnl_mismatches ?? 0}</strong></p>
-            ${summaryNote}
-            <p class="analytics-summary-note" style="margin-top: 6px;">В отчёте учтены только уникальные сделки: дубликаты отброшены по времени закрытия.</p>
-        </div>`;
+        var possibleErrorsHtml = '';
+        if ((bot.possible_errors_count || 0) > 0) {
+            var errs = Array.isArray(bot.possible_errors) ? bot.possible_errors.slice(0, 20) : [];
+            possibleErrorsHtml = '<h4>⚠ Возможные ошибки по сделкам</h4><p>Найдено: <strong>' + bot.possible_errors_count + '</strong>.</p>';
+            if (errs.length > 0) {
+                possibleErrorsHtml += '<div class="analytics-stats-table-wrap"><table class="analytics-stats-table"><thead><tr><th>Символ</th><th>Время</th><th>PnL</th><th>Причина</th></tr></thead><tbody>';
+                for (var i = 0; i < errs.length; i++) {
+                    var e = errs[i];
+                    var ts = e.exit_timestamp ? new Date(e.exit_timestamp * 1000).toISOString().slice(0, 19) : '—';
+                    var reason = String(e.close_reason != null ? e.close_reason : '—').slice(0, 30);
+                    possibleErrorsHtml += '<tr><td>' + (e.symbol || '—') + '</td><td>' + ts + '</td><td>' + (e.pnl != null ? e.pnl : '—') + '</td><td>' + reason + '</td></tr>';
+                }
+                possibleErrorsHtml += '</tbody></table></div>';
+            }
+        }
+        bodyHtml += '<div class="analytics-section" data-category="summary">' +
+            '<h3>' + categories[0].label + '</h3>' +
+            '<h4 style="margin-top:0;">Метрики торговли</h4>' +
+            '<p>Сделок: <strong>' + (bot.total_trades != null ? bot.total_trades : botCountUnique) + '</strong> · Прибыльных: <strong>' + (bot.win_count ?? '—') + '</strong> · Убыточных: <strong>' + (bot.loss_count ?? '—') + '</strong> · Нулевых: <strong>' + (bot.neutral_count ?? '—') + '</strong><br>' +
+            'Win Rate: <strong>' + (s.bot_win_rate_pct != null ? s.bot_win_rate_pct + '%' : '—') + '</strong> · Суммарный PnL: <strong>' + (s.bot_total_pnl_usdt != null ? s.bot_total_pnl_usdt + ' USDT' : '—') + '</strong> · Profit Factor: <strong>' + pfStr + '</strong></p>' +
+            '<p>Средняя прибыль на сделку: <strong>' + (bot.avg_win_usdt != null ? bot.avg_win_usdt + ' USDT' : '—') + '</strong> · Средний убыток: <strong>' + (bot.avg_loss_usdt != null ? bot.avg_loss_usdt + ' USDT' : '—') + '</strong></p>' +
+            '<p>Макс. серия побед: <strong>' + (series.max_consecutive_wins ?? '—') + '</strong> · Макс. серия убытков: <strong>' + (series.max_consecutive_losses ?? '—') + '</strong> · Просадка: <strong>' + (dd.max_drawdown_usdt != null ? dd.max_drawdown_usdt + ' USDT' : '—') + (dd.max_drawdown_pct != null ? ' (' + dd.max_drawdown_pct + '%)' : '') + '</strong></p>' +
+            possibleErrorsHtml +
+            '<h4>Сверка с биржей</h4>' +
+            '<p><strong>С биржи (по API):</strong> ' + exchangeCount + ' · <strong>В БД</strong> (закрытия ботов и ручные): <strong>' + botCountUnique + '</strong>' + botCountNote + '<br>' +
+            'Совпадений: <strong>' + (s.reconciliation_matched ?? 0) + '</strong> · Только в ответе биржи: <strong>' + (s.reconciliation_only_exchange ?? 0) + '</strong> · ' +
+            'Только в БД (нет пары в ответе API): <strong>' + onlyBots + '</strong> · Расхождений PnL: <strong>' + (s.reconciliation_pnl_mismatches ?? 0) + '</strong></p>' +
+            summaryNote +
+            '<p class="analytics-summary-note" style="margin-top: 6px;">В отчёте учтены только уникальные сделки: дубликаты отброшены по времени закрытия.</p>' +
+            '</div>';
 
-        bodyHtml += `<div class="analytics-section" data-category="bots">`;
+        bodyHtml += '<div class="analytics-section" data-category="bots">';
         if (bot.total_trades != null) {
             const series = bot.consecutive_series || {};
             const dd = bot.drawdown || {};
             const pfVal = bot.profit_factor != null ? (bot.profit_factor >= 999 ? '∞' : bot.profit_factor.toFixed(2)) : '—';
-            bodyHtml += `<h3>${categories[1].label}</h3>
-            <p>Всего сделок: <strong>${bot.total_trades}</strong> · Прибыльных: <strong>${bot.win_count ?? 0}</strong> · Убыточных: <strong>${bot.loss_count ?? 0}</strong> · Нулевых: <strong>${bot.neutral_count ?? 0}</strong></p>
-            <p>PnL: <strong>${bot.total_pnl_usdt} USDT</strong> · Win Rate: <strong>${bot.win_rate_pct}%</strong> · Profit Factor: <strong>${pfVal}</strong></p>
-            <p>Средняя прибыль: <strong>${bot.avg_win_usdt != null ? bot.avg_win_usdt + ' USDT' : '—'}</strong> · Средний убыток: <strong>${bot.avg_loss_usdt != null ? bot.avg_loss_usdt + ' USDT' : '—'}</strong></p>
-            <p>Макс. серия побед: <strong>${series.max_consecutive_wins ?? 0}</strong> · Макс. серия убытков: <strong>${series.max_consecutive_losses ?? 0}</strong>
-            · Просадка: <strong>${dd.max_drawdown_usdt ?? 0} USDT</strong> (${dd.max_drawdown_pct ?? 0}%)</p>`;
+            bodyHtml += '<h3>' + (categories[1].label || '') + '</h3><p>Всего сделок: <strong>' + bot.total_trades + '</strong> · Прибыльных: <strong>' + (bot.win_count ?? 0) + '</strong> · Убыточных: <strong>' + (bot.loss_count ?? 0) + '</strong> · Нулевых: <strong>' + (bot.neutral_count ?? 0) + '</strong></p>';
+            bodyHtml += '<p>PnL: <strong>' + bot.total_pnl_usdt + ' USDT</strong> · Win Rate: <strong>' + bot.win_rate_pct + '%</strong> · Profit Factor: <strong>' + pfVal + '</strong></p>';
+            bodyHtml += '<p>Средняя прибыль: <strong>' + (bot.avg_win_usdt != null ? bot.avg_win_usdt + ' USDT' : '—') + '</strong> · Средний убыток: <strong>' + (bot.avg_loss_usdt != null ? bot.avg_loss_usdt + ' USDT' : '—') + '</strong></p>';
+            bodyHtml += '<p>Макс. серия побед: <strong>' + (series.max_consecutive_wins ?? 0) + '</strong> · Макс. серия убытков: <strong>' + (series.max_consecutive_losses ?? 0) + '</strong> · Просадка: <strong>' + (dd.max_drawdown_usdt ?? 0) + ' USDT</strong> (' + (dd.max_drawdown_pct ?? 0) + '%)</p>';
         } else {
-            bodyHtml += `<p>Нет данных</p>`;
+            bodyHtml += '<p>Нет данных</p>';
         }
         bodyHtml += '</div>';
 
         const tradesList = bot.trades || [];
-        bodyHtml += `<div class="analytics-section" data-category="trades_table"><h3>Таблица сделок</h3><p>Показано последних <strong>${tradesList.length}</strong> сделок (символ, дата выхода, направление, цены, объём, PnL, причина, источник, RSI, тренд).</p>`;
+        bodyHtml += '<div class="analytics-section" data-category="trades_table"><h3>Таблица сделок</h3><p>Показано последних <strong>' + tradesList.length + '</strong> сделок (символ, дата выхода, направление, цены, объём, PnL, причина, источник, RSI, тренд).</p>';
         bodyHtml += '<div class="analytics-trades-table-wrap"><table class="analytics-trades-table"><thead><tr>';
         bodyHtml += '<th>Дата выхода</th><th>Символ</th><th>Направление</th><th>Вход</th><th>Выход</th><th>Объём USDT</th><th>PnL</th><th>Причина</th><th>Источник</th><th>RSI</th><th>Тренд</th></tr></thead><tbody>';
         tradesList.slice(-500).reverse().forEach(tr => {
             const pnlClass = (tr.pnl || 0) > 0 ? 'pnl-win' : ((tr.pnl || 0) < 0 ? 'pnl-loss' : '');
             bodyHtml += '<tr>';
-            bodyHtml += `<td>${(tr.exit_time_iso || '').replace('T', ' ').slice(0, 19)}</td>`;
-            bodyHtml += `<td>${tr.symbol || ''}</td><td>${tr.direction || ''}</td>`;
-            bodyHtml += `<td>${tr.entry_price != null ? Number(tr.entry_price).toFixed(6) : '—'}</td><td>${tr.exit_price != null ? Number(tr.exit_price).toFixed(6) : '—'}</td>`;
-            bodyHtml += `<td>${tr.position_size_usdt != null ? Number(tr.position_size_usdt).toFixed(2) : '—'}</td>`;
-            bodyHtml += `<td class="${pnlClass}">${tr.pnl != null ? Number(tr.pnl).toFixed(4) : '—'}</td>`;
-            bodyHtml += `<td>${(tr.close_reason || '—').slice(0, 20)}</td><td>${(tr.decision_source || '—').slice(0, 15)}</td>`;
-            bodyHtml += `<td>${tr.entry_rsi != null ? tr.entry_rsi : '—'}</td><td>${tr.entry_trend || '—'}</td>`;
+            bodyHtml += '<td>' + (tr.exit_time_iso || '').replace('T', ' ').slice(0, 19) + '</td>';
+            bodyHtml += '<td>' + (tr.symbol || '') + '</td><td>' + (tr.direction || '') + '</td>';
+            bodyHtml += '<td>' + (tr.entry_price != null ? Number(tr.entry_price).toFixed(6) : '—') + '</td><td>' + (tr.exit_price != null ? Number(tr.exit_price).toFixed(6) : '—') + '</td>';
+            bodyHtml += '<td>' + (tr.position_size_usdt != null ? Number(tr.position_size_usdt).toFixed(2) : '—') + '</td>';
+            bodyHtml += '<td class="' + pnlClass + '">' + (tr.pnl != null ? Number(tr.pnl).toFixed(4) : '—') + '</td>';
+            bodyHtml += '<td>' + (tr.close_reason || '—').slice(0, 20) + '</td><td>' + (tr.decision_source || '—').slice(0, 15) + '</td>';
+            bodyHtml += '<td>' + (tr.entry_rsi != null ? tr.entry_rsi : '—') + '</td><td>' + (tr.entry_trend || '—') + '</td>';
             bodyHtml += '</tr>';
         });
         bodyHtml += '</tbody></table></div></div>';
 
         const bySymbol = bot.by_symbol || {};
-        bodyHtml += `<div class="analytics-section" data-category="by_symbol"><h3>По символам</h3><p>Сделок, PnL, победы/убытки/нулевые, Win Rate по каждому символу.</p>`;
+        bodyHtml += '<div class="analytics-section" data-category="by_symbol"><h3>По символам</h3><p>Сделок, PnL, победы/убытки/нулевые, Win Rate по каждому символу.</p>';
         bodyHtml += '<div class="analytics-stats-table-wrap"><table class="analytics-stats-table"><thead><tr><th>Символ</th><th>Сделок</th><th>PnL USDT</th><th>Победы</th><th>Убытки</th><th>Нулевые</th><th>Win Rate %</th></tr></thead><tbody>';
         Object.entries(bySymbol).sort((a, b) => (b[1].count || 0) - (a[1].count || 0)).forEach(([sym, d]) => {
             const wr = (d.count && d.wins != null) ? ((d.wins / d.count) * 100).toFixed(1) : '—';
             const pnlClass = (d.pnl || 0) >= 0 ? 'pnl-win' : 'pnl-loss';
-            bodyHtml += `<tr><td>${sym}</td><td>${d.count ?? 0}</td><td class="${pnlClass}">${(d.pnl || 0).toFixed(2)}</td><td>${d.wins ?? 0}</td><td>${d.losses ?? 0}</td><td>${d.neutral ?? 0}</td><td>${wr}</td></tr>`;
+            bodyHtml += '<tr><td>' + sym + '</td><td>' + (d.count ?? 0) + '</td><td class="' + pnlClass + '">' + (d.pnl || 0).toFixed(2) + '</td><td>' + (d.wins ?? 0) + '</td><td>' + (d.losses ?? 0) + '</td><td>' + (d.neutral ?? 0) + '</td><td>' + wr + '</td></tr>';
         });
         bodyHtml += '</tbody></table></div></div>';
 
         const byBot = bot.by_bot || {};
-        bodyHtml += `<div class="analytics-section" data-category="by_bot"><h3>По ботам</h3><p>Статистика по каждому bot_id.</p>`;
+        bodyHtml += '<div class="analytics-section" data-category="by_bot"><h3>По ботам</h3><p>Статистика по каждому bot_id.</p>';
         bodyHtml += '<div class="analytics-stats-table-wrap"><table class="analytics-stats-table"><thead><tr><th>Bot ID</th><th>Сделок</th><th>PnL USDT</th><th>Победы</th><th>Убытки</th><th>Нулевые</th><th>Win Rate %</th></tr></thead><tbody>';
         Object.entries(byBot).sort((a, b) => (b[1].count || 0) - (a[1].count || 0)).forEach(([bid, d]) => {
             const wr = (d.count && d.wins != null) ? ((d.wins / d.count) * 100).toFixed(1) : '—';
             const pnlClass = (d.pnl || 0) >= 0 ? 'pnl-win' : 'pnl-loss';
-            bodyHtml += `<tr><td>${bid}</td><td>${d.count ?? 0}</td><td class="${pnlClass}">${(d.pnl || 0).toFixed(2)}</td><td>${d.wins ?? 0}</td><td>${d.losses ?? 0}</td><td>${d.neutral ?? 0}</td><td>${wr}</td></tr>`;
+            bodyHtml += '<tr><td>' + bid + '</td><td>' + (d.count ?? 0) + '</td><td class="' + pnlClass + '">' + (d.pnl || 0).toFixed(2) + '</td><td>' + (d.wins ?? 0) + '</td><td>' + (d.losses ?? 0) + '</td><td>' + (d.neutral ?? 0) + '</td><td>' + wr + '</td></tr>';
         });
         bodyHtml += '</tbody></table></div></div>';
 
