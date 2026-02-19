@@ -226,20 +226,58 @@ _ANALYTICS_CACHE_TTL_SEC = 300  # 5 минут
 def _get_cached_analytics_for_entry(symbol: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Кеширует контекст аналитики с TTL. Используется ИИ перед решением о входе.
-    Возвращает problems, recommendations, metrics, unsuccessful_coins, unsuccessful_settings.
+    Сначала пробует память, потом БД (ai_experience_snapshot), затем полный расчёт.
+    Опыт сохраняется в БД — ИИ не переобучается с нуля.
     """
     global _analytics_cache, _analytics_cache_ts
     now = time.time()
     if now - _analytics_cache_ts < _ANALYTICS_CACHE_TTL_SEC and _analytics_cache:
         return _analytics_cache
     try:
+        db = _get_ai_db()
+        if db and hasattr(db, "get_ai_experience_snapshot"):
+            snap = db.get_ai_experience_snapshot()
+            if snap and snap.get("generated_at"):
+                try:
+                    gen_str = str(snap["generated_at"]).replace("Z", "+00:00").replace(" ", "T")
+                    gen = datetime.fromisoformat(gen_str)
+                    age_sec = now - gen.timestamp()
+                    if age_sec < 86400:
+                        ctx = {
+                            "problems": snap.get("problems", []),
+                            "recommendations": snap.get("recommendations", []),
+                            "metrics": snap.get("metrics", {}),
+                            "unsuccessful_coins": snap.get("unsuccessful_coins", []),
+                            "unsuccessful_settings": snap.get("unsuccessful_settings", []),
+                        }
+                        _analytics_cache = ctx
+                        _analytics_cache_ts = now
+                        return ctx
+                except Exception:
+                    pass
         ctx = get_ai_analytics_context(symbol=symbol, hours_back=168, include_report=True)
         _analytics_cache = ctx
         _analytics_cache_ts = now
         return ctx
     except Exception as e:
         logger.debug("_get_cached_analytics_for_entry: %s", e)
-        return _analytics_cache if _analytics_cache else None
+        if _analytics_cache:
+            return _analytics_cache
+        try:
+            db = _get_ai_db()
+            if db and hasattr(db, "get_ai_experience_snapshot"):
+                snap = db.get_ai_experience_snapshot()
+                if snap:
+                    return {
+                        "problems": snap.get("problems", []),
+                        "recommendations": snap.get("recommendations", []),
+                        "metrics": snap.get("metrics", {}),
+                        "unsuccessful_coins": snap.get("unsuccessful_coins", []),
+                        "unsuccessful_settings": snap.get("unsuccessful_settings", []),
+                    }
+        except Exception:
+            pass
+        return None
 
 
 def invalidate_analytics_cache() -> None:
@@ -371,6 +409,18 @@ def get_ai_analytics_context(
             result["metrics"] = ai_block.get("metrics", {})
             result["unsuccessful_coins"] = ai_block.get("unsuccessful_coins", [])
             result["unsuccessful_settings"] = ai_block.get("unsuccessful_settings", [])
+            try:
+                db = _get_ai_db()
+                if db and hasattr(db, "save_ai_experience_snapshot"):
+                    db.save_ai_experience_snapshot(
+                        unsuccessful_coins=result["unsuccessful_coins"],
+                        unsuccessful_settings=result["unsuccessful_settings"],
+                        metrics=result["metrics"],
+                        problems=result["problems"],
+                        recommendations=result["recommendations"],
+                    )
+            except Exception as _s:
+                logger.debug("save_ai_experience_snapshot: %s", _s)
         except Exception as e:
             logger.debug("get_ai_analytics_context: report %s", e)
             result["problems"] = []

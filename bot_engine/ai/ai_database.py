@@ -1438,6 +1438,21 @@ class AIDatabase:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_analytics_event_type ON ai_analytics_events(event_type)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_analytics_symbol ON ai_analytics_events(symbol)")
             
+            # ==================== ТАБЛИЦА: СНИМОК ОПЫТА ИИ ====================
+            # Хранит результаты аналитики (неудачные монеты, bad_rsi, метрики) — чтобы ИИ не переобучался с нуля
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ai_experience_snapshot (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    unsuccessful_coins_json TEXT,
+                    unsuccessful_settings_json TEXT,
+                    metrics_json TEXT,
+                    problems_json TEXT,
+                    recommendations_json TEXT,
+                    generated_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            
             # ==================== ТАБЛИЦА: ОПТИМИЗИРОВАННЫЕ ПАРАМЕТРЫ (НОРМАЛИЗОВАННАЯ) ====================
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS optimized_params (
@@ -3700,6 +3715,56 @@ class AIDatabase:
                 result.append(decision)
             
             return result
+
+    def save_ai_experience_snapshot(
+        self,
+        unsuccessful_coins: List[Dict],
+        unsuccessful_settings: List[Dict],
+        metrics: Dict,
+        problems: List[str],
+        recommendations: List[str],
+    ) -> None:
+        """Сохраняет снимок опыта ИИ (результаты аналитики) — чтобы не переобучался с нуля."""
+        with self.lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                now = datetime.now().isoformat()
+                cursor.execute("""
+                    INSERT OR REPLACE INTO ai_experience_snapshot (id, unsuccessful_coins_json, unsuccessful_settings_json, metrics_json, problems_json, recommendations_json, generated_at, updated_at)
+                    VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    json.dumps(unsuccessful_coins, ensure_ascii=False) if unsuccessful_coins else None,
+                    json.dumps(unsuccessful_settings, ensure_ascii=False) if unsuccessful_settings else None,
+                    json.dumps(metrics, ensure_ascii=False) if metrics else None,
+                    json.dumps(problems, ensure_ascii=False) if problems else None,
+                    json.dumps(recommendations, ensure_ascii=False) if recommendations else None,
+                    now,
+                    now,
+                ))
+                conn.commit()
+
+    def get_ai_experience_snapshot(self) -> Optional[Dict[str, Any]]:
+        """Загружает последний снимок опыта ИИ из БД."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM ai_experience_snapshot WHERE id = 1")
+            row = cursor.fetchone()
+            if not row:
+                return None
+            try:
+                d = dict(row)
+                out = {
+                    'generated_at': d.get('generated_at'),
+                    'updated_at': d.get('updated_at'),
+                    'unsuccessful_coins': json.loads(d['unsuccessful_coins_json']) if d.get('unsuccessful_coins_json') else [],
+                    'unsuccessful_settings': json.loads(d['unsuccessful_settings_json']) if d.get('unsuccessful_settings_json') else [],
+                    'metrics': json.loads(d['metrics_json']) if d.get('metrics_json') else {},
+                    'problems': json.loads(d['problems_json']) if d.get('problems_json') else [],
+                    'recommendations': json.loads(d['recommendations_json']) if d.get('recommendations_json') else [],
+                }
+                return out
+            except Exception:
+                return None
     
     # ==================== РЕКОМЕНДАЦИИ AI (чтение из bots.py, запись из ai.py) ====================
     

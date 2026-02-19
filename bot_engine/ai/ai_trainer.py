@@ -3005,6 +3005,21 @@ class AITrainer:
             else:
                 logger.info(f"   ⚠️ История биржи пуста - загружаем через API...")
             
+            # Загружаем накопленный опыт ИИ, чтобы не переобучать с нуля
+            experience_bad_coins = set()
+            if self.ai_db and hasattr(self.ai_db, "get_ai_experience_snapshot"):
+                try:
+                    snap = self.ai_db.get_ai_experience_snapshot()
+                    if snap and snap.get("unsuccessful_coins"):
+                        for uc in snap["unsuccessful_coins"]:
+                            s = uc.get("symbol") if isinstance(uc, dict) else uc
+                            if s:
+                                experience_bad_coins.add(str(s).upper())
+                        if experience_bad_coins:
+                            logger.info(f"   📚 Учёт опыта: {len(experience_bad_coins)} проблемных монет (усиленный вес при обучении)")
+                except Exception as e:
+                    logger.debug("get_ai_experience_snapshot: %s", e)
+            
             # Обновляем количество сделок для отслеживания
             self._last_real_trades_training_count = len(trades)
             
@@ -3495,6 +3510,7 @@ class AITrainer:
                 y_signal = []  # 1 = успешная сделка, 0 = неуспешная
                 y_profit = []  # Реальный PnL
                 
+                sample_weights = []
                 for sample in all_samples:
                     features = [
                         sample['entry_rsi'],
@@ -3509,10 +3525,14 @@ class AITrainer:
                     X.append(features)
                     y_signal.append(1 if sample['is_successful'] else 0)
                     y_profit.append(sample['pnl'])
+                    # Усиленный вес для неудачных сделок по проблемным монетам (опыт ИИ)
+                    w = 2.0 if (experience_bad_coins and sample.get('symbol', '').upper() in experience_bad_coins and not sample['is_successful']) else 1.0
+                    sample_weights.append(w)
                 
                 X = np.array(X)
                 y_signal = np.array(y_signal)
                 y_profit = np.array(y_profit)
+                sample_weights_arr = np.array(sample_weights, dtype=float)
                 
                 # Нормализация
                 # ВАЖНО: Всегда пересоздаем scaler при обучении на реальных сделках,
@@ -3550,7 +3570,7 @@ class AITrainer:
                     )
                 
                 logger.info("   📈 Обучение модели на успешных/неуспешных сделках...")
-                self.signal_predictor.fit(X_scaled, y_signal)
+                self.signal_predictor.fit(X_scaled, y_signal, sample_weight=sample_weights_arr)
                 
                 # Оценка качества
                 train_score = self.signal_predictor.score(X_scaled, y_signal)
@@ -3599,7 +3619,7 @@ class AITrainer:
                     )
                 
                 logger.info("   💰 Обучение модели предсказания прибыли...")
-                self.profit_predictor.fit(X_scaled, y_profit)
+                self.profit_predictor.fit(X_scaled, y_profit, sample_weight=sample_weights_arr)
                 
                 # Оценка предсказания прибыли с информативными метриками
                 profit_pred = self.profit_predictor.predict(X_scaled)
