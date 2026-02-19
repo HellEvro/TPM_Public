@@ -389,7 +389,7 @@ def process_virtual_positions(
                 del _virtual_positions[norm]
 
 
-def record_real_close(symbol: str, pnl_percent: float) -> None:
+def record_real_close(symbol: str, pnl_percent: float, reason: str = None, extra: dict = None) -> None:
     """
     Вызывать при закрытии реальной сделки. Если pnl < 0 — сброс в виртуальный режим и мутация параметров.
     """
@@ -398,7 +398,14 @@ def record_real_close(symbol: str, pnl_percent: float) -> None:
         return
     try:
         from bot_engine.fullai_analytics import append_event, EVENT_REAL_CLOSE
-        append_event(symbol=norm, event_type=EVENT_REAL_CLOSE, pnl_percent=pnl_percent)
+        append_event(
+            symbol=norm,
+            event_type=EVENT_REAL_CLOSE,
+            direction=(extra.get('direction') if extra else None) or None,
+            pnl_percent=pnl_percent,
+            reason=reason or '',
+            extra=extra,
+        )
     except Exception:
         pass
     if not is_adaptive_enabled():

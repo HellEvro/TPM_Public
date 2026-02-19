@@ -10879,6 +10879,8 @@ class BotsManager {
                     });
                     btn.classList.add('active');
                     btn.setAttribute('aria-selected', 'true');
+                    if (id === 'fullai') this.loadFullaiAnalytics();
+                    if (id === 'rsi') this.runRsiAudit();
                 });
             });
         }
@@ -10905,7 +10907,11 @@ class BotsManager {
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
             if (!data.success) throw new Error(data.error || 'Нет данных');
-            this.renderFullaiAnalytics(data.summary || {}, data.events || [], summaryEl, eventsEl);
+            this.renderFullaiAnalytics(data.summary || {}, data.events || [], summaryEl, eventsEl, {
+                db_path: data.db_path,
+                total_events: data.total_events,
+                bot_trades_stats: data.bot_trades_stats || null
+            });
         } catch (err) {
             if (summaryEl) summaryEl.innerHTML = `<div class="analytics-error">❌ ${(err && err.message) || String(err)}</div>`;
             if (eventsEl) eventsEl.innerHTML = '';
@@ -10915,11 +10921,23 @@ class BotsManager {
         }
     }
 
-    renderFullaiAnalytics(summary, events, summaryEl, eventsEl) {
+    renderFullaiAnalytics(summary, events, summaryEl, eventsEl, meta) {
         if (!summaryEl) return;
+        const botStats = (meta && meta.bot_trades_stats) || null;
+        const totalInDb = (meta && meta.total_events) != null ? meta.total_events : null;
+        const dbPath = (meta && meta.db_path) || '';
         const s = summary;
         const winRate = s.real_total > 0 ? ((s.real_wins / s.real_total) * 100).toFixed(1) : '—';
         const virtualRate = s.virtual_total > 0 ? ((s.virtual_ok / s.virtual_total) * 100).toFixed(1) : '—';
+        let html = '';
+        if (botStats && (botStats.total > 0 || botStats.total_pnl_usdt !== 0)) {
+            const wr = botStats.win_rate_pct != null ? botStats.win_rate_pct + '%' : '—';
+            const pnlClass = (botStats.total_pnl_usdt || 0) >= 0 ? 'positive' : 'negative';
+            const pnlStr = (botStats.total_pnl_usdt != null ? (botStats.total_pnl_usdt >= 0 ? '+' : '') + botStats.total_pnl_usdt : '—') + ' USDT';
+            html += '<div class="fullai-bot-trades-block" style="margin-bottom:1rem;padding:0.75rem;background:var(--bg-secondary, #1a1a2e);border-radius:8px;border:1px solid var(--border, #333);">';
+            html += '<strong>По сделкам бота (bots_data.db)</strong> — совпадает с монитором «Закрытые PNL»:<br>';
+            html += `<span>Сделок: ${botStats.total}</span> · <span class="positive">В плюс: ${botStats.wins || 0}</span> · <span class="negative">В минус: ${botStats.losses || 0}</span> · Win rate: ${wr} · Суммарный PnL: <span class="${pnlClass}">${pnlStr}</span></div>';
+        }
         let cards = '<div class="fullai-cards">';
         cards += `<div class="fullai-card"><span class="fullai-card-label">Реальные входы</span><span class="fullai-card-value">${s.real_open || 0}</span></div>`;
         cards += `<div class="fullai-card"><span class="fullai-card-label">Виртуальные входы</span><span class="fullai-card-value">${s.virtual_open || 0}</span></div>`;
@@ -10934,21 +10952,32 @@ class BotsManager {
         cards += `<div class="fullai-card"><span class="fullai-card-label">Отказов ИИ</span><span class="fullai-card-value">${s.refused || 0}</span></div>`;
         cards += `<div class="fullai-card"><span class="fullai-card-label">Смен параметров</span><span class="fullai-card-value">${s.params_change || 0}</span></div>`;
         cards += `<div class="fullai-card"><span class="fullai-card-label">Раундов → реал.</span><span class="fullai-card-value">${s.round_success || 0}</span></div>`;
+        cards += `<div class="fullai-card"><span class="fullai-card-label">Решений держать</span><span class="fullai-card-value">${s.exit_hold || 0}</span></div>`;
         cards += '</div>';
-        summaryEl.innerHTML = cards;
+        html += '<p class="fullai-events-note" style="font-size:0.85rem;color:var(--text-muted,#888);margin-top:0.25rem;">Карточки ниже — события FullAI (записываются только при включённом FullAI).</p>';
+        summaryEl.innerHTML = html + cards;
 
         if (!eventsEl) return;
-        const eventLabels = { real_open: 'Вход реал.', virtual_open: 'Вход вирт.', real_close: 'Закрытие реал.', virtual_close: 'Закрытие вирт.', blocked: 'Блок', refused: 'Отказ ИИ', params_change: 'Смена параметров', round_success: 'Раунд → реал.' };
+        const eventLabels = { real_open: 'Вход реал.', virtual_open: 'Вход вирт.', real_close: 'Закрытие реал.', virtual_close: 'Закрытие вирт.', blocked: 'Блок', refused: 'Отказ ИИ', params_change: 'Смена параметров', round_success: 'Раунд → реал.', exit_hold: 'ИИ держать' };
         if (events.length === 0) {
-            eventsEl.innerHTML = '<p class="analytics-placeholder">Нет событий за выбранный период.</p>';
+            let hint = 'Нет событий за выбранный период.';
+            if (totalInDb === 0) {
+                hint = 'В БД 0 событий. Путь: ' + (dbPath || 'data/fullai_analytics.db') + '. Перезапустите сервис ботов после включения FullAI. В логах ботов при записи должна появиться строка «FullAI analytics: запись в БД». Если её нет — решения FullAI не доходят до записи (проверьте, что боты запущены и FullAI включён в Конфигурации).';
+            } else if (totalInDb != null && totalInDb > 0) {
+                hint = `В БД всего событий: ${totalInDb}. За выбранный период — нет (попробуйте увеличить период).`;
+            }
+            eventsEl.innerHTML = '<p class="analytics-placeholder">' + hint + '</p>';
             return;
         }
-        let table = '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Событие</th><th>Направление</th><th>Детали</th></tr></thead><tbody>';
+        let table = '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Событие</th><th>Направление</th><th>Вход</th><th>Выход</th><th>Детали</th></tr></thead><tbody>';
         events.forEach(ev => {
             const label = eventLabels[ev.event_type] || ev.event_type;
             const dir = ev.direction || '—';
+            const ex = ev.extra || {};
+            const entryPrice = ex.entry_price != null ? Number(ex.entry_price).toFixed(6) : (ev.event_type === 'real_open' || ev.event_type === 'refused' ? (ex.price != null ? Number(ex.price).toFixed(6) : '—') : '—');
+            const exitPrice = ex.exit_price != null ? Number(ex.exit_price).toFixed(6) : '—';
             const details = ev.reason || (ev.pnl_percent != null ? `PnL ${Number(ev.pnl_percent).toFixed(2)}%` : '') || (ev.extra && ev.extra.success !== undefined ? (ev.extra.success ? 'успех' : 'убыток') : '') || '—';
-            table += `<tr><td>${ev.ts_iso || ''}</td><td>${ev.symbol || ''}</td><td>${label}</td><td>${dir}</td><td>${details}</td></tr>`;
+            table += `<tr><td>${ev.ts_iso || ''}</td><td>${ev.symbol || ''}</td><td>${label}</td><td>${dir}</td><td>${entryPrice}</td><td>${exitPrice}</td><td>${details}</td></tr>`;
         });
         table += '</tbody></table>';
         eventsEl.innerHTML = table;

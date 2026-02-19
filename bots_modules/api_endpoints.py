@@ -5318,9 +5318,9 @@ def get_rsi_audit():
 
 @bots_app.route('/api/bots/analytics/fullai', methods=['GET'])
 def get_fullai_analytics():
-    """Аналитика FullAI: события и сводка из data/fullai_analytics.db (отдельная БД, не основная)."""
+    """Аналитика FullAI: события и сводка из data/fullai_analytics.db + винрейт/PnL по сделкам бота из bots_data.db."""
     try:
-        from bot_engine.fullai_analytics import get_events, get_summary
+        from bot_engine.fullai_analytics import get_events, get_summary, get_db_info
         symbol = request.args.get('symbol', '').strip().upper() or None
         from_ts = request.args.get('from_ts', type=float)
         to_ts = request.args.get('to_ts', type=float)
@@ -5328,14 +5328,50 @@ def get_fullai_analytics():
         limit = min(max(1, limit), 2000)
         summary = get_summary(symbol=symbol, from_ts=from_ts, to_ts=to_ts)
         events = get_events(symbol=symbol, from_ts=from_ts, to_ts=to_ts, limit=limit)
+        db_info = get_db_info()
+        bot_trades_stats = _compute_bot_trades_stats(symbol=symbol, from_ts=from_ts, to_ts=to_ts)
         return jsonify({
             'success': True,
             'summary': summary,
             'events': events,
+            'bot_trades_stats': bot_trades_stats,
+            'db_path': db_info['db_path'],
+            'total_events': db_info['total_events'],
         })
     except Exception as e:
         logger.exception("Ошибка аналитики FullAI: %s", e)
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _compute_bot_trades_stats(symbol=None, from_ts=None, to_ts=None):
+    """Винрейт и суммарный PnL по закрытым сделкам бота из bots_data.db (история ботов — истинный источник)."""
+    try:
+        from bot_engine.bots_database import get_bots_database
+        db = get_bots_database()
+        trades = db.get_bot_trades_history(
+            symbol=symbol,
+            status='CLOSED',
+            limit=10000,
+            from_ts_sec=from_ts,
+            to_ts_sec=to_ts,
+        )
+        if not trades:
+            return {'total': 0, 'wins': 0, 'losses': 0, 'win_rate_pct': None, 'total_pnl_usdt': 0.0}
+        total = len(trades)
+        wins = sum(1 for t in trades if t.get('is_successful') or (float(t.get('pnl') or 0) > 0))
+        losses = total - wins
+        total_pnl = sum(float(t.get('pnl') or 0) for t in trades)
+        win_rate_pct = (wins / total * 100) if total else None
+        return {
+            'total': total,
+            'wins': wins,
+            'losses': losses,
+            'win_rate_pct': round(win_rate_pct, 1) if win_rate_pct is not None else None,
+            'total_pnl_usdt': round(total_pnl, 2),
+        }
+    except Exception as e:
+        logger.debug("bot_trades_stats: %s", e)
+        return {'total': 0, 'wins': 0, 'losses': 0, 'win_rate_pct': None, 'total_pnl_usdt': 0.0}
 
 
 @bots_app.route('/api/ai/self-learning/stats', methods=['GET'])

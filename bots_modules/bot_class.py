@@ -535,7 +535,7 @@ class NewTradingBot:
                                 logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход LONG (уверенность: {decision.get('confidence', 0):.2%})")
                                 try:
                                     from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                                    append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='LONG', is_virtual=False, confidence=decision.get('confidence'))
+                                    append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='LONG', is_virtual=False, confidence=decision.get('confidence'), extra={'price': current_price})
                                 except Exception:
                                     pass
                                 self._set_decision_source('AI', decision)
@@ -549,7 +549,7 @@ class NewTradingBot:
                         logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход LONG (уверенность: {decision.get('confidence', 0):.2%})")
                         try:
                             from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                            append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='LONG', is_virtual=False, confidence=decision.get('confidence'))
+                            append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='LONG', is_virtual=False, confidence=decision.get('confidence'), extra={'price': current_price})
                         except Exception:
                             pass
                         self._set_decision_source('AI', decision)
@@ -557,7 +557,7 @@ class NewTradingBot:
                     logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: отказ LONG — {decision.get('reason', '')}")
                     try:
                         from bot_engine.fullai_analytics import append_event, EVENT_REFUSED
-                        append_event(symbol=self.symbol, event_type=EVENT_REFUSED, direction='LONG', reason=decision.get('reason', ''))
+                        append_event(symbol=self.symbol, event_type=EVENT_REFUSED, direction='LONG', reason=decision.get('reason', ''), extra={'price': current_price, 'confidence': decision.get('confidence')})
                     except Exception:
                         pass
                     return False
@@ -721,7 +721,7 @@ class NewTradingBot:
                                 logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход SHORT (уверенность: {decision.get('confidence', 0):.2%})")
                                 try:
                                     from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                                    append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='SHORT', is_virtual=False, confidence=decision.get('confidence'))
+                                    append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='SHORT', is_virtual=False, confidence=decision.get('confidence'), extra={'price': current_price})
                                 except Exception:
                                     pass
                                 self._set_decision_source('AI', decision)
@@ -735,7 +735,7 @@ class NewTradingBot:
                         logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход SHORT (уверенность: {decision.get('confidence', 0):.2%})")
                         try:
                             from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                            append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='SHORT', is_virtual=False, confidence=decision.get('confidence'))
+                            append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='SHORT', is_virtual=False, confidence=decision.get('confidence'), extra={'price': current_price})
                         except Exception:
                             pass
                         self._set_decision_source('AI', decision)
@@ -743,7 +743,7 @@ class NewTradingBot:
                     logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: отказ SHORT — {decision.get('reason', '')}")
                     try:
                         from bot_engine.fullai_analytics import append_event, EVENT_REFUSED
-                        append_event(symbol=self.symbol, event_type=EVENT_REFUSED, direction='SHORT', reason=decision.get('reason', ''))
+                        append_event(symbol=self.symbol, event_type=EVENT_REFUSED, direction='SHORT', reason=decision.get('reason', ''), extra={'price': current_price, 'confidence': decision.get('confidence')})
                     except Exception:
                         pass
                     return False
@@ -1689,11 +1689,6 @@ class NewTradingBot:
                             logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: закрытие — {reason_exit}")
                             self._close_position_on_exchange(reason_exit)
                             try:
-                                from bots_modules.fullai_adaptive import record_real_close
-                                record_real_close(self.symbol, profit_percent)
-                            except ImportError:
-                                pass
-                            try:
                                 from bots_modules.fullai_scoring import record_trade_result
                                 record_trade_result(self.symbol, success=(profit_percent >= 0))
                             except ImportError:
@@ -1704,6 +1699,17 @@ class NewTradingBot:
                             except Exception as _lerr:
                                 logger.debug(f"[NEW_BOT_{self.symbol}] FullAI learner после закрытия: {_lerr}")
                             return {'success': True, 'action': f"CLOSE_{self.position_side}", 'reason': reason_exit}
+                        try:
+                            from bot_engine.fullai_analytics import append_event, EVENT_EXIT_HOLD
+                            append_event(
+                                symbol=self.symbol,
+                                event_type=EVENT_EXIT_HOLD,
+                                direction=self.position_side,
+                                reason=decision.get('reason', ''),
+                                extra={'profit_percent': profit_percent, 'close_now': False}
+                            )
+                        except Exception:
+                            pass
                     except Exception as e:
                         logger.exception(f"[NEW_BOT_{self.symbol}] FullAI выход: {e}")
                 if not _full_ai_control:
@@ -2786,6 +2792,28 @@ class NewTradingBot:
                     logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Не удалось сохранить историю сделки в bots_data.db")
             except Exception as bots_db_error:
                 logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка сохранения истории в bots_data.db: {bots_db_error}")
+            
+            # FullAI: записываем каждое закрытие в аналитику (FullAI/RSI/SL/безубыток/ручное)
+            try:
+                from bots_modules.imports_and_globals import bots_data, bots_data_lock
+                with bots_data_lock:
+                    _cfg = bots_data.get('auto_bot_config', {})
+                if _cfg.get('full_ai_control', False):
+                    from bots_modules.fullai_adaptive import record_real_close
+                    record_real_close(
+                        self.symbol,
+                        pnl_pct,
+                        reason=reason,
+                        extra={
+                            'entry_price': self.entry_price,
+                            'exit_price': exit_price,
+                            'entry_rsi': entry_rsi,
+                            'exit_rsi': exit_rsi,
+                            'direction': self.position_side,
+                        },
+                    )
+            except Exception as fullai_log_err:
+                logger.debug(f"[NEW_BOT_{self.symbol}] FullAI analytics при закрытии: {fullai_log_err}")
             
             # ✅ КРИТИЧНО: Сохраняем timestamp последнего закрытия для задержки перед следующим входом
             try:

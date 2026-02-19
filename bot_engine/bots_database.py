@@ -6145,7 +6145,9 @@ class BotsDatabase:
                               decision_source: Optional[str] = None,
                               limit: Optional[int] = None,
                               offset: int = 0,
-                              days_back: Optional[int] = None) -> List[Dict[str, Any]]:
+                              days_back: Optional[int] = None,
+                              from_ts_sec: Optional[float] = None,
+                              to_ts_sec: Optional[float] = None) -> List[Dict[str, Any]]:
         """
         Загружает историю сделок ботов из БД
         
@@ -6197,6 +6199,14 @@ class BotsDatabase:
                     )"""
                     params.append(since_sec)
                     params.append(since_ms)
+                if from_ts_sec is not None:
+                    from_ms = from_ts_sec * 1000 if from_ts_sec < 1e10 else from_ts_sec
+                    query += " AND COALESCE(exit_timestamp, entry_timestamp) >= ?"
+                    params.append(from_ms)
+                if to_ts_sec is not None:
+                    to_ms = to_ts_sec * 1000 if to_ts_sec < 1e10 else to_ts_sec
+                    query += " AND COALESCE(exit_timestamp, entry_timestamp) <= ?"
+                    params.append(to_ms)
                 
                 # ✅ КРИТИЧНО: Для закрытых сделок сортируем по exit_timestamp (времени закрытия)
                 # чтобы получить самые последние закрытые сделки

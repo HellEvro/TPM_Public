@@ -21,20 +21,54 @@ EVENT_BLOCKED = 'blocked'           # вход заблокирован (нап�
 EVENT_REFUSED = 'refused'           # ИИ отказал во входе
 EVENT_PARAMS_CHANGE = 'params_change'
 EVENT_ROUND_SUCCESS = 'round_success'  # N виртуальных успешны → разрешена реальная
+EVENT_EXIT_HOLD = 'exit_hold'       # ИИ решил не закрывать (держать позицию)
 
 _db_path: Optional[Path] = None
 _lock = threading.Lock()
+_logged_path = False
+
+
+def _get_project_root() -> Path:
+    """Корень проекта (как в bots_database), чтобы БД была в той же data/, что и bots_data.db."""
+    current = Path(__file__).resolve()
+    for parent in [current.parent.parent] + list(current.parents):
+        if parent and (parent / 'bots.py').exists() and (parent / 'bot_engine').exists():
+            return parent
+    try:
+        return current.parents[1]
+    except IndexError:
+        return current.parent
 
 
 def _get_db_path() -> Path:
     global _db_path
     if _db_path is not None:
         return _db_path
-    root = Path(__file__).resolve().parents[1]
+    root = _get_project_root()
     data_dir = root / 'data'
     data_dir.mkdir(parents=True, exist_ok=True)
     _db_path = data_dir / 'fullai_analytics.db'
     return _db_path
+
+
+def _ensure_db_exists() -> Path:
+    """Создать файл БД и схему, если их ещё нет (чтобы файл был виден в data/ даже при 0 событий)."""
+    path = _get_db_path()
+    if path.exists():
+        return path
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with _lock:
+            conn = sqlite3.connect(str(path), timeout=10)
+            try:
+                _init_schema(conn)
+                conn.commit()
+            finally:
+                conn.close()
+        logger.info("FullAI analytics: создана БД %s", path)
+    except Exception as e:
+        logger.warning("FullAI analytics _ensure_db_exists: %s", e)
+    return path
 
 
 def _init_schema(conn: sqlite3.Connection) -> None:
@@ -76,6 +110,7 @@ def append_event(
     if not symbol and event_type not in (EVENT_PARAMS_CHANGE, EVENT_ROUND_SUCCESS):
         return
     extra_json = json.dumps(extra, ensure_ascii=False) if extra else None
+    global _logged_path
     path = _get_db_path()
     try:
         with _lock:
@@ -89,10 +124,13 @@ def append_event(
                      confidence, reason, pnl_percent, extra_json),
                 )
                 conn.commit()
+                if not _logged_path:
+                    _logged_path = True
+                    logger.info("FullAI analytics: запись в БД %s (событие %s, %s)", path, event_type, symbol or "-")
             finally:
                 conn.close()
     except Exception as e:
-        logger.debug("FullAI analytics append_event: %s", e)
+        logger.warning("FullAI analytics append_event (путь %s): %s", path, e)
 
 
 def get_events(
@@ -103,7 +141,7 @@ def get_events(
     limit: int = 500,
 ) -> List[Dict[str, Any]]:
     """Список событий с фильтрами."""
-    path = _get_db_path()
+    path = _ensure_db_exists()
     if not path.exists():
         return []
     conditions = []
@@ -120,7 +158,7 @@ def get_events(
     if to_ts is not None:
         conditions.append("ts <= ?")
         args.append(to_ts)
-    where = (" AND " + " AND ".join(conditions)) if conditions else ""
+    where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
     args.append(limit)
     try:
         with _lock:
@@ -128,7 +166,7 @@ def get_events(
             conn.row_factory = sqlite3.Row
             try:
                 rows = conn.execute(
-                    f"SELECT id, ts, ts_iso, symbol, event_type, direction, is_virtual, confidence, reason, pnl_percent, extra_json FROM fullai_events {where} ORDER BY ts DESC LIMIT ?",
+                    f"SELECT id, ts, ts_iso, symbol, event_type, direction, is_virtual, confidence, reason, pnl_percent, extra_json FROM fullai_events{where} ORDER BY ts DESC LIMIT ?",
                     args,
                 ).fetchall()
                 out = []
@@ -157,7 +195,7 @@ def get_summary(
     to_ts: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Сводка по событиям FullAI за период."""
-    path = _get_db_path()
+    path = _ensure_db_exists()
     if not path.exists():
         return _empty_summary()
     conditions = []
@@ -212,6 +250,7 @@ def get_summary(
                     'refused': counts.get(EVENT_REFUSED, 0),
                     'params_change': counts.get(EVENT_PARAMS_CHANGE, 0),
                     'round_success': counts.get(EVENT_ROUND_SUCCESS, 0),
+                    'exit_hold': counts.get(EVENT_EXIT_HOLD, 0),
                     'real_wins': real_wins,
                     'real_losses': real_losses,
                     'real_total': len(real_pnls),
@@ -230,7 +269,25 @@ def _empty_summary() -> Dict[str, Any]:
     return {
         'counts': {},
         'real_open': 0, 'virtual_open': 0, 'real_close': 0, 'virtual_close': 0,
-        'blocked': 0, 'refused': 0, 'params_change': 0, 'round_success': 0,
+        'blocked': 0, 'refused': 0, 'params_change': 0, 'round_success': 0, 'exit_hold': 0,
         'real_wins': 0, 'real_losses': 0, 'real_total': 0,
         'virtual_ok': 0, 'virtual_fail': 0, 'virtual_total': 0,
     }
+
+
+def get_db_info() -> Dict[str, Any]:
+    """Путь к БД и общее число событий (без фильтра по периоду) — для диагностики."""
+    path = _ensure_db_exists()
+    total = 0
+    if path.exists():
+        try:
+            with _lock:
+                conn = sqlite3.connect(str(path), timeout=5)
+                try:
+                    row = conn.execute("SELECT COUNT(*) FROM fullai_events").fetchone()
+                    total = row[0] if row else 0
+                finally:
+                    conn.close()
+        except Exception as e:
+            logger.debug("FullAI analytics get_db_info: %s", e)
+    return {'db_path': str(path), 'total_events': total}
