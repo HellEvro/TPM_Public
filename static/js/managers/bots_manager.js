@@ -10854,6 +10854,11 @@ class BotsManager {
             runBtn.setAttribute('data-analytics-bound', 'true');
             runBtn.addEventListener('click', () => this.runTradingAnalytics());
         }
+        const syncBtn = document.getElementById('analyticsSyncExchangeBtn');
+        if (syncBtn && !syncBtn.hasAttribute('data-sync-bound')) {
+            syncBtn.setAttribute('data-sync-bound', 'true');
+            syncBtn.addEventListener('click', () => this.syncTradesFromExchange());
+        }
         const rsiAuditBtn = document.getElementById('rsiAuditRunBtn');
         if (rsiAuditBtn && !rsiAuditBtn.hasAttribute('data-rsi-audit-bound')) {
             rsiAuditBtn.setAttribute('data-rsi-audit-bound', 'true');
@@ -10927,7 +10932,11 @@ class BotsManager {
         const totalInDb = (meta && meta.total_events) != null ? meta.total_events : null;
         const dbPath = (meta && meta.db_path) || '';
         const s = summary;
-        const winRate = s.real_total > 0 ? ((s.real_wins / s.real_total) * 100).toFixed(1) : '—';
+        // Реальные сделки: используем bots_data.db (истинный источник), если есть — иначе fullai_analytics
+        const realClose = (botStats != null) ? (botStats.total || 0) : (s.real_close || 0);
+        const realWins = (botStats != null) ? (botStats.wins || 0) : (s.real_wins || 0);
+        const realLosses = (botStats != null) ? (botStats.losses || 0) : (s.real_losses || 0);
+        const winRate = (botStats != null && botStats.win_rate_pct != null) ? String(botStats.win_rate_pct) : (s.real_total > 0 ? ((s.real_wins / s.real_total) * 100).toFixed(1) : '—');
         const virtualRate = s.virtual_total > 0 ? ((s.virtual_ok / s.virtual_total) * 100).toFixed(1) : '—';
         let html = '';
         if (botStats && (botStats.total > 0 || botStats.total_pnl_usdt !== 0)) {
@@ -10941,9 +10950,9 @@ class BotsManager {
         let cards = '<div class="fullai-cards">';
         cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные входы</span><span class="fullai-card-value">' + (s.real_open || 0) + '</span></div>';
         cards += '<div class="fullai-card"><span class="fullai-card-label">Виртуальные входы</span><span class="fullai-card-value">' + (s.virtual_open || 0) + '</span></div>';
-        cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные закрытия</span><span class="fullai-card-value">' + (s.real_close || 0) + '</span></div>';
-        cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные в плюс</span><span class="fullai-card-value positive">' + (s.real_wins || 0) + '</span></div>';
-        cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные в минус</span><span class="fullai-card-value negative">' + (s.real_losses || 0) + '</span></div>';
+        cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные закрытия</span><span class="fullai-card-value">' + realClose + '</span></div>';
+        cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные в плюс</span><span class="fullai-card-value positive">' + realWins + '</span></div>';
+        cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные в минус</span><span class="fullai-card-value negative">' + realLosses + '</span></div>';
         cards += '<div class="fullai-card"><span class="fullai-card-label">Win rate (реал.)</span><span class="fullai-card-value">' + winRate + '%</span></div>';
         cards += '<div class="fullai-card"><span class="fullai-card-label">Вирт. закрытий удачных</span><span class="fullai-card-value">' + (s.virtual_ok || 0) + '</span></div>';
         cards += '<div class="fullai-card"><span class="fullai-card-label">Вирт. закрытий неудачных</span><span class="fullai-card-value">' + (s.virtual_fail || 0) + '</span></div>';
@@ -10954,7 +10963,7 @@ class BotsManager {
         cards += '<div class="fullai-card"><span class="fullai-card-label">Раундов → реал.</span><span class="fullai-card-value">' + (s.round_success || 0) + '</span></div>';
         cards += '<div class="fullai-card"><span class="fullai-card-label">Решений держать</span><span class="fullai-card-value">' + (s.exit_hold || 0) + '</span></div>';
         cards += '</div>';
-        html += '<p class="fullai-events-note" style="font-size:0.85rem;color:var(--text-muted,#888);margin-top:0.25rem;">Карточки ниже — события FullAI (записываются только при включённом FullAI).</p>';
+        html += '<p class="fullai-events-note" style="font-size:0.85rem;color:var(--text-muted,#888);margin-top:0.25rem;">Карточки «Реальные закрытия/в плюс/в минус/Win rate» — из bots_data.db (история ботов). Остальные карточки — события FullAI (записываются только при включённом FullAI).</p>';
         summaryEl.innerHTML = html + cards;
 
         if (!eventsEl) return;
@@ -11060,6 +11069,27 @@ class BotsManager {
     }
 
     /**
+     * Синхронизирует bot_trades_history с данными биржи (обновляет цены и PnL в БД)
+     */
+    async syncTradesFromExchange() {
+        const syncBtn = document.getElementById('analyticsSyncExchangeBtn');
+        const origText = syncBtn ? syncBtn.textContent : '';
+        if (syncBtn) syncBtn.disabled = true;
+        try {
+            const response = await fetch(this.BOTS_SERVICE_URL + '/api/bots/analytics/sync-from-exchange', { method: 'POST' });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
+            const msg = data.updated != null ? ('Обновлено ' + data.updated + ' из ' + (data.matched || 0) + ' совпавших') : (data.message || 'Готово');
+            alert('Синхронизация с биржей: ' + msg);
+            if (data.updated > 0) this.runTradingAnalytics();
+        } catch (err) {
+            alert('Ошибка синхронизации: ' + ((err && err.message) || String(err)));
+        } finally {
+            if (syncBtn) { syncBtn.disabled = false; syncBtn.textContent = origText; }
+        }
+    }
+
+    /**
      * Запускает аналитику торговли и отображает результат во вкладке «Аналитика»
      */
     async runTradingAnalytics() {
@@ -11076,7 +11106,7 @@ class BotsManager {
             if (!data.success || !data.report) throw new Error(data.error || 'Нет данных отчёта');
             this.renderAnalyticsReport(data.report, resultEl);
         } catch (err) {
-            if (resultEl) resultEl.innerHTML = `<div class="analytics-error">❌ ${(err && err.message) || String(err)}</div>`;
+            if (resultEl) resultEl.innerHTML = '<div class="analytics-error">❌ ' + ((err && err.message) || String(err)) + '</div>';
             console.error('[BotsManager] Ошибка аналитики:', err);
         } finally {
             if (loadingEl) loadingEl.style.display = 'none';

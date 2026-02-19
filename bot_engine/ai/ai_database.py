@@ -1418,6 +1418,26 @@ class AIDatabase:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_strategy_analysis_symbol ON strategy_analysis(symbol)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_strategy_analysis_created_at ON strategy_analysis(created_at)")
             
+            # ==================== ТАБЛИЦА: АНАЛИТИКА ДЛЯ ИИ (единый лог событий) ====================
+            # Собирается при каждой сделке, решении ИИ, действии бота. Источник данных для обучения и контекста.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ai_analytics_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts REAL NOT NULL,
+                    ts_iso TEXT,
+                    event_type TEXT NOT NULL,
+                    symbol TEXT,
+                    direction TEXT,
+                    source TEXT,
+                    reason TEXT,
+                    data_json TEXT,
+                    created_at TEXT
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_analytics_ts ON ai_analytics_events(ts)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_analytics_event_type ON ai_analytics_events(event_type)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_analytics_symbol ON ai_analytics_events(symbol)")
+            
             # ==================== ТАБЛИЦА: ОПТИМИЗИРОВАННЫЕ ПАРАМЕТРЫ (НОРМАЛИЗОВАННАЯ) ====================
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS optimized_params (

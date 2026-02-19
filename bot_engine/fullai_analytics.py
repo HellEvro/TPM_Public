@@ -132,6 +132,32 @@ def append_event(
     except Exception as e:
         logger.warning("FullAI analytics append_event (путь %s): %s", path, e)
 
+    # Дублируем в единую аналитику для ИИ (ai_data.db)
+    try:
+        from bot_engine.ai_analytics import log_event as _log_ai
+        _ev_map = {
+            EVENT_REAL_OPEN: "REAL_OPEN",
+            EVENT_VIRTUAL_OPEN: "VIRTUAL_OPEN",
+            EVENT_REAL_CLOSE: "REAL_CLOSE",
+            EVENT_VIRTUAL_CLOSE: "VIRTUAL_CLOSE",
+            EVENT_BLOCKED: "ENTRY_BLOCKED",
+            EVENT_REFUSED: "AI_DECISION_REFUSE",
+            EVENT_PARAMS_CHANGE: "PARAMS_CHANGE",
+            EVENT_ROUND_SUCCESS: "ROUND_SUCCESS",
+            EVENT_EXIT_HOLD: "EXIT_HOLD",
+        }
+        ai_type = _ev_map.get(event_type, event_type.upper())
+        _data = dict(extra or {})
+        if pnl_percent is not None:
+            _data["pnl_percent"] = pnl_percent
+        if is_virtual is not None:
+            _data["is_virtual"] = is_virtual
+        if confidence is not None:
+            _data["confidence"] = confidence
+        _log_ai(ai_type, symbol=symbol or None, direction=direction, source="FULLAI", reason=reason, data=_data if _data else None)
+    except Exception:
+        pass
+
 
 def get_events(
     symbol: Optional[str] = None,

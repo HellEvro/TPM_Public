@@ -383,6 +383,21 @@ class NewTradingBot:
                 trend=trend_value,
                 is_simulated=False  # КРИТИЧНО: реальные боты - это НЕ симуляция!
             )
+            # Единая аналитика для ИИ: каждое открытие позиции
+            try:
+                from bot_engine.ai_analytics import log_trade_open
+                position_usdt = size * price if size and price else getattr(self, 'volume_value', None)
+                log_trade_open(
+                    symbol=self.symbol,
+                    direction=direction,
+                    entry_price=price,
+                    position_size_usdt=position_usdt,
+                    entry_rsi=rsi_value,
+                    entry_trend=str(trend_value) if trend_value else None,
+                    source=decision_source or "BOT",
+                )
+            except Exception as _ai_open_err:
+                logger.debug(f"[NEW_BOT_{self.symbol}] ai_analytics log_trade_open: {_ai_open_err}")
             # Помечаем, что логирование выполнено (для предотвращения дублирования)
             self._position_logged = True
         except Exception as log_error:
@@ -2825,6 +2840,23 @@ class NewTradingBot:
             except Exception as bots_db_error:
                 logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка сохранения истории в bots_data.db: {bots_db_error}")
             
+            # Единая аналитика для ИИ: каждое закрытие позиции
+            try:
+                from bot_engine.ai_analytics import log_trade_close
+                log_trade_close(
+                    symbol=self.symbol,
+                    direction=self.position_side,
+                    entry_price=self.entry_price or 0,
+                    exit_price=exit_price or 0,
+                    pnl=pnl,
+                    reason=reason,
+                    entry_rsi=entry_rsi,
+                    exit_rsi=exit_rsi,
+                    source="BOT",
+                )
+            except Exception as _ai_anal_err:
+                logger.debug(f"[NEW_BOT_{self.symbol}] ai_analytics log_trade_close: {_ai_anal_err}")
+
             # FullAI: записываем каждое закрытие в аналитику (FullAI/RSI/SL/безубыток/ручное)
             try:
                 from bots_modules.imports_and_globals import bots_data, bots_data_lock

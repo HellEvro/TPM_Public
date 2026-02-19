@@ -6137,7 +6137,46 @@ class BotsDatabase:
                 logger.error(f"❌ Ошибка сохранения истории сделки: {e}")
                 return None
         return None
-    
+
+    def update_bot_trade_from_exchange(
+        self,
+        trade_id: int,
+        entry_price: float,
+        exit_price: float,
+        pnl: float,
+        position_size_usdt: Optional[float] = None,
+    ) -> bool:
+        """Обновляет сделку в bot_trades_history данными с биржи (источник истины по ценам и PnL)."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                roi = None
+                if position_size_usdt and position_size_usdt > 0 and entry_price and entry_price > 0:
+                    roi = (pnl / position_size_usdt) * 100
+                cursor.execute(
+                    """UPDATE bot_trades_history SET
+                        entry_price = ?, exit_price = ?, pnl = ?,
+                        roi = COALESCE(?, roi), is_successful = ?,
+                        position_size_usdt = COALESCE(?, position_size_usdt),
+                        updated_at = ?
+                    WHERE id = ?""",
+                    (
+                        entry_price,
+                        exit_price,
+                        pnl,
+                        roi,
+                        1 if pnl > 0 else 0,
+                        position_size_usdt,
+                        datetime.now().isoformat(),
+                        trade_id,
+                    ),
+                )
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.warning("Ошибка обновления сделки из биржи (id=%s): %s", trade_id, e)
+            return False
+
     def get_bot_trades_history(self, 
                               bot_id: Optional[str] = None,
                               symbol: Optional[str] = None,

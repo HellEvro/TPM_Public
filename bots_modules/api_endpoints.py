@@ -5265,6 +5265,68 @@ def create_demo_history():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@bots_app.route('/api/bots/analytics/sync-from-exchange', methods=['POST'])
+def sync_trades_from_exchange():
+    """Синхронизирует bot_trades_history с данными биржи: обновляет цены и PnL для совпавших сделок."""
+    try:
+        from bot_engine.trading_analytics import (
+            run_full_analytics,
+            exchange_trades_to_summaries,
+            bot_trades_to_summaries,
+            reconcile_trades,
+        )
+        from app.config import EXCHANGES, ACTIVE_EXCHANGE
+        from exchanges.exchange_factory import ExchangeFactory
+        from bot_engine.bots_database import get_bots_database
+
+        exchange_name = ACTIVE_EXCHANGE
+        cfg = EXCHANGES.get(exchange_name, {})
+        if not cfg or not cfg.get('enabled', True):
+            return jsonify({'success': False, 'error': f'Биржа {exchange_name} не настроена'}), 400
+        api_key = cfg.get('api_key')
+        api_secret = cfg.get('api_secret')
+        passphrase = cfg.get('passphrase')
+        if not api_key or not api_secret:
+            return jsonify({'success': False, 'error': 'API ключи не заполнены'}), 400
+
+        exchange = ExchangeFactory.create_exchange(exchange_name, api_key, api_secret, passphrase)
+        exchange_trades = exchange.get_closed_pnl(sort_by='time', period='all') or []
+        db = get_bots_database()
+        bot_trades = db.get_bot_trades_history(status='CLOSED', limit=50000)
+
+        if not bot_trades:
+            return jsonify({'success': True, 'updated': 0, 'message': 'Нет сделок в БД для обновления'})
+
+        ex_summaries = exchange_trades_to_summaries(exchange_trades)
+        bot_summaries = bot_trades_to_summaries(bot_trades)
+        if not ex_summaries:
+            return jsonify({'success': True, 'updated': 0, 'message': 'Биржа не вернула сделок'})
+
+        reconciliation = reconcile_trades(ex_summaries, bot_summaries)
+        updated = 0
+        for m in reconciliation.get('matched', []):
+            db_id = m.get('bot_db_id')
+            if db_id is None:
+                continue
+            try:
+                db_id = int(db_id)
+            except (TypeError, ValueError):
+                continue
+            ok = db.update_bot_trade_from_exchange(
+                trade_id=db_id,
+                entry_price=float(m.get('entry_price') or 0),
+                exit_price=float(m.get('exit_price') or 0),
+                pnl=float(m.get('pnl') or 0),
+                position_size_usdt=float(m['position_size_usdt']) if m.get('position_size_usdt') is not None else None,
+            )
+            if ok:
+                updated += 1
+        return jsonify({'success': True, 'updated': updated, 'matched': len(reconciliation.get('matched', []))})
+    except Exception as e:
+        logger.exception('Ошибка синхронизации с биржей: %s', e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @bots_app.route('/api/bots/analytics', methods=['GET'])
 def get_trading_analytics():
     """Запуск полной аналитики торговли (сделки ботов и опционально биржи)."""
@@ -5289,6 +5351,7 @@ def get_trading_analytics():
                         )
             except Exception as ex:
                 logger.warning("Не удалось подключить биржу для аналитики: %s", ex)
+        from bot_engine.trading_analytics import get_analytics_for_ai
         report = run_full_analytics(
             load_bot_trades_from_db=True,
             load_exchange_from_api=include_exchange,
@@ -5296,6 +5359,7 @@ def get_trading_analytics():
             exchange_period='all',
             bots_db_limit=limit,
         )
+        report['ai_summary'] = get_analytics_for_ai(report)
         return jsonify({'success': True, 'report': report})
     except Exception as e:
         logger.exception("Ошибка аналитики торговли: %s", e)
@@ -5321,6 +5385,21 @@ def get_rsi_audit():
         return jsonify({'success': True, 'report': report})
     except Exception as e:
         logger.exception("Ошибка аудита RSI: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bots_app.route('/api/bots/analytics/ai-context', methods=['GET'])
+def get_ai_analytics_context():
+    """Контекст аналитики для ИИ: проблемы, рекомендации, метрики, последние события (для обучения и решений)."""
+    try:
+        from bot_engine.ai_analytics import get_ai_analytics_context as _get_context
+        symbol = request.args.get('symbol', '').strip().upper() or None
+        hours = float(request.args.get('hours', 24))
+        include_report = request.args.get('include_report', '1').strip().lower() in ('1', 'true', 'yes')
+        ctx = _get_context(symbol=symbol, hours_back=hours, include_report=include_report)
+        return jsonify({'success': True, 'context': ctx})
+    except Exception as e:
+        logger.exception("Ошибка получения контекста аналитики для ИИ: %s", e)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

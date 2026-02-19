@@ -264,6 +264,9 @@ def reconcile_trades(
                 "pnl": ex.pnl,
                 "entry_price": ex.entry_price,
                 "exit_price": ex.exit_price,
+                "position_size_usdt": ex.position_size_usdt,
+                "direction": ex.direction,
+                "raw": ex.raw,
             })
             continue
 
@@ -282,9 +285,15 @@ def reconcile_trades(
             "symbol": ex.symbol,
             "exit_timestamp": ex.exit_timestamp,
             "pnl": ex.pnl,
+            "entry_price": ex.entry_price,
+            "exit_price": ex.exit_price,
+            "position_size_usdt": ex.position_size_usdt,
+            "direction": ex.direction,
             "bot_id": best_bot.bot_id,
+            "bot_db_id": best_bot.raw_id,
             "close_reason": best_bot.close_reason,
             "decision_source": best_bot.decision_source,
+            "bot_raw": best_bot.raw,
         })
 
     for bot in bot_summaries:
@@ -297,6 +306,7 @@ def reconcile_trades(
             "bot_id": bot.bot_id,
             "close_reason": bot.close_reason,
             "decision_source": bot.decision_source,
+            "bot": bot,
         })
 
     return {
@@ -764,6 +774,60 @@ def analyze_exchange_trades(
     }
 
 
+def _build_merged_trade_summaries(
+    reconciliation: Dict[str, Any],
+    ex_summaries: List[TradeSummary],
+    bot_summaries: List[TradeSummary],
+) -> List[TradeSummary]:
+    """
+    Строит объединённый список сделок: для совпавших — данные биржи (цены, PnL),
+    для остальных — данные бота или биржи. Источник истины по ценам и PnL — биржа.
+    """
+    merged: List[TradeSummary] = []
+    # Совпавшие: берём цены и PnL с биржи, close_reason/decision_source/entry_rsi/entry_trend — из бота
+    for m in reconciliation.get("matched", []):
+        raw = m.get("bot_raw") or {}
+        merged.append(
+            TradeSummary(
+                symbol=m["symbol"],
+                exit_timestamp=m["exit_timestamp"],
+                pnl=m["pnl"],
+                entry_price=m.get("entry_price") or 0.0,
+                exit_price=m.get("exit_price") or 0.0,
+                position_size_usdt=m.get("position_size_usdt"),
+                direction=m.get("direction") or "LONG",
+                source="exchange",
+                bot_id=m.get("bot_id"),
+                close_reason=m.get("close_reason"),
+                decision_source=m.get("decision_source"),
+                raw_id=m.get("bot_id"),
+                raw=raw,
+            )
+        )
+    # Только на бирже (ручные и т.д.)
+    for o in reconciliation.get("only_on_exchange", []):
+        raw = o.get("raw") or {}
+        merged.append(
+            TradeSummary(
+                symbol=o["symbol"],
+                exit_timestamp=o["exit_timestamp"],
+                pnl=o["pnl"],
+                entry_price=o.get("entry_price") or 0.0,
+                exit_price=o.get("exit_price") or 0.0,
+                position_size_usdt=o.get("position_size_usdt"),
+                direction=o.get("direction") or "LONG",
+                source="exchange",
+                raw=raw,
+            )
+        )
+    # Только в БД ботов (нет на бирже)
+    for o in reconciliation.get("only_in_bots", []):
+        bot = o.get("bot")
+        if bot is not None:
+            merged.append(bot)
+    return merged
+
+
 def run_full_analytics(
     exchange_trades: Optional[List[Dict[str, Any]]] = None,
     bot_trades: Optional[List[Dict[str, Any]]] = None,
@@ -826,11 +890,18 @@ def run_full_analytics(
     bot_summaries = bot_trades_to_summaries(bot_trades)
 
     exchange_analytics = analyze_exchange_trades(ex_summaries) if ex_summaries else {}
-    bot_analytics = analyze_bot_trades(bot_summaries) if bot_summaries else {}
-
     reconciliation = {}
     if ex_summaries and bot_summaries:
         reconciliation = reconcile_trades(ex_summaries, bot_summaries)
+
+    # Если была сверка с биржей — используем объединённые данные (цены и PnL с биржи для совпавших)
+    summaries_for_analytics = bot_summaries
+    if reconciliation:
+        merged = _build_merged_trade_summaries(reconciliation, ex_summaries, bot_summaries)
+        if merged:
+            summaries_for_analytics = merged
+
+    bot_analytics = analyze_bot_trades(summaries_for_analytics) if summaries_for_analytics else {}
 
     summary = {
         "exchange_trades_count": len(ex_summaries),

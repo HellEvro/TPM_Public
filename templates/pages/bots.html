@@ -2717,11 +2717,14 @@
                     <p class="analytics-subtab-desc">Полный анализ сделок ботов и биржи: сверка, метрики, неудачные монеты и настройки по RSI/тренду.</p>
                     <div class="analytics-controls">
                         <label class="analytics-option">
-                            <input type="checkbox" id="analyticsIncludeExchange" />
+                            <input type="checkbox" id="analyticsIncludeExchange" checked />
                             <span data-translate="analytics_include_exchange">Загружать сделки с биржи (сверка с биржей)</span>
                         </label>
                         <button type="button" class="btn btn-primary" id="analyticsRunBtn">
                             <span data-translate="analytics_run">🔄 Запустить аналитику</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="analyticsSyncExchangeBtn" title="Обновить записи в БД данными с биржи (цены, PnL)">
+                            📥 Синхр. с биржей
                         </button>
                     </div>
                     <div class="analytics-loading" id="analyticsLoading" style="display: none;">
