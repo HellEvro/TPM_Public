@@ -3520,6 +3520,54 @@ input:checked + .toggle-slider:before {
     color: var(--text-muted);
 }
 
+.analytics-errors {
+    color: var(--warning-color, #f39c12);
+    margin: 8px 0;
+}
+
+.analytics-trades-table-wrap,
+.analytics-stats-table-wrap {
+    overflow-x: auto;
+    margin: 12px 0;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.analytics-trades-table,
+.analytics-stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.analytics-trades-table th,
+.analytics-trades-table td,
+.analytics-stats-table th,
+.analytics-stats-table td {
+    padding: 6px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.analytics-trades-table th,
+.analytics-stats-table th {
+    background: var(--bg-secondary);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.analytics-trades-table .pnl-win,
+.analytics-stats-table .pnl-win {
+    color: var(--success-color, #27ae60);
+    font-weight: 500;
+}
+
+.analytics-trades-table .pnl-loss,
+.analytics-stats-table .pnl-loss {
+    color: var(--danger-color, #e74c3c);
+    font-weight: 500;
+}
+
 .analytics-divider {
     margin: 24px 0;
     border: none;

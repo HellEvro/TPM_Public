@@ -2403,13 +2403,20 @@ class NewTradingBot:
             side_for_exchange = 'Long' if self.position_side == 'LONG' else 'Short' if self.position_side == 'SHORT' else self.position_side
             
             
+            # Время отправки заявки (для аналитики задержек и проскальзывания)
+            import time as _time
+            ts_order_placed = _time.time()
             # Закрываем позицию на бирже
             close_result = self.exchange.close_position(
                 symbol=self.symbol,
                 size=position_size,
                 side=side_for_exchange  # ✅ Используем правильный формат
             )
-            
+            if isinstance(close_result, dict):
+                close_result['ts_order_placed'] = ts_order_placed
+                # Тип ордера: по умолчанию Limit (Bybit), если в message есть "рыночным" — Market
+                msg = (close_result.get('message') or '').lower()
+                close_result['order_type_exit'] = 'Market' if 'рыночным' in msg or 'market' in msg else 'Limit'
             
             if close_result and close_result.get('success'):
                 self._clear_exit_waiting_breakeven()
@@ -2622,8 +2629,8 @@ class NewTradingBot:
         try:
             from bot_engine.bot_history import bot_history_manager
             
-            # Получаем данные о закрытии
-            exit_price = close_result.get('price', self.entry_price) if close_result else self.entry_price
+            # Получаем данные о закрытии (цена исполнения: price или close_price с биржи)
+            exit_price = (close_result.get('price') or close_result.get('close_price') or self.entry_price) if close_result else self.entry_price
             
             # КРИТИЧНО: Рассчитываем PnL из цен входа и выхода, а не из накопленного realized_pnl
             # Накопленный realized_pnl из кошелька - это сумма всех сделок, а не конкретной сделки!
@@ -2781,9 +2788,24 @@ class NewTradingBot:
                     'order_id': close_result.get('order_id') if close_result else None,
                     'extra_data': {
                         'entry_data': entry_data,
-                        'market_data': market_data
+                        'market_data': market_data,
+                        'order_type_exit': close_result.get('order_type_exit', 'Limit') if close_result else None,
+                        'limit_price_exit': close_result.get('close_price') if close_result else None,
+                        'ts_order_placed_exit': close_result.get('ts_order_placed') if close_result else None,
+                        'order_id_exit': close_result.get('order_id') if close_result else None,
                     }
                 }
+                # Проскальзывание выхода: разница между лимитной ценой и фактической (в %)
+                limit_exit = close_result.get('close_price') if close_result else None
+                if limit_exit and limit_exit > 0 and exit_price is not None:
+                    if self.position_side == 'LONG':
+                        trade_data['extra_data']['slippage_exit_pct'] = round((float(exit_price) - float(limit_exit)) / float(limit_exit) * 100, 4)
+                    else:
+                        trade_data['extra_data']['slippage_exit_pct'] = round((float(limit_exit) - float(exit_price)) / float(limit_exit) * 100, 4)
+                # Задержка исполнения (сек): от отправки заявки до текущего момента (приближение)
+                ts_placed = close_result.get('ts_order_placed') if close_result else None
+                if ts_placed is not None:
+                    trade_data['extra_data']['delay_sec'] = round(datetime.now().timestamp() - float(ts_placed), 2)
                 
                 trade_id = bots_db.save_bot_trade_history(trade_data)
                 if trade_id:
@@ -2800,18 +2822,27 @@ class NewTradingBot:
                     _cfg = bots_data.get('auto_bot_config', {})
                 if _cfg.get('full_ai_control', False):
                     from bots_modules.fullai_adaptive import record_real_close
-                    record_real_close(
-                        self.symbol,
-                        pnl_pct,
-                        reason=reason,
-                        extra={
-                            'entry_price': self.entry_price,
-                            'exit_price': exit_price,
-                            'entry_rsi': entry_rsi,
-                            'exit_rsi': exit_rsi,
-                            'direction': self.position_side,
-                        },
-                    )
+                    fullai_extra = {
+                        'entry_price': self.entry_price,
+                        'exit_price': exit_price,
+                        'entry_rsi': entry_rsi,
+                        'exit_rsi': exit_rsi,
+                        'direction': self.position_side,
+                        'order_type_exit': close_result.get('order_type_exit', 'Limit') if close_result else None,
+                        'limit_price_exit': close_result.get('close_price') if close_result else None,
+                        'ts_order_placed_exit': close_result.get('ts_order_placed') if close_result else None,
+                        'order_id_exit': close_result.get('order_id') if close_result else None,
+                    }
+                    limit_exit = close_result.get('close_price') if close_result else None
+                    if limit_exit and limit_exit > 0 and exit_price is not None:
+                        if self.position_side == 'LONG':
+                            fullai_extra['slippage_exit_pct'] = round((float(exit_price) - float(limit_exit)) / float(limit_exit) * 100, 4)
+                        else:
+                            fullai_extra['slippage_exit_pct'] = round((float(limit_exit) - float(exit_price)) / float(limit_exit) * 100, 4)
+                    ts_placed = close_result.get('ts_order_placed') if close_result else None
+                    if ts_placed is not None:
+                        fullai_extra['delay_sec'] = round(datetime.now().timestamp() - float(ts_placed), 2)
+                    record_real_close(self.symbol, pnl_pct, reason=reason, extra=fullai_extra)
             except Exception as fullai_log_err:
                 logger.debug(f"[NEW_BOT_{self.symbol}] FullAI analytics при закрытии: {fullai_log_err}")
             

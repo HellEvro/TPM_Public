@@ -397,6 +397,26 @@ def _get_entry_trend(t: TradeSummary) -> Optional[str]:
     return str(v).strip().upper() or None
 
 
+def _trade_summary_to_dict(t: TradeSummary) -> Dict[str, Any]:
+    """Сериализация одной сделки для отчёта (все метрики для UI/экспорта)."""
+    exit_dt = datetime.fromtimestamp(t.exit_timestamp, tz=timezone.utc) if t.exit_timestamp else None
+    return {
+        "symbol": t.symbol,
+        "exit_timestamp": t.exit_timestamp,
+        "exit_time_iso": exit_dt.isoformat() if exit_dt else None,
+        "pnl": round(t.pnl, 4),
+        "entry_price": t.entry_price,
+        "exit_price": t.exit_price,
+        "position_size_usdt": t.position_size_usdt,
+        "direction": t.direction,
+        "bot_id": t.bot_id,
+        "close_reason": t.close_reason,
+        "decision_source": t.decision_source,
+        "entry_rsi": _get_entry_rsi(t),
+        "entry_trend": _get_entry_trend(t),
+    }
+
+
 def _rsi_bucket_label(rsi: float) -> str:
     """Возвращает метку диапазона RSI для заданного значения."""
     for low, high, label in RSI_BUCKETS:
@@ -431,6 +451,7 @@ def _deduplicate_trade_summaries(summaries: List[TradeSummary], window_sec: floa
 
 def analyze_bot_trades(
     bot_summaries: List[TradeSummary],
+    trades_list_max: int = 5000,
 ) -> Dict[str, Any]:
     """Полная аналитика по сделкам ботов (без биржи). Перед расчётом дубликаты по (symbol, exit_timestamp) отбрасываются."""
     closed = [t for t in bot_summaries if t.raw and (t.raw.get("status") == "CLOSED" or t.pnl != 0 or t.raw.get("exit_timestamp"))]
@@ -444,9 +465,13 @@ def analyze_bot_trades(
     losses = [t for t in closed if t.pnl < 0]
     win_count = len(wins)
     loss_count = len(losses)
+    neutral_count = total - win_count - loss_count
     win_rate = (win_count / total * 100) if total else 0.0
     avg_win = (sum(t.pnl for t in wins) / win_count) if win_count else 0.0
     avg_loss = (sum(t.pnl for t in losses) / loss_count) if loss_count else 0.0
+    total_win_pnl = sum(t.pnl for t in wins)
+    total_loss_pnl = sum(t.pnl for t in losses)
+    profit_factor = (total_win_pnl / abs(total_loss_pnl)) if total_loss_pnl and total_loss_pnl < 0 else (None if not total_win_pnl else float("inf"))
 
     # Сделки с pnl=0 не считаем ни выигрышем, ни проигрышем (часто при RSI_EXIT без сохранённого размера позиции)
     by_close_reason: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"count": 0, "pnl": 0.0, "wins": 0, "losses": 0, "neutral": 0})
@@ -682,14 +707,20 @@ def analyze_bot_trades(
                     "extra": extra,
                 })
 
+    # Список сделок для детальной таблицы (последние по времени, лимит trades_list_max)
+    sorted_closed = sorted(closed, key=lambda x: x.exit_timestamp or 0)
+    trades_list = [_trade_summary_to_dict(t) for t in sorted_closed[-trades_list_max:]]
+
     return {
         "total_trades": total,
         "total_pnl_usdt": round(total_pnl, 2),
         "win_count": win_count,
         "loss_count": loss_count,
+        "neutral_count": neutral_count,
         "win_rate_pct": round(win_rate, 2),
         "avg_win_usdt": round(avg_win, 2),
         "avg_loss_usdt": round(avg_loss, 2),
+        "profit_factor": round(profit_factor, 4) if profit_factor is not None and profit_factor != float("inf") else (None if profit_factor is None else 999.99),
         "by_close_reason": {k: dict(v) for k, v in by_close_reason.items()},
         "by_symbol": {k: dict(v) for k, v in by_symbol.items()},
         "by_decision_source": {k: dict(v) for k, v in by_decision_source.items()},
@@ -702,6 +733,7 @@ def analyze_bot_trades(
         "unsuccessful_settings": unsuccessful_settings,
         "successful_coins": successful_coins,
         "successful_settings": successful_settings,
+        "trades": trades_list,
     }
 
 
