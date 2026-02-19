@@ -530,7 +530,8 @@ class NewTradingBot:
                     except ImportError:
                         pass
                     decision = get_ai_entry_decision(
-                        self.symbol, 'LONG', candles, current_price, fullai_config, coin_params
+                        self.symbol, 'LONG', candles, current_price, fullai_config, coin_params,
+                        rsi=rsi, trend=trend
                     )
                     if decision.get('allowed'):
                         # ✅ КРИТИЧНО: Защита от повторного входа после убытка применяется и для FullAI
@@ -716,7 +717,8 @@ class NewTradingBot:
                     except ImportError:
                         pass
                     decision = get_ai_entry_decision(
-                        self.symbol, 'SHORT', candles, current_price, fullai_config, coin_params
+                        self.symbol, 'SHORT', candles, current_price, fullai_config, coin_params,
+                        rsi=rsi, trend=trend
                     )
                     if decision.get('allowed'):
                         # ✅ КРИТИЧНО: Защита от повторного входа после убытка применяется и для FullAI

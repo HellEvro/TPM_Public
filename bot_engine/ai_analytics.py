@@ -109,7 +109,8 @@ def log_trade_close(
     source: str = "BOT",
     **extra,
 ) -> None:
-    """Логирует закрытие позиции."""
+    """Логирует закрытие позиции. Сбрасывает кеш аналитики для актуальности следующего решения."""
+    invalidate_analytics_cache()
     log_event(
         "TRADE_CLOSE",
         symbol=symbol,
@@ -217,6 +218,110 @@ def get_events(
         return []
 
 
+_analytics_cache: Dict[str, Any] = {}
+_analytics_cache_ts: float = 0.0
+_ANALYTICS_CACHE_TTL_SEC = 300  # 5 минут
+
+
+def _get_cached_analytics_for_entry(symbol: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Кеширует контекст аналитики с TTL. Используется ИИ перед решением о входе.
+    Возвращает problems, recommendations, metrics, unsuccessful_coins, unsuccessful_settings.
+    """
+    global _analytics_cache, _analytics_cache_ts
+    now = time.time()
+    if now - _analytics_cache_ts < _ANALYTICS_CACHE_TTL_SEC and _analytics_cache:
+        return _analytics_cache
+    try:
+        ctx = get_ai_analytics_context(symbol=symbol, hours_back=168, include_report=True)
+        _analytics_cache = ctx
+        _analytics_cache_ts = now
+        return ctx
+    except Exception as e:
+        logger.debug("_get_cached_analytics_for_entry: %s", e)
+        return _analytics_cache if _analytics_cache else None
+
+
+def invalidate_analytics_cache() -> None:
+    """Сбрасывает кеш (вызывать после закрытия сделки)."""
+    global _analytics_cache_ts
+    _analytics_cache_ts = 0.0
+
+
+def apply_analytics_to_entry_decision(
+    symbol: str,
+    direction: str,
+    rsi: Optional[float],
+    trend: Optional[str],
+    base_allowed: bool,
+    base_confidence: float,
+    base_reason: str,
+) -> tuple:
+    """
+    Применяет аналитику к решению о входе: блокирует/снижает уверенность на основе прошлых ошибок.
+    Возвращает (allowed, confidence, reason).
+    """
+    ctx = _get_cached_analytics_for_entry(symbol)
+    if not ctx:
+        return (base_allowed, base_confidence, base_reason)
+    allowed = base_allowed
+    confidence = base_confidence
+    reason = base_reason
+    problems = ctx.get("problems") or []
+    metrics = ctx.get("metrics") or {}
+    # unsuccessful_coins и unsuccessful_settings приходят из report, а не напрямую
+    # get_ai_analytics_context возвращает problems, recommendations, metrics
+    # Нужно передать unsuccessful_coins - они в ai_block. Проверим структуру get_ai_analytics_context
+    # - она вызывает get_analytics_for_ai который возвращает unsuccessful_coins, unsuccessful_settings
+    # Но get_ai_analytics_context не добавляет их в result! Добавлю.
+    unsuccessful_coins = ctx.get("unsuccessful_coins") or []
+    unsuccessful_settings = ctx.get("unsuccessful_settings") or []
+    sym_upper = (symbol or "").upper()
+    for uc in unsuccessful_coins:
+        if (uc.get("symbol") or "").upper() == sym_upper:
+            wr = uc.get("win_rate_pct") or 0
+            pnl = uc.get("pnl_usdt") or 0
+            if wr < 35 or pnl < -50:
+                allowed = False
+                reason = f"Аналитика: монета неудачная (Win Rate {wr}%, PnL {pnl} USDT). Блокировка входа."
+                return (allowed, 0.0, reason)
+            if allowed:
+                confidence = max(0, confidence - 0.15)
+                reason = base_reason + f" | Снижена уверенность: монета с низким WR ({wr}%)"
+    for us in unsuccessful_settings:
+        if (us.get("symbol") or "").upper() != sym_upper:
+            continue
+        bad_rsi = us.get("bad_rsi_ranges") or []
+        bad_trends = us.get("bad_trends") or []
+        if rsi is not None:
+            for br in bad_rsi:
+                rng = br.get("rsi_range", "")
+                if "-" in rng:
+                    try:
+                        part = rng.split("(")[0].strip()
+                        parts = part.split("-")
+                        if len(parts) >= 2:
+                            lo, hi = int(parts[0]), int(parts[1])
+                            if lo <= rsi <= hi:
+                                allowed = False
+                                reason = f"Аналитика: RSI {rsi:.1f} в неудачном диапазоне {rng}"
+                                return (allowed, 0.0, reason)
+                    except (ValueError, IndexError, TypeError):
+                        pass
+        if trend and bad_trends:
+            trend_upper = str(trend).upper()
+            for bt in bad_trends:
+                t = str(bt.get("trend", "")).upper()
+                if t and trend_upper == t:
+                    confidence = max(0, confidence - 0.2)
+                    reason = base_reason + f" | Тренд {trend} — неудачный по аналитике"
+                    break
+    if problems and "серия убытков" in " ".join(problems).lower() and confidence > 0.5:
+        confidence = min(confidence, 0.6)
+        reason = base_reason + " | Учтена серия убыточных сделок"
+    return (allowed, confidence, reason)
+
+
 def get_ai_analytics_context(
     symbol: Optional[str] = None,
     hours_back: float = 24.0,
@@ -264,6 +369,8 @@ def get_ai_analytics_context(
             result["problems"] = ai_block.get("problems", [])
             result["recommendations"] = ai_block.get("recommendations", [])
             result["metrics"] = ai_block.get("metrics", {})
+            result["unsuccessful_coins"] = ai_block.get("unsuccessful_coins", [])
+            result["unsuccessful_settings"] = ai_block.get("unsuccessful_settings", [])
         except Exception as e:
             logger.debug("get_ai_analytics_context: report %s", e)
             result["problems"] = []

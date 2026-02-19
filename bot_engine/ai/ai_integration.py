@@ -414,10 +414,23 @@ def should_open_position_with_ai(
 ) -> Dict:
     """
     Проверяет, нужно ли открывать позицию с учётом AI и SMC.
-    В bots.py: предсказание через ai_inference (только pkl-модели, без ai.py/trainer).
-    В ai.py: предсказание через get_ai_system() (обучение, виртуальные сделки).
+    Перед решением смотрит аналитику (ошибки, неудачные монеты) и корректирует поведение.
     """
     try:
+        # Аналитика: предварительная проверка (блокировка явно неудачных монет/диапазонов)
+        try:
+            from bot_engine.ai_analytics import apply_analytics_to_entry_decision
+            pre_allowed, _, pre_reason = apply_analytics_to_entry_decision(
+                symbol, direction, rsi, trend, base_allowed=True, base_confidence=1.0, base_reason=""
+            )
+            if not pre_allowed:
+                return {
+                    'should_open': False, 'ai_used': True, 'smc_used': False,
+                    'reason': pre_reason, 'ai_confidence': 0.0,
+                    'timestamp': datetime.now().isoformat()
+                }
+        except Exception as _ax:
+            logger.debug("apply_analytics (pre): %s", _ax)
         result = {
             'should_open': True,
             'ai_used': False,
@@ -554,6 +567,24 @@ def should_open_position_with_ai(
                 should_open = False
                 result['reason'] = f"AI confidence too low: {ai_conf_01:.2%}"
 
+        # Применяем аналитику к итоговому решению
+        try:
+            from bot_engine.ai_analytics import apply_analytics_to_entry_decision
+            ai_conf = result.get('ai_confidence', 0.5)
+            should_open, ai_conf, reason_adj = apply_analytics_to_entry_decision(
+                symbol, direction, rsi, trend,
+                base_allowed=should_open, base_confidence=ai_conf,
+                base_reason=result.get('reason', ''),
+            )
+            result['ai_confidence'] = ai_conf
+            result['reason'] = reason_adj
+            ai_confidence_threshold = _confidence_01(config.get('ai_min_confidence', 0.65) if config else 0.65)
+            if should_open and ai_conf < ai_confidence_threshold:
+                should_open = False
+                result['reason'] = reason_adj + f" | Уверенность {ai_conf:.2%} < порога"
+        except Exception as _ax2:
+            logger.debug("apply_analytics (post): %s", _ax2)
+
         result['should_open'] = should_open
         result['model_used'] = 'signal_predictor.pkl + SMC' if smc_signal else 'signal_predictor.pkl'
 
@@ -673,17 +704,33 @@ def get_ai_entry_decision(
     candles: List[Dict],
     current_price: float,
     prii_config: Dict = None,
-    coin_params: Dict = None
+    coin_params: Dict = None,
+    rsi: float = None,
+    trend: str = None,
 ) -> Dict[str, Any]:
     """
     Решение ИИ о входе в позицию (FullAI). Используется при full_ai_control.
-    Возвращает allowed, confidence, reason. Таймфрейм не входит в параметры — берётся из пользовательского конфига.
+    Перед решением смотрит аналитику (ошибки, неудачные монеты) и корректирует поведение.
+    Возвращает allowed, confidence, reason.
     """
     prii_config = prii_config or {}
     coin_params = coin_params or {}
     min_conf = _confidence_01(prii_config.get('ai_min_confidence', 0.7))
     result = {'allowed': False, 'confidence': 0.0, 'reason': 'AI not available'}
     try:
+        # Аналитика: перед решением смотрим ошибки и пересчитываем
+        try:
+            from bot_engine.ai_analytics import apply_analytics_to_entry_decision
+            pre_allowed, pre_conf, pre_reason = apply_analytics_to_entry_decision(
+                symbol, direction, rsi, trend, base_allowed=True, base_confidence=1.0, base_reason=""
+            )
+            if not pre_allowed:
+                result['allowed'] = False
+                result['confidence'] = 0.0
+                result['reason'] = pre_reason
+                return result
+        except Exception as _ax:
+            logger.debug("apply_analytics_to_entry_decision: %s", _ax)
         from bot_engine.ai import get_ai_manager
         ai_manager = get_ai_manager()
         if not ai_manager or not ai_manager.is_available():
@@ -726,6 +773,18 @@ def get_ai_entry_decision(
             result['allowed'] = votes_short >= min_conf and votes_short >= votes_long
             result['confidence'] = votes_short
         result['reason'] = f"AI vote LONG={votes_long:.2f} SHORT={votes_short:.2f}"
+        # Применяем аналитику к итоговому решению (снижение уверенности, блокировка)
+        try:
+            from bot_engine.ai_analytics import apply_analytics_to_entry_decision
+            result['allowed'], result['confidence'], result['reason'] = apply_analytics_to_entry_decision(
+                symbol, direction, rsi, trend,
+                base_allowed=result['allowed'], base_confidence=result['confidence'], base_reason=result['reason'],
+            )
+            if result['confidence'] < min_conf and result['allowed']:
+                result['allowed'] = False
+                result['reason'] = result['reason'] + f" | Уверенность {result['confidence']:.2%} < порога {min_conf:.2%}"
+        except Exception as _ax2:
+            logger.debug("apply_analytics (post): %s", _ax2)
         return result
     except Exception as e:
         logger.exception(f"get_ai_entry_decision {symbol} {direction}: {e}")
