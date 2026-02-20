@@ -135,9 +135,20 @@ def _check_position_and_decide(symbol: str) -> None:
 
         reason = decision.get('reason') or 'FullAI_EXIT'
         logger.info("[FullAI Monitor] %s: закрытие — %s", symbol, reason)
-        close_fn = getattr(bot, '_close_position_on_exchange', None) if not isinstance(bot, dict) else None
-        if callable(close_fn):
-            close_fn(reason)
+        closed = False
+        if not isinstance(bot, dict):
+            close_fn = getattr(bot, '_close_position_on_exchange', None)
+            if callable(close_fn):
+                close_fn(reason)
+                closed = True
+        if not closed:
+            try:
+                from bots_modules.imports_and_globals import close_position_for_bot
+                side = position_side or _bot_val(bot, 'position_side') or (_bot_val(bot, 'position') or {}).get('side') or 'LONG'
+                result = close_position_for_bot(symbol, side, reason)
+                closed = result.get('success', False)
+            except Exception as ec:
+                logger.warning("[FullAI Monitor] %s: не удалось закрыть через close_position_for_bot: %s", symbol, ec)
         try:
             from bots_modules.fullai_scoring import record_trade_result
             record_trade_result(symbol, success=(profit_percent >= 0))
