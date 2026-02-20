@@ -93,7 +93,8 @@
         try {
             const params = new URLSearchParams({ from_ts: String(from_ts), to_ts: String(to_ts), limit: '300' });
             if (symbol) params.set('symbol', symbol);
-            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/fullai?${params}`);
+            params.set('_', String(Date.now()));
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/fullai?${params}`, { cache: 'no-store' });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
             if (!data.success) throw new Error(data.error || 'Нет данных');
