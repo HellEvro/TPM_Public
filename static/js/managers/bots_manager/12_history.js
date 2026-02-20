@@ -100,6 +100,8 @@
             let events = data.events || [];
             if (eventFilter === 'params_and_virtual') {
                 events = events.filter(e => ['params_change', 'virtual_open', 'virtual_close', 'round_success'].indexOf(e.event_type) >= 0);
+            } else if (eventFilter === 'entries_only') {
+                events = events.filter(e => ['real_open', 'virtual_open'].indexOf(e.event_type) >= 0);
             }
             this.renderFullaiAnalytics(data.summary || {}, events, summaryEl, eventsEl, {
                 db_path: data.db_path,
@@ -158,11 +160,11 @@
 
         this._renderFullaiConfigsBlock(meta && meta.fullai_configs);
 
+        // Сначала — события входов/выходов (как FullAI входит: реал./вирт.), затем — закрытые сделки
         let closedTradesHtml = '';
         const closedTrades = (meta && meta.closed_trades) || [];
         if (closedTrades.length > 0) {
-            closedTradesHtml = '<h4 style="margin-top:0.5rem;">Закрытые сделки (PnL и вывод)</h4>';
-            closedTradesHtml += '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Напр.</th><th>Вход</th><th>Выход</th><th>PnL %</th><th>PnL USDT</th><th>Причина</th><th>Вывод</th></tr></thead><tbody>';
+            closedTradesHtml = '<h4 style="margin-top:1.5rem;">Закрытые сделки (PnL и вывод)</h4><table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Напр.</th><th>Вход</th><th>Выход</th><th>PnL %</th><th>PnL USDT</th><th>Причина</th><th>Вывод</th></tr></thead><tbody>';
             closedTrades.forEach(tr => {
                 const pnlUsdt = tr.pnl_usdt != null ? Number(tr.pnl_usdt) : null;
                 const roiPct = tr.roi_pct != null ? Number(tr.roi_pct) : null;
@@ -175,7 +177,7 @@
                 const virtualBadge = tr.is_virtual ? ' <span class="virtual-pnl-badge" style="background:#9c27b0;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;">Виртуальная</span>' : '';
                 closedTradesHtml += '<tr><td>' + (tr.ts_iso || tr.exit_time || '') + '</td><td>' + (tr.symbol || '') + virtualBadge + '</td><td>' + (tr.direction || '') + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlPctStr + '</td><td class="' + pnlClass + '">' + pnlUsdtStr + '</td><td>' + (tr.close_reason || '—') + '</td><td>' + (conclusion || '—') + '</td></tr>';
             });
-            closedTradesHtml += '</tbody></table><h4 style="margin-top:1.5rem;">Последние события FullAI</h4>';
+            closedTradesHtml += '</tbody></table>';
         }
 
         if (!eventsEl) return;
@@ -191,10 +193,11 @@
             return;
         }
         if (events.length === 0 && closedTrades.length > 0) {
-            eventsEl.innerHTML = closedTradesHtml;
+            eventsEl.innerHTML = '<h4 style="margin-top:0.5rem;">Последние события FullAI (входы/выходы)</h4><p class="analytics-placeholder">Нет событий входов за период. Реальные входы появляются при создании бота FullAI.</p>' + (closedTrades.length ? '<h4 style="margin-top:1.5rem;">Закрытые сделки (PnL)</h4>' : '') + closedTradesHtml;
             return;
         }
-        let table = '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Событие</th><th>Направление</th><th>Вход</th><th>Выход</th><th>PnL %</th><th>Лимит выхода</th><th>Тип</th><th>Время заявки</th><th>Проскальз.%</th><th>Задержка с</th><th>Детали</th><th>Вывод</th></tr></thead><tbody>';
+        let table = '<h4 style="margin-top:0.5rem;">Последние события FullAI (входы реал./вирт., выходы, блокировки)</h4>';
+        table += '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Событие</th><th>Направление</th><th>Вход</th><th>Выход</th><th>PnL %</th><th>Лимит выхода</th><th>Тип</th><th>Время заявки</th><th>Проскальз.%</th><th>Задержка с</th><th>Детали</th><th>Вывод</th></tr></thead><tbody>';
         events.forEach(ev => {
             const label = eventLabels[ev.event_type] || ev.event_type;
             const dir = ev.direction || '—';
@@ -234,7 +237,7 @@
             table += '<tr class="' + rowClass + '"><td>' + (ev.ts_iso || '') + '</td><td>' + (ev.symbol || '') + '</td><td>' + label + '</td><td>' + dir + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlStr + '</td><td>' + limitExit + '</td><td>' + orderType + '</td><td>' + tsPlaced + '</td><td>' + slippage + '</td><td>' + delay + '</td><td>' + details + '</td><td>' + conclusion + '</td></tr>';
         });
         table += '</tbody></table>';
-        eventsEl.innerHTML = closedTradesHtml + table;
+        eventsEl.innerHTML = table + closedTradesHtml;
     },
 
     _renderFullaiConfigsBlock(fullaiConfigs) {

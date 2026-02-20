@@ -2736,6 +2736,14 @@
                     </div>
                 </div>
                 <div class="analytics-subtab-content" id="analyticsPanelFullai" data-analytics-subtab="fullai" role="tabpanel" hidden>
+                    <div class="fullai-how-it-works" style="margin-bottom:1rem;padding:1rem;background:var(--bg-secondary,#1a1a2e);border-radius:8px;border:1px solid var(--border,#333);">
+                        <strong>📌 Как FullAI входит в сделки:</strong>
+                        <ul style="margin:0.5rem 0 0 1.2rem;padding:0;font-size:0.9rem;">
+                            <li><b>Вход реал.</b> — реальный ордер на бирже (деньги в сделке)</li>
+                            <li><b>Вход вирт.</b> — виртуальная сделка (обкатка, без ордера)</li>
+                        </ul>
+                        <p style="margin:0.5rem 0 0;font-size:0.85rem;color:var(--text-muted,#888);">Карточки ниже — счётчики. Таблица «Последние события» — каждый вход/выход с датой и символом.</p>
+                    </div>
                     <p class="analytics-subtab-desc">События ПРИИ: реальные и виртуальные входы/выходы, блокировки, отказы ИИ, смена параметров. БД: <code>data/fullai_analytics.db</code>.</p>
                     <div class="analytics-controls">
                         <label class="analytics-option">
@@ -2754,6 +2762,7 @@
                             <span>Показать:</span>
                             <select id="fullaiAnalyticsEventFilter">
                                 <option value="all">Все события</option>
+                                <option value="entries_only">Только входы (реал. + вирт.)</option>
                                 <option value="params_and_virtual">Смена параметров и виртуальные</option>
                             </select>
                         </label>
