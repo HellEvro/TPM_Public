@@ -3029,16 +3029,19 @@ def process_auto_bot_signals(exchange_obj=None):
                     diag_skipped_filters += 1
                     continue
                 # ✅ Проверка AI ДО добавления в список: если AI не разрешает — монета не попадает в LONG/SHORT
-                # Флаг берём из AIConfig (сохраняется из UI «AI Модули») или из auto_bot_config (обратная совместимость)
+                # КРИТИЧНО: AIConfig.AI_ENABLED — мастер-выключатель. Если «AI Модули» выключены — блокировки ИИ НЕТ.
+                # ai_enabled / full_ai_control в auto_bot_config работают только когда AI модули включены.
                 last_ai_result = None
                 try:
                     from bot_engine.config_live import get_ai_config_attr
-                    ai_confirmation_enabled = (
-                        bots_data.get('auto_bot_config', {}).get('ai_enabled') or
-                        get_ai_config_attr('AI_ENABLED', False)
+                    ai_modules_on = get_ai_config_attr('AI_ENABLED', False)
+                    ac = bots_data.get('auto_bot_config', {})
+                    ai_confirmation_enabled = bool(
+                        ai_modules_on and (ac.get('ai_enabled') or ac.get('full_ai_control'))
                     )
                 except Exception:
-                    ai_confirmation_enabled = bots_data.get('auto_bot_config', {}).get('ai_enabled', False)
+                    ai_modules_on = False
+                    ai_confirmation_enabled = False
                 if ai_confirmation_enabled:
                     try:
                         from bot_engine.ai.ai_integration import should_open_position_with_ai
@@ -3069,9 +3072,20 @@ def process_auto_bot_signals(exchange_obj=None):
                             candles=candles_for_ai
                         )
                         if last_ai_result.get('ai_used') and not last_ai_result.get('should_open'):
-                            logger.info(f" 🤖 AI блокирует вход {symbol}: {last_ai_result.get('reason', 'AI prediction')} — монета не в списке")
-                            diag_skipped_ai += 1
-                            continue
+                            # FullAI Adaptive: при WAIT/блоке — не пропускать, а добавлять как virtual_only
+                            try:
+                                from bots_modules.fullai_adaptive import is_adaptive_enabled
+                                if is_adaptive_enabled():
+                                    logger.info(f" 🤖 AI рекомендует WAIT {symbol}: {last_ai_result.get('reason', '')} → виртуальная сделка для обучения")
+                                    last_ai_result['virtual_only'] = True
+                                else:
+                                    logger.info(f" 🤖 AI блокирует вход {symbol}: {last_ai_result.get('reason', 'AI prediction')} — монета не в списке")
+                                    diag_skipped_ai += 1
+                                    continue
+                            except ImportError:
+                                logger.info(f" 🤖 AI блокирует вход {symbol}: {last_ai_result.get('reason', 'AI prediction')} — монета не в списке")
+                                diag_skipped_ai += 1
+                                continue
                         if last_ai_result.get('ai_used') and last_ai_result.get('should_open'):
                             logger.info(f" 🤖 AI разрешает вход {symbol} (уверенность {last_ai_result.get('ai_confidence', 0):.0%})")
                     except Exception as ai_err:

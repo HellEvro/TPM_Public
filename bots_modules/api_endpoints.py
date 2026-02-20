@@ -685,10 +685,16 @@ def get_coins_with_rsi():
                 effective_signal = get_effective_signal(cleaned_coin)
                 cleaned_coin['effective_signal'] = effective_signal
                 # В список LONG/SHORT слева попадают только монеты, прошедшие проверку AI (как в potential_coins)
+                # КРИТИЧНО: AI блокировка только когда AIConfig.AI_ENABLED и (ai_enabled или full_ai_control)
                 if effective_signal in ('ENTER_LONG', 'ENTER_SHORT'):
                     try:
                         auto_config = bots_data.get('auto_bot_config', {})
-                        if auto_config.get('ai_enabled'):
+                        from bot_engine.config_live import get_ai_config_attr
+                        ai_modules_on = get_ai_config_attr('AI_ENABLED', False)
+                        ai_check_needed = bool(
+                            ai_modules_on and (auto_config.get('ai_enabled') or auto_config.get('full_ai_control'))
+                        )
+                        if ai_check_needed:
                             from bot_engine.ai.ai_integration import should_open_position_with_ai
                             direction = 'LONG' if effective_signal == 'ENTER_LONG' else 'SHORT'
                             rsi_val = cleaned_coin.get('rsi') or cleaned_coin.get(rsi_key)
@@ -5570,8 +5576,8 @@ def get_fullai_analytics():
 
 def _get_closed_trades_for_table(symbol=None, from_ts=None, to_ts=None, limit=500):
     """
-    Закрытые сделки из bots_data.db с PnL и сгенерированным выводом (что хорошо/что не так).
-    Возвращает список для таблицы в UI.
+    Закрытые сделки из bots_data.db + виртуальные из app_data.db.
+    Отображаются вместе (реальные и виртуальные) с подписью «Виртуальная».
     """
     try:
         from bot_engine.bots_database import get_bots_database
@@ -5582,9 +5588,7 @@ def _get_closed_trades_for_table(symbol=None, from_ts=None, to_ts=None, limit=50
             limit=min(limit, 500),
             from_ts_sec=from_ts,
             to_ts_sec=to_ts,
-        )
-        if not trades:
-            return []
+        ) or []
         out = []
         for t in trades:
             pnl = float(t.get('pnl') or 0)
@@ -5645,8 +5649,24 @@ def _get_closed_trades_for_table(symbol=None, from_ts=None, to_ts=None, limit=50
                 'roi_pct': round(roi_pct, 2) if roi_pct is not None else None,
                 'is_successful': bool(t.get('is_successful')) or pnl > 0,
                 'conclusion': conclusion,
+                'is_virtual': False,
             })
-        return out
+        # Добавляем виртуальные сделки (FullAI) — в том же списке, с подписью «Виртуальная»
+        try:
+            from bot_engine.app_database import get_app_database
+            app_db = get_app_database()
+            virtual_trades = app_db.get_virtual_closed_trades(
+                symbol=symbol,
+                from_ts_sec=from_ts,
+                to_ts_sec=to_ts,
+                limit=min(limit, 500),
+            )
+            out.extend(virtual_trades)
+        except Exception:
+            pass
+        # Сортируем по времени (новые первые) и ограничиваем
+        out.sort(key=lambda x: int(x.get('ts') or 0), reverse=True)
+        return out[:limit]
     except Exception as e:
         import logging
         logging.getLogger(__name__).debug("closed_trades_for_table: %s", e)

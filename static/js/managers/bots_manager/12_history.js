@@ -166,13 +166,14 @@
             closedTrades.forEach(tr => {
                 const pnlUsdt = tr.pnl_usdt != null ? Number(tr.pnl_usdt) : null;
                 const roiPct = tr.roi_pct != null ? Number(tr.roi_pct) : null;
-                const pnlClass = pnlUsdt != null ? (pnlUsdt >= 0 ? 'positive' : 'negative') : '';
+                const pnlClass = (roiPct != null ? (roiPct >= 0 ? 'positive' : 'negative') : (pnlUsdt != null ? (pnlUsdt >= 0 ? 'positive' : 'negative') : ''));
                 const pnlPctStr = roiPct != null ? ((roiPct >= 0 ? '+' : '') + roiPct.toFixed(2) + '%') : '—';
-                const pnlUsdtStr = pnlUsdt != null ? ((pnlUsdt >= 0 ? '+' : '') + pnlUsdt.toFixed(2)) : '—';
+                const pnlUsdtStr = tr.is_virtual ? '—' : (pnlUsdt != null ? ((pnlUsdt >= 0 ? '+' : '') + pnlUsdt.toFixed(2)) : '—');
                 const entryPrice = tr.entry_price != null ? Number(tr.entry_price).toFixed(6) : '—';
                 const exitPrice = tr.exit_price != null ? Number(tr.exit_price).toFixed(6) : '—';
-                const conclusion = tr.conclusion || (pnlUsdt >= 0 ? 'Прибыль' : 'Убыток');
-                closedTradesHtml += '<tr><td>' + (tr.ts_iso || tr.exit_time || '') + '</td><td>' + (tr.symbol || '') + '</td><td>' + (tr.direction || '') + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlPctStr + '</td><td class="' + pnlClass + '">' + pnlUsdtStr + '</td><td>' + (tr.close_reason || '—') + '</td><td>' + (conclusion || '—') + '</td></tr>';
+                const conclusion = tr.conclusion || (pnlUsdt >= 0 || roiPct >= 0 ? 'Прибыль' : 'Убыток');
+                const virtualBadge = tr.is_virtual ? ' <span class="virtual-pnl-badge" style="background:#9c27b0;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;">Виртуальная</span>' : '';
+                closedTradesHtml += '<tr><td>' + (tr.ts_iso || tr.exit_time || '') + '</td><td>' + (tr.symbol || '') + virtualBadge + '</td><td>' + (tr.direction || '') + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlPctStr + '</td><td class="' + pnlClass + '">' + pnlUsdtStr + '</td><td>' + (tr.close_reason || '—') + '</td><td>' + (conclusion || '—') + '</td></tr>';
             });
             closedTradesHtml += '</tbody></table><h4 style="margin-top:1.5rem;">Последние события FullAI</h4>';
         }

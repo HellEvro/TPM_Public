@@ -256,6 +256,21 @@ def register_ai_endpoints(app):
                 for k in _AI_CHILD_FLAGS:
                     data[k] = False
                 logger.info("[AI_CONFIG] ai_enabled=False → все дочерние AI флаги принудительно выключены")
+                # Синхронизируем auto_bot_config: выключаем full_ai_control и ai_enabled для соответствия UI
+                try:
+                    from bots_modules.imports_and_globals import bots_data, bots_data_lock
+                    from bots_modules.sync_and_cache import save_auto_bot_config
+                    with bots_data_lock:
+                        ac = bots_data.get('auto_bot_config')
+                        if ac is None:
+                            bots_data['auto_bot_config'] = ac = {}
+                        if ac.get('full_ai_control') or ac.get('ai_enabled'):
+                            ac['full_ai_control'] = False
+                            ac['ai_enabled'] = False
+                            save_auto_bot_config()
+                            logger.info("[AI_CONFIG] ai_enabled=False → full_ai_control и ai_enabled сброшены в auto_bot_config")
+                except Exception as e:
+                    logger.debug("[AI_CONFIG] Синхронизация auto_bot_config при выкл AI: %s", e)
 
             # Получаем текущие значения для сравнения
             from bot_engine.config_loader import AIConfig, RiskConfig
@@ -446,6 +461,23 @@ def register_ai_endpoints(app):
 
             from bot_engine.config_loader import reload_config
             reload_config()
+
+            # При выключении AI модулей — сбрасываем Full AI и ai_enabled в auto_bot_config (чтобы не было блокировок «AI рекомендует WAIT»)
+            if data.get('ai_enabled') is False:
+                try:
+                    from bots_modules.imports_and_globals import bots_data, bots_data_lock
+                    from bots_modules.sync_and_cache import save_auto_bot_config
+                    with bots_data_lock:
+                        ac = bots_data.get('auto_bot_config') or {}
+                        if ac.get('full_ai_control') or ac.get('ai_enabled'):
+                            ac['full_ai_control'] = False
+                            ac['ai_enabled'] = False
+                            bots_data['auto_bot_config'] = ac
+                            save_auto_bot_config()
+                            logger.info("[AI_CONFIG] ai_enabled=False → full_ai_control и ai_enabled сброшены в auto_bot_config")
+                except Exception as _e:
+                    logger.debug("[AI_CONFIG] Сброс full_ai_control при выкл AI: %s", _e)
+
             # Выводим итоговое сообщение
             if changes_count > 0:
                 logger.info(f"[AI_CONFIG] ✅ AI модули: изменено параметров: {changes_count}, конфигурация сохранена и перезагружена")
