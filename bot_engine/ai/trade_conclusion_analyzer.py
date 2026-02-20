@@ -2,16 +2,15 @@
 """
 AI-анализатор выводов по сделкам.
 
-Генерирует конкретные, разнообразные выводы на основе:
-- PnL, ROI, причины закрытия
-- RSI на входе/выходе, тренд
-- Направления (LONG/SHORT)
+Генерирует конкретные выводы на основе условий:
+- PnL, ROI, причина закрытия
+- RSI на входе/выходе (если есть)
+- Направление (LONG/SHORT)
 
-Интерфейс готов для подключения PyTorch-модели (дообучаемой на истории).
+Каждой комбинации условий соответствует одна точная формулировка (без random).
 """
 
 import logging
-import random
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 
@@ -131,39 +130,34 @@ class TradeConclusionAnalyzer:
         exit_rsi: Optional[float],
         symbol: str,
     ) -> str:
-        # TP
+        # TP — цель достигнута
         if any(x in reason for x in ('TP', 'TAKE_PROFIT', 'ТЕЙК')):
-            if roi_pct is not None:
-                return random.choice([
-                    'Прибыль. Выход по TP — цель достигнута.',
-                    'Прибыль. TP сработал — фиксация в целевой зоне.',
-                    f'Прибыль +{roi_abs:.1f}%. TP — стратегия отработала по плану.',
-                ])
-            return random.choice([
-                'Прибыль. Выход по TP — цель достигнута.',
-                'Прибыль. TP сработал — фиксация в целевой зоне.',
-            ])
-        # RSI
+            if roi_abs >= 20:
+                return f'Прибыль +{roi_abs:.1f}%. TP — крупная цель достигнута, стратегия отработала.'
+            if roi_abs >= 10:
+                return f'Прибыль +{roi_abs:.1f}%. TP — цель достигнута, фиксация в целевой зоне.'
+            return f'Прибыль +{roi_abs:.1f}%. TP — цель достигнута.'
+        # RSI — разные условия ведут к разным формулировкам
         if any(x in reason for x in ('RSI', 'РСИ')):
-            if roi_abs >= 30:
-                return random.choice([
-                    f'Прибыль +{roi_abs:.1f}%. RSI выход — сильный импульс, выход на локальном экстремуме.',
-                    f'Крупная прибыль +{roi_abs:.1f}%. RSI сработал — своевременный выход в зоне перекупленности/перепроданности.',
-                ])
+            er = float(entry_rsi) if entry_rsi is not None else None
+            xr = float(exit_rsi) if exit_rsi is not None else None
+            if roi_abs >= 40:
+                return f'Прибыль +{roi_abs:.1f}%. RSI выход — сильный импульс, выход на локальном экстремуме.'
+            if roi_abs >= 25:
+                return f'Прибыль +{roi_abs:.1f}%. RSI — своевременный выход в зоне перекупленности/перепроданности.'
             if roi_abs >= 15:
-                return random.choice([
-                    f'Прибыль +{roi_abs:.1f}%. RSI сигнал — выход в плюсе, хороший результат.',
-                    f'Прибыль +{roi_abs:.1f}%. Выход по RSI — зафиксирована часть движения.',
-                ])
-            if roi_abs >= 5:
-                return random.choice([
-                    f'Прибыль +{roi_abs:.1f}%. RSI — умеренный выход, сигнал сработал.',
-                    f'Небольшая прибыль +{roi_abs:.1f}%. RSI выход в плюсе.',
-                ])
-            return random.choice([
-                'Прибыль. RSI — выход в плюсе, сигнал сработал.',
-                'Прибыль. Выход по RSI — фиксация минимальной прибыли.',
-            ])
+                return f'Прибыль +{roi_abs:.1f}%. RSI сигнал — зафиксирована часть движения.'
+            if roi_abs >= 8:
+                return f'Прибыль +{roi_abs:.1f}%. RSI — умеренный выход, сигнал сработал.'
+            if roi_abs >= 2:
+                return f'Прибыль +{roi_abs:.1f}%. RSI выход в плюсе — минимальная фиксация.'
+            # Малый плюс: учитываем RSI входа/выхода
+            if er is not None and xr is not None:
+                if direction == 'LONG' and er < 35 and xr > 50:
+                    return 'Прибыль. RSI — вход в перепроданности, выход в зоне нейтрала.'
+                if direction == 'SHORT' and er > 65 and xr < 50:
+                    return 'Прибыль. RSI — вход в перекупленности, выход в зоне нейтрала.'
+            return 'Прибыль. RSI — выход в плюсе.'
         # MANUAL
         if 'MANUAL' in reason:
             return f'Прибыль. Ручное закрытие — +{roi_abs:.1f}%' if roi_pct is not None else 'Прибыль. Ручное закрытие.'
@@ -179,39 +173,41 @@ class TradeConclusionAnalyzer:
         exit_rsi: Optional[float],
         symbol: str,
     ) -> str:
-        # SL
+        er = float(entry_rsi) if entry_rsi is not None else None
+        xr = float(exit_rsi) if exit_rsi is not None else None
+        # SL — стоп сработал
         if any(x in reason for x in ('SL', 'STOP', 'СЛОСС')):
+            if roi_abs >= 25:
+                return f'Убыток -{roi_abs:.1f}%. SL — сильное движение против, стоп ограничил потери.'
             if roi_abs >= 15:
-                return random.choice([
-                    f'Убыток -{roi_abs:.1f}%. SL сработал — сильное движение против, стоп защитил от больших потерь.',
-                    f'Крупный убыток -{roi_abs:.1f}%. Стоп-лосс — тренд пошёл против входа.',
-                ])
-            return random.choice([
-                'Убыток. SL — стоп сработал, фиксация убытка.',
-                f'Убыток -{roi_abs:.1f}%. Стоп-лосс отработал.',
-            ])
-        # RSI — основная причина однообразия
-        if any(x in reason for x in ('RSI', 'РСИ')):
-            if roi_abs >= 30:
-                return random.choice([
-                    f'Убыток -{roi_abs:.1f}%. RSI выход — сильный разворот после закрытия, возможно преждевременный выход или неудачный вход.',
-                    f'Крупный убыток -{roi_abs:.1f}%. Выход по RSI в минусе — тренд продолжился против позиции.',
-                ])
-            if roi_abs >= 15:
-                return random.choice([
-                    f'Убыток -{roi_abs:.1f}%. RSI — выход до разворота, цена могла пойти в целевую зону после закрытия.',
-                    f'Убыток -{roi_abs:.1f}%. Выход по RSI в минусе — слабый импульс при входе или ранний стоп.',
-                ])
+                return f'Убыток -{roi_abs:.1f}%. SL — тренд пошёл против входа.'
             if roi_abs >= 8:
-                return random.choice([
-                    f'Убыток -{roi_abs:.1f}%. RSI выход в минусе — возможно ранний выход; проверить пороги RSI.',
-                    f'Убыток -{roi_abs:.1f}%. Выход по RSI до разворота — рассмотреть более широкий диапазон удержания.',
-                ])
+                return f'Убыток -{roi_abs:.1f}%. SL сработал — фиксация убытка.'
+            return f'Убыток -{roi_abs:.1f}%. Стоп-лосс отработал.'
+        # RSI — разные условия = разные формулировки
+        if any(x in reason for x in ('RSI', 'РСИ')):
+            if roi_abs >= 40:
+                return f'Убыток -{roi_abs:.1f}%. RSI выход — сильный разворот против позиции; неудачный вход или смена тренда.'
+            if roi_abs >= 25:
+                return f'Убыток -{roi_abs:.1f}%. RSI — тренд продолжился против позиции после выхода.'
+            if roi_abs >= 15:
+                return f'Убыток -{roi_abs:.1f}%. RSI — выход до разворота; цена пошла в целевую зону после закрытия.'
+            if roi_abs >= 10:
+                return f'Убыток -{roi_abs:.1f}%. RSI выход в минусе — слабый импульс при входе или неверный момент выхода.'
+            if roi_abs >= 5:
+                if er is not None and xr is not None:
+                    if direction == 'LONG' and er < 30 and xr < 35:
+                        return f'Убыток -{roi_abs:.1f}%. RSI — вход в перепроданности, выход до разворота.'
+                    if direction == 'SHORT' and er > 70 and xr > 65:
+                        return f'Убыток -{roi_abs:.1f}%. RSI — вход в перекупленности, выход до разворота.'
+                return f'Убыток -{roi_abs:.1f}%. RSI выход в минусе — проверить пороги RSI или удержание.'
             # Малый убыток
-            return random.choice([
-                f'Убыток -{roi_abs:.1f}%. RSI — возможно ранний выход; малый убыток.',
-                f'Небольшой убыток -{roi_abs:.1f}%. RSI выход в минусе — сигнал сработал с опозданием.',
-            ])
+            if er is not None and xr is not None:
+                if direction == 'LONG' and xr < er and xr < 40:
+                    return f'Убыток -{roi_abs:.1f}%. RSI — выход при углублении перепроданности; возможно ранний выход.'
+                if direction == 'SHORT' and xr > er and xr > 60:
+                    return f'Убыток -{roi_abs:.1f}%. RSI — выход при углублении перекупленности; возможно ранний выход.'
+            return f'Убыток -{roi_abs:.1f}%. RSI выход в минусе — малый убыток.'
         # MANUAL
         if 'MANUAL' in reason:
             return f'Убыток. Ручное закрытие — -{roi_abs:.1f}%' if roi_pct is not None else 'Убыток. Ручное закрытие.'

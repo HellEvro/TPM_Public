@@ -5471,17 +5471,14 @@ _last_ai_reanalyze_result = {'ts': 0, 'fullai_changes': [], 'ai_retrain': None, 
 @bots_app.route('/api/bots/analytics/ai-reanalyze', methods=['POST'])
 def ai_reanalyze_and_update():
     """
-    Ручной запуск: ИИ анализирует ситуацию, обновляет данные и подход к сделкам, переобучается.
+    Ручной запуск: FullAI анализирует сделки из bot_trades_history и обновляет параметры.
     - Сбрасывает кеш аналитики
-    - FullAI: анализ сделок и подбор параметров (синхронно, возвращает changes в формате старое -> новое)
-    - AI: принудительное обновление данных и переобучение (в фоне)
+    - FullAI learner: анализ закрытых сделок, торговой аналитики, подбор TP/SL по монетам
+    НЕ использует AutoTrainer/AIContinuousLearning (whitelist → 0 сделок).
     """
     global _last_ai_reanalyze_result
     try:
-        import threading
         import time
-
-        # 1. Синхронно: кеш + FullAI (быстро)
         from bot_engine.ai_analytics import invalidate_analytics_cache
         invalidate_analytics_cache()
 
@@ -5499,6 +5496,9 @@ def ai_reanalyze_and_update():
                     fullai_msg = f"FullAI: обновлено {len(fullai_changes)} параметров"
                 else:
                     fullai_msg = 'FullAI: изменений нет (win_rate в норме или мало сделок)'
+            else:
+                # Даже без FullAI — можно показать что анализ сделок выполнен (торговая аналитика)
+                fullai_msg = 'FullAI выключен. Включите FullAI для обновления параметров по сделкам.'
         except Exception as e:
             logger.warning("ai-reanalyze fullai: %s", e)
             fullai_msg = f"FullAI: ошибка — {e}"
@@ -5507,29 +5507,14 @@ def ai_reanalyze_and_update():
             'ts': time.time(),
             'fullai_changes': fullai_changes,
             'ai_retrain': None,
-            'running': True,
+            'running': False,
         }
-
-        def _run_retrain():
-            global _last_ai_reanalyze_result
-            try:
-                from bot_engine.ai.auto_trainer import get_auto_trainer
-                ok = get_auto_trainer().force_update()
-                _last_ai_reanalyze_result['ai_retrain'] = {'success': ok}
-            except Exception as e:
-                logger.warning("ai-reanalyze force_update: %s", e)
-                _last_ai_reanalyze_result['ai_retrain'] = {'success': False, 'error': str(e)}
-            _last_ai_reanalyze_result['running'] = False
-            logger.info("[AI-REANALYZE] Переобучение завершено: %s", _last_ai_reanalyze_result.get('ai_retrain'))
-
-        t = threading.Thread(target=_run_retrain, daemon=True)
-        t.start()
 
         return jsonify({
             'success': True,
-            'message': fullai_msg + '. Переобучение моделей запущено в фоне.',
+            'message': fullai_msg,
             'started': True,
-            'changes': fullai_changes,  # [{symbol, param, old, new, reason}, ...] для UI "старое -> новое"
+            'changes': fullai_changes,
         })
     except Exception as e:
         logger.exception("ai-reanalyze: %s", e)
