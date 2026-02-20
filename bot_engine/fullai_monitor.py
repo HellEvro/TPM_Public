@@ -75,6 +75,13 @@ def _monitor_loop() -> None:
                 logger.debug("[FullAI Monitor] %s: %s", symbol, e)
 
 
+def _bot_val(bot, key: str, default=None):
+    """Получить значение из бота (dict или object)."""
+    if isinstance(bot, dict):
+        return bot.get(key, default)
+    return getattr(bot, key, default)
+
+
 def _check_position_and_decide(symbol: str) -> None:
     """Проверяет позицию по символу и принимает решение о закрытии."""
     try:
@@ -84,7 +91,8 @@ def _check_position_and_decide(symbol: str) -> None:
 
         with bots_data_lock:
             bot = (bots_data.get('bots') or {}).get(symbol)
-        if not bot or not getattr(bot, 'entry_price', None):
+        entry_price_raw = _bot_val(bot, 'entry_price') if bot else None
+        if not bot or not entry_price_raw:
             return
 
         ctx = get_fullai_data_context(symbol)
@@ -95,10 +103,11 @@ def _check_position_and_decide(symbol: str) -> None:
         if not current_price:
             return
 
-        entry_price = float(bot.entry_price or 0)
+        entry_price = float(entry_price_raw or 0)
         if not entry_price:
             return
-        position_side = getattr(bot, 'position_side', 'LONG') or 'LONG'
+        pos = _bot_val(bot, 'position') or {}
+        position_side = _bot_val(bot, 'position_side') or (pos.get('side') if isinstance(pos, dict) else None) or 'LONG'
         if position_side == 'LONG':
             profit_percent = (current_price - entry_price) / entry_price * 100.0
         else:
@@ -107,7 +116,7 @@ def _check_position_and_decide(symbol: str) -> None:
         position_info = {
             'entry_price': entry_price,
             'position_side': position_side,
-            'position_size_coins': getattr(bot, 'position_size_coins', None),
+            'position_size_coins': _bot_val(bot, 'position_size_coins') or (pos.get('size') if isinstance(pos, dict) else None),
         }
         fullai_config = get_effective_auto_bot_config()
         coin_params = get_effective_coin_settings(symbol)
@@ -126,8 +135,9 @@ def _check_position_and_decide(symbol: str) -> None:
 
         reason = decision.get('reason') or 'FullAI_EXIT'
         logger.info("[FullAI Monitor] %s: закрытие — %s", symbol, reason)
-        if hasattr(bot, '_close_position_on_exchange'):
-            bot._close_position_on_exchange(reason)
+        close_fn = getattr(bot, '_close_position_on_exchange', None) if not isinstance(bot, dict) else None
+        if callable(close_fn):
+            close_fn(reason)
         try:
             from bots_modules.fullai_scoring import record_trade_result
             record_trade_result(symbol, success=(profit_percent >= 0))
@@ -139,4 +149,4 @@ def _check_position_and_decide(symbol: str) -> None:
         except Exception:
             pass
     except Exception as e:
-        logger.exception("[FullAI Monitor] _check_position_and_decide %s: %s", symbol, e)
+        logger.exception("[FullAI Monitor] %s: %s", symbol, str(e))
