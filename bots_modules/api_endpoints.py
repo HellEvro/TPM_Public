@@ -1526,10 +1526,23 @@ def close_position_endpoint():
                 )
                 
                 if close_result and close_result.get('success'):
+                    entry_price = float(pos.get('avg_price') or pos.get('entry_price') or 0)
+                    exit_price = float(close_result.get('avg_price') or close_result.get('fill_price') or close_result.get('price') or 0)
+                    if not exit_price and current_exchange and hasattr(current_exchange, 'get_ticker'):
+                        try:
+                            t = current_exchange.get_ticker(symbol)
+                            if t and t.get('last'):
+                                exit_price = float(t['last'])
+                        except Exception:
+                            pass
+                    if not exit_price:
+                        exit_price = float(pos.get('mark_price') or pos.get('current_price') or entry_price or 0)
                     closed_positions.append({
                         'side': position_side,
                         'size': position_size,
-                        'order_id': close_result.get('order_id')
+                        'order_id': close_result.get('order_id'),
+                        'entry_price': entry_price,
+                        'exit_price': exit_price,
                     })
                     logger.info(f" ✅ Позиция {position_side} для {symbol} успешно закрыта")
                 else:
@@ -1542,6 +1555,69 @@ def close_position_endpoint():
                 errors.append(error_msg)
                 logger.error(f" ❌ Исключение при закрытии позиции {pos['side']} для {symbol}: {str(e)}")
         
+        # КРИТИЧНО: Сохраняем сделку в bot_trades_history (иначе закрытия через UI не попадают в аналитику!)
+        if closed_positions:
+            try:
+                from bot_engine.bots_database import get_bots_database
+                bots_db = get_bots_database()
+                with bots_data_lock:
+                    bot_data = bots_data.get('bots', {}).get(symbol, {})
+                for cp in closed_positions:
+                    entry_price = float(cp.get('entry_price') or 0)
+                    exit_price = float(cp.get('exit_price') or 0)
+                    pos_size = float(cp.get('size') or 0)
+                    direction = (cp.get('side') or 'LONG').upper()
+                    if direction == 'SHORT':
+                        pnl_usdt = (entry_price - exit_price) * pos_size
+                    else:
+                        pnl_usdt = (exit_price - entry_price) * pos_size
+                    margin = bot_data.get('volume_value') or bot_data.get('margin_usdt')
+                    roi_pct = (pnl_usdt / float(margin) * 100) if margin and float(margin) != 0 else 0
+                    entry_ts = (datetime.now().timestamp() - 3600) * 1000
+                    if bot_data.get('position_start_time'):
+                        try:
+                            dt = datetime.fromisoformat(str(bot_data['position_start_time']).replace('Z', '+00:00'))
+                            ts = dt.timestamp()
+                            entry_ts = ts * 1000 if ts < 1e10 else ts
+                        except Exception:
+                            pass
+                    trade_data = {
+                        'bot_id': bot_data.get('id') or symbol,
+                        'symbol': symbol,
+                        'direction': direction,
+                        'entry_price': entry_price or 0,
+                        'exit_price': exit_price or entry_price or 0,
+                        'entry_time': bot_data.get('position_start_time') or datetime.now().isoformat(),
+                        'exit_time': datetime.now().isoformat(),
+                        'entry_timestamp': entry_ts,
+                        'exit_timestamp': datetime.now().timestamp() * 1000,
+                        'position_size_usdt': float(margin) if margin else None,
+                        'position_size_coins': pos_size,
+                        'pnl': pnl_usdt,
+                        'roi': roi_pct,
+                        'status': 'CLOSED',
+                        'close_reason': 'MANUAL_CLOSE_UI',
+                        'decision_source': bot_data.get('decision_source', 'SCRIPT'),
+                        'ai_decision_id': bot_data.get('ai_decision_id'),
+                        'ai_confidence': bot_data.get('ai_confidence'),
+                        'entry_rsi': bot_data.get('entry_rsi'),
+                        'exit_rsi': None,
+                        'entry_trend': bot_data.get('entry_trend'),
+                        'exit_trend': None,
+                        'entry_volatility': None,
+                        'entry_volume_ratio': None,
+                        'is_successful': pnl_usdt > 0,
+                        'is_simulated': False,
+                        'source': 'bot',
+                        'order_id': cp.get('order_id'),
+                        'extra_data': {},
+                    }
+                    tid = bots_db.save_bot_trade_history(trade_data)
+                    if tid:
+                        logger.info(f" ✅ Закрытие через UI: сделка {symbol} сохранена в bots_data.db (ID: {tid})")
+            except Exception as save_err:
+                logger.warning(f" ⚠️ Ошибка сохранения сделки в bot_trades_history: {save_err}")
+
         # Обновляем данные бота, если он существует
         with bots_data_lock:
             if symbol in bots_data['bots']:
