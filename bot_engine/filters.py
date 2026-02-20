@@ -35,7 +35,7 @@ def check_rsi_time_filter(candles, rsi, signal, config, calculate_rsi_history_fu
 
         # Получаем настройки из конфига
         rsi_time_filter_enabled = config.get('rsi_time_filter_enabled', True)
-        rsi_time_filter_candles = max(2, config.get('rsi_time_filter_candles', 8))  # Минимум 2 свечи
+        rsi_time_filter_candles = max(1, config.get('rsi_time_filter_candles', 8))  # Минимум 1 свеча (конфиг соблюдается)
         rsi_time_filter_upper = config.get('rsi_time_filter_upper', 65)
         rsi_time_filter_lower = config.get('rsi_time_filter_lower', 35)
         rsi_long_threshold = config.get('rsi_long_threshold', 29)

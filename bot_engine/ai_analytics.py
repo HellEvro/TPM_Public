@@ -361,12 +361,14 @@ def apply_analytics_to_entry_decision(
                         pass
         if trend and bad_trends:
             trend_upper = str(trend).upper()
-            for bt in bad_trends:
-                t = str(bt.get("trend", "")).upper()
-                if t and trend_upper == t:
-                    confidence = max(0, confidence - 0.2)
-                    reason = base_reason + f" | Тренд {trend} — неудачный по аналитике"
-                    break
+            # NEUTRAL не penalize: часто означает неопределённость, а не исторически плохой исход
+            if trend_upper != 'NEUTRAL':
+                for bt in bad_trends:
+                    t = str(bt.get("trend", "")).upper()
+                    if t and trend_upper == t:
+                        confidence = max(0, confidence - 0.2)
+                        reason = base_reason + f" | Тренд {trend} — неудачный по аналитике (WR/PnL)"
+                        break
     if problems and "серия убытков" in " ".join(problems).lower() and confidence > 0.5:
         confidence = min(confidence, 0.6)
         reason = base_reason + " | Учтена серия убыточных сделок"

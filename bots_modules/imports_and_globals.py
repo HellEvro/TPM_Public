@@ -1091,10 +1091,10 @@ def load_individual_coin_settings():
                         settings['rsi_time_filter_enabled'] = True
                         settings_updated = True
                     
-                    # Гарантируем минимум 2 свечи
+                    # Минимально 1 свеча (уважаем конфиг пользователя, не переопределяем 1→2)
                     rsi_time_filter_candles = settings.get('rsi_time_filter_candles')
-                    if rsi_time_filter_candles is not None and rsi_time_filter_candles < 2:
-                        settings['rsi_time_filter_candles'] = max(2, rsi_time_filter_candles)
+                    if rsi_time_filter_candles is not None and rsi_time_filter_candles < 1:
+                        settings['rsi_time_filter_candles'] = max(1, rsi_time_filter_candles)
                         settings_updated = True
                     
                     if settings_updated:

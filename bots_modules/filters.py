@@ -296,8 +296,7 @@ def _legacy_check_rsi_time_filter(candles, rsi, signal, symbol=None, individual_
         rsi_time_filter_candles = individual_settings.get('rsi_time_filter_candles') if individual_settings else None
         if rsi_time_filter_candles is None:
             rsi_time_filter_candles = get_config_value(auto_config, 'rsi_time_filter_candles')
-        if rsi_time_filter_candles is not None:
-            rsi_time_filter_candles = max(2, int(rsi_time_filter_candles))
+        rsi_time_filter_candles = max(1, int(rsi_time_filter_candles or 8))  # Конфиг соблюдается, min 1, default 8
         
         rsi_time_filter_upper = individual_settings.get('rsi_time_filter_upper') if individual_settings else None
         if rsi_time_filter_upper is None:
