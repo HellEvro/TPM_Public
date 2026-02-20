@@ -1657,6 +1657,21 @@ def close_position_endpoint():
                     tid = bots_db.save_bot_trade_history(trade_data)
                     if tid:
                         logger.info(f" ✅ Закрытие через UI: сделка {symbol} сохранена в bots_data.db (ID: {tid})")
+                    # FullAI аналитика: запись real_close при ручном закрытии через UI
+                    try:
+                        with bots_data_lock:
+                            ac = bots_data.get('auto_bot_config', {})
+                        if ac.get('full_ai_control'):
+                            from bots_modules.fullai_adaptive import record_real_close
+                            extra = {
+                                'entry_price': entry_price,
+                                'exit_price': exit_price,
+                                'pnl_usdt': pnl_usdt,
+                                'direction': direction,
+                            }
+                            record_real_close(symbol, roi_pct, reason='MANUAL_CLOSE_UI', extra=extra)
+                    except Exception as fa_err:
+                        logger.debug("FullAI analytics manual close UI: %s", fa_err)
             except Exception as save_err:
                 logger.warning(f" ⚠️ Ошибка сохранения сделки в bot_trades_history: {save_err}")
 

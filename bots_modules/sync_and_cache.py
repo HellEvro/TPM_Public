@@ -3174,6 +3174,21 @@ def sync_bots_with_exchange():
                                         logger.warning(
                                             f"[SYNC_EXCHANGE] ⚠️ Ошибка сохранения истории в bots_data.db: {bots_db_error}"
                                         )
+                                    # FullAI аналитика: записываем real_close при ручном/внешнем закрытии
+                                    try:
+                                        with bots_data_lock:
+                                            ac = bots_data.get('auto_bot_config', {})
+                                        if ac.get('full_ai_control'):
+                                            from bots_modules.fullai_adaptive import record_real_close
+                                            extra = {
+                                                'entry_price': entry_price,
+                                                'exit_price': exit_price,
+                                                'pnl_usdt': pnl_usdt,
+                                                'direction': direction_upper,
+                                            }
+                                            record_real_close(symbol, roi_percent, reason='CLOSED_ON_EXCHANGE', extra=extra)
+                                    except Exception as fa_err:
+                                        logger.debug("[SYNC_EXCHANGE] FullAI analytics manual close: %s", fa_err)
                                     logger.info(
                                         f"[SYNC_EXCHANGE] 📤 {symbol}: позиция закрыта на бирже вне бота "
                                         f"(entry={entry_price:.6f}, exit={exit_price:.6f}, pnl={pnl_usdt:.2f} USDT)"
