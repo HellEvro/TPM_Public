@@ -167,6 +167,8 @@ def run_fullai_trades_analysis(
     days_back: int = 7,
     min_trades_per_symbol: int = 2,
     adjust_params: bool = True,
+    symbol_filter: Optional[str] = None,
+    limit: int = 2000,
 ) -> Dict[str, Any]:
     """
     Анализ закрытых сделок и обновление параметров FullAI по монетам.
@@ -201,16 +203,56 @@ def run_fullai_trades_analysis(
             us_map = {s['symbol']: s for s in (trading_ai.get('unsuccessful_settings') or [])}
             trading_ai['_unsuccessful_symbols'] = {c['symbol'] for c in uc}
             trading_ai['_successful_symbols'] = {c['symbol'] for c in sc}
+            trading_ai['_successful_settings_by_symbol'] = {
+                s['symbol']: s for s in (trading_ai.get('successful_settings') or [])
+            }
             trading_ai['_unsuccessful_settings_by_symbol'] = us_map
             logger.info("[FullAI логика] Торговая аналитика загружена: неудачных монет=%s, удачных=%s",
                         len(trading_ai['_unsuccessful_symbols']), len(trading_ai['_successful_symbols']))
         except Exception as e:
             logger.warning("[FullAI learner] Не удалось загрузить торговую аналитику: %s", e)
 
+        def _build_insights(ta: Dict, trades_count: int) -> Dict[str, List[str]]:
+            out = {'mistakes': [], 'successes': [], 'recommendations': []}
+            problems = ta.get('problems') or []
+            recs = ta.get('recommendations') or []
+            uc = ta.get('unsuccessful_coins') or []
+            sc = ta.get('successful_coins') or []
+            metrics = ta.get('metrics') or {}
+            wr = metrics.get('win_rate_pct')
+            total_pnl = metrics.get('total_pnl_usdt')
+            for p in problems:
+                out['mistakes'].append(p)
+            for r in recs:
+                out['recommendations'].append(r)
+            if uc:
+                out['mistakes'].append(
+                    f"Неудачные монеты ({len(uc)}): {', '.join(c['symbol'] for c in uc[:15])}{'...' if len(uc) > 15 else ''}. "
+                    "Win Rate < 45% или PnL < 0 — нужно избегать текущих настроек входа/выхода."
+                )
+            if sc:
+                out['successes'].append(
+                    f"Удачные монеты ({len(sc)}): {', '.join(c['symbol'] for c in sc[:15])}{'...' if len(sc) > 15 else ''}. "
+                    "Win Rate ≥ 55% и PnL > 0 — повторить текущие настройки (RSI-пороги, TP/SL)."
+                )
+            if wr is not None and total_pnl is not None:
+                if wr < 45 or (total_pnl is not None and total_pnl < 0):
+                    out['mistakes'].append(
+                        f"Общий Win Rate {wr:.1f}%, PnL {total_pnl:.2f} USDT. "
+                        "Система допускает слишком много убыточных сделок — ужесточить TP/SL или RSI-пороги."
+                    )
+                elif wr >= 55 and total_pnl and total_pnl > 0:
+                    out['successes'].append(
+                        f"Общий Win Rate {wr:.1f}%, PnL {total_pnl:+.2f} USDT. "
+                        "Текущие параметры работают — можно слегка повысить TP для увеличения прибыли."
+                    )
+            return out
+
         trades = db.get_bot_trades_history(
             status='CLOSED',
+            symbol=symbol_filter,
             days_back=days_back,
-            limit=500,
+            limit=limit,
         )
         if not trades:
             logger.info("[FullAI логика] Изучение сделок: закрытых сделок за период нет, пропуск.")
@@ -229,6 +271,7 @@ def run_fullai_trades_analysis(
             by_symbol[sym].append(_evaluate_trade(t))
         updated = []
         changes_list: List[Dict[str, Any]] = []  # [{symbol, param, old, new, reason}, ...]
+        insights = _build_insights(trading_ai, len(trades))
         for symbol, evals in by_symbol.items():
             if len(evals) < min_trades_per_symbol:
                 continue
@@ -383,6 +426,7 @@ def run_fullai_trades_analysis(
             'symbols_evaluated': len(by_symbol),
             'updated_symbols': updated,
             'changes': changes_list,  # [{symbol, param, old, new, reason}, ...] для UI "старое -> новое"
+            'insights': insights,  # ошибки, успехи, рекомендации для отображения пользователю
         }
     except Exception as e:
         logger.exception(f"[FullAI learner] Ошибка: {e}")

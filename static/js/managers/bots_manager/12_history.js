@@ -405,34 +405,55 @@
         if (btn) { btn.disabled = true; btn.textContent = '⏳ Запуск...'; }
         if (resultEl) { resultEl.style.display = 'none'; resultEl.innerHTML = ''; }
         try {
-            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/ai-reanalyze`, { method: 'POST' });
+            const periodHours = parseInt(document.getElementById('fullaiAnalyticsPeriod')?.value, 10) || 168;
+            const symbol = (document.getElementById('fullaiAnalyticsSymbol')?.value || '').trim().toUpperCase() || null;
+            const daysBack = Math.max(1, Math.ceil(periodHours / 24));
+            const body = JSON.stringify({ days_back: daysBack, symbol: symbol || null, limit: 2000 });
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/ai-reanalyze`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: body
+            });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
             if (!data.success) throw new Error(data.error || 'Не удалось запустить');
 
             const changes = data.changes || [];
+            const insights = data.insights || { mistakes: [], successes: [], recommendations: [] };
             if (resultEl) {
                 resultEl.style.display = 'block';
+                let html = '<p style="margin: 0 0 8px; font-weight:600;">' + (data.message || 'Готово.') + '</p>';
+                if ((insights.mistakes && insights.mistakes.length) || (insights.successes && insights.successes.length) || (insights.recommendations && insights.recommendations.length)) {
+                    html += '<div style="margin-top: 10px; font-size: 0.9em;">';
+                    if (insights.mistakes && insights.mistakes.length) {
+                        html += '<p style="margin: 4px 0; color: var(--red-color, #f44336);"><strong>❌ Ошибки (что избегать):</strong></p><ul style="margin: 0 0 8px 20px;">';
+                        insights.mistakes.forEach(m => { html += '<li>' + m + '</li>'; });
+                        html += '</ul>';
+                    }
+                    if (insights.successes && insights.successes.length) {
+                        html += '<p style="margin: 4px 0; color: var(--green-color, #4caf50);"><strong>✅ Успехи (что повторять):</strong></p><ul style="margin: 0 0 8px 20px;">';
+                        insights.successes.forEach(s => { html += '<li>' + s + '</li>'; });
+                        html += '</ul>';
+                    }
+                    if (insights.recommendations && insights.recommendations.length) {
+                        html += '<p style="margin: 4px 0; color: var(--blue-color, #2196f3);"><strong>💡 Рекомендации:</strong></p><ul style="margin: 0 0 8px 20px;">';
+                        insights.recommendations.forEach(r => { html += '<li>' + r + '</li>'; });
+                        html += '</ul>';
+                    }
+                    html += '</div>';
+                }
                 if (changes.length > 0) {
-                    const paramNames = {
-                        take_profit_percent: 'TP%',
-                        max_loss_percent: 'SL%',
-                        rsi_long_threshold: 'RSI long',
-                        rsi_short_threshold: 'RSI short'
-                    };
+                    const paramNames = { take_profit_percent: 'TP%', max_loss_percent: 'SL%', rsi_long_threshold: 'RSI long', rsi_short_threshold: 'RSI short' };
                     const isPercent = (p) => p === 'take_profit_percent' || p === 'max_loss_percent';
-                    let html = '<strong>🧠 Изменения ИИ:</strong><ul style="margin: 6px 0 0 16px;">';
+                    html += '<p style="margin: 10px 0 4px; font-weight:600;">📝 Изменения параметров:</p><ul style="margin: 0 0 0 16px;">';
                     changes.forEach(c => {
                         const p = paramNames[c.param] || c.param;
                         const suf = isPercent(c.param) ? '%' : '';
-                        html += `<li><code>${c.symbol}</code> ${p}: <span style="text-decoration:line-through">${c.old}${suf}</span> → <strong>${c.new}${suf}</strong></li>`;
+                        html += '<li><code>' + c.symbol + '</code> ' + p + ': <span style="text-decoration:line-through">' + c.old + suf + '</span> → <strong>' + c.new + suf + '</strong></li>';
                     });
                     html += '</ul>';
-                    html += '<p style="margin: 8px 0 0; color: var(--text-muted, #666); font-size: 0.85em;">' + (data.message || '') + '</p>';
-                    resultEl.innerHTML = html;
-                } else {
-                    resultEl.innerHTML = '<strong>🧠</strong> ' + (data.message || 'Готово. Изменений параметров нет.');
                 }
+                resultEl.innerHTML = html;
             } else {
                 alert(data.message || 'ИИ анализирует и обновляет данные в фоне.');
             }

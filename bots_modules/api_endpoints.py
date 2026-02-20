@@ -5506,10 +5506,9 @@ _last_ai_reanalyze_result = {'ts': 0, 'fullai_changes': [], 'ai_retrain': None, 
 @bots_app.route('/api/bots/analytics/ai-reanalyze', methods=['POST'])
 def ai_reanalyze_and_update():
     """
-    Ручной запуск: FullAI анализирует сделки из bot_trades_history и обновляет параметры.
+    Ручной запуск: ИИ анализирует закрытые сделки, находит ошибки и успехи, обновляет параметры.
     - Сбрасывает кеш аналитики
-    - FullAI learner: анализ закрытых сделок, торговой аналитики, подбор TP/SL по монетам
-    НЕ использует AutoTrainer/AIContinuousLearning (whitelist → 0 сделок).
+    - FullAI learner: анализ сделок, торговой аналитики, обучение на ошибках и успехах
     """
     global _last_ai_reanalyze_result
     try:
@@ -5517,7 +5516,13 @@ def ai_reanalyze_and_update():
         from bot_engine.ai_analytics import invalidate_analytics_cache
         invalidate_analytics_cache()
 
+        data = request.get_json(silent=True) or {}
+        days_back = int(data.get('days_back') or data.get('period_days') or 7)
+        symbol_filter = (data.get('symbol') or '').strip().upper() or None
+        limit = min(5000, max(500, int(data.get('limit') or 2000)))
+
         fullai_changes = []
+        insights = {'mistakes': [], 'successes': [], 'recommendations': []}
         fullai_msg = 'FullAI выключен, параметры не менялись'
         try:
             from bots_modules.imports_and_globals import bots_data, bots_data_lock
@@ -5525,12 +5530,21 @@ def ai_reanalyze_and_update():
                 full_ai = (bots_data.get('auto_bot_config') or {}).get('full_ai_control', False)
             if full_ai:
                 from bots_modules.fullai_trades_learner import run_fullai_trades_analysis
-                r = run_fullai_trades_analysis(days_back=7, min_trades_per_symbol=2, adjust_params=True)
+                r = run_fullai_trades_analysis(
+                    days_back=days_back,
+                    min_trades_per_symbol=2,
+                    adjust_params=True,
+                    symbol_filter=symbol_filter,
+                    limit=limit,
+                )
                 fullai_changes = r.get('changes') or []
+                insights = r.get('insights') or insights
+                analyzed = r.get('analyzed', 0)
+                updated_cnt = len(r.get('updated_symbols') or [])
                 if fullai_changes:
-                    fullai_msg = f"FullAI: обновлено {len(fullai_changes)} параметров"
+                    fullai_msg = f"Проанализировано {analyzed} сделок. Обновлено {len(fullai_changes)} параметров по {updated_cnt} монетам."
                 else:
-                    fullai_msg = 'FullAI: изменений нет (win_rate в норме или мало сделок)'
+                    fullai_msg = f"Проанализировано {analyzed} сделок. Изменений параметров нет."
             else:
                 # Даже без FullAI — можно показать что анализ сделок выполнен (торговая аналитика)
                 fullai_msg = 'FullAI выключен. Включите FullAI для обновления параметров по сделкам.'
@@ -5541,6 +5555,7 @@ def ai_reanalyze_and_update():
         _last_ai_reanalyze_result = {
             'ts': time.time(),
             'fullai_changes': fullai_changes,
+            'insights': insights,
             'ai_retrain': None,
             'running': False,
         }
@@ -5550,6 +5565,7 @@ def ai_reanalyze_and_update():
             'message': fullai_msg,
             'started': True,
             'changes': fullai_changes,
+            'insights': insights,
         })
     except Exception as e:
         logger.exception("ai-reanalyze: %s", e)
