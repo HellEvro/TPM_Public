@@ -1153,40 +1153,30 @@ class NewTradingBot:
                     logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Нет свечей для проверки защиты от повторных входов")
                     return {'allowed': True, 'reason': 'No candles provided'}
                 
-                # ✅ ИСПРАВЛЕНО: Получаем timestamp последней свечи (проверяем оба варианта: 'timestamp' и 'time')
-                last_candle = candles[-1]  # Последняя свеча - самая новая
+                # Получаем timestamp последней свечи
+                last_candle = candles[-1]
                 last_candle_timestamp = last_candle.get('timestamp') or last_candle.get('time', 0)
-                
-                # Если timestamp в миллисекундах, конвертируем в секунды
                 if last_candle_timestamp > 1e12:
                     last_candle_timestamp = last_candle_timestamp / 1000
                 
-                # ✅ ИСПРАВЛЕНО: Подсчитываем количество свечей с момента закрытия
-                # Свечи уже отсортированы по времени (старые -> новые)
                 candles_passed = 0
-                
-                # ✅ ИСПРАВЛЕНО: Ищем первую свечу, которая ПОЛНОСТЬЮ позже времени закрытия
-                # Проверяем оба варианта ключа: 'timestamp' и 'time'
                 for i, candle in enumerate(candles):
                     candle_timestamp = candle.get('timestamp') or candle.get('time', 0)
                     if candle_timestamp > 1e12:
                         candle_timestamp = candle_timestamp / 1000
-                    
-                    # Если начало свечи >= времени закрытия, считаем эту и все последующие свечи
                     if candle_timestamp >= exit_timestamp:
                         candles_passed = len(candles) - i
                         break
                 
-                # ✅ ИСПРАВЛЕНО: Если не нашли через перебор, считаем по времени (более надежно)
-                if candles_passed == 0:
+                if candles_passed == 0 and last_candle_timestamp > exit_timestamp and CANDLE_INTERVAL_SECONDS > 0:
                     time_diff_seconds = last_candle_timestamp - exit_timestamp
-                    if time_diff_seconds > 0:
-                        # Считаем количество полных 6-часовых интервалов (минимум 1)
-                        candles_passed = max(1, int(time_diff_seconds / CANDLE_INTERVAL_SECONDS))
+                    candles_passed = max(1, int(time_diff_seconds / CANDLE_INTERVAL_SECONDS))
                 
-                # ✅ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА
-                if candles_passed == 0 and last_candle_timestamp > exit_timestamp:
-                    candles_passed = 1
+                # Fallback: по текущему времени (всегда корректен при устаревших свечах)
+                if candles_passed == 0:
+                    time_diff_seconds = current_time - exit_timestamp
+                    if time_diff_seconds > 0 and CANDLE_INTERVAL_SECONDS > 0:
+                        candles_passed = max(1, int(time_diff_seconds / CANDLE_INTERVAL_SECONDS))
                 
                 # ✅ ИСПРАВЛЕНО: Конвертируем loss_reentry_candles в int для корректного сравнения
                 try:

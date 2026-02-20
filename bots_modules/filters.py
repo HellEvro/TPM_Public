@@ -782,38 +782,33 @@ def _check_loss_reentry_protection_static(symbol, candles, loss_reentry_count, l
         if not candles or len(candles) == 0:
             return None  # Нет свечей - не показываем фильтр
         
-        # Получаем timestamp последней свечи
+        # Получаем timestamp последней свечи (проверяем 'time' и 'timestamp')
         last_candle = candles[-1]
-        last_candle_timestamp = last_candle.get('timestamp', 0)
+        last_candle_timestamp = last_candle.get('timestamp') or last_candle.get('time', 0)
         if last_candle_timestamp > 1e12:
             last_candle_timestamp = last_candle_timestamp / 1000
         
         # ✅ ИСПРАВЛЕНО: Подсчитываем количество свечей с момента закрытия
-        # Свечи уже отсортированы по времени (старые -> новые)
         candles_passed = 0
-        
-        # Ищем первую свечу, которая ПОЛНОСТЬЮ позже времени закрытия
-        # Свеча считается прошедшей, если её начало >= времени закрытия
         for i, candle in enumerate(candles):
-            candle_timestamp = candle.get('timestamp', 0)
+            candle_timestamp = candle.get('timestamp') or candle.get('time', 0)
             if candle_timestamp > 1e12:
                 candle_timestamp = candle_timestamp / 1000
-            
-            # Если начало свечи >= времени закрытия, считаем эту и все последующие свечи
             if candle_timestamp >= exit_timestamp:
                 candles_passed = len(candles) - i
                 break
         
-        # Если не нашли свечей через перебор, считаем по времени (интервал = текущий ТФ из конфига)
-        if candles_passed == 0:
+        # Fallback 1: по последней свече (если свечи могли быть устаревшими — не подходит)
+        if candles_passed == 0 and last_candle_timestamp > exit_timestamp and CANDLE_INTERVAL_SECONDS > 0:
             time_diff_seconds = last_candle_timestamp - exit_timestamp
+            candles_passed = max(1, int(time_diff_seconds / CANDLE_INTERVAL_SECONDS))
+        
+        # Fallback 2: по текущему времени (всегда корректен — 10 часов = 600 свечей 1m и т.д.)
+        if candles_passed == 0:
+            import time
+            time_diff_seconds = time.time() - exit_timestamp
             if time_diff_seconds > 0 and CANDLE_INTERVAL_SECONDS > 0:
                 candles_passed = max(1, int(time_diff_seconds / CANDLE_INTERVAL_SECONDS))
-        
-        # ✅ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: Если последняя свеча явно после закрытия
-        if candles_passed == 0 and last_candle_timestamp > exit_timestamp:
-            # Минимум 1 свеча прошла, если текущая свеча после закрытия
-            candles_passed = 1
         
         # ✅ ИСПРАВЛЕНО: Конвертируем loss_reentry_candles в int для корректного сравнения
         try:
