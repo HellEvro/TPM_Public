@@ -3142,40 +3142,23 @@ def process_auto_bot_signals(exchange_obj=None):
                 logger.warning(f" ⚠️ {symbol}: Ошибка проверки позиций: {pos_error}")
                 # Продолжаем создание бота если проверка не удалась
             
-            # ✅ Монета УЖЕ в списке LONG/SHORT = фильтры пройдены. Перед входом ещё раз проверяем RSI по текущему ТФ.
+            # ✅ Монета УЖЕ в списке LONG/SHORT. Перед входом — верификация в реальном времени:
+            # загружаем свежие свечи, пересчитываем RSI, прогоняем все фильтры для выбранной монеты.
             signal = coin['signal']
             direction = 'LONG' if signal == 'ENTER_LONG' else 'SHORT'
             last_ai_result = coin.get('last_ai_result')
 
-            # КРИТИЧНО: Повторная проверка RSI перед открытием (строго по текущему ТФ, только закрытые свечи)
-            with rsi_data_lock:
-                coin_data_now = coins_rsi_data.get('coins', {}).get(symbol)
-            if not coin_data_now:
-                logger.warning(f" ⚠️ {symbol}: пропуск — нет актуальных RSI данных")
+            verify_ok, verify_reason, rsi_now, _ = verify_coin_realtime_before_entry(symbol, signal, exchange_obj)
+            if not verify_ok:
+                logger.warning(f" ⚠️ {symbol}: пропуск — верификация: {verify_reason}")
                 continue
-            from bot_engine.config_loader import get_config_value, get_rsi_key
-            rsi_key_used = get_rsi_key(current_timeframe)
-            rsi_now = get_rsi_from_coin_data(coin_data_now, timeframe=current_timeframe)
-            auto_cfg = bots_data.get('auto_bot_config', {})
-            long_th = get_config_value(auto_cfg, 'rsi_long_threshold')
-            short_th = get_config_value(auto_cfg, 'rsi_short_threshold')
-            # Без RSI не входим
-            if rsi_now is None:
-                logger.warning(f" ⚠️ {symbol}: пропуск — RSI по ТФ {current_timeframe} (ключ {rsi_key_used}) не рассчитан")
-                continue
-            if direction == 'LONG' and rsi_now > long_th:
-                logger.warning(f" ⚠️ {symbol}: пропуск LONG — RSI {rsi_now:.1f} > порога {long_th} (ТФ={current_timeframe})")
-                continue
-            if direction == 'SHORT' and rsi_now < short_th:
-                logger.warning(f" ⚠️ {symbol}: пропуск SHORT — RSI {rsi_now:.1f} < порога {short_th} (ТФ={current_timeframe})")
-                continue
-            logger.info(f" ✅ {symbol}: вход {direction} — RSI={rsi_now:.1f}, порог {'<=' if direction == 'LONG' else '>='} {long_th if direction == 'LONG' else short_th} (ТФ={current_timeframe})")
+            logger.info(f" ✅ {symbol}: вход {direction} — {verify_reason}")
 
             # Создаём бота в памяти, входим по рынку, в список добавляем только после успешного входа
             try:
-                logger.info(f" 🚀 Создаем бота для {symbol} ({signal}, RSI: {coin['rsi']:.1f})")
+                logger.info(f" 🚀 Создаем бота для {symbol} ({signal}, RSI: {rsi_now:.1f})")
                 new_bot = create_new_bot(symbol, exchange_obj=exchange_obj, register=False)
-                new_bot._remember_entry_context(coin['rsi'], coin.get('trend'))
+                new_bot._remember_entry_context(rsi_now, coin.get('trend'))
                 if last_ai_result and last_ai_result.get('ai_used') and last_ai_result.get('should_open'):
                     new_bot.ai_decision_id = last_ai_result.get('ai_decision_id')
                     new_bot._set_decision_source('AI', last_ai_result)
@@ -4038,6 +4021,84 @@ def check_no_existing_position(symbol, signal):
     except Exception as e:
         logger.error(f"{symbol}: Ошибка проверки позиций: {e}")
         return False
+
+
+def verify_coin_realtime_before_entry(symbol, signal, exchange_obj=None):
+    """
+    Загружает кандидата в реальном времени и проверяет RSI + все фильтры.
+    Устраняет входы на устаревших данных.
+    Returns: (ok: bool, reason: str, rsi: float|None, coin_data: dict|None)
+    """
+    try:
+        from bot_engine.config_loader import get_current_timeframe, get_config_value
+        from bots_modules.imports_and_globals import get_exchange, coins_rsi_data
+        
+        exchange_to_use = exchange_obj if exchange_obj else get_exchange()
+        if not exchange_to_use:
+            return (False, 'Биржа недоступна', None, None)
+        
+        current_tf = get_current_timeframe()
+        if not current_tf:
+            return (False, 'Таймфрейм не задан', None, None)
+        
+        # 1. Загружаем свежие свечи с биржи (обход кэша)
+        fresh = get_coin_candles_only(symbol, exchange_to_use, current_tf, bulk_mode=False)
+        if not fresh or not fresh.get('candles') or len(fresh['candles']) < 50:
+            return (False, f'Не удалось загрузить свечи ({len(fresh.get("candles") or [])} шт)', None, None)
+        
+        candles = fresh['candles']
+        # 2. Обновляем кэш свечами в реальном времени
+        candles_cache = coins_rsi_data.get('candles_cache', {})
+        if symbol not in candles_cache:
+            candles_cache[symbol] = {}
+        candles_cache[symbol][current_tf] = {
+            'symbol': symbol,
+            'candles': candles,
+            'timeframe': current_tf,
+            'last_update': datetime.now().isoformat()
+        }
+        coins_rsi_data['candles_cache'] = candles_cache
+        
+        # 3. Получаем полные RSI-данные с пересчётом по свежим свечам (включая все фильтры)
+        coin_data = get_coin_rsi_data(symbol, exchange_to_use)
+        if not coin_data:
+            return (False, 'Не удалось рассчитать RSI по свежим данным', None, None)
+        
+        rsi = get_rsi_from_coin_data(coin_data, timeframe=current_tf)
+        effective_signal = coin_data.get('signal', 'WAIT')
+        
+        auto_cfg = bots_data.get('auto_bot_config', {})
+        long_th = get_config_value(auto_cfg, 'rsi_long_threshold')
+        short_th = get_config_value(auto_cfg, 'rsi_short_threshold')
+        
+        direction = 'LONG' if signal == 'ENTER_LONG' else 'SHORT'
+        if rsi is None:
+            return (False, f'RSI по ТФ {current_tf} не рассчитан', None, coin_data)
+        if direction == 'LONG' and rsi > long_th:
+            return (False, f'RSI {rsi:.1f} > порога {long_th} (ожидалось Long)', rsi, coin_data)
+        if direction == 'SHORT' and rsi < short_th:
+            return (False, f'RSI {rsi:.1f} < порога {short_th} (ожидалось Short)', rsi, coin_data)
+        
+        if effective_signal == 'WAIT':
+            reasons = []
+            if coin_data.get('blocked_by_rsi_time'):
+                reasons.append('RSI Time фильтр')
+            if coin_data.get('blocked_by_exit_scam'):
+                reasons.append('ExitScam')
+            if auto_cfg.get('enable_maturity_check', True) and not coin_data.get('is_mature', True):
+                reasons.append(coin_data.get('maturity_reason', 'Незрелая монета'))
+            if coin_data.get('blocked_by_loss_reentry'):
+                reasons.append('Защита от повторных входов')
+            if coin_data.get('blocked_by_scope'):
+                reasons.append('Scope/Blacklist')
+            reason = '; '.join(reasons) if reasons else 'Сигнал WAIT'
+            return (False, f'Верификация: {reason}', rsi, coin_data)
+        
+        return (True, f'RSI={rsi:.1f} (ТФ {current_tf}) — вход разрешён', rsi, coin_data)
+    except Exception as e:
+        logger.exception(f"{symbol}: Ошибка верификации перед входом: {e}")
+        return (False, str(e), None, None)
+
 
 def create_new_bot(symbol, config=None, exchange_obj=None, register=True):
     """Создает нового бота. register=False — только объект в памяти, не добавлять в bots_data (для автовхода: регистрируем после успешного enter_position)."""
