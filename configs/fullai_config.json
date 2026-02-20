@@ -3,7 +3,7 @@
   "max_loss_percent": 2,
   "ai_min_confidence": 0.7,
   "fullai_scoring_enabled": true,
-  "fullai_adaptive_enabled": false,
+  "fullai_adaptive_enabled": true,
   "fullai_adaptive_dead_candles": 10,
   "fullai_adaptive_virtual_success_count": 3,
   "fullai_adaptive_real_loss_to_retry": 1,
