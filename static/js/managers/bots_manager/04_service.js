@@ -151,15 +151,7 @@
             const data = await response.json();
             
             if (data.success) {
-                    // ✅ ОПТИМИЗАЦИЯ: Проверяем версию данных - обновляем UI только при изменениях.
-                    // При forceUpdate (например после обновления ручных позиций) всегда применяем данные.
                     const currentDataVersion = data.data_version || 0;
-                    if (!forceUpdate && currentDataVersion === this.lastDataVersion && this.coinsRsiData.length > 0) {
-                        this.logDebug('[BotsManager] ⏭️ Данные не изменились (version=' + currentDataVersion + '), пропускаем обновление UI');
-                        return;
-                    }
-                    
-                    this.logDebug('[BotsManager] 🔄 Данные обновились (version: ' + this.lastDataVersion + ' → ' + currentDataVersion + ')');
                     this.lastDataVersion = currentDataVersion;
                     
                     // Сохраняем флаг загрузки и статистику для отображения при пустом списке
