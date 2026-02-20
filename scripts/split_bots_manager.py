@@ -46,8 +46,9 @@ MODULES = {
         "deleteIndividualSettings", "copySettingsToAllCoins", "learnExitScamForCoin",
         "learnExitScamForAllCoins", "resetExitScamToConfigForAll", "resetAllCoinsToGlobalSettings",
         "getIndividualSettingsElementMap", "clearIndividualSettingDiffHighlights",
-        "highlightIndividualSettingDiffs", "applyIndividualSettingsToUI",
+        "highlightIndividualSettingDiffs",         "applyIndividualSettingsToUI",
         "updateIndividualSettingsStatus", "loadAndApplyIndividualSettings",
+        "resetToGeneralSettings",
         "initializeIndividualSettingsButtons", "initializeQuickLaunchButtons"
     ],
     "07_bot_controls": [
@@ -146,7 +147,7 @@ RESERVED = {
     'fetch', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
     'alert', 'applyStyles', 'applyValue', 'setValue', 'applyFullAiControl',
     'syncFullAiToggles', 'applyToGeneralSettings', 'setupAddButtonHandler',
-    'updateUIState', 'scheduleFullaiAdaptiveSave', 'resetToGeneralSettings',
+    'updateUIState', 'scheduleFullaiAdaptiveSave',
 }
 
 
@@ -169,9 +170,13 @@ def find_method_boundaries(content: str):
             next_start = valid[j + 1][1].start()
             end = next_start - 1
         else:
-            end = content.rfind("\n}", 0, len(content))
-            if end == -1:
-                end = len(content)
+            # Последний метод класса: конец — последнее вхождение "    }\n" (не включаем "}\n}" класса)
+            last_method_end = content.rfind("    }\n")
+            if last_method_end > start:
+                end = last_method_end + len("    }\n") - 1
+            else:
+                last_closing = content.rfind("\n}")
+                end = (last_closing - 1) if last_closing > start else len(content)
         boundaries.append((name, start, end))
     
     return boundaries

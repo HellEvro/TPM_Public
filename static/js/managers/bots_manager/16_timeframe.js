@@ -313,20 +313,5 @@
             this.updateTimeframeInUI(timeframe);
         });
     }
-}
-
-// Экспортируем класс глобально сразу после определения
-window.BotsManager = BotsManager;
-
-// Глобальная функция для включения бота для текущей монеты (используется в HTML onclick)
-window.enableBotForCurrentCoin = function(direction) {
-    if (window.botsManager && window.botsManager.selectedCoin) {
-        window.botsManager.createBot(direction || null);
-    } else {
-        console.error('[enableBotForCurrentCoin] BotsManager не инициализирован или монета не выбрана');
-        if (window.showToast) {
-            window.showToast('Выберите монету для создания бота', 'warning');
-        }
-    }
     });
 })();

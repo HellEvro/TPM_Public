@@ -928,9 +928,8 @@
              console.error(`[BotsManager] ❌ Ошибка загрузки индивидуальных настроек для ${symbol}:`, error);
              this.updateIndividualSettingsStatus(false);
          }
-     }
-
-     resetToGeneralSettings() {
+     },
+             resetToGeneralSettings() {
         console.log('[BotsManager] 🔄 Сброс к общим настройкам');
         this.clearIndividualSettingDiffHighlights();
         const config = this.cachedAutoBotConfig || {};

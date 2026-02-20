@@ -1,5 +1,9 @@
 # План рефакторинга bots_manager.js
 
+## Для ИИ-агентов
+
+**Не вносите изменения в `static/js/managers/bots_manager.js`.** Редактируйте только файлы в `static/js/managers/bots_manager/` (00_core.js … 16_timeframe.js, index.js). Ищите нужный метод по имени в этих модулях и меняйте соответствующий файл.
+
 ## Проблема
 Файл `static/js/managers/bots_manager.js` содержит ~13500 строк и один класс `BotsManager` с ~170 методами. Файл трудно сопровождать и модифицировать.
 
