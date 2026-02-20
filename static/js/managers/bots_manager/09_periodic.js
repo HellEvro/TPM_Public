@@ -94,7 +94,11 @@
                 // Обновляем основные данные (список монет, фильтры, конфиг, боты)
                 this.loadCoinsRsiData();
                 this.loadFiltersData();      // Whitelist, blacklist, scope
-                this.loadConfigurationData(); // Конфиг (position_sync_interval и др.) — если изменился, подхватится сразу
+                // НЕ загружаем конфиг при активной вкладке «Конфигурация» — иначе перезаписываем форму и теряются несохранённые изменения
+                const configTab = document.getElementById('configTab');
+                if (!configTab || !configTab.classList.contains('active')) {
+                    this.loadConfigurationData();
+                }
                 this.loadDelistedCoins();    // Делистинговые монеты
                 this.loadAccountInfo();
                 

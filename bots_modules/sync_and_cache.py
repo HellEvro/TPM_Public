@@ -695,7 +695,7 @@ def load_system_config():
         # Автообновление UI всегда включено (настройка убрана из интерфейса)
         SystemConfig.AUTO_REFRESH_UI = True
 
-        logger.info("[SYSTEM_CONFIG] ✅ Конфигурация перезагружена из configs/bot_config.py")
+        logger.debug("[SYSTEM_CONFIG] Конфигурация перезагружена из configs/bot_config.py")
         return True
 
     except Exception as e:

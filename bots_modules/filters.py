@@ -3622,7 +3622,8 @@ def check_coin_maturity_stored_or_verify(symbol):
         maturity_result = check_coin_maturity_with_storage(symbol, candles)
         if maturity_result.get('is_mature'):
             return (True, None)
-        reason = maturity_result.get('reason', f'Недостаточно свечей: {len(candles)}/400')
+        min_req = maturity_result.get('details', {}).get('min_required', 400)
+        reason = maturity_result.get('reason', f'Недостаточно свечей: {len(candles)}/{min_req}')
         with _verified_immature_lock:
             _verified_immature_cache[symbol] = {'ts': time.time(), 'reason': reason}
         return (False, reason)

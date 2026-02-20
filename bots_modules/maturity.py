@@ -328,16 +328,20 @@ def check_coin_maturity_with_storage(symbol, candles):
     return maturity_result
 
 def check_coin_maturity(symbol, candles):
-    """Проверяет зрелость монеты для торговли"""
+    """Проверяет зрелость монеты для торговли.
+    
+    Критерий (БЕЗ лишних проверок): за min_candles свечей (из конфига) RSI хотя бы раз достигал:
+    - ≤ min_rsi_low (35) И ≥ max_rsi_high (65).
+    Только 3 условия: достаточно свечей + rsi_min ≤ 35 + rsi_max ≥ 65.
+    """
     try:
-        # Получаем настройки зрелости из конфигурации
+        # Получаем настройки из конфига (min_candles_for_maturity = 400 в конфиге)
         with bots_data_lock:
             config = bots_data.get('auto_bot_config', {})
         
-        min_candles = config.get('min_candles_for_maturity', MIN_CANDLES_FOR_MATURITY)
-        min_rsi_low = config.get('min_rsi_low', MIN_RSI_LOW)
-        max_rsi_high = config.get('max_rsi_high', MAX_RSI_HIGH)
-        # Убрали min_volatility - больше не проверяем волатильность
+        min_candles = config.get('min_candles_for_maturity') or MIN_CANDLES_FOR_MATURITY or 400
+        min_rsi_low = config.get('min_rsi_low') or MIN_RSI_LOW or 35
+        max_rsi_high = config.get('max_rsi_high') or MAX_RSI_HIGH or 65
         
         if not candles or len(candles) < min_candles:
             return {
@@ -349,14 +353,10 @@ def check_coin_maturity(symbol, candles):
                 }
             }
         
-        # ✅ ИСПРАВЛЕНИЕ: Берем только последние N свечей для анализа зрелости
-        # Это означает что монета должна иметь достаточно истории в РЕЦЕНТНОЕ время
+        # Берём ПОСЛЕДНИЕ min_candles свечей (из конфига) — именно за этот период проверяем RSI
         recent_candles = candles[-min_candles:] if len(candles) >= min_candles else candles
-        
-        # Извлекаем цены закрытия из последних свечей
         closes = [candle['close'] for candle in recent_candles]
         
-        # Рассчитываем историю RSI
         rsi_history = calculate_rsi_history(closes, 14)
         if not rsi_history:
             return {
@@ -365,32 +365,14 @@ def check_coin_maturity(symbol, candles):
                 'details': {}
             }
         
-        # Анализируем диапазон RSI
         rsi_min = min(rsi_history)
         rsi_max = max(rsi_history)
-        rsi_range = rsi_max - rsi_min
         
-        # Проверяем критерии зрелости (убрали проверку волатильности)
-        maturity_checks = {
-            'sufficient_candles': len(candles) >= min_candles,
-            'rsi_reached_low': rsi_min <= min_rsi_low,
-            'rsi_reached_high': rsi_max >= max_rsi_high
-        }
-        
-        # Убрали проверку волатильности - она была слишком строгой
-        volatility = 0  # Для совместимости с детальной информацией
-        
-        # Определяем общую зрелость
-        # 1) Классика: 400 свечей И RSI достигал ≤35 И ≥65 (полный цикл)
-        # 2) Мягкий режим: 400 свечей И диапазон RSI >= 30 (монета "живая", даже если только растёт/падает)
-        rsi_range_ok = rsi_range >= 30
-        is_mature = (
-            maturity_checks['sufficient_candles'] and
-            (maturity_checks['rsi_reached_low'] and maturity_checks['rsi_reached_high'] or rsi_range_ok)
-        )
-        
-        # Детальное логирование для отладки (отключено для уменьшения спама)
-        # logger.info(f"[MATURITY_DEBUG] {symbol}: свечи={maturity_checks['sufficient_candles']} ({len(candles)}/{min_candles}), RSI_low={maturity_checks['rsi_reached_low']} (min={rsi_min:.1f}<=>{min_rsi_low}), RSI_high={maturity_checks['rsi_reached_high']} (max={rsi_max:.1f}>={max_rsi_high}), зрелая={is_mature}")
+        # Единственные 3 критерия: достаточно свечей, RSI достигал ≤35 и ≥65
+        sufficient_candles = len(candles) >= min_candles
+        rsi_reached_low = rsi_min <= min_rsi_low
+        rsi_reached_high = rsi_max >= max_rsi_high
+        is_mature = sufficient_candles and rsi_reached_low and rsi_reached_high
         
         # Детали с текущим таймфреймом (зрелость считается по нему)
         details = {
@@ -403,16 +385,12 @@ def check_coin_maturity(symbol, candles):
             'timeframe': get_maturity_timeframe(),
         }
         
-        # Определяем причину незрелости (только для незрелых монет)
+        # Причина незрелости (только для незрелых монет)
         if not is_mature:
-            if not maturity_checks['sufficient_candles']:
+            if not sufficient_candles:
                 reason = f'Недостаточно свечей: {len(candles)}/{min_candles}'
-            elif not (maturity_checks['rsi_reached_low'] and maturity_checks['rsi_reached_high']) and not rsi_range_ok:
-                reason = (f'RSI не достигал полного цикла (min={rsi_min:.0f}, max={rsi_max:.0f}; '
-                         f'нужно ≤{min_rsi_low} и ≥{max_rsi_high}, либо диапазон RSI ≥30)')
             else:
-                failed = [k for k, v in maturity_checks.items() if not v]
-                reason = f'Не пройдены: {", ".join(failed)}'
+                reason = (f'RSI не достигал ≤{min_rsi_low} и ≥{max_rsi_high} (min={rsi_min:.0f}, max={rsi_max:.0f})')
         else:
             reason = None  # Для зрелых монет reason не нужен
         

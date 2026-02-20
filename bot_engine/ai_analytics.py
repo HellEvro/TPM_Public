@@ -301,7 +301,19 @@ def apply_analytics_to_entry_decision(
 
     full_ai_mode=False (скрипты/конфиг): аналитика может ЖЕСТКО блокировать вход (wr<35, pnl<-50, bad RSI).
     full_ai_mode=True (FullAI): аналитика только СНИЖАЕТ уверенность, никогда не блокирует — решение принимает модель.
+    При FullAI/Adaptive — неудачные монеты (WR 0%, PnL минус) НЕ блокируются, а тестируются виртуально.
     """
+    # При FullAI или FullAI Adaptive — не блокируем, только снижаем уверенность. Неудачные монеты тестируются виртуально.
+    if not full_ai_mode:
+        try:
+            from bots_modules.imports_and_globals import bots_data
+            ac = (bots_data.get('auto_bot_config') or {})
+            if ac.get('full_ai_control') or ac.get('fullai_adaptive_enabled'):
+                full_ai_mode = True
+            elif (ac.get('fullai_adaptive_virtual_success_count') or 0) > 0:
+                full_ai_mode = True
+        except Exception:
+            pass
     ctx = _get_cached_analytics_for_entry(symbol)
     if not ctx:
         return (base_allowed, base_confidence, base_reason)
