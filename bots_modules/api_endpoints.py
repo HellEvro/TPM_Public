@@ -5622,18 +5622,28 @@ def _get_closed_trades_for_table(symbol=None, from_ts=None, to_ts=None, limit=50
                 elif ep > 0 and t.get('direction', '').upper() == 'SHORT':
                     roi_pct = ((ep - xp) / ep) * 100
             reason = t.get('close_reason') or ''
-            if pnl >= 0:
-                conclusion = 'Прибыль. ' + (reason if reason else 'Закрыто по условию')
-                if reason and any(x in reason.upper() for x in ('TP', 'TAKE_PROFIT', 'ТЕЙК')):
-                    conclusion = 'Прибыль. Выход по TP — цель достигнута'
-                elif reason and any(x in reason.upper() for x in ('RSI', 'РСИ')):
-                    conclusion = 'Прибыль. Выход по RSI в плюсе — сигнал сработал'
-            else:
-                conclusion = 'Убыток. ' + (reason if reason else 'Закрыто по условию')
-                if reason and any(x in reason.upper() for x in ('SL', 'STOP', 'СЛОСС')):
-                    conclusion = 'Убыток. Выход по SL — стоп сработал, фиксация убытка'
-                elif reason and any(x in reason.upper() for x in ('RSI', 'РСИ')):
-                    conclusion = 'Убыток. Выход по RSI в минусе — возможно ранний выход'
+            # ИИ-анализатор выводов: детальный, разнообразный анализ по сделке
+            try:
+                from bot_engine.ai.trade_conclusion_analyzer import analyze_trade_conclusion
+                trade_for_analysis = {
+                    **t,
+                    'roi': roi_pct if roi_pct is not None else t.get('roi'),
+                    'pnl': pnl,
+                }
+                conclusion = analyze_trade_conclusion(trade_for_analysis)
+            except Exception:
+                if pnl >= 0:
+                    conclusion = 'Прибыль. ' + (reason if reason else 'Закрыто по условию')
+                    if reason and any(x in reason.upper() for x in ('TP', 'TAKE_PROFIT', 'ТЕЙК')):
+                        conclusion = 'Прибыль. Выход по TP — цель достигнута'
+                    elif reason and any(x in reason.upper() for x in ('RSI', 'РСИ')):
+                        conclusion = 'Прибыль. Выход по RSI в плюсе — сигнал сработал'
+                else:
+                    conclusion = 'Убыток. ' + (reason if reason else 'Закрыто по условию')
+                    if reason and any(x in reason.upper() for x in ('SL', 'STOP', 'СЛОСС')):
+                        conclusion = 'Убыток. Выход по SL — стоп сработал, фиксация убытка'
+                    elif reason and any(x in reason.upper() for x in ('RSI', 'РСИ')):
+                        conclusion = 'Убыток. Выход по RSI в минусе — возможно ранний выход'
             ts = t.get('exit_timestamp') or t.get('entry_timestamp')
             ts_iso = t.get('exit_time') or t.get('entry_time') or ''
             if ts and not ts_iso:
