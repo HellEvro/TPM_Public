@@ -1,0 +1,835 @@
+From 5cd583840efb161e0a917a23342bacf39ebe92d1 Mon Sep 17 00:00:00 2001
+From: Evro <esrodchenkov@gmail.com>
+Date: Fri, 20 Feb 2026 01:25:44 +0300
+Subject: [PATCH 1/6] =?utf-8?q?=D0=95=D0=B4=D0=B8=D0=BD=D0=B0=D1=8F=20?=
+ =?utf-8?q?=D0=B0=D0=BD=D0=B0=D0=BB=D0=B8=D1=82=D0=B8=D0=BA=D0=B0=20=D0=B4?=
+ =?utf-8?q?=D0=BB=D1=8F=20=D0=98=D0=98:=20ai=5Fanalytics=5Fevents=20=D0=B2?=
+ =?utf-8?q?=20ai=5Fdata.db,=20=D1=81=D0=B1=D0=BE=D1=80=20=D0=BF=D1=80?=
+ =?utf-8?q?=D0=B8=20=D0=BA=D0=B0=D0=B6=D0=B4=D0=BE=D0=B9=20=D1=81=D0=B4?=
+ =?utf-8?q?=D0=B5=D0=BB=D0=BA=D0=B5/=D1=80=D0=B5=D1=88=D0=B5=D0=BD=D0=B8?=
+ =?utf-8?q?=D0=B8,=20API=20ai-context=20=D0=B8=20ai=5Fsummary=20=D0=B2=20?=
+ =?utf-8?q?=D0=BE=D1=82=D1=87=D1=91=D1=82=D0=B5?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+---
+ bot_engine/ai/ai_database.py       |  20 +++
+ bot_engine/ai_analytics.py         | 272 +++++++++++++++++++++++++++++
+ bot_engine/bots_database.py        |  41 ++++-
+ bot_engine/fullai_analytics.py     |  26 +++
+ bot_engine/trading_analytics.py    |  75 +++++++-
+ bots_modules/api_endpoints.py      |  79 +++++++++
+ bots_modules/bot_class.py          |  32 ++++
+ docs/CHECKLIST_ANALYTICS.md        |   4 +
+ static/js/managers/bots_manager.js |  42 ++++-
+ templates/pages/bots.html          |   5 +-
+ 10 files changed, 586 insertions(+), 10 deletions(-)
+ create mode 100644 bot_engine/ai_analytics.py
+
+diff --git a/bot_engine/ai/ai_database.py b/bot_engine/ai/ai_database.py
+index f6861398..b411c9e4 100644
+--- a/bot_engine/ai/ai_database.py
++++ b/bot_engine/ai/ai_database.py
+@@ -1418,6 +1418,26 @@ class AIDatabase:
+             cursor.execute("CREATE INDEX IF NOT EXISTS idx_strategy_analysis_symbol ON strategy_analysis(symbol)")
+             cursor.execute("CREATE INDEX IF NOT EXISTS idx_strategy_analysis_created_at ON strategy_analysis(created_at)")
+             
++            # ==================== ТАБЛИЦА: АНАЛИТИКА ДЛЯ ИИ (единый лог событий) ====================
++            # Собирается при каждой сделке, решении ИИ, действии бота. Источник данных для обучения и контекста.
++            cursor.execute("""
++                CREATE TABLE IF NOT EXISTS ai_analytics_events (
++                    id INTEGER PRIMARY KEY AUTOINCREMENT,
++                    ts REAL NOT NULL,
++                    ts_iso TEXT,
++                    event_type TEXT NOT NULL,
++                    symbol TEXT,
++                    direction TEXT,
++                    source TEXT,
++                    reason TEXT,
++                    data_json TEXT,
++                    created_at TEXT
++                )
++            """)
++            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_analytics_ts ON ai_analytics_events(ts)")
++            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_analytics_event_type ON ai_analytics_events(event_type)")
++            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_analytics_symbol ON ai_analytics_events(symbol)")
++            
+             # ==================== ТАБЛИЦА: ОПТИМИЗИРОВАННЫЕ ПАРАМЕТРЫ (НОРМАЛИЗОВАННАЯ) ====================
+             cursor.execute("""
+                 CREATE TABLE IF NOT EXISTS optimized_params (
+diff --git a/bot_engine/ai_analytics.py b/bot_engine/ai_analytics.py
+new file mode 100644
+index 00000000..ae61b017
+--- /dev/null
++++ b/bot_engine/ai_analytics.py
+@@ -0,0 +1,272 @@
++# -*- coding: utf-8 -*-
++"""
++Единая аналитика для ИИ: сбор событий при каждой сделке, решении, действии бота.
++
++События пишутся в ai_data.db -> ai_analytics_events.
++ИИ использует эти данные для обучения на ошибках и принятия решений.
++
++Типы событий (event_type):
++- TRADE_OPEN, TRADE_CLOSE — открытие/закрытие позиции
++- AI_DECISION_ENTER, AI_DECISION_EXIT, AI_DECISION_HOLD, AI_DECISION_REFUSE — решение ИИ
++- BOT_ACTION — действие бота (открыл, закрыл по SL/TP/RSI и т.д.)
++- ENTRY_BLOCKED, ENTRY_REFUSED — вход заблокирован/отклонён
++- PARAMS_CHANGE, ROUND_SUCCESS, VIRTUAL_OPEN, VIRTUAL_CLOSE — события FullAI
++"""
++from __future__ import annotations
++
++import json
++import logging
++import time
++from datetime import datetime, timezone
++from typing import Any, Dict, List, Optional
++
++logger = logging.getLogger("AI.Analytics")
++
++_EVENT_TYPES = frozenset({
++    "TRADE_OPEN", "TRADE_CLOSE",
++    "AI_DECISION_ENTER", "AI_DECISION_EXIT", "AI_DECISION_HOLD", "AI_DECISION_REFUSE",
++    "BOT_ACTION", "ENTRY_BLOCKED", "ENTRY_REFUSED",
++    "PARAMS_CHANGE", "ROUND_SUCCESS", "VIRTUAL_OPEN", "VIRTUAL_CLOSE",
++    "REAL_OPEN", "REAL_CLOSE", "EXIT_HOLD",
++})
++
++
++def _get_ai_db():
++    try:
++        from bot_engine.ai.ai_database import get_ai_database
++        return get_ai_database()
++    except Exception as e:
++        logger.debug("ai_analytics: нет доступа к AI БД: %s", e)
++        return None
++
++
++def log_event(
++    event_type: str,
++    symbol: Optional[str] = None,
++    direction: Optional[str] = None,
++    source: Optional[str] = None,
++    reason: Optional[str] = None,
++    data: Optional[Dict[str, Any]] = None,
++) -> None:
++    """
++    Логирует событие аналитики для ИИ. Вызывается при каждой сделке, решении, действии.
++    """
++    ts = time.time()
++    ts_iso = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
++    data_json = json.dumps(data, ensure_ascii=False) if data else None
++    db = _get_ai_db()
++    if not db:
++        return
++    try:
++        with db._get_connection() as conn:
++            cursor = conn.cursor()
++            cursor.execute(
++                """INSERT INTO ai_analytics_events (ts, ts_iso, event_type, symbol, direction, source, reason, data_json, created_at)
++                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
++                (ts, ts_iso, event_type, (symbol or "").upper() if symbol else None,
++                 direction, source, reason, data_json, ts_iso),
++            )
++            conn.commit()
++    except Exception as e:
++        logger.debug("ai_analytics log_event: %s", e)
++
++
++def log_trade_open(
++    symbol: str,
++    direction: str,
++    entry_price: float,
++    position_size_usdt: Optional[float] = None,
++    entry_rsi: Optional[float] = None,
++    entry_trend: Optional[str] = None,
++    source: str = "BOT",
++    **extra,
++) -> None:
++    """Логирует открытие позиции."""
++    log_event(
++        "TRADE_OPEN",
++        symbol=symbol,
++        direction=direction,
++        source=source,
++        data={
++            "entry_price": entry_price,
++            "position_size_usdt": position_size_usdt,
++            "entry_rsi": entry_rsi,
++            "entry_trend": entry_trend,
++            **extra,
++        },
++    )
++
++
++def log_trade_close(
++    symbol: str,
++    direction: str,
++    entry_price: float,
++    exit_price: float,
++    pnl: float,
++    reason: Optional[str] = None,
++    entry_rsi: Optional[float] = None,
++    exit_rsi: Optional[float] = None,
++    source: str = "BOT",
++    **extra,
++) -> None:
++    """Логирует закрытие позиции."""
++    log_event(
++        "TRADE_CLOSE",
++        symbol=symbol,
++        direction=direction,
++        source=source,
++        reason=reason,
++        data={
++            "entry_price": entry_price,
++            "exit_price": exit_price,
++            "pnl": pnl,
++            "entry_rsi": entry_rsi,
++            "exit_rsi": exit_rsi,
++            **extra,
++        },
++    )
++
++
++def log_ai_decision(
++    event_type: str,
++    symbol: str,
++    direction: Optional[str],
++    decision: str,
++    reason: Optional[str] = None,
++    confidence: Optional[float] = None,
++    **extra,
++) -> None:
++    """Логирует решение ИИ (ENTER/EXIT/HOLD/REFUSE)."""
++    log_event(
++        event_type,
++        symbol=symbol,
++        direction=direction,
++        source="AI",
++        reason=reason,
++        data={"decision": decision, "confidence": confidence, **extra},
++    )
++
++
++def log_bot_action(
++    symbol: str,
++    action: str,
++    direction: Optional[str] = None,
++    reason: Optional[str] = None,
++    **extra,
++) -> None:
++    """Логирует действие бота (открыл, закрыл по SL/TP/RSI и т.д.)."""
++    log_event(
++        "BOT_ACTION",
++        symbol=symbol,
++        direction=direction,
++        source="BOT",
++        reason=reason,
++        data={"action": action, **extra},
++    )
++
++
++def get_events(
++    symbol: Optional[str] = None,
++    event_type: Optional[str] = None,
++    from_ts: Optional[float] = None,
++    to_ts: Optional[float] = None,
++    limit: int = 500,
++) -> List[Dict[str, Any]]:
++    """Возвращает события аналитики для ИИ."""
++    db = _get_ai_db()
++    if not db:
++        return []
++    conditions = []
++    params: List[Any] = []
++    if symbol:
++        conditions.append("symbol = ?")
++        params.append(symbol.upper())
++    if event_type:
++        conditions.append("event_type = ?")
++        params.append(event_type)
++    if from_ts is not None:
++        conditions.append("ts >= ?")
++        params.append(from_ts)
++    if to_ts is not None:
++        conditions.append("ts <= ?")
++        params.append(to_ts)
++    where = (" AND " + " AND ".join(conditions)) if conditions else ""
++    params.append(limit)
++    try:
++        with db._get_connection() as conn:
++            conn.row_factory = lambda c, r: dict(zip([col[0] for col in c.description], r))
++            cursor = conn.cursor()
++            rows = cursor.execute(
++                f"SELECT * FROM ai_analytics_events{where} ORDER BY ts DESC LIMIT ?",
++                params,
++            ).fetchall()
++            out = []
++            for r in rows:
++                rec = dict(r)
++                if rec.get("data_json"):
++                    try:
++                        rec["data"] = json.loads(rec["data_json"])
++                    except Exception:
++                        pass
++                if "data_json" in rec:
++                    del rec["data_json"]
++                out.append(rec)
++            return out
++    except Exception as e:
++        logger.debug("ai_analytics get_events: %s", e)
++        return []
++
++
++def get_ai_analytics_context(
++    symbol: Optional[str] = None,
++    hours_back: float = 24.0,
++    include_report: bool = True,
++) -> Dict[str, Any]:
++    """
++    Возвращает контекст аналитики для ИИ: сводка, последние события, проблемы и рекомендации.
++    Используется ИИ при принятии решений и для обучения на ошибках.
++    include_report=False — только события из ai_analytics_events (быстро, без вызова биржи).
++    """
++    import time as _time
++    to_ts = _time.time()
++    from_ts = to_ts - hours_back * 3600
++    events = get_events(symbol=symbol, from_ts=from_ts, to_ts=to_ts, limit=200)
++    result: Dict[str, Any] = {
++        "events_count": len(events),
++        "events_sample": events[:50],
++        "from_ts": from_ts,
++        "to_ts": to_ts,
++    }
++    if include_report:
++        try:
++            from bot_engine.trading_analytics import run_full_analytics, get_analytics_for_ai
++            exchange_instance = None
++            try:
++                from app.config import EXCHANGES, ACTIVE_EXCHANGE
++                from exchanges.exchange_factory import ExchangeFactory
++                cfg = EXCHANGES.get(ACTIVE_EXCHANGE, {})
++                if cfg and cfg.get("enabled", True) and cfg.get("api_key") and cfg.get("api_secret"):
++                    exchange_instance = ExchangeFactory.create_exchange(
++                        ACTIVE_EXCHANGE,
++                        cfg.get("api_key"),
++                        cfg.get("api_secret"),
++                        cfg.get("passphrase"),
++                    )
++            except Exception:
++                pass
++            report = run_full_analytics(
++                load_bot_trades_from_db=True,
++                load_exchange_from_api=exchange_instance is not None,
++                exchange_instance=exchange_instance,
++                exchange_period="all",
++            )
++            ai_block = get_analytics_for_ai(report)
++            result["problems"] = ai_block.get("problems", [])
++            result["recommendations"] = ai_block.get("recommendations", [])
++            result["metrics"] = ai_block.get("metrics", {})
++        except Exception as e:
++            logger.debug("get_ai_analytics_context: report %s", e)
++            result["problems"] = []
++            result["recommendations"] = []
++            result["metrics"] = {}
++    return result
+diff --git a/bot_engine/bots_database.py b/bot_engine/bots_database.py
+index 6e34b119..2722954d 100644
+--- a/bot_engine/bots_database.py
++++ b/bot_engine/bots_database.py
+@@ -6137,7 +6137,46 @@ class BotsDatabase:
+                 logger.error(f"❌ Ошибка сохранения истории сделки: {e}")
+                 return None
+         return None
+-    
++
++    def update_bot_trade_from_exchange(
++        self,
++        trade_id: int,
++        entry_price: float,
++        exit_price: float,
++        pnl: float,
++        position_size_usdt: Optional[float] = None,
++    ) -> bool:
++        """Обновляет сделку в bot_trades_history данными с биржи (источник истины по ценам и PnL)."""
++        try:
++            with self._get_connection() as conn:
++                cursor = conn.cursor()
++                roi = None
++                if position_size_usdt and position_size_usdt > 0 and entry_price and entry_price > 0:
++                    roi = (pnl / position_size_usdt) * 100
++                cursor.execute(
++                    """UPDATE bot_trades_history SET
++                        entry_price = ?, exit_price = ?, pnl = ?,
++                        roi = COALESCE(?, roi), is_successful = ?,
++                        position_size_usdt = COALESCE(?, position_size_usdt),
++                        updated_at = ?
++                    WHERE id = ?""",
++                    (
++                        entry_price,
++                        exit_price,
++                        pnl,
++                        roi,
++                        1 if pnl > 0 else 0,
++                        position_size_usdt,
++                        datetime.now().isoformat(),
++                        trade_id,
++                    ),
++                )
++                conn.commit()
++                return cursor.rowcount > 0
++        except Exception as e:
++            logger.warning("Ошибка обновления сделки из биржи (id=%s): %s", trade_id, e)
++            return False
++
+     def get_bot_trades_history(self, 
+                               bot_id: Optional[str] = None,
+                               symbol: Optional[str] = None,
+diff --git a/bot_engine/fullai_analytics.py b/bot_engine/fullai_analytics.py
+index 9c767c27..4251b0c1 100644
+--- a/bot_engine/fullai_analytics.py
++++ b/bot_engine/fullai_analytics.py
+@@ -132,6 +132,32 @@ def append_event(
+     except Exception as e:
+         logger.warning("FullAI analytics append_event (путь %s): %s", path, e)
+ 
++    # Дублируем в единую аналитику для ИИ (ai_data.db)
++    try:
++        from bot_engine.ai_analytics import log_event as _log_ai
++        _ev_map = {
++            EVENT_REAL_OPEN: "REAL_OPEN",
++            EVENT_VIRTUAL_OPEN: "VIRTUAL_OPEN",
++            EVENT_REAL_CLOSE: "REAL_CLOSE",
++            EVENT_VIRTUAL_CLOSE: "VIRTUAL_CLOSE",
++            EVENT_BLOCKED: "ENTRY_BLOCKED",
++            EVENT_REFUSED: "AI_DECISION_REFUSE",
++            EVENT_PARAMS_CHANGE: "PARAMS_CHANGE",
++            EVENT_ROUND_SUCCESS: "ROUND_SUCCESS",
++            EVENT_EXIT_HOLD: "EXIT_HOLD",
++        }
++        ai_type = _ev_map.get(event_type, event_type.upper())
++        _data = dict(extra or {})
++        if pnl_percent is not None:
++            _data["pnl_percent"] = pnl_percent
++        if is_virtual is not None:
++            _data["is_virtual"] = is_virtual
++        if confidence is not None:
++            _data["confidence"] = confidence
++        _log_ai(ai_type, symbol=symbol or None, direction=direction, source="FULLAI", reason=reason, data=_data if _data else None)
++    except Exception:
++        pass
++
+ 
+ def get_events(
+     symbol: Optional[str] = None,
+diff --git a/bot_engine/trading_analytics.py b/bot_engine/trading_analytics.py
+index e1d6d734..9b79e172 100644
+--- a/bot_engine/trading_analytics.py
++++ b/bot_engine/trading_analytics.py
+@@ -264,6 +264,9 @@ def reconcile_trades(
+                 "pnl": ex.pnl,
+                 "entry_price": ex.entry_price,
+                 "exit_price": ex.exit_price,
++                "position_size_usdt": ex.position_size_usdt,
++                "direction": ex.direction,
++                "raw": ex.raw,
+             })
+             continue
+ 
+@@ -282,9 +285,15 @@ def reconcile_trades(
+             "symbol": ex.symbol,
+             "exit_timestamp": ex.exit_timestamp,
+             "pnl": ex.pnl,
++            "entry_price": ex.entry_price,
++            "exit_price": ex.exit_price,
++            "position_size_usdt": ex.position_size_usdt,
++            "direction": ex.direction,
+             "bot_id": best_bot.bot_id,
++            "bot_db_id": best_bot.raw_id,
+             "close_reason": best_bot.close_reason,
+             "decision_source": best_bot.decision_source,
++            "bot_raw": best_bot.raw,
+         })
+ 
+     for bot in bot_summaries:
+@@ -297,6 +306,7 @@ def reconcile_trades(
+             "bot_id": bot.bot_id,
+             "close_reason": bot.close_reason,
+             "decision_source": bot.decision_source,
++            "bot": bot,
+         })
+ 
+     return {
+@@ -764,6 +774,60 @@ def analyze_exchange_trades(
+     }
+ 
+ 
++def _build_merged_trade_summaries(
++    reconciliation: Dict[str, Any],
++    ex_summaries: List[TradeSummary],
++    bot_summaries: List[TradeSummary],
++) -> List[TradeSummary]:
++    """
++    Строит объединённый список сделок: для совпавших — данные биржи (цены, PnL),
++    для остальных — данные бота или биржи. Источник истины по ценам и PnL — биржа.
++    """
++    merged: List[TradeSummary] = []
++    # Совпавшие: берём цены и PnL с биржи, close_reason/decision_source/entry_rsi/entry_trend — из бота
++    for m in reconciliation.get("matched", []):
++        raw = m.get("bot_raw") or {}
++        merged.append(
++            TradeSummary(
++                symbol=m["symbol"],
++                exit_timestamp=m["exit_timestamp"],
++                pnl=m["pnl"],
++                entry_price=m.get("entry_price") or 0.0,
++                exit_price=m.get("exit_price") or 0.0,
++                position_size_usdt=m.get("position_size_usdt"),
++                direction=m.get("direction") or "LONG",
++                source="exchange",
++                bot_id=m.get("bot_id"),
++                close_reason=m.get("close_reason"),
++                decision_source=m.get("decision_source"),
++                raw_id=m.get("bot_id"),
++                raw=raw,
++            )
++        )
++    # Только на бирже (ручные и т.д.)
++    for o in reconciliation.get("only_on_exchange", []):
++        raw = o.get("raw") or {}
++        merged.append(
++            TradeSummary(
++                symbol=o["symbol"],
++                exit_timestamp=o["exit_timestamp"],
++                pnl=o["pnl"],
++                entry_price=o.get("entry_price") or 0.0,
++                exit_price=o.get("exit_price") or 0.0,
++                position_size_usdt=o.get("position_size_usdt"),
++                direction=o.get("direction") or "LONG",
++                source="exchange",
++                raw=raw,
++            )
++        )
++    # Только в БД ботов (нет на бирже)
++    for o in reconciliation.get("only_in_bots", []):
++        bot = o.get("bot")
++        if bot is not None:
++            merged.append(bot)
++    return merged
++
++
+ def run_full_analytics(
+     exchange_trades: Optional[List[Dict[str, Any]]] = None,
+     bot_trades: Optional[List[Dict[str, Any]]] = None,
+@@ -826,12 +890,19 @@ def run_full_analytics(
+     bot_summaries = bot_trades_to_summaries(bot_trades)
+ 
+     exchange_analytics = analyze_exchange_trades(ex_summaries) if ex_summaries else {}
+-    bot_analytics = analyze_bot_trades(bot_summaries) if bot_summaries else {}
+-
+     reconciliation = {}
+     if ex_summaries and bot_summaries:
+         reconciliation = reconcile_trades(ex_summaries, bot_summaries)
+ 
++    # Если была сверка с биржей — используем объединённые данные (цены и PnL с биржи для совпавших)
++    summaries_for_analytics = bot_summaries
++    if reconciliation:
++        merged = _build_merged_trade_summaries(reconciliation, ex_summaries, bot_summaries)
++        if merged:
++            summaries_for_analytics = merged
++
++    bot_analytics = analyze_bot_trades(summaries_for_analytics) if summaries_for_analytics else {}
++
+     summary = {
+         "exchange_trades_count": len(ex_summaries),
+         "bot_trades_count": len(bot_summaries),
+diff --git a/bots_modules/api_endpoints.py b/bots_modules/api_endpoints.py
+index 78c7700c..07cdafce 100644
+--- a/bots_modules/api_endpoints.py
++++ b/bots_modules/api_endpoints.py
+@@ -5265,6 +5265,68 @@ def create_demo_history():
+         return jsonify({'success': False, 'error': str(e)}), 500
+ 
+ 
++@bots_app.route('/api/bots/analytics/sync-from-exchange', methods=['POST'])
++def sync_trades_from_exchange():
++    """Синхронизирует bot_trades_history с данными биржи: обновляет цены и PnL для совпавших сделок."""
++    try:
++        from bot_engine.trading_analytics import (
++            run_full_analytics,
++            exchange_trades_to_summaries,
++            bot_trades_to_summaries,
++            reconcile_trades,
++        )
++        from app.config import EXCHANGES, ACTIVE_EXCHANGE
++        from exchanges.exchange_factory import ExchangeFactory
++        from bot_engine.bots_database import get_bots_database
++
++        exchange_name = ACTIVE_EXCHANGE
++        cfg = EXCHANGES.get(exchange_name, {})
++        if not cfg or not cfg.get('enabled', True):
++            return jsonify({'success': False, 'error': f'Биржа {exchange_name} не настроена'}), 400
++        api_key = cfg.get('api_key')
++        api_secret = cfg.get('api_secret')
++        passphrase = cfg.get('passphrase')
++        if not api_key or not api_secret:
++            return jsonify({'success': False, 'error': 'API ключи не заполнены'}), 400
++
++        exchange = ExchangeFactory.create_exchange(exchange_name, api_key, api_secret, passphrase)
++        exchange_trades = exchange.get_closed_pnl(sort_by='time', period='all') or []
++        db = get_bots_database()
++        bot_trades = db.get_bot_trades_history(status='CLOSED', limit=50000)
++
++        if not bot_trades:
++            return jsonify({'success': True, 'updated': 0, 'message': 'Нет сделок в БД для обновления'})
++
++        ex_summaries = exchange_trades_to_summaries(exchange_trades)
++        bot_summaries = bot_trades_to_summaries(bot_trades)
++        if not ex_summaries:
++            return jsonify({'success': True, 'updated': 0, 'message': 'Биржа не вернула сделок'})
++
++        reconciliation = reconcile_trades(ex_summaries, bot_summaries)
++        updated = 0
++        for m in reconciliation.get('matched', []):
++            db_id = m.get('bot_db_id')
++            if db_id is None:
++                continue
++            try:
++                db_id = int(db_id)
++            except (TypeError, ValueError):
++                continue
++            ok = db.update_bot_trade_from_exchange(
++                trade_id=db_id,
++                entry_price=float(m.get('entry_price') or 0),
++                exit_price=float(m.get('exit_price') or 0),
++                pnl=float(m.get('pnl') or 0),
++                position_size_usdt=float(m['position_size_usdt']) if m.get('position_size_usdt') is not None else None,
++            )
++            if ok:
++                updated += 1
++        return jsonify({'success': True, 'updated': updated, 'matched': len(reconciliation.get('matched', []))})
++    except Exception as e:
++        logger.exception('Ошибка синхронизации с биржей: %s', e)
++        return jsonify({'success': False, 'error': str(e)}), 500
++
++
+ @bots_app.route('/api/bots/analytics', methods=['GET'])
+ def get_trading_analytics():
+     """Запуск полной аналитики торговли (сделки ботов и опционально биржи)."""
+@@ -5289,6 +5351,7 @@ def get_trading_analytics():
+                         )
+             except Exception as ex:
+                 logger.warning("Не удалось подключить биржу для аналитики: %s", ex)
++        from bot_engine.trading_analytics import get_analytics_for_ai
+         report = run_full_analytics(
+             load_bot_trades_from_db=True,
+             load_exchange_from_api=include_exchange,
+@@ -5296,6 +5359,7 @@ def get_trading_analytics():
+             exchange_period='all',
+             bots_db_limit=limit,
+         )
++        report['ai_summary'] = get_analytics_for_ai(report)
+         return jsonify({'success': True, 'report': report})
+     except Exception as e:
+         logger.exception("Ошибка аналитики торговли: %s", e)
+@@ -5324,6 +5388,21 @@ def get_rsi_audit():
+         return jsonify({'success': False, 'error': str(e)}), 500
+ 
+ 
++@bots_app.route('/api/bots/analytics/ai-context', methods=['GET'])
++def get_ai_analytics_context():
++    """Контекст аналитики для ИИ: проблемы, рекомендации, метрики, последние события (для обучения и решений)."""
++    try:
++        from bot_engine.ai_analytics import get_ai_analytics_context as _get_context
++        symbol = request.args.get('symbol', '').strip().upper() or None
++        hours = float(request.args.get('hours', 24))
++        include_report = request.args.get('include_report', '1').strip().lower() in ('1', 'true', 'yes')
++        ctx = _get_context(symbol=symbol, hours_back=hours, include_report=include_report)
++        return jsonify({'success': True, 'context': ctx})
++    except Exception as e:
++        logger.exception("Ошибка получения контекста аналитики для ИИ: %s", e)
++        return jsonify({'success': False, 'error': str(e)}), 500
++
++
+ @bots_app.route('/api/bots/analytics/fullai', methods=['GET'])
+ def get_fullai_analytics():
+     """Аналитика FullAI: события и сводка из data/fullai_analytics.db + винрейт/PnL по сделкам бота из bots_data.db."""
+diff --git a/bots_modules/bot_class.py b/bots_modules/bot_class.py
+index e12e5a4a..38eaf2a4 100644
+--- a/bots_modules/bot_class.py
++++ b/bots_modules/bot_class.py
+@@ -383,6 +383,21 @@ class NewTradingBot:
+                 trend=trend_value,
+                 is_simulated=False  # КРИТИЧНО: реальные боты - это НЕ симуляция!
+             )
++            # Единая аналитика для ИИ: каждое открытие позиции
++            try:
++                from bot_engine.ai_analytics import log_trade_open
++                position_usdt = size * price if size and price else getattr(self, 'volume_value', None)
++                log_trade_open(
++                    symbol=self.symbol,
++                    direction=direction,
++                    entry_price=price,
++                    position_size_usdt=position_usdt,
++                    entry_rsi=rsi_value,
++                    entry_trend=str(trend_value) if trend_value else None,
++                    source=decision_source or "BOT",
++                )
++            except Exception as _ai_open_err:
++                logger.debug(f"[NEW_BOT_{self.symbol}] ai_analytics log_trade_open: {_ai_open_err}")
+             # Помечаем, что логирование выполнено (для предотвращения дублирования)
+             self._position_logged = True
+         except Exception as log_error:
+@@ -2825,6 +2840,23 @@ class NewTradingBot:
+             except Exception as bots_db_error:
+                 logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка сохранения истории в bots_data.db: {bots_db_error}")
+             
++            # Единая аналитика для ИИ: каждое закрытие позиции
++            try:
++                from bot_engine.ai_analytics import log_trade_close
++                log_trade_close(
++                    symbol=self.symbol,
++                    direction=self.position_side,
++                    entry_price=self.entry_price or 0,
++                    exit_price=exit_price or 0,
++                    pnl=pnl,
++                    reason=reason,
++                    entry_rsi=entry_rsi,
++                    exit_rsi=exit_rsi,
++                    source="BOT",
++                )
++            except Exception as _ai_anal_err:
++                logger.debug(f"[NEW_BOT_{self.symbol}] ai_analytics log_trade_close: {_ai_anal_err}")
++
+             # FullAI: записываем каждое закрытие в аналитику (FullAI/RSI/SL/безубыток/ручное)
+             try:
+                 from bots_modules.imports_and_globals import bots_data, bots_data_lock
+diff --git a/docs/CHECKLIST_ANALYTICS.md b/docs/CHECKLIST_ANALYTICS.md
+index eb03503c..5e0e872e 100644
+--- a/docs/CHECKLIST_ANALYTICS.md
++++ b/docs/CHECKLIST_ANALYTICS.md
+@@ -15,5 +15,9 @@
+ | 11 | Для рыночных: совпадение желаемого и фактического | ✅ | При Market тип виден; проскальзывание для Limit считается по limit vs fact |
+ | 12 | Задержки исполнения заявок | ✅ | delay_sec в extra, колонка «Задержка с» в UI |
+ | 13 | Можно проводить аналитику, данные не ложные | ✅ | Винрейт по bots_data.db, подписи к блокам |
++| 14 | Единая аналитика для ИИ в БД | ✅ | ai_data.db → ai_analytics_events, bot_engine/ai_analytics.py |
++| 15 | Сбор при каждой сделке/решении/действии | ✅ | log_trade_open, log_trade_close в bot_class; FullAI → ai_analytics через append_event |
++| 16 | Контекст для ИИ (проблемы, рекомендации) | ✅ | get_ai_analytics_context(), API /api/bots/analytics/ai-context |
++| 17 | AI summary в ответе аналитики | ✅ | report.ai_summary в GET /api/bots/analytics |
+ 
+ Легенда: ✅ сделано, 🔄 в работе/добавлено в этой задаче.
+diff --git a/static/js/managers/bots_manager.js b/static/js/managers/bots_manager.js
+index 79305b18..90e64ff4 100644
+--- a/static/js/managers/bots_manager.js
++++ b/static/js/managers/bots_manager.js
+@@ -10854,6 +10854,11 @@ class BotsManager {
+             runBtn.setAttribute('data-analytics-bound', 'true');
+             runBtn.addEventListener('click', () => this.runTradingAnalytics());
+         }
++        const syncBtn = document.getElementById('analyticsSyncExchangeBtn');
++        if (syncBtn && !syncBtn.hasAttribute('data-sync-bound')) {
++            syncBtn.setAttribute('data-sync-bound', 'true');
++            syncBtn.addEventListener('click', () => this.syncTradesFromExchange());
++        }
+         const rsiAuditBtn = document.getElementById('rsiAuditRunBtn');
+         if (rsiAuditBtn && !rsiAuditBtn.hasAttribute('data-rsi-audit-bound')) {
+             rsiAuditBtn.setAttribute('data-rsi-audit-bound', 'true');
+@@ -10927,7 +10932,11 @@ class BotsManager {
+         const totalInDb = (meta && meta.total_events) != null ? meta.total_events : null;
+         const dbPath = (meta && meta.db_path) || '';
+         const s = summary;
+-        const winRate = s.real_total > 0 ? ((s.real_wins / s.real_total) * 100).toFixed(1) : '—';
++        // Реальные сделки: используем bots_data.db (истинный источник), если есть — иначе fullai_analytics
++        const realClose = (botStats != null) ? (botStats.total || 0) : (s.real_close || 0);
++        const realWins = (botStats != null) ? (botStats.wins || 0) : (s.real_wins || 0);
++        const realLosses = (botStats != null) ? (botStats.losses || 0) : (s.real_losses || 0);
++        const winRate = (botStats != null && botStats.win_rate_pct != null) ? String(botStats.win_rate_pct) : (s.real_total > 0 ? ((s.real_wins / s.real_total) * 100).toFixed(1) : '—');
+         const virtualRate = s.virtual_total > 0 ? ((s.virtual_ok / s.virtual_total) * 100).toFixed(1) : '—';
+         let html = '';
+         if (botStats && (botStats.total > 0 || botStats.total_pnl_usdt !== 0)) {
+@@ -10941,9 +10950,9 @@ class BotsManager {
+         let cards = '<div class="fullai-cards">';
+         cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные входы</span><span class="fullai-card-value">' + (s.real_open || 0) + '</span></div>';
+         cards += '<div class="fullai-card"><span class="fullai-card-label">Виртуальные входы</span><span class="fullai-card-value">' + (s.virtual_open || 0) + '</span></div>';
+-        cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные закрытия</span><span class="fullai-card-value">' + (s.real_close || 0) + '</span></div>';
+-        cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные в плюс</span><span class="fullai-card-value positive">' + (s.real_wins || 0) + '</span></div>';
+-        cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные в минус</span><span class="fullai-card-value negative">' + (s.real_losses || 0) + '</span></div>';
++        cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные закрытия</span><span class="fullai-card-value">' + realClose + '</span></div>';
++        cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные в плюс</span><span class="fullai-card-value positive">' + realWins + '</span></div>';
++        cards += '<div class="fullai-card"><span class="fullai-card-label">Реальные в минус</span><span class="fullai-card-value negative">' + realLosses + '</span></div>';
+         cards += '<div class="fullai-card"><span class="fullai-card-label">Win rate (реал.)</span><span class="fullai-card-value">' + winRate + '%</span></div>';
+         cards += '<div class="fullai-card"><span class="fullai-card-label">Вирт. закрытий удачных</span><span class="fullai-card-value">' + (s.virtual_ok || 0) + '</span></div>';
+         cards += '<div class="fullai-card"><span class="fullai-card-label">Вирт. закрытий неудачных</span><span class="fullai-card-value">' + (s.virtual_fail || 0) + '</span></div>';
+@@ -10954,7 +10963,7 @@ class BotsManager {
+         cards += '<div class="fullai-card"><span class="fullai-card-label">Раундов → реал.</span><span class="fullai-card-value">' + (s.round_success || 0) + '</span></div>';
+         cards += '<div class="fullai-card"><span class="fullai-card-label">Решений держать</span><span class="fullai-card-value">' + (s.exit_hold || 0) + '</span></div>';
+         cards += '</div>';
+-        html += '<p class="fullai-events-note" style="font-size:0.85rem;color:var(--text-muted,#888);margin-top:0.25rem;">Карточки ниже — события FullAI (записываются только при включённом FullAI).</p>';
++        html += '<p class="fullai-events-note" style="font-size:0.85rem;color:var(--text-muted,#888);margin-top:0.25rem;">Карточки «Реальные закрытия/в плюс/в минус/Win rate» — из bots_data.db (история ботов). Остальные карточки — события FullAI (записываются только при включённом FullAI).</p>';
+         summaryEl.innerHTML = html + cards;
+ 
+         if (!eventsEl) return;
+@@ -11059,6 +11068,27 @@ class BotsManager {
+         container.innerHTML = html;
+     }
+ 
++    /**
++     * Синхронизирует bot_trades_history с данными биржи (обновляет цены и PnL в БД)
++     */
++    async syncTradesFromExchange() {
++        const syncBtn = document.getElementById('analyticsSyncExchangeBtn');
++        const origText = syncBtn ? syncBtn.textContent : '';
++        if (syncBtn) syncBtn.disabled = true;
++        try {
++            const response = await fetch(this.BOTS_SERVICE_URL + '/api/bots/analytics/sync-from-exchange', { method: 'POST' });
++            const data = await response.json();
++            if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
++            const msg = data.updated != null ? ('Обновлено ' + data.updated + ' из ' + (data.matched || 0) + ' совпавших') : (data.message || 'Готово');
++            alert('Синхронизация с биржей: ' + msg);
++            if (data.updated > 0) this.runTradingAnalytics();
++        } catch (err) {
++            alert('Ошибка синхронизации: ' + ((err && err.message) || String(err)));
++        } finally {
++            if (syncBtn) { syncBtn.disabled = false; syncBtn.textContent = origText; }
++        }
++    }
++
+     /**
+      * Запускает аналитику торговли и отображает результат во вкладке «Аналитика»
+      */
+@@ -11076,7 +11106,7 @@ class BotsManager {
+             if (!data.success || !data.report) throw new Error(data.error || 'Нет данных отчёта');
+             this.renderAnalyticsReport(data.report, resultEl);
+         } catch (err) {
+-            if (resultEl) resultEl.innerHTML = `<div class="analytics-error">❌ ${(err && err.message) || String(err)}</div>`;
++            if (resultEl) resultEl.innerHTML = '<div class="analytics-error">❌ ' + ((err && err.message) || String(err)) + '</div>';
+             console.error('[BotsManager] Ошибка аналитики:', err);
+         } finally {
+             if (loadingEl) loadingEl.style.display = 'none';
+diff --git a/templates/pages/bots.html b/templates/pages/bots.html
+index 7eaca1c9..ba0610e5 100644
+--- a/templates/pages/bots.html
++++ b/templates/pages/bots.html
+@@ -2717,12 +2717,15 @@
+                     <p class="analytics-subtab-desc">Полный анализ сделок ботов и биржи: сверка, метрики, неудачные монеты и настройки по RSI/тренду.</p>
+                     <div class="analytics-controls">
+                         <label class="analytics-option">
+-                            <input type="checkbox" id="analyticsIncludeExchange" />
++                            <input type="checkbox" id="analyticsIncludeExchange" checked />
+                             <span data-translate="analytics_include_exchange">Загружать сделки с биржи (сверка с биржей)</span>
+                         </label>
+                         <button type="button" class="btn btn-primary" id="analyticsRunBtn">
+                             <span data-translate="analytics_run">🔄 Запустить аналитику</span>
+                         </button>
++                        <button type="button" class="btn btn-secondary" id="analyticsSyncExchangeBtn" title="Обновить записи в БД данными с биржи (цены, PnL)">
++                            📥 Синхр. с биржей
++                        </button>
+                     </div>
+                     <div class="analytics-loading" id="analyticsLoading" style="display: none;">
+                         <span class="analytics-spinner"></span>
+-- 
+2.53.0.windows.1
+

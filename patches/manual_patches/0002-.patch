@@ -1,0 +1,306 @@
+From 1a24c99c9263872c314965a661198040ab060695 Mon Sep 17 00:00:00 2001
+From: Evro <esrodchenkov@gmail.com>
+Date: Fri, 20 Feb 2026 01:48:08 +0300
+Subject: [PATCH 2/6] =?utf-8?q?=D0=98=D0=98=20=D1=81=D0=BC=D0=BE=D1=82?=
+ =?utf-8?q?=D1=80=D0=B8=D1=82=20=D0=B0=D0=BD=D0=B0=D0=BB=D0=B8=D1=82=D0=B8?=
+ =?utf-8?q?=D0=BA=D1=83=20=D0=BF=D0=B5=D1=80=D0=B5=D0=B4=20=D0=BA=D0=B0?=
+ =?utf-8?q?=D0=B6=D0=B4=D0=BE=D0=B9=20=D1=81=D0=B4=D0=B5=D0=BB=D0=BA=D0=BE?=
+ =?utf-8?q?=D0=B9,=20=D0=BF=D0=B5=D1=80=D0=B5=D1=81=D1=87=D0=B8=D1=82?=
+ =?utf-8?q?=D1=8B=D0=B2=D0=B0=D0=B5=D1=82=20=D1=80=D0=B5=D1=88=D0=B5=D0=BD?=
+ =?utf-8?q?=D0=B8=D1=8F=20=D0=BF=D0=BE=20=D0=BE=D1=88=D0=B8=D0=B1=D0=BA?=
+ =?utf-8?q?=D0=B0=D0=BC=20=D0=B8=20=D0=BD=D0=B5=D1=83=D0=B4=D0=B0=D1=87?=
+ =?utf-8?q?=D0=BD=D1=8B=D0=BC=20=D0=BC=D0=BE=D0=BD=D0=B5=D1=82=D0=B0=D0=BC?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+---
+ bot_engine/ai/ai_integration.py |  67 ++++++++++++++++++--
+ bot_engine/ai_analytics.py      | 109 +++++++++++++++++++++++++++++++-
+ bots_modules/bot_class.py       |   6 +-
+ docs/CHECKLIST_ANALYTICS.md     |   2 +
+ 4 files changed, 177 insertions(+), 7 deletions(-)
+
+diff --git a/bot_engine/ai/ai_integration.py b/bot_engine/ai/ai_integration.py
+index 3a7998cb..30fe7179 100644
+--- a/bot_engine/ai/ai_integration.py
++++ b/bot_engine/ai/ai_integration.py
+@@ -414,10 +414,23 @@ def should_open_position_with_ai(
+ ) -> Dict:
+     """
+     Проверяет, нужно ли открывать позицию с учётом AI и SMC.
+-    В bots.py: предсказание через ai_inference (только pkl-модели, без ai.py/trainer).
+-    В ai.py: предсказание через get_ai_system() (обучение, виртуальные сделки).
++    Перед решением смотрит аналитику (ошибки, неудачные монеты) и корректирует поведение.
+     """
+     try:
++        # Аналитика: предварительная проверка (блокировка явно неудачных монет/диапазонов)
++        try:
++            from bot_engine.ai_analytics import apply_analytics_to_entry_decision
++            pre_allowed, _, pre_reason = apply_analytics_to_entry_decision(
++                symbol, direction, rsi, trend, base_allowed=True, base_confidence=1.0, base_reason=""
++            )
++            if not pre_allowed:
++                return {
++                    'should_open': False, 'ai_used': True, 'smc_used': False,
++                    'reason': pre_reason, 'ai_confidence': 0.0,
++                    'timestamp': datetime.now().isoformat()
++                }
++        except Exception as _ax:
++            logger.debug("apply_analytics (pre): %s", _ax)
+         result = {
+             'should_open': True,
+             'ai_used': False,
+@@ -554,6 +567,24 @@ def should_open_position_with_ai(
+                 should_open = False
+                 result['reason'] = f"AI confidence too low: {ai_conf_01:.2%}"
+ 
++        # Применяем аналитику к итоговому решению
++        try:
++            from bot_engine.ai_analytics import apply_analytics_to_entry_decision
++            ai_conf = result.get('ai_confidence', 0.5)
++            should_open, ai_conf, reason_adj = apply_analytics_to_entry_decision(
++                symbol, direction, rsi, trend,
++                base_allowed=should_open, base_confidence=ai_conf,
++                base_reason=result.get('reason', ''),
++            )
++            result['ai_confidence'] = ai_conf
++            result['reason'] = reason_adj
++            ai_confidence_threshold = _confidence_01(config.get('ai_min_confidence', 0.65) if config else 0.65)
++            if should_open and ai_conf < ai_confidence_threshold:
++                should_open = False
++                result['reason'] = reason_adj + f" | Уверенность {ai_conf:.2%} < порога"
++        except Exception as _ax2:
++            logger.debug("apply_analytics (post): %s", _ax2)
++
+         result['should_open'] = should_open
+         result['model_used'] = 'signal_predictor.pkl + SMC' if smc_signal else 'signal_predictor.pkl'
+ 
+@@ -673,17 +704,33 @@ def get_ai_entry_decision(
+     candles: List[Dict],
+     current_price: float,
+     prii_config: Dict = None,
+-    coin_params: Dict = None
++    coin_params: Dict = None,
++    rsi: float = None,
++    trend: str = None,
+ ) -> Dict[str, Any]:
+     """
+     Решение ИИ о входе в позицию (FullAI). Используется при full_ai_control.
+-    Возвращает allowed, confidence, reason. Таймфрейм не входит в параметры — берётся из пользовательского конфига.
++    Перед решением смотрит аналитику (ошибки, неудачные монеты) и корректирует поведение.
++    Возвращает allowed, confidence, reason.
+     """
+     prii_config = prii_config or {}
+     coin_params = coin_params or {}
+     min_conf = _confidence_01(prii_config.get('ai_min_confidence', 0.7))
+     result = {'allowed': False, 'confidence': 0.0, 'reason': 'AI not available'}
+     try:
++        # Аналитика: перед решением смотрим ошибки и пересчитываем
++        try:
++            from bot_engine.ai_analytics import apply_analytics_to_entry_decision
++            pre_allowed, pre_conf, pre_reason = apply_analytics_to_entry_decision(
++                symbol, direction, rsi, trend, base_allowed=True, base_confidence=1.0, base_reason=""
++            )
++            if not pre_allowed:
++                result['allowed'] = False
++                result['confidence'] = 0.0
++                result['reason'] = pre_reason
++                return result
++        except Exception as _ax:
++            logger.debug("apply_analytics_to_entry_decision: %s", _ax)
+         from bot_engine.ai import get_ai_manager
+         ai_manager = get_ai_manager()
+         if not ai_manager or not ai_manager.is_available():
+@@ -726,6 +773,18 @@ def get_ai_entry_decision(
+             result['allowed'] = votes_short >= min_conf and votes_short >= votes_long
+             result['confidence'] = votes_short
+         result['reason'] = f"AI vote LONG={votes_long:.2f} SHORT={votes_short:.2f}"
++        # Применяем аналитику к итоговому решению (снижение уверенности, блокировка)
++        try:
++            from bot_engine.ai_analytics import apply_analytics_to_entry_decision
++            result['allowed'], result['confidence'], result['reason'] = apply_analytics_to_entry_decision(
++                symbol, direction, rsi, trend,
++                base_allowed=result['allowed'], base_confidence=result['confidence'], base_reason=result['reason'],
++            )
++            if result['confidence'] < min_conf and result['allowed']:
++                result['allowed'] = False
++                result['reason'] = result['reason'] + f" | Уверенность {result['confidence']:.2%} < порога {min_conf:.2%}"
++        except Exception as _ax2:
++            logger.debug("apply_analytics (post): %s", _ax2)
+         return result
+     except Exception as e:
+         logger.exception(f"get_ai_entry_decision {symbol} {direction}: {e}")
+diff --git a/bot_engine/ai_analytics.py b/bot_engine/ai_analytics.py
+index ae61b017..4b000b9c 100644
+--- a/bot_engine/ai_analytics.py
++++ b/bot_engine/ai_analytics.py
+@@ -109,7 +109,8 @@ def log_trade_close(
+     source: str = "BOT",
+     **extra,
+ ) -> None:
+-    """Логирует закрытие позиции."""
++    """Логирует закрытие позиции. Сбрасывает кеш аналитики для актуальности следующего решения."""
++    invalidate_analytics_cache()
+     log_event(
+         "TRADE_CLOSE",
+         symbol=symbol,
+@@ -217,6 +218,110 @@ def get_events(
+         return []
+ 
+ 
++_analytics_cache: Dict[str, Any] = {}
++_analytics_cache_ts: float = 0.0
++_ANALYTICS_CACHE_TTL_SEC = 300  # 5 минут
++
++
++def _get_cached_analytics_for_entry(symbol: Optional[str] = None) -> Optional[Dict[str, Any]]:
++    """
++    Кеширует контекст аналитики с TTL. Используется ИИ перед решением о входе.
++    Возвращает problems, recommendations, metrics, unsuccessful_coins, unsuccessful_settings.
++    """
++    global _analytics_cache, _analytics_cache_ts
++    now = time.time()
++    if now - _analytics_cache_ts < _ANALYTICS_CACHE_TTL_SEC and _analytics_cache:
++        return _analytics_cache
++    try:
++        ctx = get_ai_analytics_context(symbol=symbol, hours_back=168, include_report=True)
++        _analytics_cache = ctx
++        _analytics_cache_ts = now
++        return ctx
++    except Exception as e:
++        logger.debug("_get_cached_analytics_for_entry: %s", e)
++        return _analytics_cache if _analytics_cache else None
++
++
++def invalidate_analytics_cache() -> None:
++    """Сбрасывает кеш (вызывать после закрытия сделки)."""
++    global _analytics_cache_ts
++    _analytics_cache_ts = 0.0
++
++
++def apply_analytics_to_entry_decision(
++    symbol: str,
++    direction: str,
++    rsi: Optional[float],
++    trend: Optional[str],
++    base_allowed: bool,
++    base_confidence: float,
++    base_reason: str,
++) -> tuple:
++    """
++    Применяет аналитику к решению о входе: блокирует/снижает уверенность на основе прошлых ошибок.
++    Возвращает (allowed, confidence, reason).
++    """
++    ctx = _get_cached_analytics_for_entry(symbol)
++    if not ctx:
++        return (base_allowed, base_confidence, base_reason)
++    allowed = base_allowed
++    confidence = base_confidence
++    reason = base_reason
++    problems = ctx.get("problems") or []
++    metrics = ctx.get("metrics") or {}
++    # unsuccessful_coins и unsuccessful_settings приходят из report, а не напрямую
++    # get_ai_analytics_context возвращает problems, recommendations, metrics
++    # Нужно передать unsuccessful_coins - они в ai_block. Проверим структуру get_ai_analytics_context
++    # - она вызывает get_analytics_for_ai который возвращает unsuccessful_coins, unsuccessful_settings
++    # Но get_ai_analytics_context не добавляет их в result! Добавлю.
++    unsuccessful_coins = ctx.get("unsuccessful_coins") or []
++    unsuccessful_settings = ctx.get("unsuccessful_settings") or []
++    sym_upper = (symbol or "").upper()
++    for uc in unsuccessful_coins:
++        if (uc.get("symbol") or "").upper() == sym_upper:
++            wr = uc.get("win_rate_pct") or 0
++            pnl = uc.get("pnl_usdt") or 0
++            if wr < 35 or pnl < -50:
++                allowed = False
++                reason = f"Аналитика: монета неудачная (Win Rate {wr}%, PnL {pnl} USDT). Блокировка входа."
++                return (allowed, 0.0, reason)
++            if allowed:
++                confidence = max(0, confidence - 0.15)
++                reason = base_reason + f" | Снижена уверенность: монета с низким WR ({wr}%)"
++    for us in unsuccessful_settings:
++        if (us.get("symbol") or "").upper() != sym_upper:
++            continue
++        bad_rsi = us.get("bad_rsi_ranges") or []
++        bad_trends = us.get("bad_trends") or []
++        if rsi is not None:
++            for br in bad_rsi:
++                rng = br.get("rsi_range", "")
++                if "-" in rng:
++                    try:
++                        part = rng.split("(")[0].strip()
++                        parts = part.split("-")
++                        if len(parts) >= 2:
++                            lo, hi = int(parts[0]), int(parts[1])
++                            if lo <= rsi <= hi:
++                                allowed = False
++                                reason = f"Аналитика: RSI {rsi:.1f} в неудачном диапазоне {rng}"
++                                return (allowed, 0.0, reason)
++                    except (ValueError, IndexError, TypeError):
++                        pass
++        if trend and bad_trends:
++            trend_upper = str(trend).upper()
++            for bt in bad_trends:
++                t = str(bt.get("trend", "")).upper()
++                if t and trend_upper == t:
++                    confidence = max(0, confidence - 0.2)
++                    reason = base_reason + f" | Тренд {trend} — неудачный по аналитике"
++                    break
++    if problems and "серия убытков" in " ".join(problems).lower() and confidence > 0.5:
++        confidence = min(confidence, 0.6)
++        reason = base_reason + " | Учтена серия убыточных сделок"
++    return (allowed, confidence, reason)
++
++
+ def get_ai_analytics_context(
+     symbol: Optional[str] = None,
+     hours_back: float = 24.0,
+@@ -264,6 +369,8 @@ def get_ai_analytics_context(
+             result["problems"] = ai_block.get("problems", [])
+             result["recommendations"] = ai_block.get("recommendations", [])
+             result["metrics"] = ai_block.get("metrics", {})
++            result["unsuccessful_coins"] = ai_block.get("unsuccessful_coins", [])
++            result["unsuccessful_settings"] = ai_block.get("unsuccessful_settings", [])
+         except Exception as e:
+             logger.debug("get_ai_analytics_context: report %s", e)
+             result["problems"] = []
+diff --git a/bots_modules/bot_class.py b/bots_modules/bot_class.py
+index 38eaf2a4..e0b22063 100644
+--- a/bots_modules/bot_class.py
++++ b/bots_modules/bot_class.py
+@@ -530,7 +530,8 @@ class NewTradingBot:
+                     except ImportError:
+                         pass
+                     decision = get_ai_entry_decision(
+-                        self.symbol, 'LONG', candles, current_price, fullai_config, coin_params
++                        self.symbol, 'LONG', candles, current_price, fullai_config, coin_params,
++                        rsi=rsi, trend=trend
+                     )
+                     if decision.get('allowed'):
+                         # ✅ КРИТИЧНО: Защита от повторного входа после убытка применяется и для FullAI
+@@ -716,7 +717,8 @@ class NewTradingBot:
+                     except ImportError:
+                         pass
+                     decision = get_ai_entry_decision(
+-                        self.symbol, 'SHORT', candles, current_price, fullai_config, coin_params
++                        self.symbol, 'SHORT', candles, current_price, fullai_config, coin_params,
++                        rsi=rsi, trend=trend
+                     )
+                     if decision.get('allowed'):
+                         # ✅ КРИТИЧНО: Защита от повторного входа после убытка применяется и для FullAI
+diff --git a/docs/CHECKLIST_ANALYTICS.md b/docs/CHECKLIST_ANALYTICS.md
+index 5e0e872e..82c3ac83 100644
+--- a/docs/CHECKLIST_ANALYTICS.md
++++ b/docs/CHECKLIST_ANALYTICS.md
+@@ -19,5 +19,7 @@
+ | 15 | Сбор при каждой сделке/решении/действии | ✅ | log_trade_open, log_trade_close в bot_class; FullAI → ai_analytics через append_event |
+ | 16 | Контекст для ИИ (проблемы, рекомендации) | ✅ | get_ai_analytics_context(), API /api/bots/analytics/ai-context |
+ | 17 | AI summary в ответе аналитики | ✅ | report.ai_summary в GET /api/bots/analytics |
++| 18 | ИИ смотрит аналитику перед каждой сделкой | ✅ | apply_analytics_to_entry_decision в get_ai_entry_decision и should_open_position_with_ai |
++| 19 | ИИ пересчитывает действия по ошибкам | ✅ | Блокировка неудачных монет, снижение уверенности при bad_rsi/bad_trend, кеш 5 мин |
+ 
+ Легенда: ✅ сделано, 🔄 в работе/добавлено в этой задаче.
+-- 
+2.53.0.windows.1
+

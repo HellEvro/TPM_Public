@@ -1,0 +1,201 @@
+From 580622327de13204064555ebbf7a35111101441e Mon Sep 17 00:00:00 2001
+From: Evro <esrodchenkov@gmail.com>
+Date: Fri, 20 Feb 2026 04:44:07 +0300
+Subject: [PATCH 5/6] =?utf-8?q?=D0=90=D0=BD=D0=B0=D0=BB=D0=B8=D1=82=D0=B8?=
+ =?utf-8?q?=D0=BA=D0=B0:=20PnL=20=D0=BF=D0=BE=20=D1=81=D0=B4=D0=B5=D0=BB?=
+ =?utf-8?q?=D0=BA=D0=B5,=20=D0=BA=D0=BE=D0=BB=D0=BE=D0=BD=D0=BA=D0=B0=20?=
+ =?utf-8?q?=D0=92=D1=8B=D0=B2=D0=BE=D0=B4=20(=D0=BF=D0=BB=D1=8E=D1=81/?=
+ =?utf-8?q?=D0=BC=D0=B8=D0=BD=D1=83=D1=81,=20=D1=87=D1=82=D0=BE=20=D1=85?=
+ =?utf-8?q?=D0=BE=D1=80=D0=BE=D1=88=D0=BE/=D0=BD=D0=B5=20=D1=82=D0=B0?=
+ =?utf-8?q?=D0=BA)=20=D0=B2=20=D1=82=D0=B0=D0=B1=D0=BB=D0=B8=D1=86=D0=B5?=
+ =?utf-8?q?=20=D0=B7=D0=B0=D0=BA=D1=80=D1=8B=D1=82=D1=8B=D1=85=20=D1=81?=
+ =?utf-8?q?=D0=B4=D0=B5=D0=BB=D0=BE=D0=BA?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+---
+ bots_modules/api_endpoints.py      | 77 ++++++++++++++++++++++++++++++
+ static/js/managers/bots_manager.js | 42 +++++++++++++---
+ 2 files changed, 112 insertions(+), 7 deletions(-)
+
+diff --git a/bots_modules/api_endpoints.py b/bots_modules/api_endpoints.py
+index 07cdafce..7c1a9b55 100644
+--- a/bots_modules/api_endpoints.py
++++ b/bots_modules/api_endpoints.py
+@@ -5417,10 +5417,12 @@ def get_fullai_analytics():
+         events = get_events(symbol=symbol, from_ts=from_ts, to_ts=to_ts, limit=limit)
+         db_info = get_db_info()
+         bot_trades_stats = _compute_bot_trades_stats(symbol=symbol, from_ts=from_ts, to_ts=to_ts)
++        closed_trades = _get_closed_trades_for_table(symbol=symbol, from_ts=from_ts, to_ts=to_ts, limit=limit)
+         return jsonify({
+             'success': True,
+             'summary': summary,
+             'events': events,
++            'closed_trades': closed_trades,
+             'bot_trades_stats': bot_trades_stats,
+             'db_path': db_info['db_path'],
+             'total_events': db_info['total_events'],
+@@ -5430,6 +5432,81 @@ def get_fullai_analytics():
+         return jsonify({'success': False, 'error': str(e)}), 500
+ 
+ 
++def _get_closed_trades_for_table(symbol=None, from_ts=None, to_ts=None, limit=500):
++    """
++    Закрытые сделки из bots_data.db с PnL и сгенерированным выводом (что хорошо/что не так).
++    Возвращает список для таблицы в UI.
++    """
++    try:
++        from bot_engine.bots_database import get_bots_database
++        db = get_bots_database()
++        trades = db.get_bot_trades_history(
++            symbol=symbol,
++            status='CLOSED',
++            limit=min(limit, 500),
++            from_ts_sec=from_ts,
++            to_ts_sec=to_ts,
++        )
++        if not trades:
++            return []
++        out = []
++        for t in trades:
++            pnl = float(t.get('pnl') or 0)
++            roi = t.get('roi')  # может быть % или коэффициент
++            roi_pct = None
++            if roi is not None:
++                roi_f = float(roi)
++                roi_pct = roi_f * 100 if 0 < abs(roi_f) < 1.5 else roi_f
++            if roi_pct is None and t.get('entry_price') and t.get('exit_price'):
++                ep, xp = float(t['entry_price']), float(t['exit_price'])
++                if ep > 0 and t.get('direction', '').upper() == 'LONG':
++                    roi_pct = ((xp - ep) / ep) * 100
++                elif ep > 0 and t.get('direction', '').upper() == 'SHORT':
++                    roi_pct = ((ep - xp) / ep) * 100
++            reason = t.get('close_reason') or ''
++            if pnl >= 0:
++                conclusion = 'Прибыль. ' + (reason if reason else 'Закрыто по условию')
++                if reason and any(x in reason.upper() for x in ('TP', 'TAKE_PROFIT', 'ТЕЙК')):
++                    conclusion = 'Прибыль. Выход по TP — цель достигнута'
++                elif reason and any(x in reason.upper() for x in ('RSI', 'РСИ')):
++                    conclusion = 'Прибыль. Выход по RSI в плюсе — сигнал сработал'
++            else:
++                conclusion = 'Убыток. ' + (reason if reason else 'Закрыто по условию')
++                if reason and any(x in reason.upper() for x in ('SL', 'STOP', 'СЛОСС')):
++                    conclusion = 'Убыток. Выход по SL — стоп сработал, фиксация убытка'
++                elif reason and any(x in reason.upper() for x in ('RSI', 'РСИ')):
++                    conclusion = 'Убыток. Выход по RSI в минусе — возможно ранний выход'
++            ts = t.get('exit_timestamp') or t.get('entry_timestamp')
++            ts_iso = t.get('exit_time') or t.get('entry_time') or ''
++            if ts and not ts_iso:
++                try:
++                    from datetime import datetime
++                    dt = datetime.fromtimestamp(ts / 1000 if ts > 1e10 else ts)
++                    ts_iso = dt.strftime('%Y-%m-%dT%H:%M:%S')
++                except Exception:
++                    pass
++            out.append({
++                'symbol': t.get('symbol'),
++                'direction': t.get('direction'),
++                'entry_price': t.get('entry_price'),
++                'exit_price': t.get('exit_price'),
++                'entry_time': t.get('entry_time'),
++                'exit_time': t.get('exit_time'),
++                'ts': ts,
++                'ts_iso': ts_iso,
++                'close_reason': reason,
++                'pnl_usdt': round(pnl, 4),
++                'roi_pct': round(roi_pct, 2) if roi_pct is not None else None,
++                'is_successful': bool(t.get('is_successful')) or pnl > 0,
++                'conclusion': conclusion,
++            })
++        return out
++    except Exception as e:
++        import logging
++        logging.getLogger(__name__).debug("closed_trades_for_table: %s", e)
++        return []
++
++
+ def _compute_bot_trades_stats(symbol=None, from_ts=None, to_ts=None):
+     """Винрейт и суммарный PnL по закрытым сделкам бота из bots_data.db (история ботов — истинный источник)."""
+     try:
+diff --git a/static/js/managers/bots_manager.js b/static/js/managers/bots_manager.js
+index 90e64ff4..e1915555 100644
+--- a/static/js/managers/bots_manager.js
++++ b/static/js/managers/bots_manager.js
+@@ -10915,7 +10915,8 @@ class BotsManager {
+             this.renderFullaiAnalytics(data.summary || {}, data.events || [], summaryEl, eventsEl, {
+                 db_path: data.db_path,
+                 total_events: data.total_events,
+-                bot_trades_stats: data.bot_trades_stats || null
++                bot_trades_stats: data.bot_trades_stats || null,
++                closed_trades: data.closed_trades || []
+             });
+         } catch (err) {
+             if (summaryEl) summaryEl.innerHTML = `<div class="analytics-error">❌ ${(err && err.message) || String(err)}</div>`;
+@@ -10966,10 +10967,29 @@ class BotsManager {
+         html += '<p class="fullai-events-note" style="font-size:0.85rem;color:var(--text-muted,#888);margin-top:0.25rem;">Карточки «Реальные закрытия/в плюс/в минус/Win rate» — из bots_data.db (история ботов). Остальные карточки — события FullAI (записываются только при включённом FullAI).</p>';
+         summaryEl.innerHTML = html + cards;
+ 
++        let closedTradesHtml = '';
++        const closedTrades = (meta && meta.closed_trades) || [];
++        if (closedTrades.length > 0) {
++            closedTradesHtml = '<h4 style="margin-top:0.5rem;">Закрытые сделки (PnL и вывод)</h4>';
++            closedTradesHtml += '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Напр.</th><th>Вход</th><th>Выход</th><th>PnL %</th><th>PnL USDT</th><th>Причина</th><th>Вывод</th></tr></thead><tbody>';
++            closedTrades.forEach(tr => {
++                const pnlUsdt = tr.pnl_usdt != null ? Number(tr.pnl_usdt) : null;
++                const roiPct = tr.roi_pct != null ? Number(tr.roi_pct) : null;
++                const pnlClass = pnlUsdt != null ? (pnlUsdt >= 0 ? 'positive' : 'negative') : '';
++                const pnlPctStr = roiPct != null ? ((roiPct >= 0 ? '+' : '') + roiPct.toFixed(2) + '%') : '—';
++                const pnlUsdtStr = pnlUsdt != null ? ((pnlUsdt >= 0 ? '+' : '') + pnlUsdt.toFixed(2)) : '—';
++                const entryPrice = tr.entry_price != null ? Number(tr.entry_price).toFixed(6) : '—';
++                const exitPrice = tr.exit_price != null ? Number(tr.exit_price).toFixed(6) : '—';
++                const conclusion = tr.conclusion || (pnlUsdt >= 0 ? 'Прибыль' : 'Убыток');
++                closedTradesHtml += '<tr><td>' + (tr.ts_iso || tr.exit_time || '') + '</td><td>' + (tr.symbol || '') + '</td><td>' + (tr.direction || '') + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlPctStr + '</td><td class="' + pnlClass + '">' + pnlUsdtStr + '</td><td>' + (tr.close_reason || '—') + '</td><td>' + (conclusion || '—') + '</td></tr>';
++            });
++            closedTradesHtml += '</tbody></table><h4 style="margin-top:1.5rem;">Последние события FullAI</h4>';
++        }
++
+         if (!eventsEl) return;
+         const eventLabels = { real_open: 'Вход реал.', virtual_open: 'Вход вирт.', real_close: 'Закрытие реал.', virtual_close: 'Закрытие вирт.', blocked: 'Блок', refused: 'Отказ ИИ', params_change: 'Смена параметров', round_success: 'Раунд → реал.', exit_hold: 'ИИ держать' };
+-        if (events.length === 0) {
+-            let hint = 'Нет событий за выбранный период.';
++        if (events.length === 0 && closedTrades.length === 0) {
++            let hint = 'Нет событий и закрытых сделок за выбранный период.';
+             if (totalInDb === 0) {
+                 hint = 'В БД 0 событий. Путь: ' + (dbPath || 'data/fullai_analytics.db') + '. Перезапустите сервис ботов после включения FullAI. В логах ботов при записи должна появиться строка «FullAI analytics: запись в БД». Если её нет — решения FullAI не доходят до записи (проверьте, что боты запущены и FullAI включён в Конфигурации).';
+             } else if (totalInDb != null && totalInDb > 0) {
+@@ -10978,7 +10998,11 @@ class BotsManager {
+             eventsEl.innerHTML = '<p class="analytics-placeholder">' + hint + '</p>';
+             return;
+         }
+-        let table = '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Событие</th><th>Направление</th><th>Вход</th><th>Выход</th><th>Лимит выхода</th><th>Тип</th><th>Время заявки</th><th>Проскальз.%</th><th>Задержка с</th><th>Детали</th></tr></thead><tbody>';
++        if (events.length === 0 && closedTrades.length > 0) {
++            eventsEl.innerHTML = closedTradesHtml;
++            return;
++        }
++        let table = '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Событие</th><th>Направление</th><th>Вход</th><th>Выход</th><th>PnL %</th><th>Лимит выхода</th><th>Тип</th><th>Время заявки</th><th>Проскальз.%</th><th>Задержка с</th><th>Детали</th><th>Вывод</th></tr></thead><tbody>';
+         events.forEach(ev => {
+             const label = eventLabels[ev.event_type] || ev.event_type;
+             const dir = ev.direction || '—';
+@@ -10990,11 +11014,15 @@ class BotsManager {
+             const tsPlaced = ex.ts_order_placed_exit != null ? (function() { const d = new Date(ex.ts_order_placed_exit * 1000); return d.toISOString ? d.toISOString().slice(0, 19).replace('T', ' ') : d.toLocaleString(); })() : '—';
+             const slippage = ex.slippage_exit_pct != null ? Number(ex.slippage_exit_pct).toFixed(2) + '%' : '—';
+             const delay = ex.delay_sec != null ? String(Number(ex.delay_sec).toFixed(1)) : '—';
+-            const details = ev.reason || (ev.pnl_percent != null ? ('PnL ' + Number(ev.pnl_percent).toFixed(2) + '%') : '') || (ev.extra && ev.extra.success !== undefined ? (ev.extra.success ? 'успех' : 'убыток') : '') || '—';
+-            table += '<tr><td>' + (ev.ts_iso || '') + '</td><td>' + (ev.symbol || '') + '</td><td>' + label + '</td><td>' + dir + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td>' + limitExit + '</td><td>' + orderType + '</td><td>' + tsPlaced + '</td><td>' + slippage + '</td><td>' + delay + '</td><td>' + details + '</td></tr>';
++            const pnlPct = ev.pnl_percent != null ? Number(ev.pnl_percent) : (ex.pnl_percent != null ? Number(ex.pnl_percent) : null);
++            const pnlClass = pnlPct != null ? (pnlPct >= 0 ? 'positive' : 'negative') : '';
++            const pnlStr = pnlPct != null ? ((pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%') : '—';
++            const details = ev.reason || (ev.extra && ev.extra.success !== undefined ? (ev.extra.success ? 'успех' : 'убыток') : '') || '—';
++            const conclusion = pnlPct != null ? (pnlPct >= 0 ? 'Прибыль. ' + (ev.reason || '') : 'Убыток. ' + (ev.reason || '')) : '—';
++            table += '<tr><td>' + (ev.ts_iso || '') + '</td><td>' + (ev.symbol || '') + '</td><td>' + label + '</td><td>' + dir + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlStr + '</td><td>' + limitExit + '</td><td>' + orderType + '</td><td>' + tsPlaced + '</td><td>' + slippage + '</td><td>' + delay + '</td><td>' + details + '</td><td>' + conclusion + '</td></tr>';
+         });
+         table += '</tbody></table>';
+-        eventsEl.innerHTML = table;
++        eventsEl.innerHTML = closedTradesHtml + table;
+     }
+ 
+     /**
+-- 
+2.53.0.windows.1
+

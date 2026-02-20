@@ -1,0 +1,171 @@
+From 15add4d94000d8bd8e743a7b329b191d4efe5505 Mon Sep 17 00:00:00 2001
+From: Evro <esrodchenkov@gmail.com>
+Date: Fri, 20 Feb 2026 02:03:18 +0300
+Subject: [PATCH 4/6] =?utf-8?q?FullAI:=20=D0=BC=D0=BE=D0=B4=D0=B5=D0=BB?=
+ =?utf-8?q?=D1=8C=20=E2=80=94=20=D0=BE=D1=81=D0=BD=D0=BE=D0=B2=D0=BD=D0=BE?=
+ =?utf-8?q?=D0=B9=20=D1=80=D0=B5=D1=88=D0=B0=D1=82=D0=B5=D0=BB=D1=8C;=20?=
+ =?utf-8?q?=D0=B0=D0=BD=D0=B0=D0=BB=D0=B8=D1=82=D0=B8=D0=BA=D0=B0=20=D0=BA?=
+ =?utf-8?q?=D0=B0=D0=BA=20=D0=BF=D1=80=D0=B8=D0=B7=D0=BD=D0=B0=D0=BA=D0=B8?=
+ =?utf-8?q?/=D0=B2=D0=B5=D1=81=D0=B0=20(=D0=BD=D0=B5=20=D0=B1=D0=BB=D0=BE?=
+ =?utf-8?q?=D0=BA=D0=B8=D1=80=D1=83=D0=B5=D1=82);=20PnL=20=D0=B2=20=D0=B0?=
+ =?utf-8?q?=D0=BD=D0=B0=D0=BB=D0=B8=D1=82=D0=B8=D0=BA=D1=83?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+---
+ bot_engine/ai/ai_integration.py | 17 +++--------------
+ bot_engine/ai_analytics.py      | 27 ++++++++++++++-------------
+ bots_modules/bot_class.py       |  8 ++++++--
+ docs/CHECKLIST_ANALYTICS.md     |  4 +++-
+ 4 files changed, 26 insertions(+), 30 deletions(-)
+
+diff --git a/bot_engine/ai/ai_integration.py b/bot_engine/ai/ai_integration.py
+index 30fe7179..51392df3 100644
+--- a/bot_engine/ai/ai_integration.py
++++ b/bot_engine/ai/ai_integration.py
+@@ -718,19 +718,7 @@ def get_ai_entry_decision(
+     min_conf = _confidence_01(prii_config.get('ai_min_confidence', 0.7))
+     result = {'allowed': False, 'confidence': 0.0, 'reason': 'AI not available'}
+     try:
+-        # Аналитика: перед решением смотрим ошибки и пересчитываем
+-        try:
+-            from bot_engine.ai_analytics import apply_analytics_to_entry_decision
+-            pre_allowed, pre_conf, pre_reason = apply_analytics_to_entry_decision(
+-                symbol, direction, rsi, trend, base_allowed=True, base_confidence=1.0, base_reason=""
+-            )
+-            if not pre_allowed:
+-                result['allowed'] = False
+-                result['confidence'] = 0.0
+-                result['reason'] = pre_reason
+-                return result
+-        except Exception as _ax:
+-            logger.debug("apply_analytics_to_entry_decision: %s", _ax)
++        # FullAI: модель — основной решатель. Не блокируем до вызова ИИ; аналитика только снижает уверенность.
+         from bot_engine.ai import get_ai_manager
+         ai_manager = get_ai_manager()
+         if not ai_manager or not ai_manager.is_available():
+@@ -773,12 +761,13 @@ def get_ai_entry_decision(
+             result['allowed'] = votes_short >= min_conf and votes_short >= votes_long
+             result['confidence'] = votes_short
+         result['reason'] = f"AI vote LONG={votes_long:.2f} SHORT={votes_short:.2f}"
+-        # Применяем аналитику к итоговому решению (снижение уверенности, блокировка)
++        # FullAI: аналитика только снижает уверенность (признаки/веса), не блокирует — решение модели приоритет
+         try:
+             from bot_engine.ai_analytics import apply_analytics_to_entry_decision
+             result['allowed'], result['confidence'], result['reason'] = apply_analytics_to_entry_decision(
+                 symbol, direction, rsi, trend,
+                 base_allowed=result['allowed'], base_confidence=result['confidence'], base_reason=result['reason'],
++                full_ai_mode=True,
+             )
+             if result['confidence'] < min_conf and result['allowed']:
+                 result['allowed'] = False
+diff --git a/bot_engine/ai_analytics.py b/bot_engine/ai_analytics.py
+index 7222acc3..124b8ebd 100644
+--- a/bot_engine/ai_analytics.py
++++ b/bot_engine/ai_analytics.py
+@@ -294,10 +294,13 @@ def apply_analytics_to_entry_decision(
+     base_allowed: bool,
+     base_confidence: float,
+     base_reason: str,
++    full_ai_mode: bool = False,
+ ) -> tuple:
+     """
+-    Применяет аналитику к решению о входе: блокирует/снижает уверенность на основе прошлых ошибок.
+-    Возвращает (allowed, confidence, reason).
++    Применяет аналитику к решению о входе.
++
++    full_ai_mode=False (скрипты/конфиг): аналитика может ЖЕСТКО блокировать вход (wr<35, pnl<-50, bad RSI).
++    full_ai_mode=True (FullAI): аналитика только СНИЖАЕТ уверенность, никогда не блокирует — решение принимает модель.
+     """
+     ctx = _get_cached_analytics_for_entry(symbol)
+     if not ctx:
+@@ -306,12 +309,6 @@ def apply_analytics_to_entry_decision(
+     confidence = base_confidence
+     reason = base_reason
+     problems = ctx.get("problems") or []
+-    metrics = ctx.get("metrics") or {}
+-    # unsuccessful_coins и unsuccessful_settings приходят из report, а не напрямую
+-    # get_ai_analytics_context возвращает problems, recommendations, metrics
+-    # Нужно передать unsuccessful_coins - они в ai_block. Проверим структуру get_ai_analytics_context
+-    # - она вызывает get_analytics_for_ai который возвращает unsuccessful_coins, unsuccessful_settings
+-    # Но get_ai_analytics_context не добавляет их в result! Добавлю.
+     unsuccessful_coins = ctx.get("unsuccessful_coins") or []
+     unsuccessful_settings = ctx.get("unsuccessful_settings") or []
+     sym_upper = (symbol or "").upper()
+@@ -319,11 +316,11 @@ def apply_analytics_to_entry_decision(
+         if (uc.get("symbol") or "").upper() == sym_upper:
+             wr = uc.get("win_rate_pct") or 0
+             pnl = uc.get("pnl_usdt") or 0
+-            if wr < 35 or pnl < -50:
++            if not full_ai_mode and (wr < 35 or pnl < -50):
+                 allowed = False
+                 reason = f"Аналитика: монета неудачная (Win Rate {wr}%, PnL {pnl} USDT). Блокировка входа."
+                 return (allowed, 0.0, reason)
+-            if allowed:
++            if full_ai_mode or allowed:
+                 confidence = max(0, confidence - 0.15)
+                 reason = base_reason + f" | Снижена уверенность: монета с низким WR ({wr}%)"
+     for us in unsuccessful_settings:
+@@ -341,9 +338,13 @@ def apply_analytics_to_entry_decision(
+                         if len(parts) >= 2:
+                             lo, hi = int(parts[0]), int(parts[1])
+                             if lo <= rsi <= hi:
+-                                allowed = False
+-                                reason = f"Аналитика: RSI {rsi:.1f} в неудачном диапазоне {rng}"
+-                                return (allowed, 0.0, reason)
++                                if not full_ai_mode:
++                                    allowed = False
++                                    reason = f"Аналитика: RSI {rsi:.1f} в неудачном диапазоне {rng}"
++                                    return (allowed, 0.0, reason)
++                                confidence = max(0, confidence - 0.2)
++                                reason = base_reason + f" | RSI {rsi:.1f} в неудачном диапазоне (снижена уверенность)"
++                                break
+                     except (ValueError, IndexError, TypeError):
+                         pass
+         if trend and bad_trends:
+diff --git a/bots_modules/bot_class.py b/bots_modules/bot_class.py
+index e0b22063..2237052f 100644
+--- a/bots_modules/bot_class.py
++++ b/bots_modules/bot_class.py
+@@ -2842,9 +2842,13 @@ class NewTradingBot:
+             except Exception as bots_db_error:
+                 logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка сохранения истории в bots_data.db: {bots_db_error}")
+             
+-            # Единая аналитика для ИИ: каждое закрытие позиции
++            # Единая аналитика для ИИ: каждое закрытие позиции (прибыль/убыток = хорошо/плохо для обучения)
+             try:
+                 from bot_engine.ai_analytics import log_trade_close
++                from bots_modules.imports_and_globals import bots_data, bots_data_lock
++                with bots_data_lock:
++                    _ac = bots_data.get('auto_bot_config', {})
++                _source = "FullAI" if _ac.get('full_ai_control', False) else "BOT"
+                 log_trade_close(
+                     symbol=self.symbol,
+                     direction=self.position_side,
+@@ -2854,7 +2858,7 @@ class NewTradingBot:
+                     reason=reason,
+                     entry_rsi=entry_rsi,
+                     exit_rsi=exit_rsi,
+-                    source="BOT",
++                    source=_source,
+                 )
+             except Exception as _ai_anal_err:
+                 logger.debug(f"[NEW_BOT_{self.symbol}] ai_analytics log_trade_close: {_ai_anal_err}")
+diff --git a/docs/CHECKLIST_ANALYTICS.md b/docs/CHECKLIST_ANALYTICS.md
+index 82c3ac83..5fa4b2bf 100644
+--- a/docs/CHECKLIST_ANALYTICS.md
++++ b/docs/CHECKLIST_ANALYTICS.md
+@@ -20,6 +20,8 @@
+ | 16 | Контекст для ИИ (проблемы, рекомендации) | ✅ | get_ai_analytics_context(), API /api/bots/analytics/ai-context |
+ | 17 | AI summary в ответе аналитики | ✅ | report.ai_summary в GET /api/bots/analytics |
+ | 18 | ИИ смотрит аналитику перед каждой сделкой | ✅ | apply_analytics_to_entry_decision в get_ai_entry_decision и should_open_position_with_ai |
+-| 19 | ИИ пересчитывает действия по ошибкам | ✅ | Блокировка неудачных монет, снижение уверенности при bad_rsi/bad_trend, кеш 5 мин |
++| 19 | ИИ пересчитывает действия по ошибкам | ✅ | Блокировка неудачных монет (без FullAI), снижение уверенности при bad_rsi/bad_trend, кеш 5 мин |
++| 20 | FullAI: модель — основной решатель | ✅ | Аналитика только снижает уверенность (full_ai_mode=True), не блокирует. Модель всегда вызывается первой. |
++| 21 | FullAI: прибыль/убыток в аналитику | ✅ | log_trade_close с source=FullAI при full_ai_control; ПnL для обучения (хорошо/плохо) |
+ 
+ Легенда: ✅ сделано, 🔄 в работе/добавлено в этой задаче.
+-- 
+2.53.0.windows.1
+

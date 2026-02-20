@@ -1,0 +1,259 @@
+From 40ea810e08d33bbb54ee2ac30210eb381bdbc7f2 Mon Sep 17 00:00:00 2001
+From: Evro <esrodchenkov@gmail.com>
+Date: Fri, 20 Feb 2026 01:53:06 +0300
+Subject: [PATCH 3/6] =?utf-8?q?=D0=A4=D0=B8=D0=BA=D1=81=D0=B0=D1=86=D0=B8?=
+ =?utf-8?q?=D1=8F=20=D0=BE=D0=BF=D1=8B=D1=82=D0=B0=20=D0=98=D0=98:=20?=
+ =?utf-8?q?=D1=81=D0=BE=D1=85=D1=80=D0=B0=D0=BD=D0=B5=D0=BD=D0=B8=D0=B5=20?=
+ =?utf-8?q?=D1=81=D0=BD=D0=B8=D0=BC=D0=BA=D0=B0=20=D0=B0=D0=BD=D0=B0=D0=BB?=
+ =?utf-8?q?=D0=B8=D1=82=D0=B8=D0=BA=D0=B8,=20=D0=B7=D0=B0=D0=B3=D1=80?=
+ =?utf-8?q?=D1=83=D0=B7=D0=BA=D0=B0=20=D0=BF=D1=80=D0=B8=20=D0=BF=D1=80?=
+ =?utf-8?q?=D0=B8=D0=BD=D1=8F=D1=82=D0=B8=D0=B8=20=D1=80=D0=B5=D1=88=D0=B5?=
+ =?utf-8?q?=D0=BD=D0=B8=D0=B9,=20=D1=83=D1=87=D1=91=D1=82=20=D0=BF=D1=80?=
+ =?utf-8?q?=D0=B8=20=D0=BE=D0=B1=D1=83=D1=87=D0=B5=D0=BD=D0=B8=D0=B8?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+---
+ bot_engine/ai/ai_database.py | 65 ++++++++++++++++++++++++++++++++++++
+ bot_engine/ai/ai_trainer.py  | 24 +++++++++++--
+ bot_engine/ai_analytics.py   | 54 ++++++++++++++++++++++++++++--
+ 3 files changed, 139 insertions(+), 4 deletions(-)
+
+diff --git a/bot_engine/ai/ai_database.py b/bot_engine/ai/ai_database.py
+index b411c9e4..5a6ed3ef 100644
+--- a/bot_engine/ai/ai_database.py
++++ b/bot_engine/ai/ai_database.py
+@@ -1438,6 +1438,21 @@ class AIDatabase:
+             cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_analytics_event_type ON ai_analytics_events(event_type)")
+             cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_analytics_symbol ON ai_analytics_events(symbol)")
+             
++            # ==================== ТАБЛИЦА: СНИМОК ОПЫТА ИИ ====================
++            # Хранит результаты аналитики (неудачные монеты, bad_rsi, метрики) — чтобы ИИ не переобучался с нуля
++            cursor.execute("""
++                CREATE TABLE IF NOT EXISTS ai_experience_snapshot (
++                    id INTEGER PRIMARY KEY CHECK (id = 1),
++                    unsuccessful_coins_json TEXT,
++                    unsuccessful_settings_json TEXT,
++                    metrics_json TEXT,
++                    problems_json TEXT,
++                    recommendations_json TEXT,
++                    generated_at TEXT NOT NULL,
++                    updated_at TEXT NOT NULL
++                )
++            """)
++            
+             # ==================== ТАБЛИЦА: ОПТИМИЗИРОВАННЫЕ ПАРАМЕТРЫ (НОРМАЛИЗОВАННАЯ) ====================
+             cursor.execute("""
+                 CREATE TABLE IF NOT EXISTS optimized_params (
+@@ -3700,6 +3715,56 @@ class AIDatabase:
+                 result.append(decision)
+             
+             return result
++
++    def save_ai_experience_snapshot(
++        self,
++        unsuccessful_coins: List[Dict],
++        unsuccessful_settings: List[Dict],
++        metrics: Dict,
++        problems: List[str],
++        recommendations: List[str],
++    ) -> None:
++        """Сохраняет снимок опыта ИИ (результаты аналитики) — чтобы не переобучался с нуля."""
++        with self.lock:
++            with self._get_connection() as conn:
++                cursor = conn.cursor()
++                now = datetime.now().isoformat()
++                cursor.execute("""
++                    INSERT OR REPLACE INTO ai_experience_snapshot (id, unsuccessful_coins_json, unsuccessful_settings_json, metrics_json, problems_json, recommendations_json, generated_at, updated_at)
++                    VALUES (1, ?, ?, ?, ?, ?, ?, ?)
++                """, (
++                    json.dumps(unsuccessful_coins, ensure_ascii=False) if unsuccessful_coins else None,
++                    json.dumps(unsuccessful_settings, ensure_ascii=False) if unsuccessful_settings else None,
++                    json.dumps(metrics, ensure_ascii=False) if metrics else None,
++                    json.dumps(problems, ensure_ascii=False) if problems else None,
++                    json.dumps(recommendations, ensure_ascii=False) if recommendations else None,
++                    now,
++                    now,
++                ))
++                conn.commit()
++
++    def get_ai_experience_snapshot(self) -> Optional[Dict[str, Any]]:
++        """Загружает последний снимок опыта ИИ из БД."""
++        with self._get_connection() as conn:
++            cursor = conn.cursor()
++            cursor.execute("SELECT * FROM ai_experience_snapshot WHERE id = 1")
++            row = cursor.fetchone()
++            if not row:
++                return None
++            try:
++                d = dict(row)
++                out = {
++                    'generated_at': d.get('generated_at'),
++                    'updated_at': d.get('updated_at'),
++                    'unsuccessful_coins': json.loads(d['unsuccessful_coins_json']) if d.get('unsuccessful_coins_json') else [],
++                    'unsuccessful_settings': json.loads(d['unsuccessful_settings_json']) if d.get('unsuccessful_settings_json') else [],
++                    'metrics': json.loads(d['metrics_json']) if d.get('metrics_json') else {},
++                    'problems': json.loads(d['problems_json']) if d.get('problems_json') else [],
++                    'recommendations': json.loads(d['recommendations_json']) if d.get('recommendations_json') else [],
++                }
++                return out
++            except Exception:
++                return None
+     
+     # ==================== РЕКОМЕНДАЦИИ AI (чтение из bots.py, запись из ai.py) ====================
+     
+diff --git a/bot_engine/ai/ai_trainer.py b/bot_engine/ai/ai_trainer.py
+index 75dc7ced..b353410a 100644
+--- a/bot_engine/ai/ai_trainer.py
++++ b/bot_engine/ai/ai_trainer.py
+@@ -3005,6 +3005,21 @@ class AITrainer:
+             else:
+                 logger.info(f"   ⚠️ История биржи пуста - загружаем через API...")
+             
++            # Загружаем накопленный опыт ИИ, чтобы не переобучать с нуля
++            experience_bad_coins = set()
++            if self.ai_db and hasattr(self.ai_db, "get_ai_experience_snapshot"):
++                try:
++                    snap = self.ai_db.get_ai_experience_snapshot()
++                    if snap and snap.get("unsuccessful_coins"):
++                        for uc in snap["unsuccessful_coins"]:
++                            s = uc.get("symbol") if isinstance(uc, dict) else uc
++                            if s:
++                                experience_bad_coins.add(str(s).upper())
++                        if experience_bad_coins:
++                            logger.info(f"   📚 Учёт опыта: {len(experience_bad_coins)} проблемных монет (усиленный вес при обучении)")
++                except Exception as e:
++                    logger.debug("get_ai_experience_snapshot: %s", e)
++            
+             # Обновляем количество сделок для отслеживания
+             self._last_real_trades_training_count = len(trades)
+             
+@@ -3495,6 +3510,7 @@ class AITrainer:
+                 y_signal = []  # 1 = успешная сделка, 0 = неуспешная
+                 y_profit = []  # Реальный PnL
+                 
++                sample_weights = []
+                 for sample in all_samples:
+                     features = [
+                         sample['entry_rsi'],
+@@ -3509,10 +3525,14 @@ class AITrainer:
+                     X.append(features)
+                     y_signal.append(1 if sample['is_successful'] else 0)
+                     y_profit.append(sample['pnl'])
++                    # Усиленный вес для неудачных сделок по проблемным монетам (опыт ИИ)
++                    w = 2.0 if (experience_bad_coins and sample.get('symbol', '').upper() in experience_bad_coins and not sample['is_successful']) else 1.0
++                    sample_weights.append(w)
+                 
+                 X = np.array(X)
+                 y_signal = np.array(y_signal)
+                 y_profit = np.array(y_profit)
++                sample_weights_arr = np.array(sample_weights, dtype=float)
+                 
+                 # Нормализация
+                 # ВАЖНО: Всегда пересоздаем scaler при обучении на реальных сделках,
+@@ -3550,7 +3570,7 @@ class AITrainer:
+                     )
+                 
+                 logger.info("   📈 Обучение модели на успешных/неуспешных сделках...")
+-                self.signal_predictor.fit(X_scaled, y_signal)
++                self.signal_predictor.fit(X_scaled, y_signal, sample_weight=sample_weights_arr)
+                 
+                 # Оценка качества
+                 train_score = self.signal_predictor.score(X_scaled, y_signal)
+@@ -3599,7 +3619,7 @@ class AITrainer:
+                     )
+                 
+                 logger.info("   💰 Обучение модели предсказания прибыли...")
+-                self.profit_predictor.fit(X_scaled, y_profit)
++                self.profit_predictor.fit(X_scaled, y_profit, sample_weight=sample_weights_arr)
+                 
+                 # Оценка предсказания прибыли с информативными метриками
+                 profit_pred = self.profit_predictor.predict(X_scaled)
+diff --git a/bot_engine/ai_analytics.py b/bot_engine/ai_analytics.py
+index 4b000b9c..7222acc3 100644
+--- a/bot_engine/ai_analytics.py
++++ b/bot_engine/ai_analytics.py
+@@ -226,20 +226,58 @@ _ANALYTICS_CACHE_TTL_SEC = 300  # 5 минут
+ def _get_cached_analytics_for_entry(symbol: Optional[str] = None) -> Optional[Dict[str, Any]]:
+     """
+     Кеширует контекст аналитики с TTL. Используется ИИ перед решением о входе.
+-    Возвращает problems, recommendations, metrics, unsuccessful_coins, unsuccessful_settings.
++    Сначала пробует память, потом БД (ai_experience_snapshot), затем полный расчёт.
++    Опыт сохраняется в БД — ИИ не переобучается с нуля.
+     """
+     global _analytics_cache, _analytics_cache_ts
+     now = time.time()
+     if now - _analytics_cache_ts < _ANALYTICS_CACHE_TTL_SEC and _analytics_cache:
+         return _analytics_cache
+     try:
++        db = _get_ai_db()
++        if db and hasattr(db, "get_ai_experience_snapshot"):
++            snap = db.get_ai_experience_snapshot()
++            if snap and snap.get("generated_at"):
++                try:
++                    gen_str = str(snap["generated_at"]).replace("Z", "+00:00").replace(" ", "T")
++                    gen = datetime.fromisoformat(gen_str)
++                    age_sec = now - gen.timestamp()
++                    if age_sec < 86400:
++                        ctx = {
++                            "problems": snap.get("problems", []),
++                            "recommendations": snap.get("recommendations", []),
++                            "metrics": snap.get("metrics", {}),
++                            "unsuccessful_coins": snap.get("unsuccessful_coins", []),
++                            "unsuccessful_settings": snap.get("unsuccessful_settings", []),
++                        }
++                        _analytics_cache = ctx
++                        _analytics_cache_ts = now
++                        return ctx
++                except Exception:
++                    pass
+         ctx = get_ai_analytics_context(symbol=symbol, hours_back=168, include_report=True)
+         _analytics_cache = ctx
+         _analytics_cache_ts = now
+         return ctx
+     except Exception as e:
+         logger.debug("_get_cached_analytics_for_entry: %s", e)
+-        return _analytics_cache if _analytics_cache else None
++        if _analytics_cache:
++            return _analytics_cache
++        try:
++            db = _get_ai_db()
++            if db and hasattr(db, "get_ai_experience_snapshot"):
++                snap = db.get_ai_experience_snapshot()
++                if snap:
++                    return {
++                        "problems": snap.get("problems", []),
++                        "recommendations": snap.get("recommendations", []),
++                        "metrics": snap.get("metrics", {}),
++                        "unsuccessful_coins": snap.get("unsuccessful_coins", []),
++                        "unsuccessful_settings": snap.get("unsuccessful_settings", []),
++                    }
++        except Exception:
++            pass
++        return None
+ 
+ 
+ def invalidate_analytics_cache() -> None:
+@@ -371,6 +409,18 @@ def get_ai_analytics_context(
+             result["metrics"] = ai_block.get("metrics", {})
+             result["unsuccessful_coins"] = ai_block.get("unsuccessful_coins", [])
+             result["unsuccessful_settings"] = ai_block.get("unsuccessful_settings", [])
++            try:
++                db = _get_ai_db()
++                if db and hasattr(db, "save_ai_experience_snapshot"):
++                    db.save_ai_experience_snapshot(
++                        unsuccessful_coins=result["unsuccessful_coins"],
++                        unsuccessful_settings=result["unsuccessful_settings"],
++                        metrics=result["metrics"],
++                        problems=result["problems"],
++                        recommendations=result["recommendations"],
++                    )
++            except Exception as _s:
++                logger.debug("save_ai_experience_snapshot: %s", _s)
+         except Exception as e:
+             logger.debug("get_ai_analytics_context: report %s", e)
+             result["problems"] = []
+-- 
+2.53.0.windows.1
+
