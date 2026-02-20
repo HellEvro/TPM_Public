@@ -4052,8 +4052,8 @@ def verify_coin_realtime_before_entry(symbol, signal, exchange_obj=None):
     Returns: (ok: bool, reason: str, rsi: float|None, coin_data: dict|None)
     """
     try:
-        from bot_engine.config_loader import get_current_timeframe, get_config_value
-        from bots_modules.imports_and_globals import get_exchange, coins_rsi_data
+        from bot_engine.config_loader import get_current_timeframe, get_config_value, get_rsi_from_coin_data
+        from bots_modules.imports_and_globals import get_exchange, coins_rsi_data, bots_data
         
         exchange_to_use = exchange_obj if exchange_obj else get_exchange()
         if not exchange_to_use:
