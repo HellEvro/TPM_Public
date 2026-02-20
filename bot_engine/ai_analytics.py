@@ -303,7 +303,7 @@ def apply_analytics_to_entry_decision(
     full_ai_mode=True (FullAI): аналитика только СНИЖАЕТ уверенность, никогда не блокирует — решение принимает модель.
     При FullAI/Adaptive — неудачные монеты (WR 0%, PnL минус) НЕ блокируются, а тестируются виртуально.
     """
-    # При FullAI или FullAI Adaptive — не блокируем, только снижаем уверенность. Неудачные монеты тестируются виртуально.
+    # Определяем режим FullAI/Adaptive — ИИ обучается, ищет лучшие параметры, тестирует виртуально
     if not full_ai_mode:
         try:
             from bots_modules.imports_and_globals import bots_data
@@ -332,7 +332,8 @@ def apply_analytics_to_entry_decision(
                 allowed = False
                 reason = f"Аналитика: монета неудачная (Win Rate {wr}%, PnL {pnl} USDT). Блокировка входа."
                 return (allowed, 0.0, reason)
-            if full_ai_mode or allowed:
+            # FullAI/Adaptive: не penalize — ИИ обязан пробовать и учиться
+            if not full_ai_mode and allowed:
                 confidence = max(0, confidence - 0.15)
                 reason = base_reason + f" | Снижена уверенность: монета с низким WR ({wr}%)"
     for us in unsuccessful_settings:
@@ -354,22 +355,26 @@ def apply_analytics_to_entry_decision(
                                     allowed = False
                                     reason = f"Аналитика: RSI {rsi:.1f} в неудачном диапазоне {rng}"
                                     return (allowed, 0.0, reason)
-                                confidence = max(0, confidence - 0.2)
-                                reason = base_reason + f" | RSI {rsi:.1f} в неудачном диапазоне (снижена уверенность)"
+                                # FullAI/Adaptive: не penalize — ИИ обязан пробовать
+                                if not full_ai_mode:
+                                    confidence = max(0, confidence - 0.2)
+                                    reason = base_reason + f" | RSI {rsi:.1f} в неудачном диапазоне (снижена уверенность)"
                                 break
                     except (ValueError, IndexError, TypeError):
                         pass
         if trend and bad_trends:
             trend_upper = str(trend).upper()
-            # NEUTRAL не penalize: часто означает неопределённость, а не исторически плохой исход
-            if trend_upper != 'NEUTRAL':
+            # FullAI/Adaptive: не penalize тренды — ИИ обязан пробовать и учиться
+            # NEUTRAL и UP/DOWN при bad_trends — не снижаем confidence
+            if not full_ai_mode and trend_upper != 'NEUTRAL':
                 for bt in bad_trends:
                     t = str(bt.get("trend", "")).upper()
                     if t and trend_upper == t:
                         confidence = max(0, confidence - 0.2)
                         reason = base_reason + f" | Тренд {trend} — неудачный по аналитике (WR/PnL)"
                         break
-    if problems and "серия убытков" in " ".join(problems).lower() and confidence > 0.5:
+    # FullAI/Adaptive: не penalize серию убытков — ИИ учится
+    if not full_ai_mode and problems and "серия убытков" in " ".join(problems).lower() and confidence > 0.5:
         confidence = min(confidence, 0.6)
         reason = base_reason + " | Учтена серия убыточных сделок"
     return (allowed, confidence, reason)
