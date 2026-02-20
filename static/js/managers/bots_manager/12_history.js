@@ -220,7 +220,9 @@
             const delay = isEntry ? (ex.delay_entry_sec != null ? String(Number(ex.delay_entry_sec).toFixed(1)) : '—') : (ex.delay_sec != null ? String(Number(ex.delay_sec).toFixed(1)) : '—');
             const pnlPct = ev.pnl_percent != null ? Number(ev.pnl_percent) : (ex.pnl_percent != null ? Number(ex.pnl_percent) : null);
             const pnlUsdt = ex.pnl_usdt != null ? Number(ex.pnl_usdt) : null;
-            const pnlClass = pnlPct != null ? (pnlPct >= 0 ? 'positive' : 'negative') : (pnlUsdt != null ? (pnlUsdt >= 0 ? 'positive' : 'negative') : '');
+            const isProfit = (pnlUsdt != null && pnlUsdt > 0) || (pnlPct != null && pnlPct > 0);
+            const isLoss = (pnlUsdt != null && pnlUsdt < 0) || (pnlPct != null && pnlPct < 0);
+            const pnlClass = isLoss ? 'negative' : (isProfit ? 'positive' : '');
             const pnlStr = pnlPct != null ? ((pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%') : '—';
             const pnlUsdtStr = ev.event_type === 'virtual_close' ? '—' : (pnlUsdt != null ? ((pnlUsdt >= 0 ? '+' : '') + pnlUsdt.toFixed(2)) : '—');
             let details = '—';

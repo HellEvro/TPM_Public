@@ -3069,6 +3069,9 @@ def sync_bots_with_exchange():
                                     margin_val = None
                                 if margin_val and margin_val != 0:
                                     roi_percent = (pnl_usdt / margin_val) * 100.0
+                                elif entry_price and position_size_coins and entry_price > 0:
+                                    notional = entry_price * position_size_coins
+                                    roi_percent = (pnl_usdt / notional) * 100.0
 
                             if manual_closed:
                                 # entry_time_str уже получен выше
