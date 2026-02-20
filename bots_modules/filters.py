@@ -3190,29 +3190,29 @@ def process_auto_bot_signals(exchange_obj=None):
                     continue
                 # При успехе enter_position сам добавляет бота в bots_data
                 created_bots += 1
-                # FullAI аналитика: записываем real_open с полными данными (тип, проскальз., задержка, TP/SL, попытка)
+                # FullAI аналитика: всегда записываем real_open с полными данными (тип, проскальз., задержка, TP/SL, попытка)
                 try:
-                    with bots_data_lock:
-                        ac = bots_data.get('auto_bot_config', {})
-                    if ac.get('full_ai_control'):
-                        from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                        from bots_modules.fullai_adaptive import build_real_open_extra
-                        coin_data = coin.get('coin_data', {})
-                        intended_price = float(coin_data.get('price') or 0)
-                        actual_price = float(entry_result.get('entry_price') or intended_price)
-                        extra = build_real_open_extra(
-                            symbol=symbol, direction=direction,
-                            intended_price=intended_price, actual_price=actual_price,
-                            order_type='Market', delay_sec=_delay,
-                        )
-                        append_event(
-                            symbol=symbol,
-                            event_type=EVENT_REAL_OPEN,
-                            direction=direction,
-                            is_virtual=False,
-                            reason=extra.get('attempt_label', ''),
-                            extra=extra,
-                        )
+                    from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
+                    from bots_modules.fullai_adaptive import build_real_open_extra
+                    coin_data = coin.get('coin_data', {})
+                    intended_price = float(coin.get('price') or coin_data.get('price') or 0)
+                    actual_price = float(entry_result.get('entry_price') or new_bot.entry_price or intended_price or 0)
+                    if not actual_price and intended_price:
+                        actual_price = intended_price
+                    extra = build_real_open_extra(
+                        symbol=symbol, direction=direction,
+                        intended_price=intended_price or actual_price,
+                        actual_price=actual_price,
+                        order_type='Market', delay_sec=_delay,
+                    )
+                    append_event(
+                        symbol=symbol,
+                        event_type=EVENT_REAL_OPEN,
+                        direction=direction,
+                        is_virtual=False,
+                        reason=extra.get('attempt_label', 'Реальная сделка'),
+                        extra=extra,
+                    )
                 except Exception as _fa_err:
                     logger.warning("FullAI analytics real_open (filters): %s", _fa_err)
                 logger.info(f" ✅ {symbol}: позиция открыта, бот в списке")

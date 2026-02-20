@@ -840,24 +840,22 @@
                     this._lastActiveBotsFilter = this.activeBotsFilter;
                     console.log(`[DEBUG] Полная перерисовка вкладки "Боты в работе"`);
                     
-                    const rightPanelHtml = displayListForDetails.map(bot => {
-                    const isVirtual = !!bot.is_virtual;
-                    const isActive = isVirtual || bot.status === 'running' || bot.status === 'idle' || 
-                                    bot.status === 'in_position_long' || bot.status === 'in_position_short' ||
-                                    bot.status === 'armed_up' || bot.status === 'armed_down';
-                    const statusColor = isActive ? '#4caf50' : '#ff5722';
-                    const statusText = isVirtual ? (window.languageUtils?.translate('fullai_virtual_position') || 'Виртуальная') : (isActive ? window.languageUtils.translate('active_status') : (bot.status === 'paused' ? window.languageUtils.translate('paused_status') : (bot.status === 'idle' ? window.languageUtils.translate('waiting_status') : window.languageUtils.translate('stopped_status'))));
-                    
-                    const d = this.getCompactCardData(bot);
-                    const t = k => window.languageUtils?.translate(k) || this.getTranslation(k);
-                    const exchangeUrl = this.getExchangeLink(bot.symbol, window.app?.exchangeManager?.getSelectedExchange?.() || 'bybit');
-                    // Цвет карточки по PnL: зелёный — прибыль, красный — убыток (направление Long/Short уже показано подписью)
-                    const pnlValue = isVirtual ? (bot.unrealized_pnl ?? 0) : (bot.unrealized_pnl_usdt ?? bot.unrealized_pnl ?? 0);
-                    const isProfit = Number(pnlValue) >= 0;
-                    const cardBg = isVirtual ? 'rgba(156, 39, 176, 0.12)' : (isProfit ? 'rgba(76, 175, 80, 0.08)' : 'rgba(244, 67, 54, 0.08)');
-                    const virtualAttrs = isVirtual ? ` data-is-virtual="true" data-virtual-index="${bot._virtualIndex || 0}"` : '';
-                    const pnlVal = isVirtual ? (bot.unrealized_pnl != null ? `${(bot.unrealized_pnl || 0).toFixed(2)}%` : '-') : `$${(bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0).toFixed(3)}`;
-                    const htmlResult = `
+                    const renderBotCard = (bot) => {
+                        const isVirtual = !!bot.is_virtual;
+                        const isActive = isVirtual || bot.status === 'running' || bot.status === 'idle' ||
+                                        bot.status === 'in_position_long' || bot.status === 'in_position_short' ||
+                                        bot.status === 'armed_up' || bot.status === 'armed_down';
+                        const statusColor = isActive ? '#4caf50' : '#ff5722';
+                        const statusText = isVirtual ? (window.languageUtils?.translate('fullai_virtual_position') || 'Виртуальная') : (isActive ? window.languageUtils.translate('active_status') : (bot.status === 'paused' ? window.languageUtils.translate('paused_status') : (bot.status === 'idle' ? window.languageUtils.translate('waiting_status') : window.languageUtils.translate('stopped_status'))));
+                        const d = this.getCompactCardData(bot);
+                        const t = k => window.languageUtils?.translate(k) || this.getTranslation(k);
+                        const exchangeUrl = this.getExchangeLink(bot.symbol, window.app?.exchangeManager?.getSelectedExchange?.() || 'bybit');
+                        const pnlValue = isVirtual ? (bot.unrealized_pnl ?? 0) : (bot.unrealized_pnl_usdt ?? bot.unrealized_pnl ?? 0);
+                        const isProfit = Number(pnlValue) >= 0;
+                        const cardBg = isVirtual ? 'rgba(156, 39, 176, 0.12)' : (isProfit ? 'rgba(76, 175, 80, 0.08)' : 'rgba(244, 67, 54, 0.08)');
+                        const virtualAttrs = isVirtual ? ` data-is-virtual="true" data-virtual-index="${bot._virtualIndex || 0}"` : '';
+                        const pnlVal = isVirtual ? (bot.unrealized_pnl != null ? `${(bot.unrealized_pnl || 0).toFixed(2)}%` : '-') : `$${(bot.unrealized_pnl_usdt || bot.unrealized_pnl || 0).toFixed(3)}`;
+                        return `
                         <div class="active-bot-item clickable-bot-item active-bot-card" data-symbol="${bot.symbol}" data-bot-symbol="${bot.symbol}"${virtualAttrs} data-exchange-url="${exchangeUrl}" data-card-bg="${cardBg.replace(/"/g, '&quot;')}" style="border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; background: ${cardBg}; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" onmouseover="this.style.backgroundColor='var(--hover-bg, var(--button-bg))'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'" onmouseout="var b=this.dataset.cardBg; this.style.backgroundColor=b||'var(--section-bg)'; this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)'">
                             <div class="bot-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; gap: 6px;">
                                 <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
@@ -880,9 +878,11 @@
                             </div>
                         </div>
                     `;
-                    
-                    return htmlResult;
-                }).join('');
+                    };
+                    const realSection = filteredBots.map(bot => renderBotCard(bot)).join('');
+                    const virtualSectionHeader = virtualAsBots.length > 0 ? `<div class="virtual-positions-header" style="margin: 16px 0 12px; padding: 8px 12px; background: rgba(156, 39, 176, 0.15); border-radius: 8px; border-left: 4px solid #9c27b0; font-weight: 600; font-size: 13px; color: var(--text-color);">📊 Виртуальные позиции ПРИИ (без ограничения по количеству)</div>` : '';
+                    const virtualSection = virtualAsBots.map(bot => renderBotCard(bot)).join('');
+                    const rightPanelHtml = realSection + virtualSectionHeader + virtualSection;
 
                     console.log(`[DEBUG] Вставляем ПОЛНЫЙ HTML в detailsElement:`, rightPanelHtml);
                     detailsElement.innerHTML = rightPanelHtml;

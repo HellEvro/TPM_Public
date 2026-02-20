@@ -143,21 +143,24 @@ def build_real_open_extra(
     order_type: str = 'Market',
     delay_sec: float = None,
 ) -> Dict[str, Any]:
-    """Собирает extra для real_open: тип ордера, проскальзывание, задержка, TP/SL, подпись попытки."""
+    """Собирает extra для real_open: тип ордера, проскальзывание, задержка, TP/SL, подпись попытки.
+    Всегда возвращает минимальный набор полей, чтобы UI не показывал «—» для деталей."""
+    # Если actual_price не передан — используем intended как fallback
+    ap = float(actual_price) if actual_price is not None else float(intended_price or 0)
+    ip = float(intended_price) if intended_price is not None else ap
     extra = {
-        'price': actual_price,
-        'entry_price': actual_price,
-        'order_type_entry': order_type,
+        'price': ap,
+        'entry_price': ap,
+        'order_type_entry': order_type or 'Market',
     }
-    if intended_price and intended_price > 0 and actual_price:
+    if ip and ip > 0 and ap:
         if (direction or '').upper() == 'LONG':
-            slippage_pct = ((actual_price - intended_price) / intended_price) * 100
+            slippage_pct = ((ap - ip) / ip) * 100
         else:
-            slippage_pct = ((intended_price - actual_price) / intended_price) * 100
-        extra['intended_price'] = intended_price
+            slippage_pct = ((ip - ap) / ip) * 100
+        extra['intended_price'] = ip
         extra['slippage_entry_pct'] = round(slippage_pct, 4)
-    if delay_sec is not None:
-        extra['delay_entry_sec'] = round(float(delay_sec), 2)
+    extra['delay_entry_sec'] = round(float(delay_sec or 0), 2)
     try:
         tp_sl = get_tp_sl_for_symbol(symbol)
         extra['take_profit_percent'] = tp_sl['tp']

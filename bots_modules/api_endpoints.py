@@ -1204,28 +1204,26 @@ def create_bot_endpoint():
                             logger.info(f" ✅ Успешно вошли в {direction} позицию для {symbol}")
                             with bots_data_lock:
                                 bots_data['bots'][symbol] = trading_bot.to_dict()
-                            # FullAI аналитика: запись real_open с полными данными
+                            # FullAI аналитика: всегда запись real_open с полными данными
                             try:
-                                with bots_data_lock:
-                                    ac = bots_data.get('auto_bot_config', {})
-                                if ac.get('full_ai_control'):
-                                    from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                                    from bots_modules.fullai_adaptive import build_real_open_extra
-                                    actual_price = float(result.get('entry_price') or intended_price)
-                                    order_type = 'Limit' if not force_market else 'Market'
-                                    extra = build_real_open_extra(
-                                        symbol=symbol, direction=direction,
-                                        intended_price=intended_price, actual_price=actual_price,
-                                        order_type=order_type, delay_sec=_delay,
-                                    )
-                                    append_event(
-                                        symbol=symbol,
-                                        event_type=EVENT_REAL_OPEN,
-                                        direction=direction,
-                                        is_virtual=False,
-                                        reason=extra.get('attempt_label', ''),
-                                        extra=extra,
-                                    )
+                                from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
+                                from bots_modules.fullai_adaptive import build_real_open_extra
+                                actual_price = float(result.get('entry_price') or intended_price or 0)
+                                order_type = 'Limit' if not force_market else 'Market'
+                                extra = build_real_open_extra(
+                                    symbol=symbol, direction=direction,
+                                    intended_price=intended_price or actual_price,
+                                    actual_price=actual_price,
+                                    order_type=order_type, delay_sec=_delay,
+                                )
+                                append_event(
+                                    symbol=symbol,
+                                    event_type=EVENT_REAL_OPEN,
+                                    direction=direction,
+                                    is_virtual=False,
+                                    reason=extra.get('attempt_label', 'Реальная сделка'),
+                                    extra=extra,
+                                )
                             except Exception as _fa_err:
                                 logger.debug("FullAI analytics real_open (API): %s", _fa_err)
                         else:
@@ -1657,21 +1655,18 @@ def close_position_endpoint():
                     tid = bots_db.save_bot_trade_history(trade_data)
                     if tid:
                         logger.info(f" ✅ Закрытие через UI: сделка {symbol} сохранена в bots_data.db (ID: {tid})")
-                    # FullAI аналитика: запись real_close при ручном закрытии через UI
+                    # FullAI аналитика: всегда записываем real_close при закрытии (для полноты журнала событий)
                     try:
-                        with bots_data_lock:
-                            ac = bots_data.get('auto_bot_config', {})
-                        if ac.get('full_ai_control'):
-                            from bots_modules.fullai_adaptive import record_real_close
-                            extra = {
-                                'entry_price': entry_price,
-                                'exit_price': exit_price,
-                                'pnl_usdt': pnl_usdt,
-                                'direction': direction,
-                            }
-                            record_real_close(symbol, roi_pct, reason='MANUAL_CLOSE_UI', extra=extra)
+                        from bots_modules.fullai_adaptive import record_real_close
+                        extra = {
+                            'entry_price': entry_price,
+                            'exit_price': exit_price,
+                            'pnl_usdt': pnl_usdt,
+                            'direction': direction,
+                        }
+                        record_real_close(symbol, roi_pct, reason='MANUAL_CLOSE_UI', extra=extra)
                     except Exception as fa_err:
-                        logger.debug("FullAI analytics manual close UI: %s", fa_err)
+                        logger.debug("FullAI analytics real_close UI: %s", fa_err)
             except Exception as save_err:
                 logger.warning(f" ⚠️ Ошибка сохранения сделки в bot_trades_history: {save_err}")
 

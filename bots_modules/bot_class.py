@@ -1505,22 +1505,21 @@ class NewTradingBot:
                     except ImportError:
                         pass
                     self.update_status(BOT_STATUS['IN_POSITION_LONG'], price, 'LONG')
-                    # FullAI аналитика: real_open с полными данными (тип, проскальз., задержка, TP/SL, попытка)
+                    # FullAI аналитика: всегда real_open с полными данными (тип, проскальз., задержка, TP/SL, попытка)
                     try:
                         with bots_data_lock:
                             ac = bots_data.get('auto_bot_config', {})
-                        if ac.get('full_ai_control'):
-                            from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                            from bots_modules.fullai_adaptive import build_real_open_extra
-                            force_m = not (ac.get('limit_orders_entry_enabled') or ac.get('rsi_limit_entry_enabled'))
-                            intended = float(price or 0)
-                            actual = float(self.entry_price or intended)
-                            extra = build_real_open_extra(
-                                symbol=self.symbol, direction='LONG',
-                                intended_price=intended, actual_price=actual,
-                                order_type='Market' if force_m else 'Limit', delay_sec=_delay,
-                            )
-                            append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='LONG', is_virtual=False, reason=extra.get('attempt_label', ''), extra=extra)
+                        force_m = not (ac.get('limit_orders_entry_enabled') or ac.get('rsi_limit_entry_enabled'))
+                        intended = float(price or 0)
+                        actual = float(self.entry_price or intended or 0)
+                        from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
+                        from bots_modules.fullai_adaptive import build_real_open_extra
+                        extra = build_real_open_extra(
+                            symbol=self.symbol, direction='LONG',
+                            intended_price=intended or actual, actual_price=actual,
+                            order_type='Market' if force_m else 'Limit', delay_sec=_delay,
+                        )
+                        append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='LONG', is_virtual=False, reason=extra.get('attempt_label', 'Реальная сделка'), extra=extra)
                     except Exception:
                         pass
                     return {'success': True, 'action': 'OPEN_LONG', 'status': self.status}
@@ -1537,22 +1536,21 @@ class NewTradingBot:
                     except ImportError:
                         pass
                     self.update_status(BOT_STATUS['IN_POSITION_SHORT'], price, 'SHORT')
-                    # FullAI аналитика: real_open с полными данными
+                    # FullAI аналитика: всегда real_open с полными данными
                     try:
                         with bots_data_lock:
                             ac = bots_data.get('auto_bot_config', {})
-                        if ac.get('full_ai_control'):
-                            from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                            from bots_modules.fullai_adaptive import build_real_open_extra
-                            force_m = not (ac.get('limit_orders_entry_enabled') or ac.get('rsi_limit_entry_enabled'))
-                            intended = float(price or 0)
-                            actual = float(self.entry_price or intended)
-                            extra = build_real_open_extra(
-                                symbol=self.symbol, direction='SHORT',
-                                intended_price=intended, actual_price=actual,
-                                order_type='Market' if force_m else 'Limit', delay_sec=_delay,
-                            )
-                            append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='SHORT', is_virtual=False, reason=extra.get('attempt_label', ''), extra=extra)
+                        force_m = not (ac.get('limit_orders_entry_enabled') or ac.get('rsi_limit_entry_enabled'))
+                        intended = float(price or 0)
+                        actual = float(self.entry_price or intended or 0)
+                        from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
+                        from bots_modules.fullai_adaptive import build_real_open_extra
+                        extra = build_real_open_extra(
+                            symbol=self.symbol, direction='SHORT',
+                            intended_price=intended or actual, actual_price=actual,
+                            order_type='Market' if force_m else 'Limit', delay_sec=_delay,
+                        )
+                        append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='SHORT', is_virtual=False, reason=extra.get('attempt_label', 'Реальная сделка'), extra=extra)
                     except Exception:
                         pass
                     return {'success': True, 'action': 'OPEN_SHORT', 'status': self.status}
@@ -2907,35 +2905,31 @@ class NewTradingBot:
             except Exception as _ai_anal_err:
                 logger.debug(f"[NEW_BOT_{self.symbol}] ai_analytics log_trade_close: {_ai_anal_err}")
 
-            # FullAI: записываем каждое закрытие в аналитику (FullAI/RSI/SL/безубыток/ручное)
+            # FullAI: всегда записываем каждое закрытие в аналитику (FullAI/RSI/SL/безубыток/ручное) — для полноты журнала
             try:
-                from bots_modules.imports_and_globals import bots_data, bots_data_lock
-                with bots_data_lock:
-                    _cfg = bots_data.get('auto_bot_config', {})
-                if _cfg.get('full_ai_control', False):
-                    from bots_modules.fullai_adaptive import record_real_close
-                    fullai_extra = {
-                        'entry_price': self.entry_price,
-                        'exit_price': exit_price,
-                        'pnl_usdt': pnl,
-                        'entry_rsi': entry_rsi,
-                        'exit_rsi': exit_rsi,
-                        'direction': self.position_side,
-                        'order_type_exit': close_result.get('order_type_exit', 'Limit') if close_result else None,
-                        'limit_price_exit': close_result.get('close_price') if close_result else None,
-                        'ts_order_placed_exit': close_result.get('ts_order_placed') if close_result else None,
-                        'order_id_exit': close_result.get('order_id') if close_result else None,
-                    }
-                    limit_exit = close_result.get('close_price') if close_result else None
-                    if limit_exit and limit_exit > 0 and exit_price is not None:
-                        if self.position_side == 'LONG':
-                            fullai_extra['slippage_exit_pct'] = round((float(exit_price) - float(limit_exit)) / float(limit_exit) * 100, 4)
-                        else:
-                            fullai_extra['slippage_exit_pct'] = round((float(limit_exit) - float(exit_price)) / float(limit_exit) * 100, 4)
-                    ts_placed = close_result.get('ts_order_placed') if close_result else None
-                    if ts_placed is not None:
-                        fullai_extra['delay_sec'] = round(datetime.now().timestamp() - float(ts_placed), 2)
-                    record_real_close(self.symbol, pnl_pct, reason=reason, extra=fullai_extra)
+                from bots_modules.fullai_adaptive import record_real_close
+                fullai_extra = {
+                    'entry_price': self.entry_price,
+                    'exit_price': exit_price,
+                    'pnl_usdt': pnl,
+                    'entry_rsi': entry_rsi,
+                    'exit_rsi': exit_rsi,
+                    'direction': self.position_side,
+                    'order_type_exit': close_result.get('order_type_exit', 'Limit') if close_result else None,
+                    'limit_price_exit': close_result.get('close_price') if close_result else None,
+                    'ts_order_placed_exit': close_result.get('ts_order_placed') if close_result else None,
+                    'order_id_exit': close_result.get('order_id') if close_result else None,
+                }
+                limit_exit = close_result.get('close_price') if close_result else None
+                if limit_exit and limit_exit > 0 and exit_price is not None:
+                    if self.position_side == 'LONG':
+                        fullai_extra['slippage_exit_pct'] = round((float(exit_price) - float(limit_exit)) / float(limit_exit) * 100, 4)
+                    else:
+                        fullai_extra['slippage_exit_pct'] = round((float(limit_exit) - float(exit_price)) / float(limit_exit) * 100, 4)
+                ts_placed = close_result.get('ts_order_placed') if close_result else None
+                if ts_placed is not None:
+                    fullai_extra['delay_sec'] = round(datetime.now().timestamp() - float(ts_placed), 2)
+                record_real_close(self.symbol, pnl_pct, reason=reason, extra=fullai_extra)
             except Exception as fullai_log_err:
                 logger.debug(f"[NEW_BOT_{self.symbol}] FullAI analytics при закрытии: {fullai_log_err}")
             
