@@ -3089,12 +3089,31 @@ class NewTradingBot:
             'trailing_update_interval': self.config.get('trailing_update_interval', auto_config.get('trailing_update_interval', 3)),
         }
 
-        # Переносим дополнительные индивидуальные параметры, если они были сохранены в self.config
+        # Переносим дополнительные индивидуальные параметры
         for key in ('rsi_exit_long_with_trend', 'rsi_exit_long_against_trend',
                     'rsi_exit_short_with_trend', 'rsi_exit_short_against_trend',
-                    'entry_trend'):
+                    'entry_trend', 'rsi_limit_entry_enabled', 'rsi_limit_offset_percent',
+                    'rsi_long_threshold', 'rsi_short_threshold', 'entry_timeframe'):
             if key in self.config:
                 config[key] = self.config[key]
+        for key in ('rsi_limit_entry_enabled', 'rsi_limit_offset_percent',
+                    'rsi_long_threshold', 'rsi_short_threshold'):
+            if key not in config and key in auto_config:
+                config[key] = auto_config[key]
+        try:
+            from bots_modules.imports_and_globals import get_effective_coin_settings
+            coin_params = get_effective_coin_settings(self.symbol) or {}
+            for key in ('rsi_long_threshold', 'rsi_short_threshold',):
+                if key in coin_params and coin_params[key] is not None:
+                    config[key] = coin_params[key]
+        except Exception:
+            pass
+        if 'entry_timeframe' not in config:
+            try:
+                from bot_engine.config_loader import get_current_timeframe
+                config['entry_timeframe'] = get_current_timeframe()
+            except Exception:
+                pass
 
         return config
 
