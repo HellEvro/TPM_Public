@@ -2715,11 +2715,9 @@ def load_all_coins_rsi():
         if failed_count > 0:
             logger.warning(f"⚠️ Ошибок: {failed_count} монет")
 
-        # Обновляем флаги is_mature
-        try:
-            update_is_mature_flags_in_rsi_data()
-        except Exception as update_error:
-            logger.warning(f"⚠️ Не удалось обновить is_mature: {update_error}")
+        # НЕ вызываем update_is_mature_flags_in_rsi_data здесь!
+        # is_mature и maturity_reason уже установлены в get_coin_rsi_data_for_timeframe.
+        # update вызовет calculate_all_coins_maturity (Этап 3) после загрузки.
 
         # 🔄 Сбрасываем задержку запросов после успешной загрузки раунда (только если не было недавнего rate limit)
         try:
