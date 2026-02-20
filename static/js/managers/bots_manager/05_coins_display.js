@@ -1198,9 +1198,10 @@
                 }
             }
             
-            // 4. Зрелость монеты — показываем только если проверка зрелости включена
+            // 4. Зрелость монеты — показываем причину (почему незрелая)
             if (autoConfig.enable_maturity_check !== false && coin.is_mature === false) {
-                blockReasons.push('Незрелая монета');
+                const maturityReason = coin.maturity_reason || '';
+                blockReasons.push(maturityReason ? `Незрелая: ${maturityReason}` : 'Незрелая монета');
             }
             
             // 5. Whitelist/Blacklist (scope)

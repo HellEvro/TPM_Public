@@ -356,9 +356,8 @@ def check_coin_maturity(symbol, candles):
                 }
             }
         
-        # Берём ПОСЛЕДНИЕ min_candles свечей (из конфига) — именно за этот период проверяем RSI
-        recent_candles = candles[-min_candles:] if len(candles) >= min_candles else candles
-        closes = [candle['close'] for candle in recent_candles]
+        # Берём ВСЮ историю для RSI (если >= min_candles) — монета зрелая, если RSI когда-либо достигал зон
+        closes = [candle['close'] for candle in candles]
         
         rsi_history = calculate_rsi_history(closes, 14)
         if not rsi_history:
