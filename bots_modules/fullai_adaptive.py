@@ -110,9 +110,10 @@ def _reset_to_virtual(symbol: str, reason: str = ''):
         logger.info("[FullAI Adaptive] %s: сброс в виртуальный режим. %s", symbol, reason)
 
 
-def mutate_params(symbol: str) -> bool:
+def mutate_params(symbol: str, trigger_reason: str = '') -> bool:
     """
     Подбор новых параметров для монеты (сначала RSI, затем TP/SL и др.) и запись в full_ai_coin_params.
+    trigger_reason — причина смены для логов (мёртвый период, виртуальная неудача, реальный убыток).
     Возвращает True если параметры изменены и сохранены.
     """
     norm = (symbol or '').upper()
@@ -145,16 +146,28 @@ def mutate_params(symbol: str) -> bool:
         new_params['max_loss_percent'] = round(max(5, min(25, base['max_loss_percent'] + step_sl)), 1)
         if db.save_full_ai_coin_params(norm, new_params):
             logger.info(
-                "[FullAI Adaptive] %s: новые параметры (мутация) RSI long=%s short=%s, TP=%s%%, SL=%s%%",
+                "[FullAI Adaptive] %s: новые параметры (мутация) RSI long=%s short=%s, TP=%s%%, SL=%s%% | %s",
                 norm,
                 new_params['rsi_long_threshold'],
                 new_params['rsi_short_threshold'],
                 new_params['take_profit_percent'],
                 new_params['max_loss_percent'],
+                trigger_reason or 'mutate',
             )
             try:
                 from bot_engine.fullai_analytics import append_event, EVENT_PARAMS_CHANGE
-                append_event(symbol=norm, event_type=EVENT_PARAMS_CHANGE, reason='mutate')
+                extra = {
+                    'new_rsi_long': new_params['rsi_long_threshold'],
+                    'new_rsi_short': new_params['rsi_short_threshold'],
+                    'new_tp': new_params['take_profit_percent'],
+                    'new_sl': new_params['max_loss_percent'],
+                }
+                append_event(
+                    symbol=norm,
+                    event_type=EVENT_PARAMS_CHANGE,
+                    reason=trigger_reason or 'Мутация параметров',
+                    extra=extra,
+                )
             except Exception:
                 pass
             return True
@@ -183,8 +196,9 @@ def on_candle_tick(symbol: str, candle_id: Any = None) -> None:
         s['candles_since_last_trade'] = s.get('candles_since_last_trade', 0) + 1
         candles_since = s['candles_since_last_trade']
     if candles_since >= dead:
-        _reset_to_virtual(norm, "Мёртвый период: %s свечей без сделок (лимит %s)" % (candles_since, dead))
-        mutate_params(norm)
+        reason = "Мёртвый период: %s свечей без сделок (лимит %s)" % (candles_since, dead)
+        _reset_to_virtual(norm, reason)
+        mutate_params(norm, trigger_reason=reason)
         with _state_lock:
             _get_symbol_state(norm)['candles_since_last_trade'] = 0
 
@@ -250,7 +264,11 @@ def record_virtual_open(symbol: str, direction: str, entry_price: float, entry_t
         })
     try:
         from bot_engine.fullai_analytics import append_event, EVENT_VIRTUAL_OPEN
-        append_event(symbol=norm, event_type=EVENT_VIRTUAL_OPEN, direction=(direction or 'LONG').upper(), is_virtual=True)
+        append_event(
+            symbol=norm, event_type=EVENT_VIRTUAL_OPEN,
+            direction=(direction or 'LONG').upper(), is_virtual=True,
+            extra={'price': entry_price, 'entry_price': entry_price},
+        )
     except Exception:
         pass
 
@@ -292,11 +310,12 @@ def _close_virtual_position(symbol: str, success: bool) -> None:
             else:
                 do_mutate = False
     if do_mutate:
-        logger.info("[FullAI Adaptive] %s: виртуальная неудача в серии → подбор новых параметров", symbol)
-        mutate_params(symbol)
+        reason = "Виртуальная неудача в серии"
+        logger.info("[FullAI Adaptive] %s: %s → подбор новых параметров", symbol, reason)
+        mutate_params(symbol, trigger_reason=reason)
 
 
-def record_virtual_close(symbol: str, success: bool) -> None:
+def record_virtual_close(symbol: str, success: bool, pnl_percent: float = None, direction: str = None, entry_price: float = None, exit_price: float = None) -> None:
     """Вызывать после закрытия виртуальной позиции (по TP/SL или решению ИИ)."""
     norm = (symbol or '').upper()
     if not norm:
@@ -304,7 +323,16 @@ def record_virtual_close(symbol: str, success: bool) -> None:
     _close_virtual_position(norm, success)
     try:
         from bot_engine.fullai_analytics import append_event, EVENT_VIRTUAL_CLOSE
-        append_event(symbol=norm, event_type=EVENT_VIRTUAL_CLOSE, is_virtual=True, extra={'success': success})
+        extra = {'success': success}
+        if pnl_percent is not None:
+            extra['pnl_percent'] = pnl_percent
+        if direction:
+            extra['direction'] = direction
+        if entry_price is not None:
+            extra['entry_price'] = entry_price
+        if exit_price is not None:
+            extra['exit_price'] = exit_price
+        append_event(symbol=norm, event_type=EVENT_VIRTUAL_CLOSE, is_virtual=True, pnl_percent=pnl_percent, extra=extra)
     except Exception:
         pass
 
@@ -357,7 +385,11 @@ def process_virtual_positions(
         close_now = decision.get('close_now', False) or pnl_percent >= tp or pnl_percent <= -sl
         if close_now:
             success = pnl_percent >= 0
-            record_virtual_close(norm, success)
+            record_virtual_close(
+                norm, success,
+                pnl_percent=pnl_percent, direction=direction,
+                entry_price=entry, exit_price=current_price,
+            )
             to_remove.append(i)
             # Сохраняем виртуальную сделку для страницы «Закрытые PnL»
             try:
@@ -429,8 +461,9 @@ def record_real_close(symbol: str, pnl_percent: float, reason: str = None, extra
             s['real_losses_count'] = 0
             need_reset = False
     if pnl_percent < 0 and need_reset:
-        _reset_to_virtual(norm, "Реальная сделка в минусе (%.2f%%), подбор новых параметров" % pnl_percent)
-        mutate_params(norm)
+        reason = "Реальная сделка в минусе (%.2f%%)" % pnl_percent
+        _reset_to_virtual(norm, reason + ", подбор новых параметров")
+        mutate_params(norm, trigger_reason=reason)
 
 
 def get_adaptive_settings_for_api() -> Dict[str, Any]:

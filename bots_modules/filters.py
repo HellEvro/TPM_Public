@@ -1039,7 +1039,31 @@ def get_coin_rsi_data_for_timeframe(symbol, exchange_obj=None, timeframe=None):
             result['rsi_zone'] = rsi_zone
             result['signal'] = signal
             result['change24h'] = result.get('change24h', 0)
-            result['is_mature'] = base_data.get('is_mature', True) if base_data else True
+            # ✅ Зрелость: проверяем через storage или по свечам (для UI — maturity_reason)
+            if auto_config.get('enable_maturity_check', True):
+                try:
+                    from bots_modules.maturity import get_maturity_timeframe
+                    maturity_tf = get_maturity_timeframe()
+                    maturity_candles = candles if timeframe == maturity_tf else None
+                    if not maturity_candles and symbol in candles_cache:
+                        tc = candles_cache.get(symbol, {})
+                        if isinstance(tc, dict) and maturity_tf in tc:
+                            maturity_candles = tc[maturity_tf].get('candles')
+                    if maturity_candles and len(maturity_candles) >= 15:
+                        from bots_modules.maturity import check_coin_maturity_with_storage
+                        mr = check_coin_maturity_with_storage(symbol, maturity_candles)
+                        result['is_mature'] = mr.get('is_mature', True)
+                        result['maturity_reason'] = mr.get('reason') if not mr.get('is_mature') else None
+                    else:
+                        is_mature, maturity_reason = check_coin_maturity_stored_or_verify(symbol)
+                        result['is_mature'] = is_mature
+                        result['maturity_reason'] = maturity_reason if not is_mature else None
+                except Exception as _e:
+                    result['is_mature'] = base_data.get('is_mature', True) if base_data else True
+                    result['maturity_reason'] = None
+            else:
+                result['is_mature'] = True
+                result['maturity_reason'] = None
             result['has_existing_position'] = base_data.get('has_existing_position', False) if base_data else False
 
             # Scope: черный список ВСЕГДА исключает монету из торговли (при любом scope)
@@ -1535,9 +1559,10 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
             enable_maturity_check = bots_data.get('auto_bot_config', {}).get('enable_maturity_check', True)
         is_mature = True  # По умолчанию считаем зрелой (если проверка отключена)
         
+        maturity_reason = None
         if enable_maturity_check:
             # ✅ ИСПОЛЬЗУЕМ хранилище зрелых монет для быстрой проверки
-            is_mature = check_coin_maturity_stored_or_verify(symbol)
+            is_mature, maturity_reason = check_coin_maturity_stored_or_verify(symbol)
             
             # Если есть сигнал входа И монета незрелая - блокируем сигнал
             if signal in ['ENTER_LONG', 'ENTER_SHORT'] and not is_mature:
@@ -1891,6 +1916,7 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
             'blocked_by_scope': is_blocked_by_scope,
             'has_existing_position': has_existing_position,
             'is_mature': is_mature if enable_maturity_check else True,
+            'maturity_reason': maturity_reason if (enable_maturity_check and not is_mature) else None,
             # ✅ КРИТИЧНО: Флаги блокировки для get_effective_signal и UI
             # Устанавливаем флаги на основе результатов проверки фильтров для UI
             'blocked_by_exit_scam': exit_scam_info.get('blocked', False) if exit_scam_info else False,
@@ -1940,18 +1966,22 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
         return None
 
 def get_required_timeframes():
-    """Таймфреймы для загрузки свечей: только текущий из конфига (тот что в работе). Один ТФ = быстрая загрузка."""
+    """Таймфреймы для загрузки свечей: текущий из конфига + 1m для зрелости (гарантирует 400 свечей для любой монеты)."""
     try:
         from bot_engine.config_loader import get_current_timeframe, TIMEFRAME
         system_tf = get_current_timeframe()
-        return [system_tf] if system_tf else [TIMEFRAME]
+        base_tf = system_tf or TIMEFRAME
+        timeframes = [base_tf]
+        if base_tf != '1m':
+            timeframes.append('1m')  # Для проверки зрелости (400 свечей на любом ТФ)
+        return timeframes
     except Exception:
         from bot_engine.config_loader import TIMEFRAME
         return [TIMEFRAME]
 
 
 def get_required_timeframes_for_rsi():
-    """Таймфреймы только для расчёта RSI (системный + entry_tf ботов в позиции)."""
+    """Таймфреймы для расчёта RSI (системный + entry_tf ботов в позиции + 1m для зрелости)."""
     timeframes = set()
     try:
         from bot_engine.config_loader import get_current_timeframe, TIMEFRAME
@@ -1966,6 +1996,7 @@ def get_required_timeframes_for_rsi():
     except Exception:
         from bot_engine.config_loader import TIMEFRAME
         default_tf = TIMEFRAME
+    timeframes.add('1m')  # Для зрелости (400 свечей = ~7 ч, почти любая монета)
     try:
         from bots_modules.imports_and_globals import bots_data, bots_data_lock, BOT_STATUS
         with bots_data_lock:
@@ -2952,6 +2983,23 @@ def process_auto_bot_signals(exchange_obj=None):
         logger.info(f" 📊 Диагностика: монет в RSI данных: {total_coins}, таймфрейм: {current_timeframe}")
         if total_coins == 0:
             logger.warning(" ⚠️ Нет данных по монетам (coins_rsi_data пуст). Убедитесь, что загрузка RSI завершилась и биржа отдаёт пары.")
+        # ✅ FullAI Adaptive: on_candle_tick для ВСЕХ монет — счётчик «свечей без сделок» и мутация
+        candles_cache = coins_rsi_data.get('candles_cache', {})
+        try:
+            from bots_modules.fullai_adaptive import on_candle_tick, is_adaptive_enabled
+            if is_adaptive_enabled():
+                for sym, c_data in coins_rsi_data['coins'].items():
+                    cid = None
+                    if sym in candles_cache:
+                        cc = candles_cache[sym]
+                        if isinstance(cc, dict):
+                            tf_data = cc.get(current_timeframe) or cc
+                            cand = tf_data.get('candles') if isinstance(tf_data, dict) else None
+                            if cand and len(cand) > 0:
+                                cid = cand[-1].get('time')
+                    on_candle_tick(sym, cid)
+        except ImportError:
+            pass
         for symbol, coin_data in coins_rsi_data['coins'].items():
             # ✅ КРИТИЧНО: Явно передаём текущий ТФ, чтобы не было fallback на rsi6h/trend6h
             rsi = get_rsi_from_coin_data(coin_data, timeframe=current_timeframe)
@@ -3304,7 +3352,8 @@ def check_new_autobot_filters(symbol, signal, coin_data):
         
         # Дубль-проверка зрелости монеты (только если проверка зрелости включена)
         if auto_config.get('enable_maturity_check', True):
-            if not check_coin_maturity_stored_or_verify(symbol):
+            _mature, _ = check_coin_maturity_stored_or_verify(symbol)
+            if not _mature:
                 return False
         
         # Дубль-проверка ExitScam (только если фильтр включён); свечи из кэша — без API и блокировок
@@ -3545,15 +3594,43 @@ def set_filtered_coins_for_autobot(filtered_coins):
         logger.error(f" ❌ Ошибка передачи монет автоботу: {e}")
         return False
 
+# Кэш "проверено незрелое через API" — TTL 60 сек (перепроверка при обновлении)
+_verified_immature_cache = {}
+_verified_immature_lock = threading.Lock()
+_VERIFIED_IMMATURE_TTL = 60  # секунд
+
 def check_coin_maturity_stored_or_verify(symbol):
-    """Проверяет зрелость монеты ТОЛЬКО по БД (хранилищу зрелых монет).
-    Свечи и расчёт зрелости уже делаются при загрузке RSI; результат сохраняется в БД.
-    Вызов API здесь не используется."""
+    """Проверяет зрелость: сначала по БД, при отсутствии — fallback через API.
+    Возвращает (is_mature: bool, reason: str|None). reason — причина незрелости для UI."""
     try:
-        return is_coin_mature_stored(symbol)
+        if is_coin_mature_stored(symbol):
+            return (True, None)
+        with _verified_immature_lock:
+            entry = _verified_immature_cache.get(symbol)
+            if entry and (time.time() - entry.get('ts', 0)) < _VERIFIED_IMMATURE_TTL:
+                return (False, entry.get('reason', 'Недавно проверено как незрелая'))
+        try:
+            from bots_modules.maturity import get_maturity_timeframe
+            maturity_tf = get_maturity_timeframe()
+        except Exception:
+            maturity_tf = '1m'
+        result = get_coin_candles_only(symbol, None, maturity_tf, bulk_mode=True)
+        if not result or not result.get('candles'):
+            reason = f"Нет свечей (API)"
+            with _verified_immature_lock:
+                _verified_immature_cache[symbol] = {'ts': time.time(), 'reason': reason}
+            return (False, reason)
+        candles = result['candles']
+        maturity_result = check_coin_maturity_with_storage(symbol, candles)
+        if maturity_result.get('is_mature'):
+            return (True, None)
+        reason = maturity_result.get('reason', f'Недостаточно свечей: {len(candles)}/400')
+        with _verified_immature_lock:
+            _verified_immature_cache[symbol] = {'ts': time.time(), 'reason': reason}
+        return (False, reason)
     except Exception as e:
         logger.error(f"{symbol}: Ошибка проверки зрелости по БД: {e}")
-        return False
+        return (False, str(e))
 
 def update_is_mature_flags_in_rsi_data():
     """Обновляет флаги is_mature в кэшированных данных RSI на основе хранилища зрелых монет.

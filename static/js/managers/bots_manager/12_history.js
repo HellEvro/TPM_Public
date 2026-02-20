@@ -84,6 +84,7 @@
         const eventsEl = document.getElementById('fullaiAnalyticsEvents');
         const periodHours = parseInt(document.getElementById('fullaiAnalyticsPeriod')?.value, 10) || 168;
         const symbol = (document.getElementById('fullaiAnalyticsSymbol')?.value || '').trim().toUpperCase() || undefined;
+        const eventFilter = document.getElementById('fullaiAnalyticsEventFilter')?.value || 'all';
         const from_ts = (Date.now() / 1000) - periodHours * 3600;
         const to_ts = Date.now() / 1000;
         if (loadingEl) loadingEl.style.display = 'flex';
@@ -96,11 +97,16 @@
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
             if (!data.success) throw new Error(data.error || 'Нет данных');
-            this.renderFullaiAnalytics(data.summary || {}, data.events || [], summaryEl, eventsEl, {
+            let events = data.events || [];
+            if (eventFilter === 'params_and_virtual') {
+                events = events.filter(e => ['params_change', 'virtual_open', 'virtual_close', 'round_success'].indexOf(e.event_type) >= 0);
+            }
+            this.renderFullaiAnalytics(data.summary || {}, events, summaryEl, eventsEl, {
                 db_path: data.db_path,
                 total_events: data.total_events,
                 bot_trades_stats: data.bot_trades_stats || null,
-                closed_trades: data.closed_trades || []
+                closed_trades: data.closed_trades || [],
+                fullai_configs: data.fullai_configs || null
             });
         } catch (err) {
             if (summaryEl) summaryEl.innerHTML = `<div class="analytics-error">❌ ${(err && err.message) || String(err)}</div>`;
@@ -149,6 +155,8 @@
         cards += '</div>';
         html += '<p class="fullai-events-note" style="font-size:0.85rem;color:var(--text-muted,#888);margin-top:0.25rem;">Карточки «Реальные закрытия/в плюс/в минус/Win rate» — из bots_data.db (история ботов). Остальные карточки — события FullAI (записываются только при включённом FullAI).</p>';
         summaryEl.innerHTML = html + cards;
+
+        this._renderFullaiConfigsBlock(meta && meta.fullai_configs);
 
         let closedTradesHtml = '';
         const closedTrades = (meta && meta.closed_trades) || [];
@@ -200,12 +208,67 @@
             const pnlPct = ev.pnl_percent != null ? Number(ev.pnl_percent) : (ex.pnl_percent != null ? Number(ex.pnl_percent) : null);
             const pnlClass = pnlPct != null ? (pnlPct >= 0 ? 'positive' : 'negative') : '';
             const pnlStr = pnlPct != null ? ((pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%') : '—';
-            const details = ev.reason || (ev.extra && ev.extra.success !== undefined ? (ev.extra.success ? 'успех' : 'убыток') : '') || '—';
-            const conclusion = pnlPct != null ? (pnlPct >= 0 ? 'Прибыль. ' + (ev.reason || '') : 'Убыток. ' + (ev.reason || '')) : '—';
-            table += '<tr><td>' + (ev.ts_iso || '') + '</td><td>' + (ev.symbol || '') + '</td><td>' + label + '</td><td>' + dir + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlStr + '</td><td>' + limitExit + '</td><td>' + orderType + '</td><td>' + tsPlaced + '</td><td>' + slippage + '</td><td>' + delay + '</td><td>' + details + '</td><td>' + conclusion + '</td></tr>';
+            let details = '—';
+            let conclusion = '—';
+            if (ev.event_type === 'params_change') {
+                details = ev.reason || 'Мутация';
+                const parts = [];
+                if (ex.new_rsi_long != null) parts.push('RSI L=' + ex.new_rsi_long);
+                if (ex.new_rsi_short != null) parts.push('S=' + ex.new_rsi_short);
+                if (ex.new_tp != null) parts.push('TP=' + ex.new_tp + '%');
+                if (ex.new_sl != null) parts.push('SL=' + ex.new_sl + '%');
+                conclusion = parts.length ? parts.join(', ') : '—';
+            } else if (ev.event_type === 'virtual_close') {
+                const ok = ex.success !== false;
+                details = ok ? '✅ Успех' : '❌ Убыток';
+                conclusion = pnlStr !== '—' ? (ok ? '✅ ' + pnlStr : '❌ ' + pnlStr) : (ok ? '✅ В плюс' : '❌ В минус');
+            } else if (ev.event_type === 'virtual_open') {
+                details = ex.entry_price != null ? 'Вход ' + Number(ex.entry_price).toFixed(6) : '—';
+                conclusion = '—';
+            } else {
+                details = ev.reason || (ex.success !== undefined ? (ex.success ? 'успех' : 'убыток') : '') || '—';
+                conclusion = pnlPct != null ? (pnlPct >= 0 ? 'Прибыль. ' + (ev.reason || '') : 'Убыток. ' + (ev.reason || '')) : '—';
+            }
+            const rowClass = ev.event_type === 'params_change' ? 'fullai-event-params' : (ev.event_type === 'virtual_close' ? (ex.success ? 'fullai-event-virt-ok' : 'fullai-event-virt-fail') : '');
+            table += '<tr class="' + rowClass + '"><td>' + (ev.ts_iso || '') + '</td><td>' + (ev.symbol || '') + '</td><td>' + label + '</td><td>' + dir + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlStr + '</td><td>' + limitExit + '</td><td>' + orderType + '</td><td>' + tsPlaced + '</td><td>' + slippage + '</td><td>' + delay + '</td><td>' + details + '</td><td>' + conclusion + '</td></tr>';
         });
         table += '</tbody></table>';
         eventsEl.innerHTML = closedTradesHtml + table;
+    },
+
+    _renderFullaiConfigsBlock(fullaiConfigs) {
+        const selectEl = document.getElementById('fullaiConfigCoinSelect');
+        const currentEl = document.getElementById('fullaiConfigCurrent');
+        const previousEl = document.getElementById('fullaiConfigPrevious');
+        if (!selectEl || !currentEl || !previousEl) return;
+        const cfg = fullaiConfigs || { global_config: {}, coin_configs: {} };
+        const coins = Object.keys(cfg.coin_configs || {}).sort();
+        const options = [{ value: '_global', text: 'Глобальный конфиг' }];
+        coins.forEach(sym => options.push({ value: sym, text: sym }));
+        selectEl.innerHTML = options.map(o => '<option value="' + o.value + '">' + o.text + '</option>').join('');
+        const renderSelected = () => {
+            const val = selectEl.value;
+            let current = null, previous = null, updatedAt = null;
+            if (val === '_global') {
+                current = cfg.global_config || {};
+                previous = null;
+            } else {
+                const coin = (cfg.coin_configs || {})[val];
+                if (coin) {
+                    current = coin.current || {};
+                    previous = coin.previous || null;
+                    updatedAt = coin.updated_at || null;
+                }
+            }
+            currentEl.textContent = Object.keys(current || {}).length ? JSON.stringify(current, null, 2) : '—';
+            previousEl.textContent = previous && Object.keys(previous).length ? JSON.stringify(previous, null, 2) : '—';
+            currentEl.setAttribute('title', updatedAt && val !== '_global' ? 'Обновлено: ' + updatedAt : '');
+        };
+        if (!selectEl.hasAttribute('data-fullai-config-bound')) {
+            selectEl.setAttribute('data-fullai-config-bound', 'true');
+            selectEl.addEventListener('change', renderSelected);
+        }
+        renderSelected();
     }
 
     /**

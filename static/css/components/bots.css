@@ -3743,6 +3743,16 @@ input:checked + .toggle-slider:before {
     font-weight: 600;
 }
 
+.fullai-events-table tr.fullai-event-params {
+    background: rgba(255, 193, 7, 0.12);
+}
+.fullai-events-table tr.fullai-event-virt-ok {
+    background: rgba(76, 175, 80, 0.12);
+}
+.fullai-events-table tr.fullai-event-virt-fail {
+    background: rgba(244, 67, 54, 0.12);
+}
+
 /* Фильтры истории */
 .history-filters {
     background: var(--bg-secondary);

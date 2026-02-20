@@ -1351,8 +1351,9 @@
             const minCandles = this.autoBotConfig?.min_candles_for_maturity || 400;
             activeStatusData.maturity = window.languageUtils.getTranslation('mature_coin_description', {candles: actualCandles, min: minCandles});
         } else if (coin.is_mature === false) {
-            const minCandles = this.autoBotConfig?.min_candles_for_maturity || 400;
-            activeStatusData.maturity = window.languageUtils.getTranslation('immature_coin_description', {min: minCandles});
+            activeStatusData.maturity = coin.maturity_reason || 
+                window.languageUtils.getTranslation('immature_coin_description', 
+                    {min: this.autoBotConfig?.min_candles_for_maturity || 400});
         }
         
         console.log('[BotsManager] 🎯 Обновление активных иконок:', activeStatusData);
@@ -1655,7 +1656,7 @@
                 itemId: 'maturityDiamondItem',
                 valueId: 'selectedCoinMaturityDiamond',
                 iconId: 'maturityDiamondIcon',
-                value: window.languageUtils.getTranslation('immature_coin_description', {min: minCandles}),
+                value: coin.maturity_reason || window.languageUtils.getTranslation('immature_coin_description', {min: minCandles}),
                 icon: '',
                 description: 'Монета не имеет достаточно истории для надежного анализа'
             });

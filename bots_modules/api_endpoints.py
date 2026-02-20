@@ -626,7 +626,7 @@ def get_coins_with_rsi():
                 
                 essential_fields = ['symbol', rsi_key, trend_key, 'rsi_zone', 'signal', 'price', 
                                   'change24h', 'last_update', 'blocked_by_scope', 'has_existing_position',
-                                  'is_mature', 'blocked_by_exit_scam', 'blocked_by_rsi_time', 'blocked_by_loss_reentry',
+                                  'is_mature', 'maturity_reason', 'blocked_by_exit_scam', 'blocked_by_rsi_time', 'blocked_by_loss_reentry',
                                   'trading_status', 'is_delisting']
                 # Также добавляем старые ключи для обратной совместимости
                 essential_fields.extend(['rsi6h', 'trend6h', 'rsi', 'trend'])
@@ -1064,13 +1064,15 @@ def create_bot_endpoint():
         if enable_maturity_check_coin and not has_manual_position:
             # Проверяем зрелость по текущему системному ТФ (хранилище или загрузка свечей при верификации)
             from bots_modules.filters import check_coin_maturity_stored_or_verify
-            if not check_coin_maturity_stored_or_verify(symbol):
+            is_mature, maturity_reason = check_coin_maturity_stored_or_verify(symbol)
+            if not is_mature:
                 from bot_engine.config_loader import get_current_timeframe
                 tf = get_current_timeframe()
-                logger.warning(f" {symbol}: Монета не прошла проверку зрелости (ТФ {tf})")
+                err_msg = maturity_reason or f'Проверка по таймфрейму {tf}'
+                logger.warning(f" {symbol}: Монета не прошла проверку зрелости: {err_msg}")
                 return jsonify({
                     'success': False,
-                    'error': f'Монета {symbol} не прошла проверку зрелости (проверка по таймфрейму {tf})'
+                    'error': f'Монета {symbol} не прошла проверку зрелости: {err_msg}'
                 }), 400
         elif has_manual_position:
             logger.info(f" ✋ {symbol}: Ручная позиция обнаружена - проверка зрелости пропущена")
@@ -5561,12 +5563,20 @@ def get_fullai_analytics():
         db_info = get_db_info()
         bot_trades_stats = _compute_bot_trades_stats(symbol=symbol, from_ts=from_ts, to_ts=to_ts)
         closed_trades = _get_closed_trades_for_table(symbol=symbol, from_ts=from_ts, to_ts=to_ts, limit=limit)
+        fullai_configs = {}
+        try:
+            from bot_engine.bots_database import get_bots_database
+            db = get_bots_database()
+            fullai_configs = db.load_all_full_ai_configs_for_analytics()
+        except Exception as cfg_err:
+            pass
         return jsonify({
             'success': True,
             'summary': summary,
             'events': events,
             'closed_trades': closed_trades,
             'bot_trades_stats': bot_trades_stats,
+            'fullai_configs': fullai_configs,
             'db_path': db_info['db_path'],
             'total_events': db_info['total_events'],
         })
