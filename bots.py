@@ -705,6 +705,14 @@ if __name__ == '__main__':
         positions_monitor_thread.start()
         logger.info("📊 Positions Monitor Worker запущен (обновление каждые 5с)")
 
+        # ✅ FullAI Monitor - ежесекундная проверка позиций при full_ai_control (БД, свечи, индикаторы)
+        try:
+            from bot_engine.fullai_monitor import start_fullai_monitor
+            start_fullai_monitor()
+            logger.info("🧠 FullAI Monitor запущен (ежесекундно при full_ai_control)")
+        except Exception as fa_err:
+            logger.debug("FullAI Monitor не запущен: %s", fa_err)
+
         # Планировщик бэкапов только bots_data.db (своя БД bots.py)
         try:
             from configs.app_config import DATABASE_BACKUP

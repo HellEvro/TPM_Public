@@ -79,11 +79,20 @@
 
 ---
 
-## Блок 10: Тесты и проверки
+## Блок 10: FullAI Data Context и мониторинг (ежесекундно)
 
-- [x] **10.1** Проверка: включение FullAI не меняет пользовательский конфиг и individual_coin_settings.
-- [x] **10.2** Проверка: выключение FullAI возвращает использование пользовательского конфига и individual_coin_settings без шага «восстановить».
-- [x] **10.3** Проверка: таймфрейм нигде не берётся из конфига FullAI или таблицы FullAI.
+- [x] **10.0** FullAI Data Context (`bot_engine/fullai_data_context.py`): доступ к БД (свечи candles_history), системным индикаторам (RSI, тренд, сигнал из coins_rsi_data), кастомным индикаторам.
+- [x] **10.1** FullAI Monitor (`bot_engine/fullai_monitor.py`): мониторинг позиций каждую секунду при full_ai_control. Использует get_fullai_data_context и get_ai_exit_decision.
+- [x] **10.2** Кастомные индикаторы FullAI: `register_fullai_indicator(name, compute_fn)`. Дефолтные: momentum_pct_5, volatility_atr_pct.
+- [x] **10.3** get_ai_exit_decision принимает data_context (свечи из БД, system, custom). bot_class и fullai_monitor передают полный контекст.
+
+---
+
+## Блок 11: Тесты и проверки
+
+- [x] **11.1** Проверка: включение FullAI не меняет пользовательский конфиг и individual_coin_settings.
+- [x] **11.2** Проверка: выключение FullAI возвращает использование пользовательского конфига и individual_coin_settings без шага «восстановить».
+- [x] **11.3** Проверка: таймфрейм нигде не берётся из конфига FullAI или таблицы FullAI.
 
 ---
 
@@ -97,7 +106,8 @@
 6. Блок 6 (таймфрейм только из конфига).  
 7. Блок 9 (безопасность и индикация).  
 8. Блок 7–8 (изучение сделок и обучение в FullAI-хранилище).  
-9. Блок 10 (тесты и проверки).
+9. Блок 10 (Data Context, Monitor, кастомные индикаторы).  
+10. Блок 11 (тесты и проверки).
 
 ---
 
@@ -106,6 +116,8 @@
 - **API FullAI:** `GET/POST /api/bots/fullai-coin-params`, `GET/POST/DELETE /api/bots/fullai-coin-params/<symbol>`, `POST /api/bots/fullai-trades-analysis` (запуск анализа по расписанию).
 - **Модуль изучения сделок:** `bots_modules/fullai_trades_learner.py` — загрузка из `bot_trades_history`, оценка, запись только в `full_ai_coin_params`; запуск после закрытия позиции в FullAI и по API.
 - **Оптимизатор:** при `full_ai_control` сохраняет результаты только в `full_ai_coin_params` (ai_strategy_optimizer.py).
-- **Проверки:** `tests/verify_fullai_plan.py` — проверки 10.1–10.3.
+- **FullAI Data Context:** `bot_engine/fullai_data_context.py` — доступ к БД, свечам, системным и кастомным индикаторам.
+- **FullAI Monitor:** `bot_engine/fullai_monitor.py` — ежесекундный мониторинг позиций при full_ai_control.
+- **Проверки:** `tests/verify_fullai_plan.py` — проверки 11.1–11.3.
 
 *По мере выполнения помечать пункты: `[ ]` → `[x]`.*

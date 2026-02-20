@@ -1693,23 +1693,34 @@ class NewTradingBot:
                         fullai_config = get_effective_auto_bot_config()
                         coin_params = get_effective_coin_settings(self.symbol)
                         candles_exit = []
+                        data_context = None
                         try:
-                            from bot_engine.config_loader import get_current_timeframe
-                            _tf = getattr(self, 'entry_timeframe', None) or get_current_timeframe()
-                            chart_res = self.exchange.get_chart_data(
-                                self.symbol, _tf, '1w', bulk_mode=True, bulk_limit=50
-                            )
-                            if chart_res and chart_res.get('success'):
-                                candles_exit = chart_res.get('data', {}).get('candles', []) or []
+                            from bot_engine.fullai_data_context import get_fullai_data_context
+                            data_context = get_fullai_data_context(self.symbol)
+                            candles_exit = data_context.get('candles') or []
                         except Exception:
                             pass
+                        if not candles_exit:
+                            try:
+                                from bot_engine.config_loader import get_current_timeframe
+                                _tf = getattr(self, 'entry_timeframe', None) or get_current_timeframe()
+                                chart_res = self.exchange.get_chart_data(
+                                    self.symbol, _tf, '1w', bulk_mode=True, bulk_limit=50
+                                )
+                                if chart_res and chart_res.get('success'):
+                                    candles_exit = chart_res.get('data', {}).get('candles', []) or []
+                            except Exception:
+                                pass
+                        if data_context is None:
+                            data_context = {'candles': candles_exit}
                         position_info = {
                             'entry_price': self.entry_price,
                             'position_side': self.position_side,
                             'position_size_coins': getattr(self, 'position_size_coins', None),
                         }
                         decision = get_ai_exit_decision(
-                            self.symbol, position_info, candles_exit, profit_percent, fullai_config, coin_params
+                            self.symbol, position_info, candles_exit, profit_percent, fullai_config, coin_params,
+                            data_context=data_context
                         )
                         if decision.get('close_now'):
                             reason_exit = decision.get('reason', 'FullAI_EXIT')

@@ -787,11 +787,13 @@ def get_ai_exit_decision(
     candles: List[Dict],
     pnl_percent: float,
     prii_config: Dict = None,
-    coin_params: Dict = None
+    coin_params: Dict = None,
+    data_context: Dict = None,
 ) -> Dict[str, Any]:
     """
     Решение ИИ о закрытии позиции сейчас (FullAI). При full_ai_control решение о выходе принимает только ИИ.
-    Возвращает close_now, reason, confidence. Таймфрейм из пользовательского конфига.
+    data_context: полный контекст от get_fullai_data_context (свечи из БД, system: RSI/тренд/сигнал, custom индикаторы).
+    Возвращает close_now, reason, confidence.
     """
     prii_config = prii_config or {}
     coin_params = coin_params or {}
@@ -810,6 +812,9 @@ def get_ai_exit_decision(
             result['reason'] = f'Stop loss ({pnl_percent:.2f}% <= -{sl}%)'
             result['confidence'] = 1.0
             return result
+        # Используем data_context (свечи из БД, индикаторы) если передан
+        if not candles and data_context:
+            candles = data_context.get('candles') or []
         # Опционально: вызов AIManager для более сложного решения (LSTM/pattern на выход)
         from bot_engine.ai import get_ai_manager
         ai_manager = get_ai_manager()
