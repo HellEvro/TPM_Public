@@ -35,7 +35,25 @@
 
     <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
     <script src="{{ url_for('static', filename='js/managers/ai_config_manager.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/managers/bots_manager.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <!-- BotsManager модули (порядок важен) -->
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/00_core.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/01_interface.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/02_search.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/03_filters.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/04_service.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/05_coins_display.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/06_duplicates_config.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/07_bot_controls.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/08_filter_ui.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/09_periodic.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/10_configuration.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/11_trades_display.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/12_history.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/13_ai_training.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/14_history_display.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/15_limit_orders.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/16_timeframe.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
+    <script src="{{ url_for('static', filename='js/managers/bots_manager/index.js') }}?v={{ cache_version if cache_version else 'nocache' }}"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
     <script src="{{ url_for('static', filename='js/language.js') }}"></script>
