@@ -1966,37 +1966,28 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
         return None
 
 def get_required_timeframes():
-    """Таймфреймы для загрузки свечей: текущий из конфига + 1m для зрелости (гарантирует 400 свечей для любой монеты)."""
+    """Таймфреймы для загрузки свечей: только системный из конфига. Зрелость считаем по нему же."""
     try:
         from bot_engine.config_loader import get_current_timeframe, TIMEFRAME
-        system_tf = get_current_timeframe()
-        base_tf = system_tf or TIMEFRAME
-        timeframes = [base_tf]
-        if base_tf != '1m':
-            timeframes.append('1m')  # Для проверки зрелости (400 свечей на любом ТФ)
-        return timeframes
+        system_tf = get_current_timeframe() or TIMEFRAME
+        return [system_tf] if system_tf else [TIMEFRAME]
     except Exception:
         from bot_engine.config_loader import TIMEFRAME
         return [TIMEFRAME]
 
 
 def get_required_timeframes_for_rsi():
-    """Таймфреймы для расчёта RSI (системный + entry_tf ботов в позиции + 1m для зрелости)."""
+    """Таймфреймы для расчёта RSI: системный + entry_tf ботов в позиции. Зрелость по системному."""
     timeframes = set()
     try:
         from bot_engine.config_loader import get_current_timeframe, TIMEFRAME
         system_tf = get_current_timeframe()
-        timeframes.add(system_tf)
-    except Exception:
-        from bot_engine.config_loader import TIMEFRAME
-        timeframes.add(TIMEFRAME)
-    try:
-        from bot_engine.config_loader import get_current_timeframe, TIMEFRAME
-        default_tf = get_current_timeframe()
+        default_tf = system_tf or TIMEFRAME
+        timeframes.add(default_tf)
     except Exception:
         from bot_engine.config_loader import TIMEFRAME
         default_tf = TIMEFRAME
-    timeframes.add('1m')  # Для зрелости (400 свечей = ~7 ч, почти любая монета)
+        timeframes.add(TIMEFRAME)
     try:
         from bots_modules.imports_and_globals import bots_data, bots_data_lock, BOT_STATUS
         with bots_data_lock:
