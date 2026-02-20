@@ -53,12 +53,17 @@ MATURITY_CHECK_CACHE_FILE = 'data/maturity_check_cache.json'  # 🚀 Кэш по
 mature_coins_lock = threading.Lock()
 
 def get_maturity_timeframe():
-    """Таймфрейм для проверки зрелости = системный (из конфига). 400 свечей на 5m = ~33ч, на 1m = ~7ч."""
+    """Таймфрейм для зрелости: 4h при мелких ТФ (1m–1h), иначе системный.
+    400 свечей на 5m = ~33ч — недостаточно для монет с историей 100+ дней.
+    400 свечей на 4h = ~66 дней — покрывает NOMUSDT и др. с длинной историей."""
     try:
         from bot_engine.config_loader import get_current_timeframe, TIMEFRAME
-        return get_current_timeframe() or TIMEFRAME or '5m'
+        sys_tf = get_current_timeframe() or TIMEFRAME or '5m'
+        # Мелкие ТФ: 400 свечей < 60 дней — используем 4h для адекватной истории
+        small_tfs = ('1m', '3m', '5m', '15m', '30m', '1h')
+        return '4h' if sys_tf in small_tfs else sys_tf
     except Exception:
-        return '5m'
+        return '4h'
 
 # 🚀 Кэш последней проверки зрелости (загружается из файла)
 last_maturity_check = {'coins_count': 0, 'config_hash': None}
@@ -494,6 +499,14 @@ def calculate_all_coins_maturity():
                     logger.info(f"📊 Прогресс: {i}/{len(coins_to_check)} монет ({round(i/len(coins_to_check)*100)}%)")
                 
                 candles = _get_candles_from_cache(candles_cache, symbol, maturity_tf)
+                if not candles:
+                    # Fallback: загружаем 4h/1000 свечей с API (кэш может содержать только системный ТФ)
+                    try:
+                        from bots_modules.filters import get_coin_candles_only
+                        res = get_coin_candles_only(symbol, None, maturity_tf, bulk_mode=True, bulk_limit=1000)
+                        candles = (res or {}).get('candles')
+                    except Exception:
+                        pass
                 if not candles:
                     skipped_no_candles += 1
                     immature_count += 1

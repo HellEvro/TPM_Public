@@ -500,14 +500,15 @@ def _maybe_auto_learn_exit_scam(symbol: str, candles: list) -> None:
     except Exception as e:
         logger.debug(f"ExitScam автоподбор для {symbol}: {e}")
 
-def get_coin_candles_only(symbol, exchange_obj=None, timeframe=None, bulk_mode=False):
+def get_coin_candles_only(symbol, exchange_obj=None, timeframe=None, bulk_mode=False, bulk_limit=None):
     """⚡ БЫСТРАЯ загрузка ТОЛЬКО свечей БЕЗ расчетов
     
     Args:
         symbol: Символ монеты
         exchange_obj: Объект биржи (опционально)
         timeframe: Таймфрейм для загрузки (если None - используется системный)
-        bulk_mode: Если True — для Bybit один запрос 100 свечей без задержки (массовая загрузка за <30с)
+        bulk_mode: Если True — для Bybit один запрос без чанков
+        bulk_limit: В bulk_mode — сколько свечей (для зрелости 1000 = ~166 дней на 4h)
     """
     try:
         if shutdown_flag.is_set():
@@ -535,12 +536,14 @@ def get_coin_candles_only(symbol, exchange_obj=None, timeframe=None, bulk_mode=F
             _exchange_api_semaphore = threading.Semaphore(8)
         with _exchange_api_semaphore:
             if bulk_mode and getattr(exchange_to_use.__class__, '__name__', '') == 'BybitExchange':
-                try:
-                    from bots_modules.imports_and_globals import MIN_CANDLES_FOR_MATURITY
-                    bulk_limit = max(MIN_CANDLES_FOR_MATURITY or 400, 100)
-                except Exception:
-                    bulk_limit = 400
-                chart_response = exchange_to_use.get_chart_data(symbol, timeframe, '30d', bulk_mode=True, bulk_limit=bulk_limit)
+                eff_limit = bulk_limit
+                if eff_limit is None:
+                    try:
+                        from bots_modules.imports_and_globals import MIN_CANDLES_FOR_MATURITY
+                        eff_limit = max(MIN_CANDLES_FOR_MATURITY or 400, 100)
+                    except Exception:
+                        eff_limit = 400
+                chart_response = exchange_to_use.get_chart_data(symbol, timeframe, '30d', bulk_mode=True, bulk_limit=eff_limit)
             else:
                 chart_response = exchange_to_use.get_chart_data(symbol, timeframe, '30d')
         
@@ -3594,8 +3597,9 @@ def check_coin_maturity_stored_or_verify(symbol):
             from bots_modules.maturity import get_maturity_timeframe
             maturity_tf = get_maturity_timeframe()
         except Exception:
-            maturity_tf = '1m'
-        result = get_coin_candles_only(symbol, None, maturity_tf, bulk_mode=True)
+            maturity_tf = '4h'
+        # bulk_limit=1000: на 4h = 166 дней, покрывает монеты с историей 130+ дней (NOMUSDT и др.)
+        result = get_coin_candles_only(symbol, None, maturity_tf, bulk_mode=True, bulk_limit=1000)
         if not result or not result.get('candles'):
             reason = f"Нет свечей (API)"
             with _verified_immature_lock:
