@@ -3187,6 +3187,23 @@ def process_auto_bot_signals(exchange_obj=None):
                     continue
                 # При успехе enter_position сам добавляет бота в bots_data
                 created_bots += 1
+                # FullAI аналитика: записываем real_open при успешном входе (поток process_auto_bot_signals не вызывает should_open_*)
+                try:
+                    with bots_data_lock:
+                        ac = bots_data.get('auto_bot_config', {})
+                    if ac.get('full_ai_control'):
+                        from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
+                        coin_data = coin.get('coin_data', {})
+                        price = float(coin_data.get('price') or 0)
+                        append_event(
+                            symbol=symbol,
+                            event_type=EVENT_REAL_OPEN,
+                            direction=direction,
+                            is_virtual=False,
+                            extra={'price': price, 'entry_price': price},
+                        )
+                except Exception:
+                    pass
                 logger.info(f" ✅ {symbol}: позиция открыта, бот в списке")
             except Exception as e:
                 error_str = str(e)
