@@ -8,7 +8,29 @@
         // Кнопки фильтров в блоке управления
         const addToWhitelistBtnMgmt = document.getElementById('addToWhitelistBtnManagement');
         const addToBlacklistBtnMgmt = document.getElementById('addToBlacklistBtnManagement');
-        const removeFromFiltersBtnMgmt = document.getElementById('removeFromFiltersBtnManagement');,
+        const removeFromFiltersBtnMgmt = document.getElementById('removeFromFiltersBtnManagement');
+        
+        if (addToWhitelistBtnMgmt) {
+            addToWhitelistBtnMgmt.onclick = () => this.addSelectedCoinToWhitelist();
+        }
+        if (addToBlacklistBtnMgmt) {
+            addToBlacklistBtnMgmt.onclick = () => this.addSelectedCoinToBlacklist();
+        }
+        if (removeFromFiltersBtnMgmt) {
+            removeFromFiltersBtnMgmt.onclick = () => this.removeSelectedCoinFromFilters();
+        }
+        
+        // Умные фильтры для найденных монет
+        const addFoundToWhitelist = document.getElementById('addFoundToWhitelist');
+        const addFoundToBlacklist = document.getElementById('addFoundToBlacklist');
+        
+        if (addFoundToWhitelist) {
+            addFoundToWhitelist.onclick = () => this.addFoundCoinsToWhitelist();
+        }
+        if (addFoundToBlacklist) {
+            addFoundToBlacklist.onclick = () => this.addFoundCoinsToBlacklist();
+        }
+    },
             initializeRsiFilters() {
         document.querySelectorAll('.rsi-filter-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -34,7 +56,41 @@
             updateRsiFilterButtons() {
         // Обновляем кнопки фильтров с текущими значениями RSI
         const buyFilterBtn = document.querySelector('.rsi-filter-btn[data-filter="buy-zone"]');
-        const sellFilterBtn = document.querySelector('.rsi-filter-btn[data-filter="sell-zone"]');,
+        const sellFilterBtn = document.querySelector('.rsi-filter-btn[data-filter="sell-zone"]');
+        
+        if (buyFilterBtn) {
+            // Сохраняем счетчик при обновлении текста
+            const countEl = buyFilterBtn.querySelector('#filterBuyZoneCount');
+            // Извлекаем число из счетчика (может быть в формате " (6)" или "6")
+            let count = '0';
+            if (countEl) {
+                const countText = countEl.textContent.trim();
+                // Извлекаем число из строки вида " (6)" или "6"
+                const match = countText.match(/\d+/);
+                count = match ? match[0] : '0';
+            }
+            buyFilterBtn.innerHTML = `🟢 ≤${this.rsiLongThreshold} (<span id="filterBuyZoneCount">${count}</span>)`;
+        }
+        
+        if (sellFilterBtn) {
+            // Сохраняем счетчик при обновлении текста
+            const countEl = sellFilterBtn.querySelector('#filterSellZoneCount');
+            // Извлекаем число из счетчика (может быть в формате " (6)" или "6")
+            let count = '0';
+            if (countEl) {
+                const countText = countEl.textContent.trim();
+                // Извлекаем число из строки вида " (6)" или "6"
+                const match = countText.match(/\d+/);
+                count = match ? match[0] : '0';
+            }
+            sellFilterBtn.innerHTML = `🔴 ≥${this.rsiShortThreshold} (<span id="filterSellZoneCount">${count}</span>)`;
+        }
+        
+        // Обновляем подписи тренд-фильтров с RSI значениями
+        this.updateTrendFilterLabels();
+        
+        console.log(`[BotsManager] 🔄 Обновлены кнопки фильтров RSI: ≤${this.rsiLongThreshold}, ≥${this.rsiShortThreshold}`);
+    },
             initActiveBotsFilters() {
         document.querySelectorAll('.active-bots-filter-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -52,7 +108,18 @@
         if (this.activeBotsFilter === 'all') return bots;
         return bots.filter(bot => {
             const pnl = bot.unrealized_pnl_usdt ?? bot.unrealized_pnl ?? 0;
-            const pnlVal = Number.parseFloat(pnl) || 0;,
+            const pnlVal = Number.parseFloat(pnl) || 0;
+            switch (this.activeBotsFilter) {
+                case 'long': return bot.status === 'in_position_long';
+                case 'short': return bot.status === 'in_position_short';
+                case 'profitable': return pnlVal >= 0;
+                case 'loss': return pnlVal < 0;
+                default: return true;
+            }
+        });
+    }
+
+    /** Виртуальные позиции ПРИИ в виде объектов как у ботов — для отображения в списке «Боты в работе» с бейджем «Виртуальная». */,
             getVirtualPositionsAsBots() {
         const list = Array.isArray(this.activeVirtualPositions) ? this.activeVirtualPositions : [];
         const filter = this.activeBotsFilter;
@@ -100,7 +167,36 @@
         });
     },
             updateTrendFilterLabels() {
-        // Проверяем, не обновлялись ли уже подписи,
+        // Проверяем, не обновлялись ли уже подписи
+        if (this.trendLabelsUpdated) {
+            console.log('[BotsManager] ⏭️ Подписи тренд-фильтров уже обновлены, пропускаем');
+            return;
+        }
+        
+        // Обновляем подписи тренд-фильтров с актуальными RSI значениями
+        const avoidDownTrendLabels = document.querySelectorAll('[data-translate="avoid_down_trend_label"]');
+        const avoidUpTrendLabels = document.querySelectorAll('[data-translate="avoid_up_trend_label"]');
+        
+        console.log(`[BotsManager] 🔄 Обновление подписей тренд-фильтров: RSI LONG=${this.rsiLongThreshold}, RSI SHORT=${this.rsiShortThreshold}`);
+        
+        avoidDownTrendLabels.forEach(label => {
+            // Заменяем статическое значение 29 на актуальное из конфигурации
+            const updatedText = `Избегать нисходящий тренд когда RSI < ${this.rsiLongThreshold}`;
+            label.textContent = updatedText;
+            console.log(`[BotsManager] ✅ Обновленный текст для DOWN тренда: "${updatedText}"`);
+        });
+        
+        avoidUpTrendLabels.forEach(label => {
+            // Заменяем статическое значение 71 на актуальное из конфигурации
+            const updatedText = `Избегать восходящий тренд когда RSI > ${this.rsiShortThreshold}`;
+            label.textContent = updatedText;
+            console.log(`[BotsManager] ✅ Обновленный текст для UP тренда: "${updatedText}"`);
+        });
+        
+        // Устанавливаем флаг, что подписи обновлены
+        this.trendLabelsUpdated = true;
+        console.log('[BotsManager] ✅ Подписи тренд-фильтров обновлены');
+    },
             updateRsiThresholds(config) {
         // Обновляем внутренние пороговые значения RSI
         const oldLongThreshold = this.rsiLongThreshold;
@@ -123,7 +219,11 @@
         // Обновляем счетчики
         this.updateCoinsCounter();
         
-        // Если текущий фильтр buy-zone или sell-zone, переприменяем его,
+        // Если текущий фильтр buy-zone или sell-zone, переприменяем его
+        if (this.currentRsiFilter === 'buy-zone' || this.currentRsiFilter === 'sell-zone') {
+            this.applyRsiFilter(this.currentRsiFilter);
+        }
+    },
             refreshCoinsRsiClasses() {
         // Перепересчитываем RSI классы для всех монет в списке
         const coinItems = document.querySelectorAll('.coin-item');
@@ -131,5 +231,33 @@
         coinItems.forEach(item => {
             const symbol = item.dataset.symbol;
             const coinData = this.coinsRsiData.find(c => c.symbol === symbol);
+            
+            if (coinData) {
+                // Удаляем старые классы
+                item.classList.remove('buy-zone', 'sell-zone', 'enter-long', 'enter-short');
+                
+                // Добавляем новые классы на основе обновленных порогов
+                // Получаем RSI с учетом текущего таймфрейма
+                const currentTimeframe = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
+                const rsiKey = `rsi${currentTimeframe}`;
+                const rsiValue = coinData[rsiKey] || coinData.rsi6h || coinData.rsi || 50;
+                const rsiClass = this.getRsiZoneClass(rsiValue);
+                if (rsiClass) {
+                    item.classList.add(rsiClass);
+                }
+                
+                // Используем универсальную функцию для определения сигнала
+                const effectiveSignal = this.getEffectiveSignal(coinData);
+                
+                if (effectiveSignal === 'ENTER_LONG') {
+                    item.classList.add('enter-long');
+                } else if (effectiveSignal === 'ENTER_SHORT') {
+                    item.classList.add('enter-short');
+                }
+            }
+        });
+        
+        console.log('[BotsManager] 🔄 Обновлены RSI и сигнальные классы для всех монет');
+    }
     });
 })();

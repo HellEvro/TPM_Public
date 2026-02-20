@@ -72,8 +72,7 @@ class BotsManager {
         // Инициализация при создании
         this.init();
     }
-    
-    // Методы логирования с уровнями
+
     logDebug(...args) {
         if (this.logLevel === 'debug') {
             console.log(...args);
@@ -89,8 +88,6 @@ class BotsManager {
     logError(...args) {
         console.error(...args);
     }
-
-    // Метод для получения перевода
 
     getTranslation(key) {
         const currentLang = document.documentElement.lang || 'ru';
@@ -121,10 +118,10 @@ class BotsManager {
             // Синхронизируем позиции при инициализации
             if (this.serviceOnline) {
                 console.log('[BotsManager] 🔄 Синхронизация позиций при инициализации...');
-
+                
                 // Загружаем делистинговые монеты при инициализации
                 await this.loadDelistedCoins();
-
+                
                 try {
                     const syncResponse = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/sync-positions`, {
                         method: 'POST',
@@ -142,33 +139,34 @@ class BotsManager {
                     console.warn('[BotsManager] ⚠️ Ошибка синхронизации позиций при инициализации:', syncError);
                 }
             }
-
+            
             // Запускаем периодическое обновление
             this.startPeriodicUpdate();
-
+            
             // Принудительная загрузка конфигурации
             setTimeout(() => {
                 console.log('[BotsManager] 🔄 Принудительная загрузка конфигурации...');
                 this.loadConfigurationData();
             }, 2000);
-
+            
             // Принудительное обновление состояния автобота и ботов (только при первой загрузке)
             setTimeout(() => {
                 this.logDebug('[BotsManager] 🔄 Принудительное обновление состояния автобота...');
                 this.loadActiveBotsData();
             }, 1000);
-
+            
             // Принудительное обновление подписей тренд-фильтров
             setTimeout(() => {
                 this.logDebug('[BotsManager] 🔄 Принудительное обновление подписей тренд-фильтров...');
-                this.trendLabelsUpdated = false;
+                this.trendLabelsUpdated = false; // Сбрасываем флаг для принудительного обновления
                 this.updateTrendFilterLabels();
             }, 3000);
-
+            
             console.log('[BotsManager] ✅ Менеджер ботов инициализирован');
-
+            
         } catch (error) {
             console.error('[BotsManager] ❌ Ошибка инициализации:', error);
             this.showServiceUnavailable();
         }
     }
+}

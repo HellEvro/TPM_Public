@@ -137,5 +137,46 @@
 
         if (tabName !== 'config') this.hideFloatingSaveButton();
         // Загружаем данные для соответствующего таба
+        switch(tabName) {
+                    case 'management':
+            this.loadCoinsRsiData();
+            this.loadFiltersData(); // Загружаем фильтры для кнопок управления
+            this.loadDuplicateSettings(); // Загружаем дублированные настройки
+            break;
+            case 'filters':
+                this.loadFiltersData();
+                // Загружаем актуальные данные монет для вкладки «Фильтры монет»; после загрузки обновляем поиск при активном запросе
+                this.loadCoinsRsiData().then(() => {
+                    const searchInput = document.getElementById('coinSearchInput');
+                    const term = searchInput ? searchInput.value.trim() : '';
+                    if (term) {
+                        this.filterCoins(term);
+                        this.updateSmartFilterControls(term);
+                    }
+                });
+                break;
+            case 'config':
+                console.log('[BotsManager] 🎛️ Переключение на вкладку КОНФИГУРАЦИЯ');
+                if (typeof this.applyConfigViewMode === 'function') this.applyConfigViewMode();
+                setTimeout(() => this.applyReadabilityStyles(), 100);
+                this.loadConfigurationData();
+                this.showConfigurationLoading(false);
+                this.createFloatingSaveButton();
+                setTimeout(() => this.updateFloatingSaveButtonVisibility(), 300);
+                break;
+            case 'active-bots':
+            case 'activeBotsTab':
+                this.loadActiveBotsData();
+                break;
+            case 'history':
+                this.initializeHistoryTab();
+                break;
+            case 'analytics':
+                this.initializeAnalyticsTab();
+                break;
+        }
+
+        console.log('[BotsManager] ✅ Таб переключен успешно');
+    }
     });
 })();

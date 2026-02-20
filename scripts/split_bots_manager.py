@@ -152,23 +152,23 @@ RESERVED = {
 
 def find_method_boundaries(content: str):
     """Находит границы всех методов класса BotsManager."""
-    # Ищем определения методов: "    methodName(...) {" или "    async methodName(...) {"
+    # Только методы класса: отступ 4 или 8 пробелов (не 12+ как у вложенных addEventListener и т.д.)
     pattern = re.compile(
-        r'^ {4,}(?:async\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\s*\([^)]*\)\s*\{',
+        r'^ {4,8}(?:async\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\s*\([^)]*\)\s*\{',
         re.MULTILINE
     )
     matches = list(pattern.finditer(content))
+    # Оставляем только незарезервированные — иначе конец метода попадает на "if", "for" и т.д.
+    valid = [(i, m) for i, m in enumerate(matches) if m.group(1) not in RESERVED]
     
     boundaries = []  # (method_name, start_pos, end_pos) - end исключительно
-    for i, m in enumerate(matches):
+    for j, (i, m) in enumerate(valid):
         name = m.group(1)
-        if name in RESERVED:
-            continue
         start = m.start()
-        if i + 1 < len(matches):
-            end = matches[i + 1].start() - 1
+        if j + 1 < len(valid):
+            next_start = valid[j + 1][1].start()
+            end = next_start - 1
         else:
-            # Последний метод - до закрывающей скобки класса
             end = content.rfind("\n}", 0, len(content))
             if end == -1:
                 end = len(content)
@@ -180,6 +180,31 @@ def find_method_boundaries(content: str):
 def extract_method_body(content: str, start: int, end: int) -> str:
     """Извлекает тело метода с отступом 4 пробела (для Object.assign)."""
     return content[start:end].rstrip()
+
+
+def strip_leading_comments_and_blank(body: str) -> str:
+    """Убирает ведущие пустые строки и комментарии (оставшиеся от границы с предыдущим методом)."""
+    lines = body.split("\n")
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("//"):
+            continue
+        return "\n".join(lines[i:])
+    return body
+
+
+def strip_trailing_comments_and_blank(body: str) -> str:
+    """Убирает завершающие пустые строки и блоки комментариев после закрывающей } метода."""
+    lines = body.split("\n")
+    for i in range(len(lines) - 1, -1, -1):
+        stripped = lines[i].strip()
+        if not stripped:
+            continue
+        if stripped.startswith("//"):
+            continue
+        # Нашли последнюю значимую строку (должна быть "}" или "    }")
+        return "\n".join(lines[: i + 1])
+    return body
 
 
 def main():
@@ -202,12 +227,15 @@ def main():
     
     for module_name, method_list in MODULES.items():
         methods_code = []
-        for method_name in method_list:
+        for k, method_name in enumerate(method_list):
             if method_name not in method_map:
                 print(f"[!] Пропуск {method_name} - не найден")
                 continue
             start, end = method_map[method_name]
             body = extract_method_body(content, start, end)
+            if k > 0:
+                body = strip_leading_comments_and_blank(body)
+            body = strip_trailing_comments_and_blank(body)
             methods_code.append(body)
         
         if not methods_code:

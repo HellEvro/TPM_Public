@@ -5,7 +5,28 @@
     if (typeof BotsManager === 'undefined') return;
     Object.assign(BotsManager.prototype, {
             initializeHistoryTab() {
-        console.log('[BotsManager] 📊 Инициализация вкладки истории ботов...');,
+        console.log('[BotsManager] 📊 Инициализация вкладки истории ботов...');
+
+        if (!this.historyInitialized) {
+            // Инициализируем фильтры
+            this.initializeHistoryFilters();
+
+            // Инициализируем подвкладки истории
+            this.initializeHistorySubTabs();
+
+            // Инициализируем кнопки действий
+            this.initializeHistoryActionButtons();
+
+            this.historyInitialized = true;
+        }
+
+        // Загружаем данные для текущей подвкладки
+        this.loadHistoryData(this.currentHistoryTab);
+    }
+
+    /**
+     * Инициализирует вкладку «Аналитика»: привязка кнопок и однократная привязка обработчиков
+     */,
             initializeAnalyticsTab() {
         const runBtn = document.getElementById('analyticsRunBtn');
         if (runBtn && !runBtn.hasAttribute('data-analytics-bound')) {
@@ -130,7 +151,66 @@
         summaryEl.innerHTML = html + cards;
 
         let closedTradesHtml = '';
-        const closedTrades = (meta && meta.closed_trades) || [];,
+        const closedTrades = (meta && meta.closed_trades) || [];
+        if (closedTrades.length > 0) {
+            closedTradesHtml = '<h4 style="margin-top:0.5rem;">Закрытые сделки (PnL и вывод)</h4>';
+            closedTradesHtml += '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Напр.</th><th>Вход</th><th>Выход</th><th>PnL %</th><th>PnL USDT</th><th>Причина</th><th>Вывод</th></tr></thead><tbody>';
+            closedTrades.forEach(tr => {
+                const pnlUsdt = tr.pnl_usdt != null ? Number(tr.pnl_usdt) : null;
+                const roiPct = tr.roi_pct != null ? Number(tr.roi_pct) : null;
+                const pnlClass = pnlUsdt != null ? (pnlUsdt >= 0 ? 'positive' : 'negative') : '';
+                const pnlPctStr = roiPct != null ? ((roiPct >= 0 ? '+' : '') + roiPct.toFixed(2) + '%') : '—';
+                const pnlUsdtStr = pnlUsdt != null ? ((pnlUsdt >= 0 ? '+' : '') + pnlUsdt.toFixed(2)) : '—';
+                const entryPrice = tr.entry_price != null ? Number(tr.entry_price).toFixed(6) : '—';
+                const exitPrice = tr.exit_price != null ? Number(tr.exit_price).toFixed(6) : '—';
+                const conclusion = tr.conclusion || (pnlUsdt >= 0 ? 'Прибыль' : 'Убыток');
+                closedTradesHtml += '<tr><td>' + (tr.ts_iso || tr.exit_time || '') + '</td><td>' + (tr.symbol || '') + '</td><td>' + (tr.direction || '') + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlPctStr + '</td><td class="' + pnlClass + '">' + pnlUsdtStr + '</td><td>' + (tr.close_reason || '—') + '</td><td>' + (conclusion || '—') + '</td></tr>';
+            });
+            closedTradesHtml += '</tbody></table><h4 style="margin-top:1.5rem;">Последние события FullAI</h4>';
+        }
+
+        if (!eventsEl) return;
+        const eventLabels = { real_open: 'Вход реал.', virtual_open: 'Вход вирт.', real_close: 'Закрытие реал.', virtual_close: 'Закрытие вирт.', blocked: 'Блок', refused: 'Отказ ИИ', params_change: 'Смена параметров', round_success: 'Раунд → реал.', exit_hold: 'ИИ держать' };
+        if (events.length === 0 && closedTrades.length === 0) {
+            let hint = 'Нет событий и закрытых сделок за выбранный период.';
+            if (totalInDb === 0) {
+                hint = 'В БД 0 событий. Путь: ' + (dbPath || 'data/fullai_analytics.db') + '. Перезапустите сервис ботов после включения FullAI. В логах ботов при записи должна появиться строка «FullAI analytics: запись в БД». Если её нет — решения FullAI не доходят до записи (проверьте, что боты запущены и FullAI включён в Конфигурации).';
+            } else if (totalInDb != null && totalInDb > 0) {
+                hint = 'В БД всего событий: ' + totalInDb + '. За выбранный период — нет (попробуйте увеличить период).';
+            }
+            eventsEl.innerHTML = '<p class="analytics-placeholder">' + hint + '</p>';
+            return;
+        }
+        if (events.length === 0 && closedTrades.length > 0) {
+            eventsEl.innerHTML = closedTradesHtml;
+            return;
+        }
+        let table = '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Событие</th><th>Направление</th><th>Вход</th><th>Выход</th><th>PnL %</th><th>Лимит выхода</th><th>Тип</th><th>Время заявки</th><th>Проскальз.%</th><th>Задержка с</th><th>Детали</th><th>Вывод</th></tr></thead><tbody>';
+        events.forEach(ev => {
+            const label = eventLabels[ev.event_type] || ev.event_type;
+            const dir = ev.direction || '—';
+            const ex = ev.extra || {};
+            const entryPrice = ex.entry_price != null ? Number(ex.entry_price).toFixed(6) : (ev.event_type === 'real_open' || ev.event_type === 'refused' ? (ex.price != null ? Number(ex.price).toFixed(6) : '—') : '—');
+            const exitPrice = ex.exit_price != null ? Number(ex.exit_price).toFixed(6) : '—';
+            const limitExit = ex.limit_price_exit != null ? Number(ex.limit_price_exit).toFixed(6) : '—';
+            const orderType = ex.order_type_exit || '—';
+            const tsPlaced = ex.ts_order_placed_exit != null ? (function() { const d = new Date(ex.ts_order_placed_exit * 1000); return d.toISOString ? d.toISOString().slice(0, 19).replace('T', ' ') : d.toLocaleString(); })() : '—';
+            const slippage = ex.slippage_exit_pct != null ? Number(ex.slippage_exit_pct).toFixed(2) + '%' : '—';
+            const delay = ex.delay_sec != null ? String(Number(ex.delay_sec).toFixed(1)) : '—';
+            const pnlPct = ev.pnl_percent != null ? Number(ev.pnl_percent) : (ex.pnl_percent != null ? Number(ex.pnl_percent) : null);
+            const pnlClass = pnlPct != null ? (pnlPct >= 0 ? 'positive' : 'negative') : '';
+            const pnlStr = pnlPct != null ? ((pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%') : '—';
+            const details = ev.reason || (ev.extra && ev.extra.success !== undefined ? (ev.extra.success ? 'успех' : 'убыток') : '') || '—';
+            const conclusion = pnlPct != null ? (pnlPct >= 0 ? 'Прибыль. ' + (ev.reason || '') : 'Убыток. ' + (ev.reason || '')) : '—';
+            table += '<tr><td>' + (ev.ts_iso || '') + '</td><td>' + (ev.symbol || '') + '</td><td>' + label + '</td><td>' + dir + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlStr + '</td><td>' + limitExit + '</td><td>' + orderType + '</td><td>' + tsPlaced + '</td><td>' + slippage + '</td><td>' + delay + '</td><td>' + details + '</td><td>' + conclusion + '</td></tr>';
+        });
+        table += '</tbody></table>';
+        eventsEl.innerHTML = closedTradesHtml + table;
+    }
+
+    /**
+     * Запускает аудит RSI входа/выхода и отображает отчёт
+     */,
             async runRsiAudit() {
         const loadingEl = document.getElementById('rsiAuditLoading');
         const resultEl = document.getElementById('rsiAuditResult');
@@ -215,11 +295,68 @@
             if (data.updated > 0) this.runTradingAnalytics();
         } catch (err) {
             alert('Ошибка синхронизации: ' + ((err && err.message) || String(err)));
-        } finally {,
+        } finally {
+            if (syncBtn) { syncBtn.disabled = false; syncBtn.textContent = origText; }
+        }
+    }
+
+    /**
+     * Запускает ручной анализ ИИ: обновление данных, подход к сделкам и переобучение (в фоне).
+     * Показывает изменения в формате «старое → новое».
+     */,
             async runAiReanalyze() {
         const btn = document.getElementById('aiReanalyzeBtn');
         const resultEl = document.getElementById('aiReanalyzeResult');
-        const origText = btn ? btn.textContent : '';,
+        const origText = btn ? btn.textContent : '';
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Запуск...'; }
+        if (resultEl) { resultEl.style.display = 'none'; resultEl.innerHTML = ''; }
+        try {
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/ai-reanalyze`, { method: 'POST' });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
+            if (!data.success) throw new Error(data.error || 'Не удалось запустить');
+
+            const changes = data.changes || [];
+            if (resultEl) {
+                resultEl.style.display = 'block';
+                if (changes.length > 0) {
+                    const paramNames = {
+                        take_profit_percent: 'TP%',
+                        max_loss_percent: 'SL%',
+                        rsi_long_threshold: 'RSI long',
+                        rsi_short_threshold: 'RSI short'
+                    };
+                    const isPercent = (p) => p === 'take_profit_percent' || p === 'max_loss_percent';
+                    let html = '<strong>🧠 Изменения ИИ:</strong><ul style="margin: 6px 0 0 16px;">';
+                    changes.forEach(c => {
+                        const p = paramNames[c.param] || c.param;
+                        const suf = isPercent(c.param) ? '%' : '';
+                        html += `<li><code>${c.symbol}</code> ${p}: <span style="text-decoration:line-through">${c.old}${suf}</span> → <strong>${c.new}${suf}</strong></li>`;
+                    });
+                    html += '</ul>';
+                    html += '<p style="margin: 8px 0 0; color: var(--text-muted, #666); font-size: 0.85em;">' + (data.message || '') + '</p>';
+                    resultEl.innerHTML = html;
+                } else {
+                    resultEl.innerHTML = '<strong>🧠</strong> ' + (data.message || 'Готово. Изменений параметров нет.');
+                }
+            } else {
+                alert(data.message || 'ИИ анализирует и обновляет данные в фоне.');
+            }
+        } catch (err) {
+            if (resultEl) {
+                resultEl.style.display = 'block';
+                resultEl.innerHTML = '<span class="analytics-error">❌ ' + ((err && err.message) || String(err)) + '</span>';
+            } else {
+                alert('Ошибка: ' + ((err && err.message) || String(err)));
+            }
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = origText; }
+        }
+    }
+
+    /**
+     * Запускает аналитику торговли и отображает результат во вкладке «Аналитика»
+     */,
             async runTradingAnalytics() {
         const loadingEl = document.getElementById('analyticsLoading');
         const resultEl = document.getElementById('analyticsResult');
@@ -272,7 +409,207 @@
         const botCountRaw = s.bot_trades_count ?? 0;
         const botCountUnique = (bot.total_trades != null ? bot.total_trades : botCountRaw);
         const onlyBots = s.reconciliation_only_bots ?? 0;
-        let summaryNote = '';,
+        let summaryNote = '';
+        if (botCountRaw > exchangeCount && exchangeCount > 0) {
+            summaryNote = '<p class="analytics-summary-note">В БД записей больше, чем биржа вернула по API: у биржи ограничена история (например 2 года или лимит страниц). «Только в БД» — сделки из БД без пары в ответе API (часто старые). В БД учтены закрытия ботов и ручные через интерфейс.</p>';
+        }
+        const botCountNote = (botCountUnique < botCountRaw) ? ` <small>(уникальных: ${botCountUnique}, всего записей в БД: ${botCountRaw})</small>` : ` <small>(всего записей в БД)</small>`;
+        const series = bot.consecutive_series || {};
+        const dd = bot.drawdown || {};
+        const pfStr = bot.profit_factor != null ? (bot.profit_factor >= 999 ? '∞' : bot.profit_factor.toFixed(2)) : '—';
+        var possibleErrorsHtml = '';
+        if ((bot.possible_errors_count || 0) > 0) {
+            var errs = Array.isArray(bot.possible_errors) ? bot.possible_errors.slice(0, 20) : [];
+            possibleErrorsHtml = '<h4>⚠ Возможные ошибки по сделкам</h4><p>Найдено: <strong>' + bot.possible_errors_count + '</strong>.</p>';
+            if (errs.length > 0) {
+                possibleErrorsHtml += '<div class="analytics-stats-table-wrap"><table class="analytics-stats-table"><thead><tr><th>Символ</th><th>Время</th><th>PnL</th><th>Причина</th></tr></thead><tbody>';
+                for (var i = 0; i < errs.length; i++) {
+                    var e = errs[i];
+                    var ts = e.exit_timestamp ? new Date(e.exit_timestamp * 1000).toISOString().slice(0, 19) : '—';
+                    var reason = String(e.close_reason != null ? e.close_reason : '—').slice(0, 30);
+                    possibleErrorsHtml += '<tr><td>' + (e.symbol || '—') + '</td><td>' + ts + '</td><td>' + (e.pnl != null ? e.pnl : '—') + '</td><td>' + reason + '</td></tr>';
+                }
+                possibleErrorsHtml += '</tbody></table></div>';
+            }
+        }
+        bodyHtml += '<div class="analytics-section" data-category="summary">' +
+            '<h3>' + categories[0].label + '</h3>' +
+            '<h4 style="margin-top:0;">Метрики торговли</h4>' +
+            '<p>Сделок: <strong>' + (bot.total_trades != null ? bot.total_trades : botCountUnique) + '</strong> · Прибыльных: <strong>' + (bot.win_count ?? '—') + '</strong> · Убыточных: <strong>' + (bot.loss_count ?? '—') + '</strong> · Нулевых: <strong>' + (bot.neutral_count ?? '—') + '</strong><br>' +
+            'Win Rate: <strong>' + (s.bot_win_rate_pct != null ? s.bot_win_rate_pct + '%' : '—') + '</strong> · Суммарный PnL: <strong>' + (s.bot_total_pnl_usdt != null ? s.bot_total_pnl_usdt + ' USDT' : '—') + '</strong> · Profit Factor: <strong>' + pfStr + '</strong></p>' +
+            '<p>Средняя прибыль на сделку: <strong>' + (bot.avg_win_usdt != null ? bot.avg_win_usdt + ' USDT' : '—') + '</strong> · Средний убыток: <strong>' + (bot.avg_loss_usdt != null ? bot.avg_loss_usdt + ' USDT' : '—') + '</strong></p>' +
+            '<p>Макс. серия побед: <strong>' + (series.max_consecutive_wins ?? '—') + '</strong> · Макс. серия убытков: <strong>' + (series.max_consecutive_losses ?? '—') + '</strong> · Просадка: <strong>' + (dd.max_drawdown_usdt != null ? dd.max_drawdown_usdt + ' USDT' : '—') + (dd.max_drawdown_pct != null ? ' (' + dd.max_drawdown_pct + '%)' : '') + '</strong></p>' +
+            possibleErrorsHtml +
+            '<h4>Сверка с биржей</h4>' +
+            '<p><strong>С биржи (по API):</strong> ' + exchangeCount + ' · <strong>В БД</strong> (закрытия ботов и ручные): <strong>' + botCountUnique + '</strong>' + botCountNote + '<br>' +
+            'Совпадений: <strong>' + (s.reconciliation_matched ?? 0) + '</strong> · Только в ответе биржи: <strong>' + (s.reconciliation_only_exchange ?? 0) + '</strong> · ' +
+            'Только в БД (нет пары в ответе API): <strong>' + onlyBots + '</strong> · Расхождений PnL: <strong>' + (s.reconciliation_pnl_mismatches ?? 0) + '</strong></p>' +
+            summaryNote +
+            '<p class="analytics-summary-note" style="margin-top: 6px;">В отчёте учтены только уникальные сделки: дубликаты отброшены по времени закрытия.</p>' +
+            '</div>';
+
+        bodyHtml += '<div class="analytics-section" data-category="bots">';
+        if (bot.total_trades != null) {
+            const series = bot.consecutive_series || {};
+            const dd = bot.drawdown || {};
+            const pfVal = bot.profit_factor != null ? (bot.profit_factor >= 999 ? '∞' : bot.profit_factor.toFixed(2)) : '—';
+            bodyHtml += '<h3>' + (categories[1].label || '') + '</h3><p>Всего сделок: <strong>' + bot.total_trades + '</strong> · Прибыльных: <strong>' + (bot.win_count ?? 0) + '</strong> · Убыточных: <strong>' + (bot.loss_count ?? 0) + '</strong> · Нулевых: <strong>' + (bot.neutral_count ?? 0) + '</strong></p>';
+            bodyHtml += '<p>PnL: <strong>' + bot.total_pnl_usdt + ' USDT</strong> · Win Rate: <strong>' + bot.win_rate_pct + '%</strong> · Profit Factor: <strong>' + pfVal + '</strong></p>';
+            bodyHtml += '<p>Средняя прибыль: <strong>' + (bot.avg_win_usdt != null ? bot.avg_win_usdt + ' USDT' : '—') + '</strong> · Средний убыток: <strong>' + (bot.avg_loss_usdt != null ? bot.avg_loss_usdt + ' USDT' : '—') + '</strong></p>';
+            bodyHtml += '<p>Макс. серия побед: <strong>' + (series.max_consecutive_wins ?? 0) + '</strong> · Макс. серия убытков: <strong>' + (series.max_consecutive_losses ?? 0) + '</strong> · Просадка: <strong>' + (dd.max_drawdown_usdt ?? 0) + ' USDT</strong> (' + (dd.max_drawdown_pct ?? 0) + '%)</p>';
+        } else {
+            bodyHtml += '<p>Нет данных</p>';
+        }
+        bodyHtml += '</div>';
+
+        const tradesList = bot.trades || [];
+        bodyHtml += '<div class="analytics-section" data-category="trades_table"><h3>Таблица сделок</h3><p>Показано последних <strong>' + tradesList.length + '</strong> сделок (символ, дата выхода, направление, цены, объём, PnL, причина, источник, RSI, тренд).</p>';
+        bodyHtml += '<div class="analytics-trades-table-wrap"><table class="analytics-trades-table"><thead><tr>';
+        bodyHtml += '<th>Дата выхода</th><th>Символ</th><th>Направление</th><th>Вход</th><th>Выход</th><th>Объём USDT</th><th>PnL</th><th>Причина</th><th>Источник</th><th>RSI</th><th>Тренд</th></tr></thead><tbody>';
+        tradesList.slice(-500).reverse().forEach(tr => {
+            const pnlClass = (tr.pnl || 0) > 0 ? 'pnl-win' : ((tr.pnl || 0) < 0 ? 'pnl-loss' : '');
+            bodyHtml += '<tr>';
+            bodyHtml += '<td>' + (tr.exit_time_iso || '').replace('T', ' ').slice(0, 19) + '</td>';
+            bodyHtml += '<td>' + (tr.symbol || '') + '</td><td>' + (tr.direction || '') + '</td>';
+            bodyHtml += '<td>' + (tr.entry_price != null ? Number(tr.entry_price).toFixed(6) : '—') + '</td><td>' + (tr.exit_price != null ? Number(tr.exit_price).toFixed(6) : '—') + '</td>';
+            bodyHtml += '<td>' + (tr.position_size_usdt != null ? Number(tr.position_size_usdt).toFixed(2) : '—') + '</td>';
+            bodyHtml += '<td class="' + pnlClass + '">' + (tr.pnl != null ? Number(tr.pnl).toFixed(4) : '—') + '</td>';
+            bodyHtml += '<td>' + (tr.close_reason || '—').slice(0, 20) + '</td><td>' + (tr.decision_source || '—').slice(0, 15) + '</td>';
+            bodyHtml += '<td>' + (tr.entry_rsi != null ? tr.entry_rsi : '—') + '</td><td>' + (tr.entry_trend || '—') + '</td>';
+            bodyHtml += '</tr>';
+        });
+        bodyHtml += '</tbody></table></div></div>';
+
+        const bySymbol = bot.by_symbol || {};
+        bodyHtml += '<div class="analytics-section" data-category="by_symbol"><h3>По символам</h3><p>Сделок, PnL, победы/убытки/нулевые, Win Rate по каждому символу.</p>';
+        bodyHtml += '<div class="analytics-stats-table-wrap"><table class="analytics-stats-table"><thead><tr><th>Символ</th><th>Сделок</th><th>PnL USDT</th><th>Победы</th><th>Убытки</th><th>Нулевые</th><th>Win Rate %</th></tr></thead><tbody>';
+        Object.entries(bySymbol).sort((a, b) => (b[1].count || 0) - (a[1].count || 0)).forEach(([sym, d]) => {
+            const wr = (d.count && d.wins != null) ? ((d.wins / d.count) * 100).toFixed(1) : '—';
+            const pnlClass = (d.pnl || 0) >= 0 ? 'pnl-win' : 'pnl-loss';
+            bodyHtml += '<tr><td>' + sym + '</td><td>' + (d.count ?? 0) + '</td><td class="' + pnlClass + '">' + (d.pnl || 0).toFixed(2) + '</td><td>' + (d.wins ?? 0) + '</td><td>' + (d.losses ?? 0) + '</td><td>' + (d.neutral ?? 0) + '</td><td>' + wr + '</td></tr>';
+        });
+        bodyHtml += '</tbody></table></div></div>';
+
+        const byBot = bot.by_bot || {};
+        bodyHtml += '<div class="analytics-section" data-category="by_bot"><h3>По ботам</h3><p>Статистика по каждому bot_id.</p>';
+        bodyHtml += '<div class="analytics-stats-table-wrap"><table class="analytics-stats-table"><thead><tr><th>Bot ID</th><th>Сделок</th><th>PnL USDT</th><th>Победы</th><th>Убытки</th><th>Нулевые</th><th>Win Rate %</th></tr></thead><tbody>';
+        Object.entries(byBot).sort((a, b) => (b[1].count || 0) - (a[1].count || 0)).forEach(([bid, d]) => {
+            const wr = (d.count && d.wins != null) ? ((d.wins / d.count) * 100).toFixed(1) : '—';
+            const pnlClass = (d.pnl || 0) >= 0 ? 'pnl-win' : 'pnl-loss';
+            bodyHtml += '<tr><td>' + bid + '</td><td>' + (d.count ?? 0) + '</td><td class="' + pnlClass + '">' + (d.pnl || 0).toFixed(2) + '</td><td>' + (d.wins ?? 0) + '</td><td>' + (d.losses ?? 0) + '</td><td>' + (d.neutral ?? 0) + '</td><td>' + wr + '</td></tr>';
+        });
+        bodyHtml += '</tbody></table></div></div>';
+
+        const byDecision = bot.by_decision_source || {};
+        bodyHtml += `<div class="analytics-section" data-category="by_decision_source"><h3>По источникам решений</h3><p>Статистика по источнику решения (FullAI, RSI, и т.д.).</p>`;
+        bodyHtml += '<div class="analytics-stats-table-wrap"><table class="analytics-stats-table"><thead><tr><th>Источник</th><th>Сделок</th><th>PnL USDT</th><th>Победы</th><th>Убытки</th><th>Нулевые</th><th>Win Rate %</th></tr></thead><tbody>';
+        Object.entries(byDecision).sort((a, b) => (b[1].count || 0) - (a[1].count || 0)).forEach(([src, d]) => {
+            const wr = (d.count && d.wins != null) ? ((d.wins / d.count) * 100).toFixed(1) : '—';
+            const pnlClass = (d.pnl || 0) >= 0 ? 'pnl-win' : 'pnl-loss';
+            bodyHtml += `<tr><td>${src}</td><td>${d.count ?? 0}</td><td class="${pnlClass}">${(d.pnl || 0).toFixed(2)}</td><td>${d.wins ?? 0}</td><td>${d.losses ?? 0}</td><td>${d.neutral ?? 0}</td><td>${wr}</td></tr>`;
+        });
+        bodyHtml += '</tbody></table></div></div>';
+
+        const byReason = bot.by_close_reason || {};
+        bodyHtml += `<div class="analytics-section" data-category="reasons"><h3>Причины закрытия</h3>`;
+        if (Object.keys(byReason).length) {
+            bodyHtml += '<div class="analytics-stats-table-wrap"><table class="analytics-stats-table"><thead><tr><th>Причина</th><th>Сделок</th><th>PnL USDT</th><th>Победы</th><th>Убытки</th><th>Нулевые</th><th>Win Rate %</th></tr></thead><tbody>';
+            for (const [reason, d] of Object.entries(byReason)) {
+                const wr = (d.count && d.wins != null) ? ((d.wins / d.count) * 100).toFixed(1) : '—';
+                const pnlClass = (d.pnl || 0) >= 0 ? 'pnl-win' : 'pnl-loss';
+                bodyHtml += `<tr><td>${reason}</td><td>${d.count ?? 0}</td><td class="${pnlClass}">${(d.pnl || 0).toFixed(2)}</td><td>${d.wins ?? 0}</td><td>${d.losses ?? 0}</td><td>${d.neutral ?? 0}</td><td>${wr}</td></tr>`;
+            }
+            bodyHtml += '</tbody></table></div>';
+        } else {
+            bodyHtml += '<p>Нет данных</p>';
+        }
+        bodyHtml += '</div>';
+
+        const uc = bot.unsuccessful_coins || [];
+        bodyHtml += `<div class="analytics-section" data-category="unsuccessful_coins"><h3>${categories[7].label}</h3><p>(PnL &lt; 0 или Win Rate &lt; 45%, мин. 3 сделки)</p>`;
+        if (uc.length) {
+            bodyHtml += '<ul>';
+            uc.forEach(c => {
+                bodyHtml += `<li><strong>${c.symbol}</strong>: сделок ${c.trades_count}, PnL ${c.pnl_usdt} USDT, Win Rate ${c.win_rate_pct}%, причины: ${(c.reasons || []).join(', ')}</li>`;
+            });
+            bodyHtml += '</ul>';
+        } else {
+            bodyHtml += '<p>Нет неудачных монет по критериям</p>';
+        }
+        bodyHtml += '</div>';
+
+        const us = bot.unsuccessful_settings || [];
+        bodyHtml += `<div class="analytics-section" data-category="unsuccessful_settings"><h3>${categories[8].label}</h3>`;
+        if (us.length) {
+            us.forEach(u => {
+                if (!u.bad_rsi_ranges?.length && !u.bad_trends?.length) return;
+                bodyHtml += `<p><strong>${u.symbol}</strong></p><ul>`;
+                (u.bad_rsi_ranges || []).forEach(r => {
+                    bodyHtml += `<li>RSI ${r.rsi_range}: сделок ${r.trades_count}, PnL ${r.pnl_usdt}, Win Rate ${r.win_rate_pct}%</li>`;
+                });
+                (u.bad_trends || []).forEach(t => {
+                    bodyHtml += `<li>Тренд ${t.trend}: сделок ${t.trades_count}, PnL ${t.pnl_usdt}, Win Rate ${t.win_rate_pct}%</li>`;
+                });
+                bodyHtml += '</ul>';
+            });
+        } else {
+            bodyHtml += '<p>Нет данных</p>';
+        }
+        bodyHtml += '</div>';
+
+        const sc = bot.successful_coins || [];
+        bodyHtml += `<div class="analytics-section" data-category="successful_coins"><h3>${categories[9].label}</h3><p>(PnL &gt; 0 и Win Rate ≥ 55%, мин. 3 сделки)</p>`;
+        if (sc.length) {
+            bodyHtml += '<ul>';
+            sc.forEach(c => {
+                bodyHtml += `<li><strong>${c.symbol}</strong>: сделок ${c.trades_count}, PnL ${c.pnl_usdt} USDT, Win Rate ${c.win_rate_pct}%</li>`;
+            });
+            bodyHtml += '</ul>';
+        } else {
+            bodyHtml += '<p>Нет удачных монет по критериям</p>';
+        }
+        bodyHtml += '</div>';
+
+        const ss = bot.successful_settings || [];
+        bodyHtml += `<div class="analytics-section" data-category="successful_settings"><h3>${categories[10].label}</h3><p>(Диапазоны RSI и тренды с Win Rate ≥ 55% и PnL &gt; 0)</p>`;
+        if (ss.length) {
+            ss.forEach(u => {
+                if (!u.good_rsi_ranges?.length && !u.good_trends?.length) return;
+                bodyHtml += `<p><strong>${u.symbol}</strong></p><ul>`;
+                (u.good_rsi_ranges || []).forEach(r => {
+                    bodyHtml += `<li>RSI ${r.rsi_range}: сделок ${r.trades_count}, PnL ${r.pnl_usdt}, Win Rate ${r.win_rate_pct}%</li>`;
+                });
+                (u.good_trends || []).forEach(t => {
+                    bodyHtml += `<li>Тренд ${t.trend}: сделок ${t.trades_count}, PnL ${t.pnl_usdt}, Win Rate ${t.win_rate_pct}%</li>`;
+                });
+                bodyHtml += '</ul>';
+            });
+        } else {
+            bodyHtml += '<p>Нет данных</p>';
+        }
+        bodyHtml += '</div>';
+
+        bodyHtml += `<div class="analytics-meta">Отчёт сформирован: ${report.generated_at || '—'}</div></div>`;
+
+        container.innerHTML = tabsHtml + '<div class="analytics-report-wrap">' + bodyHtml + '</div>';
+        container.querySelectorAll('.analytics-cat-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const cat = btn.dataset.category;
+                container.querySelectorAll('.analytics-cat-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                container.querySelectorAll('.analytics-section').forEach(sec => {
+                    sec.classList.toggle('active', sec.dataset.category === cat);
+                });
+            });
+        });
+        container.querySelectorAll('.analytics-section').forEach(sec => {
+            sec.classList.toggle('active', sec.dataset.category === 'summary');
+        });
+    }
+
+    /**
+     * Инициализирует фильтры истории
+     */,
             initializeHistoryFilters() {
         // Фильтр по боту
         const botFilter = document.getElementById('historyBotFilter');
@@ -336,7 +673,23 @@
                 
                 // Добавляем активный класс к выбранной кнопке и контенту
                 button.classList.add('active');
-                const targetContent = document.getElementById(`${tabName}History`);,
+                const targetContent = document.getElementById(`${tabName}History`);
+                if (targetContent) {
+                    targetContent.classList.add('active');
+                }
+                
+                // Загружаем данные для выбранной вкладки
+                this.currentHistoryTab = tabName;
+                this.loadHistoryData(tabName);
+            });
+
+            button.setAttribute('data-listener-bound', 'true');
+        });
+    }
+
+    /**
+     * Инициализирует кнопки действий истории
+     */,
             initializeHistoryActionButtons() {
         // Кнопка обновления
         const refreshBtn = document.getElementById('refreshHistoryBtn');
@@ -373,7 +726,36 @@
             // Получаем параметры фильтров
             const filters = this.getHistoryFilters();
             
-            // Загружаем данные в зависимости от вкладки,
+            // Загружаем данные в зависимости от вкладки
+            switch (targetTab) {
+                case 'actions':
+                    await this.loadBotActions(filters);
+                    break;
+                case 'trades':
+                    await this.loadBotTrades(filters);
+                    break;
+                case 'signals':
+                    await this.loadBotSignals(filters);
+                    break;
+                case 'ai':
+                    await this.loadAIHistory();
+                    break;
+            }
+            
+            // Загружаем статистику (если не AI вкладка)
+            if (targetTab !== 'ai') {
+                await this.loadHistoryStatistics(filters);
+            }
+            
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка загрузки данных истории:', error);
+            this.showNotification(`Ошибка загрузки истории: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * Получает параметры фильтров
+     */,
             getHistoryFilters() {
         const botFilter = document.getElementById('historyBotFilter');
         const actionFilter = document.getElementById('historyActionFilter');
@@ -428,5 +810,117 @@
             const period = periodMap[rawPeriod] || 'all';
             const response = await fetch(`${this.BOTS_SERVICE_URL}/api/ai/stats?period=${encodeURIComponent(period)}`);
             const data = await response.json();
+            
+            if (data.success) {
+                const aiStats = data.ai || {};
+                const scriptStats = data.script || {};
+                const comparisonStats = data.comparison || {};
+                
+                // Сохраняем данные AI для использования в метриках производительности
+                this._lastAIStats = aiStats;
+                
+                // Обновляем UI
+                const aiTotalEl = document.getElementById('aiTotalDecisions');
+                const aiWinRateEl = document.getElementById('aiWinRate');
+                const scriptTotalEl = document.getElementById('scriptTotalDecisions');
+                const scriptWinRateEl = document.getElementById('scriptWinRate');
+                const comparisonWinRateEl = document.getElementById('comparisonWinRate');
+                const comparisonAvgPnlEl = document.getElementById('comparisonAvgPnl');
+                const comparisonSummaryEl = document.getElementById('aiComparisonSummary');
+                
+                const aiTotal = Number(aiStats.total) || 0;
+                const aiWinRate = typeof aiStats.win_rate === 'number' ? aiStats.win_rate : 0;
+                const aiTotalPnL = Number(aiStats.total_pnl) || 0;
+                const aiAvgPnL = Number(aiStats.avg_pnl) || 0;
+                const scriptTotal = Number(scriptStats.total) || 0;
+                const scriptWinRate = typeof scriptStats.win_rate === 'number' ? scriptStats.win_rate : 0;
+                const scriptTotalPnL = Number(scriptStats.total_pnl) || 0;
+                const scriptAvgPnL = Number(scriptStats.avg_pnl) || 0;
+                
+                // Обновляем карточку AI
+                if (aiTotalEl) {
+                    aiTotalEl.textContent = aiTotal;
+                    const aiCard = aiTotalEl.closest('.stat-card');
+                    if (aiCard) {
+                        aiCard.classList.remove('profit', 'loss', 'neutral');
+                        if (aiTotal > 0) {
+                            aiCard.classList.add(aiWinRate >= 50 ? 'profit' : 'loss');
+                        }
+                    }
+                }
+                if (aiWinRateEl) {
+                    aiWinRateEl.innerHTML = `Win Rate: <strong>${aiWinRate.toFixed(1)}%</strong>`;
+                    if (aiTotalPnL !== 0) {
+                        aiWinRateEl.innerHTML += `<br>Total PnL: <strong class="${aiTotalPnL >= 0 ? 'profit' : 'loss'}">${aiTotalPnL >= 0 ? '+' : ''}${aiTotalPnL.toFixed(2)} USDT</strong>`;
+                    }
+                }
+                
+                // Обновляем карточку Скриптовые
+                if (scriptTotalEl) {
+                    scriptTotalEl.textContent = scriptTotal;
+                    const scriptCard = scriptTotalEl.closest('.stat-card');
+                    if (scriptCard) {
+                        scriptCard.classList.remove('profit', 'loss', 'neutral');
+                        if (scriptTotal > 0) {
+                            scriptCard.classList.add(scriptWinRate >= 50 ? 'profit' : 'loss');
+                        }
+                    }
+                }
+                if (scriptWinRateEl) {
+                    scriptWinRateEl.innerHTML = `Win Rate: <strong>${scriptWinRate.toFixed(1)}%</strong>`;
+                    if (scriptTotalPnL !== 0) {
+                        scriptWinRateEl.innerHTML += `<br>Total PnL: <strong class="${scriptTotalPnL >= 0 ? 'profit' : 'loss'}">${scriptTotalPnL >= 0 ? '+' : ''}${scriptTotalPnL.toFixed(2)} USDT</strong>`;
+                    }
+                }
+                
+                const winRateDiff = Number(comparisonStats.win_rate_diff) || 0;
+                const avgPnlDiff = Number(comparisonStats.avg_pnl_diff) || 0;
+                const totalPnlDiff = Number(comparisonStats.total_pnl_diff) || 0;
+                
+                // Обновляем карточку Сравнение
+                if (comparisonWinRateEl) {
+                    const diffIcon = winRateDiff > 0 ? '📈' : winRateDiff < 0 ? '📉' : '➖';
+                    comparisonWinRateEl.innerHTML = `${diffIcon} ${winRateDiff >= 0 ? '+' : ''}${winRateDiff.toFixed(1)}%`;
+                    comparisonWinRateEl.className = `stat-value ${winRateDiff >= 0 ? 'profit' : winRateDiff < 0 ? 'loss' : 'neutral'}`;
+                    
+                    const comparisonCard = comparisonWinRateEl.closest('.stat-card');
+                    if (comparisonCard) {
+                        comparisonCard.classList.remove('profit', 'loss', 'neutral');
+                        if (winRateDiff > 0) {
+                            comparisonCard.classList.add('profit');
+                        } else if (winRateDiff < 0) {
+                            comparisonCard.classList.add('loss');
+                        } else {
+                            comparisonCard.classList.add('neutral');
+                        }
+                    }
+                }
+                
+                if (comparisonAvgPnlEl) {
+                    comparisonAvgPnlEl.innerHTML = `Avg PnL: <strong class="${avgPnlDiff >= 0 ? 'profit' : 'loss'}">${avgPnlDiff >= 0 ? '+' : ''}${avgPnlDiff.toFixed(2)} USDT</strong>`;
+                    if (totalPnlDiff !== 0) {
+                        comparisonAvgPnlEl.innerHTML += `<br>Total PnL: <strong class="${totalPnlDiff >= 0 ? 'profit' : 'loss'}">${totalPnlDiff >= 0 ? '+' : ''}${totalPnlDiff.toFixed(2)} USDT</strong>`;
+                    }
+                }
+
+                if (comparisonSummaryEl) {
+                    comparisonSummaryEl.textContent = this.buildAIComparisonSummary(aiStats, scriptStats, comparisonStats);
+                    comparisonSummaryEl.classList.toggle('profit', winRateDiff > 0);
+                    comparisonSummaryEl.classList.toggle('loss', winRateDiff < 0);
+                }
+            }
+        } catch (error) {
+            console.error('[BotsManager] ❌ Ошибка загрузки статистики AI:', error);
+            const summaryEl = document.getElementById('aiComparisonSummary');
+            if (summaryEl) {
+                summaryEl.textContent = 'Недостаточно данных для сравнения';
+                summaryEl.classList.remove('profit', 'loss');
+            }
+        }
+    }
+
+    /**
+     * Навешивает обработчик на селектор периода
+     */
     });
 })();
