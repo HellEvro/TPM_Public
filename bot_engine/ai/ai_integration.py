@@ -319,10 +319,10 @@ def apply_ai_prediction_to_signal(
         ai_conf_01 = _confidence_01(ai_confidence)
 
         if ai_conf_01 >= min_confidence:
-        return {
-            'signal': ai_signal,
-            'ai_used': True,
-            'ai_confidence': ai_conf_01,
+            return {
+                'signal': ai_signal,
+                'ai_used': True,
+                'ai_confidence': ai_conf_01,
                 'ai_prediction': ai_prediction,
                 'original_signal': original_signal,
                 'sentiment_used': sentiment_used,
