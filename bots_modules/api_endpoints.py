@@ -1189,24 +1189,42 @@ def create_bot_endpoint():
                                 force_market = False
                         except Exception:
                             pass
+                        import time
+                        intended_price = 0.0
+                        try:
+                            with rsi_data_lock:
+                                _cd = coins_rsi_data.get('coins', {}).get(symbol, {})
+                            intended_price = float(_cd.get('price', 0) or 0)
+                        except Exception:
+                            pass
+                        _t0 = time.time()
                         result = trading_bot._enter_position(direction, force_market_entry=force_market)
+                        _delay = time.time() - _t0
                         if result and result.get('success'):
                             logger.info(f" ✅ Успешно вошли в {direction} позицию для {symbol}")
                             with bots_data_lock:
                                 bots_data['bots'][symbol] = trading_bot.to_dict()
-                            # FullAI аналитика: запись real_open (вход через API/UI)
+                            # FullAI аналитика: запись real_open с полными данными
                             try:
                                 with bots_data_lock:
                                     ac = bots_data.get('auto_bot_config', {})
                                 if ac.get('full_ai_control'):
                                     from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                                    entry_price = float(result.get('entry_price') or 0)
+                                    from bots_modules.fullai_adaptive import build_real_open_extra
+                                    actual_price = float(result.get('entry_price') or intended_price)
+                                    order_type = 'Limit' if not force_market else 'Market'
+                                    extra = build_real_open_extra(
+                                        symbol=symbol, direction=direction,
+                                        intended_price=intended_price, actual_price=actual_price,
+                                        order_type=order_type, delay_sec=_delay,
+                                    )
                                     append_event(
                                         symbol=symbol,
                                         event_type=EVENT_REAL_OPEN,
                                         direction=direction,
                                         is_virtual=False,
-                                        extra={'price': entry_price, 'entry_price': entry_price},
+                                        reason=extra.get('attempt_label', ''),
+                                        extra=extra,
                                     )
                             except Exception as _fa_err:
                                 logger.debug("FullAI analytics real_open (API): %s", _fa_err)

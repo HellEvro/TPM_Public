@@ -549,11 +549,6 @@ class NewTradingBot:
                             action = get_next_action(self.symbol, True)
                             if action == 'real_open':
                                 logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход LONG (уверенность: {decision.get('confidence', 0):.2%})")
-                                try:
-                                    from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                                    append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='LONG', is_virtual=False, confidence=decision.get('confidence'), extra={'price': current_price})
-                                except Exception:
-                                    pass
                                 self._set_decision_source('AI', decision)
                                 return True
                             if action == 'virtual_open':
@@ -563,11 +558,6 @@ class NewTradingBot:
                         except ImportError:
                             pass
                         logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход LONG (уверенность: {decision.get('confidence', 0):.2%})")
-                        try:
-                            from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                            append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='LONG', is_virtual=False, confidence=decision.get('confidence'), extra={'price': current_price})
-                        except Exception:
-                            pass
                         self._set_decision_source('AI', decision)
                         return True
                     # FullAI Adaptive: при отказе (WAIT/low conf) — виртуальный вход для обучения
@@ -747,11 +737,6 @@ class NewTradingBot:
                             action = get_next_action(self.symbol, True)
                             if action == 'real_open':
                                 logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход SHORT (уверенность: {decision.get('confidence', 0):.2%})")
-                                try:
-                                    from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                                    append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='SHORT', is_virtual=False, confidence=decision.get('confidence'), extra={'price': current_price})
-                                except Exception:
-                                    pass
                                 self._set_decision_source('AI', decision)
                                 return True
                             if action == 'virtual_open':
@@ -761,11 +746,6 @@ class NewTradingBot:
                         except ImportError:
                             pass
                         logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход SHORT (уверенность: {decision.get('confidence', 0):.2%})")
-                        try:
-                            from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                            append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='SHORT', is_virtual=False, confidence=decision.get('confidence'), extra={'price': current_price})
-                        except Exception:
-                            pass
                         self._set_decision_source('AI', decision)
                         return True
                     # FullAI Adaptive: при отказе (WAIT/low conf) — виртуальный вход для обучения
@@ -1507,6 +1487,7 @@ class NewTradingBot:
 
     def _handle_idle_state(self, rsi, trend, candles, price):
         """Бот в списке = проверки пройдены → по рынку заходим по условиям КОНФИГА (rsi_long_threshold, rsi_short_threshold)."""
+        import time
         try:
             with bots_data_lock:
                 auto_bot_enabled = bots_data['auto_bot_config']['enabled']
@@ -1515,25 +1496,65 @@ class NewTradingBot:
             # Направление и момент входа — только по настройкам конфига (should_open_long / should_open_short)
             if self.should_open_long(rsi, trend, candles):
                 logger.info(f"[NEW_BOT_{self.symbol}] 🚀 Вход LONG (условия конфига; лимит/рынок — по настройкам)")
+                _t0 = time.time()
                 if self._open_position_on_exchange('LONG', price):
+                    _delay = time.time() - _t0
                     try:
                         from bots_modules.fullai_adaptive import on_trade_open
                         on_trade_open(self.symbol)
                     except ImportError:
                         pass
                     self.update_status(BOT_STATUS['IN_POSITION_LONG'], price, 'LONG')
+                    # FullAI аналитика: real_open с полными данными (тип, проскальз., задержка, TP/SL, попытка)
+                    try:
+                        with bots_data_lock:
+                            ac = bots_data.get('auto_bot_config', {})
+                        if ac.get('full_ai_control'):
+                            from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
+                            from bots_modules.fullai_adaptive import build_real_open_extra
+                            force_m = not (ac.get('limit_orders_entry_enabled') or ac.get('rsi_limit_entry_enabled'))
+                            intended = float(price or 0)
+                            actual = float(self.entry_price or intended)
+                            extra = build_real_open_extra(
+                                symbol=self.symbol, direction='LONG',
+                                intended_price=intended, actual_price=actual,
+                                order_type='Market' if force_m else 'Limit', delay_sec=_delay,
+                            )
+                            append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='LONG', is_virtual=False, reason=extra.get('attempt_label', ''), extra=extra)
+                    except Exception:
+                        pass
                     return {'success': True, 'action': 'OPEN_LONG', 'status': self.status}
                 logger.error(f"[NEW_BOT_{self.symbol}] ❌ Не удалось открыть LONG позицию")
                 return {'success': False, 'error': 'Failed to open LONG position'}
             if self.should_open_short(rsi, trend, candles):
                 logger.info(f"[NEW_BOT_{self.symbol}] 🚀 Вход SHORT (условия конфига; лимит/рынок — по настройкам)")
+                _t0 = time.time()
                 if self._open_position_on_exchange('SHORT', price):
+                    _delay = time.time() - _t0
                     try:
                         from bots_modules.fullai_adaptive import on_trade_open
                         on_trade_open(self.symbol)
                     except ImportError:
                         pass
                     self.update_status(BOT_STATUS['IN_POSITION_SHORT'], price, 'SHORT')
+                    # FullAI аналитика: real_open с полными данными
+                    try:
+                        with bots_data_lock:
+                            ac = bots_data.get('auto_bot_config', {})
+                        if ac.get('full_ai_control'):
+                            from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
+                            from bots_modules.fullai_adaptive import build_real_open_extra
+                            force_m = not (ac.get('limit_orders_entry_enabled') or ac.get('rsi_limit_entry_enabled'))
+                            intended = float(price or 0)
+                            actual = float(self.entry_price or intended)
+                            extra = build_real_open_extra(
+                                symbol=self.symbol, direction='SHORT',
+                                intended_price=intended, actual_price=actual,
+                                order_type='Market' if force_m else 'Limit', delay_sec=_delay,
+                            )
+                            append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='SHORT', is_virtual=False, reason=extra.get('attempt_label', ''), extra=extra)
+                    except Exception:
+                        pass
                     return {'success': True, 'action': 'OPEN_SHORT', 'status': self.status}
                 logger.error(f"[NEW_BOT_{self.symbol}] ❌ Не удалось открыть SHORT позицию")
                 return {'success': False, 'error': 'Failed to open SHORT position'}

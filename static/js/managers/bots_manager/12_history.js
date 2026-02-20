@@ -206,10 +206,11 @@
             const entryPrice = ex.entry_price != null ? Number(ex.entry_price).toFixed(6) : (ev.event_type === 'real_open' || ev.event_type === 'refused' ? (ex.price != null ? Number(ex.price).toFixed(6) : '—') : '—');
             const exitPrice = ex.exit_price != null ? Number(ex.exit_price).toFixed(6) : '—';
             const limitExit = ex.limit_price_exit != null ? Number(ex.limit_price_exit).toFixed(6) : '—';
-            const orderType = ex.order_type_exit || '—';
+            const isEntry = ev.event_type === 'real_open' || ev.event_type === 'virtual_open';
+            const orderType = isEntry ? (ex.order_type_entry || '—') : (ex.order_type_exit || '—');
             const tsPlaced = ex.ts_order_placed_exit != null ? (function() { const d = new Date(ex.ts_order_placed_exit * 1000); return d.toISOString ? d.toISOString().slice(0, 19).replace('T', ' ') : d.toLocaleString(); })() : '—';
-            const slippage = ex.slippage_exit_pct != null ? Number(ex.slippage_exit_pct).toFixed(2) + '%' : '—';
-            const delay = ex.delay_sec != null ? String(Number(ex.delay_sec).toFixed(1)) : '—';
+            const slippage = isEntry ? (ex.slippage_entry_pct != null ? Number(ex.slippage_entry_pct).toFixed(2) + '%' : '—') : (ex.slippage_exit_pct != null ? Number(ex.slippage_exit_pct).toFixed(2) + '%' : '—');
+            const delay = isEntry ? (ex.delay_entry_sec != null ? String(Number(ex.delay_entry_sec).toFixed(1)) : '—') : (ex.delay_sec != null ? String(Number(ex.delay_sec).toFixed(1)) : '—');
             const pnlPct = ev.pnl_percent != null ? Number(ev.pnl_percent) : (ex.pnl_percent != null ? Number(ex.pnl_percent) : null);
             const pnlUsdt = ex.pnl_usdt != null ? Number(ex.pnl_usdt) : null;
             const pnlClass = pnlPct != null ? (pnlPct >= 0 ? 'positive' : 'negative') : (pnlUsdt != null ? (pnlUsdt >= 0 ? 'positive' : 'negative') : '');
@@ -231,7 +232,10 @@
                 conclusion = pnlStr !== '—' ? (ok ? '✅ ' + pnlStr : '❌ ' + pnlStr) : (ok ? '✅ В плюс' : '❌ В минус');
             } else if (ev.event_type === 'virtual_open') {
                 details = ex.entry_price != null ? 'Вход ' + Number(ex.entry_price).toFixed(6) : '—';
-                conclusion = '—';
+                conclusion = ex.attempt_label || 'Попытка виртуальная';
+            } else if (ev.event_type === 'real_open') {
+                details = ex.details_entry || (ex.take_profit_percent != null && ex.stop_loss_percent != null ? 'TP=' + ex.take_profit_percent + '%, SL=' + ex.stop_loss_percent + '%' : '—');
+                conclusion = ex.attempt_label || 'Реальная сделка';
             } else {
                 details = ev.reason || (ex.success !== undefined ? (ex.success ? 'успех' : 'убыток') : '') || '—';
                 conclusion = pnlPct != null ? (pnlPct >= 0 ? 'Прибыль. ' + (ev.reason || '') : 'Убыток. ' + (ev.reason || '')) : '—';

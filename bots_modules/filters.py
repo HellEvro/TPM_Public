@@ -3180,27 +3180,38 @@ def process_auto_bot_signals(exchange_obj=None):
                     new_bot.ai_decision_id = last_ai_result.get('ai_decision_id')
                     new_bot._set_decision_source('AI', last_ai_result)
                 logger.info(f" 📈 Входим в позицию {direction} для {symbol} (по рынку)")
+                import time
+                _t0 = time.time()
                 entry_result = new_bot.enter_position(direction, force_market_entry=True)
+                _delay = time.time() - _t0
                 if isinstance(entry_result, dict) and not entry_result.get('success', True):
                     err_msg = entry_result.get('error') or entry_result.get('message') or str(entry_result)
                     logger.warning(f" 🚫 {symbol}: вход по рынку не выполнен — бот не добавлен в список: {err_msg}")
                     continue
                 # При успехе enter_position сам добавляет бота в bots_data
                 created_bots += 1
-                # FullAI аналитика: записываем real_open при успешном входе (поток process_auto_bot_signals не вызывает should_open_*)
+                # FullAI аналитика: записываем real_open с полными данными (тип, проскальз., задержка, TP/SL, попытка)
                 try:
                     with bots_data_lock:
                         ac = bots_data.get('auto_bot_config', {})
                     if ac.get('full_ai_control'):
                         from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
+                        from bots_modules.fullai_adaptive import build_real_open_extra
                         coin_data = coin.get('coin_data', {})
-                        price = float(coin_data.get('price') or entry_result.get('entry_price') or 0)
+                        intended_price = float(coin_data.get('price') or 0)
+                        actual_price = float(entry_result.get('entry_price') or intended_price)
+                        extra = build_real_open_extra(
+                            symbol=symbol, direction=direction,
+                            intended_price=intended_price, actual_price=actual_price,
+                            order_type='Market', delay_sec=_delay,
+                        )
                         append_event(
                             symbol=symbol,
                             event_type=EVENT_REAL_OPEN,
                             direction=direction,
                             is_virtual=False,
-                            extra={'price': price, 'entry_price': price},
+                            reason=extra.get('attempt_label', ''),
+                            extra=extra,
                         )
                 except Exception as _fa_err:
                     logger.warning("FullAI analytics real_open (filters): %s", _fa_err)

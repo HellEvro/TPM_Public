@@ -87,6 +87,7 @@ def _get_symbol_state(symbol: str, lock: bool = True) -> Dict[str, Any]:
                 'candles_since_last_trade': 0,
                 'last_candle_id': None,
                 'real_losses_count': 0,
+                'real_opens_count': 0,
             }
             _state[symbol] = s
         return s
@@ -94,6 +95,81 @@ def _get_symbol_state(symbol: str, lock: bool = True) -> Dict[str, Any]:
         with _state_lock:
             return _get()
     return _get()
+
+
+def get_attempt_label_for_real_open(symbol: str) -> str:
+    """Возвращает подпись для Вывод при real_open: 'Реальная сделка #N'."""
+    norm = (symbol or '').upper()
+    if not norm:
+        return 'Реальная сделка'
+    with _state_lock:
+        s = _get_symbol_state(norm, lock=False)
+        n = s.get('real_opens_count', 0) + 1
+        s['real_opens_count'] = n
+    return f'Реальная сделка #{n}'
+
+
+def get_attempt_label_for_virtual_open(symbol: str) -> str:
+    """Возвращает подпись для Вывод при virtual_open: 'Попытка N виртуальная'."""
+    norm = (symbol or '').upper()
+    if not norm:
+        return 'Попытка виртуальная'
+    with _state_lock:
+        s = _get_symbol_state(norm, lock=False)
+        n = s.get('virtual_done_in_round', 0) + 1
+    return f'Попытка {n} виртуальная'
+
+
+def get_tp_sl_for_symbol(symbol: str) -> Dict[str, float]:
+    """TP и SL для монеты (из FullAI/глобального конфига)."""
+    try:
+        from bot_engine.bots_database import get_bots_database
+        from bots_modules.imports_and_globals import get_effective_auto_bot_config
+        db = get_bots_database()
+        current = db.load_full_ai_coin_params((symbol or '').upper()) or {}
+        cfg = get_effective_auto_bot_config() or {}
+        tp = float(current.get('take_profit_percent') or cfg.get('take_profit_percent') or 15)
+        sl = float(current.get('max_loss_percent') or cfg.get('max_loss_percent') or 10)
+        return {'tp': tp, 'sl': sl}
+    except Exception:
+        return {'tp': 15, 'sl': 10}
+
+
+def build_real_open_extra(
+    symbol: str,
+    direction: str,
+    intended_price: float,
+    actual_price: float,
+    order_type: str = 'Market',
+    delay_sec: float = None,
+) -> Dict[str, Any]:
+    """Собирает extra для real_open: тип ордера, проскальзывание, задержка, TP/SL, подпись попытки."""
+    extra = {
+        'price': actual_price,
+        'entry_price': actual_price,
+        'order_type_entry': order_type,
+    }
+    if intended_price and intended_price > 0 and actual_price:
+        if (direction or '').upper() == 'LONG':
+            slippage_pct = ((actual_price - intended_price) / intended_price) * 100
+        else:
+            slippage_pct = ((intended_price - actual_price) / intended_price) * 100
+        extra['intended_price'] = intended_price
+        extra['slippage_entry_pct'] = round(slippage_pct, 4)
+    if delay_sec is not None:
+        extra['delay_entry_sec'] = round(float(delay_sec), 2)
+    try:
+        tp_sl = get_tp_sl_for_symbol(symbol)
+        extra['take_profit_percent'] = tp_sl['tp']
+        extra['stop_loss_percent'] = tp_sl['sl']
+        extra['details_entry'] = f"TP={tp_sl['tp']}%, SL={tp_sl['sl']}%"
+    except Exception:
+        pass
+    try:
+        extra['attempt_label'] = get_attempt_label_for_real_open(symbol)
+    except Exception:
+        extra['attempt_label'] = 'Реальная сделка'
+    return extra
 
 
 def _reset_to_virtual(symbol: str, reason: str = ''):
@@ -264,10 +340,12 @@ def record_virtual_open(symbol: str, direction: str, entry_price: float, entry_t
         })
     try:
         from bot_engine.fullai_analytics import append_event, EVENT_VIRTUAL_OPEN
+        attempt_label = get_attempt_label_for_virtual_open(norm)
         append_event(
             symbol=norm, event_type=EVENT_VIRTUAL_OPEN,
             direction=(direction or 'LONG').upper(), is_virtual=True,
-            extra={'price': entry_price, 'entry_price': entry_price},
+            reason=attempt_label,
+            extra={'price': entry_price, 'entry_price': entry_price, 'attempt_label': attempt_label},
         )
     except Exception:
         pass
