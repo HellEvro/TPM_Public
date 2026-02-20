@@ -5464,6 +5464,57 @@ def get_rsi_audit():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@bots_app.route('/api/bots/analytics/ai-reanalyze', methods=['POST'])
+def ai_reanalyze_and_update():
+    """
+    Ручной запуск: ИИ анализирует ситуацию, обновляет данные и подход к сделкам, переобучается.
+    - Сбрасывает кеш аналитики
+    - FullAI: анализ сделок и подбор параметров (fullai-trades-analysis)
+    - AI: принудительное обновление данных и переобучение (force-update)
+    Выполняется в фоне; возвращает сразу с флагом started.
+    """
+    try:
+        import threading
+        def _run():
+            results = {'analytics_cache': False, 'fullai': None, 'ai_retrain': None}
+            try:
+                from bot_engine.ai_analytics import invalidate_analytics_cache
+                invalidate_analytics_cache()
+                results['analytics_cache'] = True
+            except Exception as e:
+                logger.debug("ai-reanalyze invalidate cache: %s", e)
+            try:
+                from bots_modules.imports_and_globals import bots_data, bots_data_lock
+                with bots_data_lock:
+                    full_ai = (bots_data.get('auto_bot_config') or {}).get('full_ai_control', False)
+                if full_ai:
+                    from bots_modules.fullai_trades_learner import run_fullai_trades_analysis
+                    r = run_fullai_trades_analysis(days_back=7, min_trades_per_symbol=2, adjust_params=True)
+                    results['fullai'] = r
+            except Exception as e:
+                logger.warning("ai-reanalyze fullai: %s", e)
+                results['fullai'] = {'success': False, 'error': str(e)}
+            try:
+                from bot_engine.ai.auto_trainer import get_auto_trainer
+                ok = get_auto_trainer().force_update()
+                results['ai_retrain'] = {'success': ok}
+            except Exception as e:
+                logger.warning("ai-reanalyze force_update: %s", e)
+                results['ai_retrain'] = {'success': False, 'error': str(e)}
+            logger.info("[AI-REANALYZE] Завершено: %s", results)
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        return jsonify({
+            'success': True,
+            'message': 'ИИ анализирует и обновляет данные (выполняется в фоне, смотрите логи)',
+            'started': True,
+        })
+    except Exception as e:
+        logger.exception("ai-reanalyze: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @bots_app.route('/api/bots/analytics/ai-context', methods=['GET'])
 def get_ai_analytics_context():
     """Контекст аналитики для ИИ: проблемы, рекомендации, метрики, последние события (для обучения и решений)."""

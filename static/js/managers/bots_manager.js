@@ -10869,6 +10869,11 @@ class BotsManager {
             fullaiBtn.setAttribute('data-fullai-bound', 'true');
             fullaiBtn.addEventListener('click', () => this.loadFullaiAnalytics());
         }
+        const aiReanalyzeBtn = document.getElementById('aiReanalyzeBtn');
+        if (aiReanalyzeBtn && !aiReanalyzeBtn.hasAttribute('data-ai-reanalyze-bound')) {
+            aiReanalyzeBtn.setAttribute('data-ai-reanalyze-bound', 'true');
+            aiReanalyzeBtn.addEventListener('click', () => this.runAiReanalyze());
+        }
         const subtabBtns = document.querySelectorAll('.analytics-subtab-btn');
         const subtabPanels = document.querySelectorAll('.analytics-subtab-content');
         if (subtabBtns.length && !document.getElementById('analyticsTab').hasAttribute('data-subtabs-bound')) {
@@ -11114,6 +11119,26 @@ class BotsManager {
             alert('Ошибка синхронизации: ' + ((err && err.message) || String(err)));
         } finally {
             if (syncBtn) { syncBtn.disabled = false; syncBtn.textContent = origText; }
+        }
+    }
+
+    /**
+     * Запускает ручной анализ ИИ: обновление данных, подход к сделкам и переобучение (в фоне)
+     */
+    async runAiReanalyze() {
+        const btn = document.getElementById('aiReanalyzeBtn');
+        const origText = btn ? btn.textContent : '';
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Запуск...'; }
+        try {
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/ai-reanalyze`, { method: 'POST' });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
+            if (!data.success) throw new Error(data.error || 'Не удалось запустить');
+            alert(data.message || 'ИИ анализирует и обновляет данные в фоне. Результат в логах.');
+        } catch (err) {
+            alert('Ошибка: ' + ((err && err.message) || String(err)));
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = origText; }
         }
     }
 
