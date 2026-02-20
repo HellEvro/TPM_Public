@@ -10915,7 +10915,8 @@ class BotsManager {
             this.renderFullaiAnalytics(data.summary || {}, data.events || [], summaryEl, eventsEl, {
                 db_path: data.db_path,
                 total_events: data.total_events,
-                bot_trades_stats: data.bot_trades_stats || null
+                bot_trades_stats: data.bot_trades_stats || null,
+                closed_trades: data.closed_trades || []
             });
         } catch (err) {
             if (summaryEl) summaryEl.innerHTML = `<div class="analytics-error">❌ ${(err && err.message) || String(err)}</div>`;
@@ -10966,10 +10967,29 @@ class BotsManager {
         html += '<p class="fullai-events-note" style="font-size:0.85rem;color:var(--text-muted,#888);margin-top:0.25rem;">Карточки «Реальные закрытия/в плюс/в минус/Win rate» — из bots_data.db (история ботов). Остальные карточки — события FullAI (записываются только при включённом FullAI).</p>';
         summaryEl.innerHTML = html + cards;
 
+        let closedTradesHtml = '';
+        const closedTrades = (meta && meta.closed_trades) || [];
+        if (closedTrades.length > 0) {
+            closedTradesHtml = '<h4 style="margin-top:0.5rem;">Закрытые сделки (PnL и вывод)</h4>';
+            closedTradesHtml += '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Напр.</th><th>Вход</th><th>Выход</th><th>PnL %</th><th>PnL USDT</th><th>Причина</th><th>Вывод</th></tr></thead><tbody>';
+            closedTrades.forEach(tr => {
+                const pnlUsdt = tr.pnl_usdt != null ? Number(tr.pnl_usdt) : null;
+                const roiPct = tr.roi_pct != null ? Number(tr.roi_pct) : null;
+                const pnlClass = pnlUsdt != null ? (pnlUsdt >= 0 ? 'positive' : 'negative') : '';
+                const pnlPctStr = roiPct != null ? ((roiPct >= 0 ? '+' : '') + roiPct.toFixed(2) + '%') : '—';
+                const pnlUsdtStr = pnlUsdt != null ? ((pnlUsdt >= 0 ? '+' : '') + pnlUsdt.toFixed(2)) : '—';
+                const entryPrice = tr.entry_price != null ? Number(tr.entry_price).toFixed(6) : '—';
+                const exitPrice = tr.exit_price != null ? Number(tr.exit_price).toFixed(6) : '—';
+                const conclusion = tr.conclusion || (pnlUsdt >= 0 ? 'Прибыль' : 'Убыток');
+                closedTradesHtml += '<tr><td>' + (tr.ts_iso || tr.exit_time || '') + '</td><td>' + (tr.symbol || '') + '</td><td>' + (tr.direction || '') + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlPctStr + '</td><td class="' + pnlClass + '">' + pnlUsdtStr + '</td><td>' + (tr.close_reason || '—') + '</td><td>' + (conclusion || '—') + '</td></tr>';
+            });
+            closedTradesHtml += '</tbody></table><h4 style="margin-top:1.5rem;">Последние события FullAI</h4>';
+        }
+
         if (!eventsEl) return;
         const eventLabels = { real_open: 'Вход реал.', virtual_open: 'Вход вирт.', real_close: 'Закрытие реал.', virtual_close: 'Закрытие вирт.', blocked: 'Блок', refused: 'Отказ ИИ', params_change: 'Смена параметров', round_success: 'Раунд → реал.', exit_hold: 'ИИ держать' };
-        if (events.length === 0) {
-            let hint = 'Нет событий за выбранный период.';
+        if (events.length === 0 && closedTrades.length === 0) {
+            let hint = 'Нет событий и закрытых сделок за выбранный период.';
             if (totalInDb === 0) {
                 hint = 'В БД 0 событий. Путь: ' + (dbPath || 'data/fullai_analytics.db') + '. Перезапустите сервис ботов после включения FullAI. В логах ботов при записи должна появиться строка «FullAI analytics: запись в БД». Если её нет — решения FullAI не доходят до записи (проверьте, что боты запущены и FullAI включён в Конфигурации).';
             } else if (totalInDb != null && totalInDb > 0) {
@@ -10978,7 +10998,11 @@ class BotsManager {
             eventsEl.innerHTML = '<p class="analytics-placeholder">' + hint + '</p>';
             return;
         }
-        let table = '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Событие</th><th>Направление</th><th>Вход</th><th>Выход</th><th>Лимит выхода</th><th>Тип</th><th>Время заявки</th><th>Проскальз.%</th><th>Задержка с</th><th>Детали</th></tr></thead><tbody>';
+        if (events.length === 0 && closedTrades.length > 0) {
+            eventsEl.innerHTML = closedTradesHtml;
+            return;
+        }
+        let table = '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Событие</th><th>Направление</th><th>Вход</th><th>Выход</th><th>PnL %</th><th>Лимит выхода</th><th>Тип</th><th>Время заявки</th><th>Проскальз.%</th><th>Задержка с</th><th>Детали</th><th>Вывод</th></tr></thead><tbody>';
         events.forEach(ev => {
             const label = eventLabels[ev.event_type] || ev.event_type;
             const dir = ev.direction || '—';
@@ -10990,11 +11014,15 @@ class BotsManager {
             const tsPlaced = ex.ts_order_placed_exit != null ? (function() { const d = new Date(ex.ts_order_placed_exit * 1000); return d.toISOString ? d.toISOString().slice(0, 19).replace('T', ' ') : d.toLocaleString(); })() : '—';
             const slippage = ex.slippage_exit_pct != null ? Number(ex.slippage_exit_pct).toFixed(2) + '%' : '—';
             const delay = ex.delay_sec != null ? String(Number(ex.delay_sec).toFixed(1)) : '—';
-            const details = ev.reason || (ev.pnl_percent != null ? ('PnL ' + Number(ev.pnl_percent).toFixed(2) + '%') : '') || (ev.extra && ev.extra.success !== undefined ? (ev.extra.success ? 'успех' : 'убыток') : '') || '—';
-            table += '<tr><td>' + (ev.ts_iso || '') + '</td><td>' + (ev.symbol || '') + '</td><td>' + label + '</td><td>' + dir + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td>' + limitExit + '</td><td>' + orderType + '</td><td>' + tsPlaced + '</td><td>' + slippage + '</td><td>' + delay + '</td><td>' + details + '</td></tr>';
+            const pnlPct = ev.pnl_percent != null ? Number(ev.pnl_percent) : (ex.pnl_percent != null ? Number(ex.pnl_percent) : null);
+            const pnlClass = pnlPct != null ? (pnlPct >= 0 ? 'positive' : 'negative') : '';
+            const pnlStr = pnlPct != null ? ((pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%') : '—';
+            const details = ev.reason || (ev.extra && ev.extra.success !== undefined ? (ev.extra.success ? 'успех' : 'убыток') : '') || '—';
+            const conclusion = pnlPct != null ? (pnlPct >= 0 ? 'Прибыль. ' + (ev.reason || '') : 'Убыток. ' + (ev.reason || '')) : '—';
+            table += '<tr><td>' + (ev.ts_iso || '') + '</td><td>' + (ev.symbol || '') + '</td><td>' + label + '</td><td>' + dir + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlStr + '</td><td>' + limitExit + '</td><td>' + orderType + '</td><td>' + tsPlaced + '</td><td>' + slippage + '</td><td>' + delay + '</td><td>' + details + '</td><td>' + conclusion + '</td></tr>';
         });
         table += '</tbody></table>';
-        eventsEl.innerHTML = table;
+        eventsEl.innerHTML = closedTradesHtml + table;
     }
 
     /**

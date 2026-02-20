@@ -5417,10 +5417,12 @@ def get_fullai_analytics():
         events = get_events(symbol=symbol, from_ts=from_ts, to_ts=to_ts, limit=limit)
         db_info = get_db_info()
         bot_trades_stats = _compute_bot_trades_stats(symbol=symbol, from_ts=from_ts, to_ts=to_ts)
+        closed_trades = _get_closed_trades_for_table(symbol=symbol, from_ts=from_ts, to_ts=to_ts, limit=limit)
         return jsonify({
             'success': True,
             'summary': summary,
             'events': events,
+            'closed_trades': closed_trades,
             'bot_trades_stats': bot_trades_stats,
             'db_path': db_info['db_path'],
             'total_events': db_info['total_events'],
@@ -5428,6 +5430,81 @@ def get_fullai_analytics():
     except Exception as e:
         logger.exception("Ошибка аналитики FullAI: %s", e)
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _get_closed_trades_for_table(symbol=None, from_ts=None, to_ts=None, limit=500):
+    """
+    Закрытые сделки из bots_data.db с PnL и сгенерированным выводом (что хорошо/что не так).
+    Возвращает список для таблицы в UI.
+    """
+    try:
+        from bot_engine.bots_database import get_bots_database
+        db = get_bots_database()
+        trades = db.get_bot_trades_history(
+            symbol=symbol,
+            status='CLOSED',
+            limit=min(limit, 500),
+            from_ts_sec=from_ts,
+            to_ts_sec=to_ts,
+        )
+        if not trades:
+            return []
+        out = []
+        for t in trades:
+            pnl = float(t.get('pnl') or 0)
+            roi = t.get('roi')  # может быть % или коэффициент
+            roi_pct = None
+            if roi is not None:
+                roi_f = float(roi)
+                roi_pct = roi_f * 100 if 0 < abs(roi_f) < 1.5 else roi_f
+            if roi_pct is None and t.get('entry_price') and t.get('exit_price'):
+                ep, xp = float(t['entry_price']), float(t['exit_price'])
+                if ep > 0 and t.get('direction', '').upper() == 'LONG':
+                    roi_pct = ((xp - ep) / ep) * 100
+                elif ep > 0 and t.get('direction', '').upper() == 'SHORT':
+                    roi_pct = ((ep - xp) / ep) * 100
+            reason = t.get('close_reason') or ''
+            if pnl >= 0:
+                conclusion = 'Прибыль. ' + (reason if reason else 'Закрыто по условию')
+                if reason and any(x in reason.upper() for x in ('TP', 'TAKE_PROFIT', 'ТЕЙК')):
+                    conclusion = 'Прибыль. Выход по TP — цель достигнута'
+                elif reason and any(x in reason.upper() for x in ('RSI', 'РСИ')):
+                    conclusion = 'Прибыль. Выход по RSI в плюсе — сигнал сработал'
+            else:
+                conclusion = 'Убыток. ' + (reason if reason else 'Закрыто по условию')
+                if reason and any(x in reason.upper() for x in ('SL', 'STOP', 'СЛОСС')):
+                    conclusion = 'Убыток. Выход по SL — стоп сработал, фиксация убытка'
+                elif reason and any(x in reason.upper() for x in ('RSI', 'РСИ')):
+                    conclusion = 'Убыток. Выход по RSI в минусе — возможно ранний выход'
+            ts = t.get('exit_timestamp') or t.get('entry_timestamp')
+            ts_iso = t.get('exit_time') or t.get('entry_time') or ''
+            if ts and not ts_iso:
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromtimestamp(ts / 1000 if ts > 1e10 else ts)
+                    ts_iso = dt.strftime('%Y-%m-%dT%H:%M:%S')
+                except Exception:
+                    pass
+            out.append({
+                'symbol': t.get('symbol'),
+                'direction': t.get('direction'),
+                'entry_price': t.get('entry_price'),
+                'exit_price': t.get('exit_price'),
+                'entry_time': t.get('entry_time'),
+                'exit_time': t.get('exit_time'),
+                'ts': ts,
+                'ts_iso': ts_iso,
+                'close_reason': reason,
+                'pnl_usdt': round(pnl, 4),
+                'roi_pct': round(roi_pct, 2) if roi_pct is not None else None,
+                'is_successful': bool(t.get('is_successful')) or pnl > 0,
+                'conclusion': conclusion,
+            })
+        return out
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug("closed_trades_for_table: %s", e)
+        return []
 
 
 def _compute_bot_trades_stats(symbol=None, from_ts=None, to_ts=None):
