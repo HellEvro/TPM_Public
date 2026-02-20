@@ -125,10 +125,17 @@
         const totalInDb = (meta && meta.total_events) != null ? meta.total_events : null;
         const dbPath = (meta && meta.db_path) || '';
         const s = summary;
-        // Реальные сделки: используем bots_data.db (истинный источник), если есть — иначе fullai_analytics
-        const realClose = (botStats != null) ? (botStats.total || 0) : (s.real_close || 0);
-        const realWins = (botStats != null) ? (botStats.wins || 0) : (s.real_wins || 0);
-        const realLosses = (botStats != null) ? (botStats.losses || 0) : (s.real_losses || 0);
+        // Реальные сделки: bots_data.db приоритет; если losses=0 но fullai_analytics нашёл убытки — используем их
+        const botTotal = (botStats != null) ? (botStats.total || 0) : 0;
+        const botWins = (botStats != null) ? (botStats.wins || 0) : 0;
+        const botLosses = (botStats != null) ? (botStats.losses || 0) : 0;
+        const sumLosses = s.real_losses || 0;
+        const sumWins = s.real_wins || 0;
+        const realClose = (botStats != null && botTotal > 0) ? botTotal : (s.real_close || 0);
+        const realWins = (botStats != null && botTotal > 0) ? botWins : sumWins;
+        const realLosses = (botStats != null && botTotal > 0)
+            ? (botLosses > 0 ? botLosses : Math.max(botLosses, sumLosses))
+            : sumLosses;
         const winRate = (botStats != null && botStats.win_rate_pct != null) ? String(botStats.win_rate_pct) : (s.real_total > 0 ? ((s.real_wins / s.real_total) * 100).toFixed(1) : '—');
         const virtualRate = s.virtual_total > 0 ? ((s.virtual_ok / s.virtual_total) * 100).toFixed(1) : '—';
         let html = '';
