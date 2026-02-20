@@ -850,7 +850,7 @@
                     
                     const d = this.getCompactCardData(bot);
                     const t = k => window.languageUtils?.translate(k) || this.getTranslation(k);
-                    const exchangeUrl = this.getExchangeLink(bot.symbol, 'bybit');
+                    const exchangeUrl = this.getExchangeLink(bot.symbol, window.app?.exchangeManager?.getSelectedExchange?.() || 'bybit');
                     // Цвет карточки по PnL: зелёный — прибыль, красный — убыток (направление Long/Short уже показано подписью)
                     const pnlValue = isVirtual ? (bot.unrealized_pnl ?? 0) : (bot.unrealized_pnl_usdt ?? bot.unrealized_pnl ?? 0);
                     const isProfit = Number(pnlValue) >= 0;

@@ -722,7 +722,8 @@
         });
 
         if (symbolElement) {
-            const exchangeUrl = this.getExchangeLink(coin.symbol, 'bybit');
+            const currentExchange = window.app?.exchangeManager?.getSelectedExchange?.() || 'bybit';
+            const exchangeUrl = this.getExchangeLink(coin.symbol, currentExchange);
             
             // Проверяем статус делистинга
             const isDelisting = coin.is_delisting || coin.trading_status === 'Closed' || coin.trading_status === 'Delivering';
@@ -731,7 +732,7 @@
             symbolElement.innerHTML = `
                 🪙 ${coin.symbol} 
                 ${delistedTag}
-                <a href="${exchangeUrl}" target="_blank" class="exchange-link" title="Открыть на Bybit">
+                <a href="${exchangeUrl}" target="_blank" class="exchange-link" title="Открыть на бирже">
                     🔗
                 </a>
             `;

@@ -1,6 +1,7 @@
 from .bybit_exchange import BybitExchange
 from .binance_exchange import BinanceExchange
 from .okx_exchange import OkxExchange
+from .kucoin_exchange import KucoinExchange
 import logging
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,15 @@ class ExchangeFactory:
                     api_key, 
                     api_secret, 
                     passphrase,
+                    position_mode=position_mode,
+                    limit_order_offset=limit_order_offset
+                )
+                logger.info(f"Successfully connected to {exchange_name} ({position_mode} mode, offset: {limit_order_offset}%)")
+                return exchange
+            elif exchange_name == 'KUCOIN':
+                exchange = KucoinExchange(
+                    api_key,
+                    api_secret,
                     position_mode=position_mode,
                     limit_order_offset=limit_order_offset
                 )
