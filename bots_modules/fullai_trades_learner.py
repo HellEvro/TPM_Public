@@ -163,6 +163,7 @@ def run_fullai_trades_analysis(
                 by_symbol[sym] = []
             by_symbol[sym].append(_evaluate_trade(t))
         updated = []
+        changes_list: List[Dict[str, Any]] = []  # [{symbol, param, old, new, reason}, ...]
         for symbol, evals in by_symbol.items():
             if len(evals) < min_trades_per_symbol:
                 continue
@@ -214,6 +215,22 @@ def run_fullai_trades_analysis(
                     sl_old = current.get('max_loss_percent') or fullai_global.get('max_loss_percent') or 10
                     tp_new = new_params.get('take_profit_percent', tp_old)
                     sl_new = new_params.get('max_loss_percent', sl_old)
+                    if tp_old != tp_new:
+                        changes_list.append({
+                            'symbol': symbol,
+                            'param': 'take_profit_percent',
+                            'old': tp_old,
+                            'new': tp_new,
+                            'reason': reason_text,
+                        })
+                    if sl_old != sl_new:
+                        changes_list.append({
+                            'symbol': symbol,
+                            'param': 'max_loss_percent',
+                            'old': sl_old,
+                            'new': sl_new,
+                            'reason': reason_text,
+                        })
                     logger.info(
                         "[FullAI изменения] Источник: изучение сделок (learner). Монета: %s. "
                         "Было: take_profit_percent=%s%%, max_loss_percent=%s%%. "
@@ -241,6 +258,7 @@ def run_fullai_trades_analysis(
             'analyzed': len(trades),
             'symbols_evaluated': len(by_symbol),
             'updated_symbols': updated,
+            'changes': changes_list,  # [{symbol, param, old, new, reason}, ...] для UI "старое -> новое"
         }
     except Exception as e:
         logger.exception(f"[FullAI learner] Ошибка: {e}")

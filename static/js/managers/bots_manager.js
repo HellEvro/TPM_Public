@@ -11123,20 +11123,49 @@ class BotsManager {
     }
 
     /**
-     * Запускает ручной анализ ИИ: обновление данных, подход к сделкам и переобучение (в фоне)
+     * Запускает ручной анализ ИИ: обновление данных, подход к сделкам и переобучение (в фоне).
+     * Показывает изменения в формате «старое → новое».
      */
     async runAiReanalyze() {
         const btn = document.getElementById('aiReanalyzeBtn');
+        const resultEl = document.getElementById('aiReanalyzeResult');
         const origText = btn ? btn.textContent : '';
         if (btn) { btn.disabled = true; btn.textContent = '⏳ Запуск...'; }
+        if (resultEl) { resultEl.style.display = 'none'; resultEl.innerHTML = ''; }
         try {
             const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/ai-reanalyze`, { method: 'POST' });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
             if (!data.success) throw new Error(data.error || 'Не удалось запустить');
-            alert(data.message || 'ИИ анализирует и обновляет данные в фоне. Результат в логах.');
+
+            const changes = data.changes || [];
+            if (resultEl) {
+                resultEl.style.display = 'block';
+                if (changes.length > 0) {
+                    const paramNames = { take_profit_percent: 'TP%', max_loss_percent: 'SL%' };
+                    const isPercent = (p) => p === 'take_profit_percent' || p === 'max_loss_percent';
+                    let html = '<strong>🧠 Изменения ИИ:</strong><ul style="margin: 6px 0 0 16px;">';
+                    changes.forEach(c => {
+                        const p = paramNames[c.param] || c.param;
+                        const suf = isPercent(c.param) ? '%' : '';
+                        html += `<li><code>${c.symbol}</code> ${p}: <span style="text-decoration:line-through">${c.old}${suf}</span> → <strong>${c.new}${suf}</strong></li>`;
+                    });
+                    html += '</ul>';
+                    html += '<p style="margin: 8px 0 0; color: var(--text-muted, #666); font-size: 0.85em;">' + (data.message || '') + '</p>';
+                    resultEl.innerHTML = html;
+                } else {
+                    resultEl.innerHTML = '<strong>🧠</strong> ' + (data.message || 'Готово. Изменений параметров нет.');
+                }
+            } else {
+                alert(data.message || 'ИИ анализирует и обновляет данные в фоне.');
+            }
         } catch (err) {
-            alert('Ошибка: ' + ((err && err.message) || String(err)));
+            if (resultEl) {
+                resultEl.style.display = 'block';
+                resultEl.innerHTML = '<span class="analytics-error">❌ ' + ((err && err.message) || String(err)) + '</span>';
+            } else {
+                alert('Ошибка: ' + ((err && err.message) || String(err)));
+            }
         } finally {
             if (btn) { btn.disabled = false; btn.textContent = origText; }
         }

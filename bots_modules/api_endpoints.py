@@ -5464,55 +5464,86 @@ def get_rsi_audit():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# Последний результат ai-reanalyze (для отображения пользователю и polling)
+_last_ai_reanalyze_result = {'ts': 0, 'fullai_changes': [], 'ai_retrain': None, 'running': False}
+
+
 @bots_app.route('/api/bots/analytics/ai-reanalyze', methods=['POST'])
 def ai_reanalyze_and_update():
     """
     Ручной запуск: ИИ анализирует ситуацию, обновляет данные и подход к сделкам, переобучается.
     - Сбрасывает кеш аналитики
-    - FullAI: анализ сделок и подбор параметров (fullai-trades-analysis)
-    - AI: принудительное обновление данных и переобучение (force-update)
-    Выполняется в фоне; возвращает сразу с флагом started.
+    - FullAI: анализ сделок и подбор параметров (синхронно, возвращает changes в формате старое -> новое)
+    - AI: принудительное обновление данных и переобучение (в фоне)
     """
+    global _last_ai_reanalyze_result
     try:
         import threading
-        def _run():
-            results = {'analytics_cache': False, 'fullai': None, 'ai_retrain': None}
-            try:
-                from bot_engine.ai_analytics import invalidate_analytics_cache
-                invalidate_analytics_cache()
-                results['analytics_cache'] = True
-            except Exception as e:
-                logger.debug("ai-reanalyze invalidate cache: %s", e)
-            try:
-                from bots_modules.imports_and_globals import bots_data, bots_data_lock
-                with bots_data_lock:
-                    full_ai = (bots_data.get('auto_bot_config') or {}).get('full_ai_control', False)
-                if full_ai:
-                    from bots_modules.fullai_trades_learner import run_fullai_trades_analysis
-                    r = run_fullai_trades_analysis(days_back=7, min_trades_per_symbol=2, adjust_params=True)
-                    results['fullai'] = r
-            except Exception as e:
-                logger.warning("ai-reanalyze fullai: %s", e)
-                results['fullai'] = {'success': False, 'error': str(e)}
+        import time
+
+        # 1. Синхронно: кеш + FullAI (быстро)
+        from bot_engine.ai_analytics import invalidate_analytics_cache
+        invalidate_analytics_cache()
+
+        fullai_changes = []
+        fullai_msg = 'FullAI выключен, параметры не менялись'
+        try:
+            from bots_modules.imports_and_globals import bots_data, bots_data_lock
+            with bots_data_lock:
+                full_ai = (bots_data.get('auto_bot_config') or {}).get('full_ai_control', False)
+            if full_ai:
+                from bots_modules.fullai_trades_learner import run_fullai_trades_analysis
+                r = run_fullai_trades_analysis(days_back=7, min_trades_per_symbol=2, adjust_params=True)
+                fullai_changes = r.get('changes') or []
+                if fullai_changes:
+                    fullai_msg = f"FullAI: обновлено {len(fullai_changes)} параметров"
+                else:
+                    fullai_msg = 'FullAI: изменений нет (win_rate в норме или мало сделок)'
+        except Exception as e:
+            logger.warning("ai-reanalyze fullai: %s", e)
+            fullai_msg = f"FullAI: ошибка — {e}"
+
+        _last_ai_reanalyze_result = {
+            'ts': time.time(),
+            'fullai_changes': fullai_changes,
+            'ai_retrain': None,
+            'running': True,
+        }
+
+        def _run_retrain():
+            global _last_ai_reanalyze_result
             try:
                 from bot_engine.ai.auto_trainer import get_auto_trainer
                 ok = get_auto_trainer().force_update()
-                results['ai_retrain'] = {'success': ok}
+                _last_ai_reanalyze_result['ai_retrain'] = {'success': ok}
             except Exception as e:
                 logger.warning("ai-reanalyze force_update: %s", e)
-                results['ai_retrain'] = {'success': False, 'error': str(e)}
-            logger.info("[AI-REANALYZE] Завершено: %s", results)
+                _last_ai_reanalyze_result['ai_retrain'] = {'success': False, 'error': str(e)}
+            _last_ai_reanalyze_result['running'] = False
+            logger.info("[AI-REANALYZE] Переобучение завершено: %s", _last_ai_reanalyze_result.get('ai_retrain'))
 
-        t = threading.Thread(target=_run, daemon=True)
+        t = threading.Thread(target=_run_retrain, daemon=True)
         t.start()
+
         return jsonify({
             'success': True,
-            'message': 'ИИ анализирует и обновляет данные (выполняется в фоне, смотрите логи)',
+            'message': fullai_msg + '. Переобучение моделей запущено в фоне.',
             'started': True,
+            'changes': fullai_changes,  # [{symbol, param, old, new, reason}, ...] для UI "старое -> новое"
         })
     except Exception as e:
         logger.exception("ai-reanalyze: %s", e)
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bots_app.route('/api/bots/analytics/ai-reanalyze/result', methods=['GET'])
+def ai_reanalyze_result():
+    """Последний результат ai-reanalyze (для polling после запуска)."""
+    global _last_ai_reanalyze_result
+    return jsonify({
+        'success': True,
+        'result': _last_ai_reanalyze_result,
+    })
 
 
 @bots_app.route('/api/bots/analytics/ai-context', methods=['GET'])
