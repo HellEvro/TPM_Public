@@ -3194,7 +3194,7 @@ def process_auto_bot_signals(exchange_obj=None):
                     if ac.get('full_ai_control'):
                         from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
                         coin_data = coin.get('coin_data', {})
-                        price = float(coin_data.get('price') or 0)
+                        price = float(coin_data.get('price') or entry_result.get('entry_price') or 0)
                         append_event(
                             symbol=symbol,
                             event_type=EVENT_REAL_OPEN,
@@ -3202,8 +3202,8 @@ def process_auto_bot_signals(exchange_obj=None):
                             is_virtual=False,
                             extra={'price': price, 'entry_price': price},
                         )
-                except Exception:
-                    pass
+                except Exception as _fa_err:
+                    logger.warning("FullAI analytics real_open (filters): %s", _fa_err)
                 logger.info(f" ✅ {symbol}: позиция открыта, бот в списке")
             except Exception as e:
                 error_str = str(e)

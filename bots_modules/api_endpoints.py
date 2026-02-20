@@ -1194,6 +1194,22 @@ def create_bot_endpoint():
                             logger.info(f" ✅ Успешно вошли в {direction} позицию для {symbol}")
                             with bots_data_lock:
                                 bots_data['bots'][symbol] = trading_bot.to_dict()
+                            # FullAI аналитика: запись real_open (вход через API/UI)
+                            try:
+                                with bots_data_lock:
+                                    ac = bots_data.get('auto_bot_config', {})
+                                if ac.get('full_ai_control'):
+                                    from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
+                                    entry_price = float(result.get('entry_price') or 0)
+                                    append_event(
+                                        symbol=symbol,
+                                        event_type=EVENT_REAL_OPEN,
+                                        direction=direction,
+                                        is_virtual=False,
+                                        extra={'price': entry_price, 'entry_price': entry_price},
+                                    )
+                            except Exception as _fa_err:
+                                logger.debug("FullAI analytics real_open (API): %s", _fa_err)
                         else:
                             error_msg = (result or {}).get('error', 'unknown')
                             if 'MIN_NOTIONAL' in error_msg or '110007' in error_msg or 'меньше минимального ордера' in error_msg or 'Недостаточно доступного остатка' in error_msg:
