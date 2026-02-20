@@ -1133,7 +1133,7 @@ def get_coin_rsi_data_for_timeframe(symbol, exchange_obj=None, timeframe=None):
                         if lr_result:
                             loss_reentry_info = {'blocked': not lr_result.get('allowed', True), 'reason': lr_result.get('reason', ''), 'filter_type': 'loss_reentry_protection', 'candles_passed': lr_result.get('candles_passed'), 'required_candles': loss_reentry_candles, 'loss_count': loss_reentry_count}
                         else:
-                            loss_reentry_info = {'blocked': False, 'reason': 'Проверка не выполнена', 'filter_type': 'loss_reentry_protection'}
+                            loss_reentry_info = {'blocked': False, 'reason': 'фильтр не применим (мало сделок или не все последние убыточны)', 'filter_type': 'loss_reentry_protection'}
                     else:
                         loss_reentry_info = {'blocked': False, 'reason': 'Выключено или мало свечей', 'filter_type': 'loss_reentry_protection'}
                 except Exception as e:

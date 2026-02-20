@@ -1870,11 +1870,13 @@
             // Добавляем цветовое кодирование
             let coloredValue = '';
             let icon = '';
+            const blockedStr = (window.languageUtils.translate('loss_reentry_blocked') || 'Блокирует: {reason}').replace('{reason}', reason);
+            const allowedStr = (window.languageUtils.translate('loss_reentry_allowed') || 'Разрешено: {reason}').replace('{reason}', reason);
             if (isBlocked) {
-                coloredValue = `<span style="color: var(--red-text);">${window.languageUtils.translate('loss_reentry_blocked') || 'Блокирует'}: ${reason}</span>`;
+                coloredValue = `<span style="color: var(--red-text);">${blockedStr}</span>`;
                 icon = '🚫';
             } else {
-                coloredValue = `<span style="color: var(--green-text);">${window.languageUtils.translate('loss_reentry_allowed') || 'Разрешено'}: ${reason}</span>`;
+                coloredValue = `<span style="color: var(--green-text);">${allowedStr}</span>`;
                 icon = '✅';
             }
             
