@@ -25,6 +25,13 @@ EXCHANGES = {
         'passphrase': "YOUR_OKX_PASSPHRASE_HERE",
         'position_mode': 'Hedge',
         'limit_order_offset': 0.015
+    },
+    'KUCOIN': {
+        'enabled': True,
+        'api_key': "YOUR_KUCOIN_FUTURES_API_KEY_HERE",
+        'api_secret': "YOUR_KUCOIN_FUTURES_SECRET_KEY_HERE",
+        'position_mode': 'Hedge',
+        'limit_order_offset': 0.01
     }
 }
 # ==================== БЛОК 2: TELEGRAM ====================

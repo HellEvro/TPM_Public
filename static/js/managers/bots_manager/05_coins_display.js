@@ -384,6 +384,8 @@
                 return `https://www.bybit.com/trade/usdt/${cleanSymbol}USDT`;
             case 'okx':
                 return `https://www.okx.com/ru/trade-swap/${cleanSymbol.toLowerCase()}-usdt-swap`;
+            case 'kucoin':
+                return `https://www.kucoin.com/futures/trade/${cleanSymbol}USDTM`;
             default:
                 return `https://www.bybit.com/trade/usdt/${cleanSymbol}USDT`; // По умолчанию Bybit
         }

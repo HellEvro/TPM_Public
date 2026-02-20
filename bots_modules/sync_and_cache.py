@@ -3096,8 +3096,8 @@ def sync_bots_with_exchange():
                                 }
 
                                 if not already_closed_trade:
-                                    # КРИТИЧНО: Логируем только если это была позиция бота (бот был в позиции)
-                                    # Это НЕ ручные сделки трейдера, а закрытие позиций ботов вручную на бирже
+                                    # КРИТИЧНО: Позиция исчезла на бирже, бот её не закрывал — причина неизвестна
+                                    # (SL/TP/ликвидация/ручное закрытие). Не помечаем как MANUAL_CLOSE.
                                     history_log_position_closed(
                                         bot_id=bot_id,
                                         symbol=symbol,
@@ -3105,10 +3105,10 @@ def sync_bots_with_exchange():
                                         exit_price=exit_price or entry_price or 0.0,
                                         pnl=pnl_usdt,
                                         roi=roi_percent,
-                                        reason='MANUAL_CLOSE',
+                                        reason='CLOSED_ON_EXCHANGE',
                                         entry_data=entry_data,
                                         market_data=market_data,
-                                        is_simulated=False,  # КРИТИЧНО: это сделки ботов, закрытые вручную на бирже
+                                        is_simulated=False,
                                     )
 
                                     # КРИТИЧНО: Также сохраняем в bots_data.db для истории торговли ботов
@@ -3144,7 +3144,7 @@ def sync_bots_with_exchange():
                                             "pnl": pnl_usdt,
                                             "roi": roi_percent,
                                             "status": "CLOSED",
-                                            "close_reason": "MANUAL_CLOSE",
+                                            "close_reason": "CLOSED_ON_EXCHANGE",
                                             "decision_source": bot_data.get(
                                                 "decision_source", "SCRIPT"
                                             ),
@@ -3176,7 +3176,7 @@ def sync_bots_with_exchange():
                                             f"[SYNC_EXCHANGE] ⚠️ Ошибка сохранения истории в bots_data.db: {bots_db_error}"
                                         )
                                     logger.info(
-                                        f"[SYNC_EXCHANGE] ✋ {symbol}: позиция закрыта вручную на бирже "
+                                        f"[SYNC_EXCHANGE] 📤 {symbol}: позиция закрыта на бирже вне бота "
                                         f"(entry={entry_price:.6f}, exit={exit_price:.6f}, pnl={pnl_usdt:.2f} USDT)"
                                     )
                                 else:

@@ -158,7 +158,10 @@ class TradeConclusionAnalyzer:
                 if direction == 'SHORT' and er > 65 and xr < 50:
                     return 'Прибыль. RSI — вход в перекупленности, выход в зоне нейтрала.'
             return 'Прибыль. RSI — выход в плюсе.'
-        # MANUAL
+        # Закрыто на бирже (синк обнаружил отсутствие позиции — причина неизвестна: SL/TP/вручную)
+        if 'CLOSED_ON_EXCHANGE' in reason:
+            return f'Прибыль. Закрыто на бирже — +{roi_abs:.1f}%' if roi_pct is not None else 'Прибыль. Закрыто на бирже.'
+        # MANUAL — только при явном ручном закрытии через UI
         if 'MANUAL' in reason:
             return f'Прибыль. Ручное закрытие — +{roi_abs:.1f}%' if roi_pct is not None else 'Прибыль. Ручное закрытие.'
         return f'Прибыль. {reason or "Закрыто по условию"}'
@@ -208,7 +211,10 @@ class TradeConclusionAnalyzer:
                 if direction == 'SHORT' and xr > er and xr > 60:
                     return f'Убыток -{roi_abs:.1f}%. RSI — выход при углублении перекупленности; возможно ранний выход.'
             return f'Убыток -{roi_abs:.1f}%. RSI выход в минусе — малый убыток.'
-        # MANUAL
+        # Закрыто на бирже (синк обнаружил отсутствие позиции — причина неизвестна: SL/TP/вручную)
+        if 'CLOSED_ON_EXCHANGE' in reason:
+            return f'Убыток. Закрыто на бирже — -{roi_abs:.1f}%' if roi_pct is not None else 'Убыток. Закрыто на бирже.'
+        # MANUAL — только при явном ручном закрытии через UI
         if 'MANUAL' in reason:
             return f'Убыток. Ручное закрытие — -{roi_abs:.1f}%' if roi_pct is not None else 'Убыток. Ручное закрытие.'
         return f'Убыток. {reason or "Закрыто по условию"}'
