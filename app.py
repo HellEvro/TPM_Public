@@ -2085,6 +2085,18 @@ def export_config():
     return jsonify(result), status_code
 
 
+@app.route('/api/bots/timeframe', methods=['GET', 'POST'])
+def bots_timeframe():
+    """Прокси смены таймфрейма — критично для RSI Time фильтра (свечи 1m vs 6h)."""
+    if request.method == 'GET':
+        result = call_bots_service('/api/bots/timeframe', method='GET')
+    else:
+        data = request.get_json()
+        result = call_bots_service('/api/bots/timeframe', method='POST', data=data)
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
+
 @app.route('/api/bots/system-config', methods=['GET', 'POST'])
 def system_config():
     """Системные настройки (прокси к сервису ботов)"""
@@ -2106,6 +2118,22 @@ def ai_config():
     else:
         data = request.get_json()
         result = call_bots_service('/api/ai/config', method='POST', data=data)
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
+
+@app.route('/api/bots/analytics', methods=['GET'])
+@app.route('/api/bots/analytics/<path:subpath>', methods=['GET', 'POST'])
+def bots_analytics_proxy(subpath=''):
+    """Прокси для аналитики: /api/bots/analytics, /api/bots/analytics/fullai, rsi-audit, sync-from-exchange, ai-reanalyze и т.д."""
+    endpoint = '/api/bots/analytics'
+    if subpath:
+        endpoint += '/' + subpath
+    if request.query_string:
+        endpoint += '?' + request.query_string.decode('utf-8')
+    data = request.get_json(silent=True) if request.method == 'POST' else None
+    timeout = 30 if 'ai-reanalyze' in subpath else 15
+    result = call_bots_service(endpoint, method=request.method, data=data, timeout=timeout)
     status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
