@@ -2896,6 +2896,7 @@ class NewTradingBot:
                     fullai_extra = {
                         'entry_price': self.entry_price,
                         'exit_price': exit_price,
+                        'pnl_usdt': pnl,
                         'entry_rsi': entry_rsi,
                         'exit_rsi': exit_rsi,
                         'direction': self.position_side,

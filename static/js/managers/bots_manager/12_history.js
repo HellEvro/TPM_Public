@@ -198,7 +198,7 @@
             return;
         }
         let table = '<h4 style="margin-top:0.5rem;">Последние события FullAI (входы реал./вирт., выходы, блокировки)</h4>';
-        table += '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Событие</th><th>Направление</th><th>Вход</th><th>Выход</th><th>PnL %</th><th>Лимит выхода</th><th>Тип</th><th>Время заявки</th><th>Проскальз.%</th><th>Задержка с</th><th>Детали</th><th>Вывод</th></tr></thead><tbody>';
+        table += '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Событие</th><th>Направление</th><th>Вход</th><th>Выход</th><th>PnL %</th><th>PnL USDT</th><th>Лимит выхода</th><th>Тип</th><th>Время заявки</th><th>Проскальз.%</th><th>Задержка с</th><th>Детали</th><th>Вывод</th></tr></thead><tbody>';
         events.forEach(ev => {
             const label = eventLabels[ev.event_type] || ev.event_type;
             const dir = ev.direction || '—';
@@ -211,8 +211,10 @@
             const slippage = ex.slippage_exit_pct != null ? Number(ex.slippage_exit_pct).toFixed(2) + '%' : '—';
             const delay = ex.delay_sec != null ? String(Number(ex.delay_sec).toFixed(1)) : '—';
             const pnlPct = ev.pnl_percent != null ? Number(ev.pnl_percent) : (ex.pnl_percent != null ? Number(ex.pnl_percent) : null);
-            const pnlClass = pnlPct != null ? (pnlPct >= 0 ? 'positive' : 'negative') : '';
+            const pnlUsdt = ex.pnl_usdt != null ? Number(ex.pnl_usdt) : null;
+            const pnlClass = pnlPct != null ? (pnlPct >= 0 ? 'positive' : 'negative') : (pnlUsdt != null ? (pnlUsdt >= 0 ? 'positive' : 'negative') : '');
             const pnlStr = pnlPct != null ? ((pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%') : '—';
+            const pnlUsdtStr = ev.event_type === 'virtual_close' ? '—' : (pnlUsdt != null ? ((pnlUsdt >= 0 ? '+' : '') + pnlUsdt.toFixed(2)) : '—');
             let details = '—';
             let conclusion = '—';
             if (ev.event_type === 'params_change') {
@@ -235,7 +237,7 @@
                 conclusion = pnlPct != null ? (pnlPct >= 0 ? 'Прибыль. ' + (ev.reason || '') : 'Убыток. ' + (ev.reason || '')) : '—';
             }
             const rowClass = ev.event_type === 'params_change' ? 'fullai-event-params' : (ev.event_type === 'virtual_close' ? (ex.success ? 'fullai-event-virt-ok' : 'fullai-event-virt-fail') : '');
-            table += '<tr class="' + rowClass + '"><td>' + (ev.ts_iso || '') + '</td><td>' + (ev.symbol || '') + '</td><td>' + label + '</td><td>' + dir + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlStr + '</td><td>' + limitExit + '</td><td>' + orderType + '</td><td>' + tsPlaced + '</td><td>' + slippage + '</td><td>' + delay + '</td><td>' + details + '</td><td>' + conclusion + '</td></tr>';
+            table += '<tr class="' + rowClass + '"><td>' + (ev.ts_iso || '') + '</td><td>' + (ev.symbol || '') + '</td><td>' + label + '</td><td>' + dir + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlStr + '</td><td class="' + pnlClass + '">' + pnlUsdtStr + '</td><td>' + limitExit + '</td><td>' + orderType + '</td><td>' + tsPlaced + '</td><td>' + slippage + '</td><td>' + delay + '</td><td>' + details + '</td><td>' + conclusion + '</td></tr>';
         });
         table += '</tbody></table>';
         eventsEl.innerHTML = table + closedTradesHtml;
