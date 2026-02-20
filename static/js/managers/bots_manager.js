@@ -11142,7 +11142,12 @@ class BotsManager {
             if (resultEl) {
                 resultEl.style.display = 'block';
                 if (changes.length > 0) {
-                    const paramNames = { take_profit_percent: 'TP%', max_loss_percent: 'SL%' };
+                    const paramNames = {
+                        take_profit_percent: 'TP%',
+                        max_loss_percent: 'SL%',
+                        rsi_long_threshold: 'RSI long',
+                        rsi_short_threshold: 'RSI short'
+                    };
                     const isPercent = (p) => p === 'take_profit_percent' || p === 'max_loss_percent';
                     let html = '<strong>🧠 Изменения ИИ:</strong><ul style="margin: 6px 0 0 16px;">';
                     changes.forEach(c => {

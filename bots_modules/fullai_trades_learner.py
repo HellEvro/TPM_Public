@@ -7,6 +7,7 @@ FullAI: изучение совершённых сделок и доработк
 Обновляет **только** конфиг FullAI и таблицу full_ai_coin_params.
 """
 import logging
+import re
 from typing import Dict, List, Any, Optional, Tuple
 
 logger = logging.getLogger('BOTS')
@@ -120,6 +121,48 @@ def _evaluate_trade(trade: Dict[str, Any]) -> Dict[str, Any]:
     return {'success': is_ok, 'roi': roi, 'reason': reason, 'symbol': trade.get('symbol', '')}
 
 
+def _parse_rsi_range(label: str) -> Optional[Tuple[float, float]]:
+    """Парсит rsi_range типа '26-30', '31-35' -> (low, high)."""
+    if not label or not isinstance(label, str):
+        return None
+    m = re.match(r'(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)', label)
+    if m:
+        return (float(m.group(1)), float(m.group(2)))
+    return None
+
+
+def _suggest_rsi_from_bad_ranges(bad_rsi_ranges: List[Dict], for_long: bool) -> Optional[float]:
+    """
+    На основе неудачных RSI-диапазонов предлагает порог.
+    for_long=True: rsi_long_threshold (вход при RSI <= X). Плохие низкие диапазоны (26-30) → порог 25.
+    for_long=False: rsi_short_threshold (вход при RSI >= X). Плохие высокие диапазоны (66-70) → порог 71.
+    """
+    if not bad_rsi_ranges:
+        return None
+    parsed = []
+    for r in bad_rsi_ranges:
+        lab = r.get('rsi_range') if isinstance(r, dict) else str(r)
+        p = _parse_rsi_range(lab)
+        if p:
+            parsed.append(p)
+    if not parsed:
+        return None
+    if for_long:
+        # LONG: плохие низкие RSI (26-30, 31-35) → threshold ниже, вход только при RSI < min(low)
+        low_ranges = [(pl, ph) for pl, ph in parsed if ph <= 50]
+        if not low_ranges:
+            return None
+        min_low = min(pl for pl, _ in low_ranges)
+        return max(1, min_low - 1)
+    else:
+        # SHORT: плохие высокие RSI (66-70, 71-100) → threshold выше, вход при RSI > max(high)
+        high_ranges = [(pl, ph) for pl, ph in parsed if pl >= 50]
+        if not high_ranges:
+            return None
+        max_high = max(ph for _, ph in high_ranges)
+        return min(99, max_high + 1)
+
+
 def run_fullai_trades_analysis(
     days_back: int = 7,
     min_trades_per_symbol: int = 2,
@@ -127,9 +170,9 @@ def run_fullai_trades_analysis(
 ) -> Dict[str, Any]:
     """
     Анализ закрытых сделок и обновление параметров FullAI по монетам.
-    Вызывать при включённом FullAI: по расписанию и/или после закрытия сделки.
-    Пишет только в full_ai_config (БД) и full_ai_coin_params. Не трогает
-    пользовательский конфиг и individual_coin_settings.
+    Использует и свои данные (bot_trades_history), и торговую аналитику (run_full_analytics):
+    - unsuccessful_coins, successful_coins, bad_rsi_ranges, bad_trends.
+    Пишет только в full_ai_config (БД) и full_ai_coin_params.
     """
     if not _is_fullai_enabled():
         logger.debug("[FullAI learner] Пропуск: full_ai_control выключен")
@@ -142,6 +185,28 @@ def run_fullai_trades_analysis(
             save_full_ai_config_to_db,
         )
         db = get_bots_database()
+
+        # Загружаем торговую аналитику (unsuccessful/successful coins, bad RSI, bad trends)
+        trading_ai: Dict[str, Any] = {}
+        try:
+            from bot_engine.trading_analytics import run_full_analytics, get_analytics_for_ai
+            report = run_full_analytics(
+                load_bot_trades_from_db=True,
+                load_exchange_from_api=False,
+                bots_db_limit=5000,
+            )
+            trading_ai = get_analytics_for_ai(report)
+            uc = trading_ai.get('unsuccessful_coins') or []
+            sc = trading_ai.get('successful_coins') or []
+            us_map = {s['symbol']: s for s in (trading_ai.get('unsuccessful_settings') or [])}
+            trading_ai['_unsuccessful_symbols'] = {c['symbol'] for c in uc}
+            trading_ai['_successful_symbols'] = {c['symbol'] for c in sc}
+            trading_ai['_unsuccessful_settings_by_symbol'] = us_map
+            logger.info("[FullAI логика] Торговая аналитика загружена: неудачных монет=%s, удачных=%s",
+                        len(trading_ai['_unsuccessful_symbols']), len(trading_ai['_successful_symbols']))
+        except Exception as e:
+            logger.warning("[FullAI learner] Не удалось загрузить торговую аналитику: %s", e)
+
         trades = db.get_bot_trades_history(
             status='CLOSED',
             days_back=days_back,
@@ -179,34 +244,73 @@ def run_fullai_trades_analysis(
             new_params = {**current}
             reason_text = ""
 
+            # Контекст из торговой аналитики
+            in_unsuccessful = symbol in (trading_ai.get('_unsuccessful_symbols') or set())
+            in_successful = symbol in (trading_ai.get('_successful_symbols') or set())
+            us_settings = (trading_ai.get('_unsuccessful_settings_by_symbol') or {}).get(symbol, {})
+            bad_rsi = us_settings.get('bad_rsi_ranges') or []
+
             # Сначала пробуем ИИ: сам понимает параметры и учится на сделках
             ai_result = _get_ai_param_recommendation(symbol, current, evals, fullai_global)
             if ai_result is not None:
                 new_params, reason_text = ai_result
                 changed = True
+                if in_unsuccessful:
+                    reason_text += " Торговая аналитика: монета в неудачных."
+                elif in_successful:
+                    reason_text += " Торговая аналитика: монета в удачных."
             else:
-                # Эвристика по win_rate, пока ИИ не обучен или не применим
+                # Эвристика по win_rate + учёт торговой аналитики
                 tp = current.get('take_profit_percent') or fullai_global.get('take_profit_percent') or 15
                 sl = current.get('max_loss_percent') or fullai_global.get('max_loss_percent') or 10
                 tp_f = float(tp)
                 sl_f = float(sl)
-                if win_rate < 0.4 and total >= 3:
+                # Пороги: при неудачной монете — чувствительнее к плохому win_rate
+                wr_low = 0.4
+                wr_high = 0.6
+                if in_unsuccessful:
+                    wr_low = 0.45  # при неудачной монете — чуть раньше ужесточаем
+                if in_successful:
+                    wr_low, wr_high = 0.35, 0.65  # при удачной — реже меняем (избегаем переоптимизации)
+                if win_rate < wr_low and total >= 3:
                     tp_f = max(5, tp_f - 2)
                     sl_f = min(20, sl_f + 2)
                     changed = True
                     new_params = {**current, 'take_profit_percent': round(tp_f, 1), 'max_loss_percent': round(sl_f, 1)}
                     reason_text = (
-                        f"Эвристика (ИИ-модель пока не обучена/не применима): низкий win_rate={win_rate:.2f} (< 0.4), n={total} сделок. "
-                        "Временная логика: снижаем TP, увеличиваем SL. После накопления данных ИИ сам научится подбирать параметры."
+                        f"Эвристика: низкий win_rate={win_rate:.2f} (< {wr_low}), n={total} сделок. "
+                        "Снижаем TP, увеличиваем SL."
                     )
-                elif win_rate >= 0.6 and total >= 3:
+                    if in_unsuccessful:
+                        reason_text += " Торговая аналитика: монета в неудачных — подтверждает ужесточение."
+                elif win_rate >= wr_high and total >= 3:
                     tp_f = min(50, tp_f + 2)
                     sl_f = max(5, sl_f - 1)
                     changed = True
                     new_params = {**current, 'take_profit_percent': round(tp_f, 1), 'max_loss_percent': round(sl_f, 1)}
                     reason_text = (
-                        f"Эвристика (ИИ-модель пока не обучена/не применима): высокий win_rate={win_rate:.2f} (>= 0.6), n={total} сделок. "
-                        "Временная логика: повышаем TP, снижаем SL. ИИ будет сам обучаться на сделках и поймёт, как параметры влияют на результат."
+                        f"Эвристика: высокий win_rate={win_rate:.2f} (>= {wr_high}), n={total} сделок. "
+                        "Повышаем TP, снижаем SL."
+                    )
+                    if in_successful:
+                        reason_text += " Торговая аналитика: монета в удачных — подтверждает ослабление."
+            # Дополнительно: RSI-пороги из неудачных диапазонов (торговая аналитика)
+            if us_settings and bad_rsi and not changed:
+                rsi_long_new = _suggest_rsi_from_bad_ranges(bad_rsi, for_long=True)
+                rsi_short_new = _suggest_rsi_from_bad_ranges(bad_rsi, for_long=False)
+                rsi_long_cur = current.get('rsi_long_threshold') or fullai_global.get('rsi_long_threshold') or 29
+                rsi_short_cur = current.get('rsi_short_threshold') or fullai_global.get('rsi_short_threshold') or 71
+                if rsi_long_new is not None and abs(rsi_long_new - rsi_long_cur) >= 2:
+                    new_params = {**new_params, 'rsi_long_threshold': int(round(rsi_long_new))}
+                    changed = True
+                    reason_text = (reason_text or '') + (
+                        f" Торговая аналитика: bad_rsi_ranges -> rsi_long_threshold {rsi_long_cur} -> {int(rsi_long_new)}."
+                    )
+                if rsi_short_new is not None and abs(rsi_short_new - rsi_short_cur) >= 2:
+                    new_params = {**new_params, 'rsi_short_threshold': int(round(rsi_short_new))}
+                    changed = True
+                    reason_text = (reason_text or '') + (
+                        f" Торговая аналитика: bad_rsi_ranges -> rsi_short_threshold {rsi_short_cur} -> {int(rsi_short_new)}."
                     )
             if changed:
                 if db.save_full_ai_coin_params(symbol, new_params):
@@ -229,6 +333,26 @@ def run_fullai_trades_analysis(
                             'param': 'max_loss_percent',
                             'old': sl_old,
                             'new': sl_new,
+                            'reason': reason_text,
+                        })
+                    rsi_long_old = current.get('rsi_long_threshold') or fullai_global.get('rsi_long_threshold') or 29
+                    rsi_long_nw = new_params.get('rsi_long_threshold', rsi_long_old)
+                    if rsi_long_old != rsi_long_nw:
+                        changes_list.append({
+                            'symbol': symbol,
+                            'param': 'rsi_long_threshold',
+                            'old': rsi_long_old,
+                            'new': rsi_long_nw,
+                            'reason': reason_text,
+                        })
+                    rsi_short_old = current.get('rsi_short_threshold') or fullai_global.get('rsi_short_threshold') or 71
+                    rsi_short_nw = new_params.get('rsi_short_threshold', rsi_short_old)
+                    if rsi_short_old != rsi_short_nw:
+                        changes_list.append({
+                            'symbol': symbol,
+                            'param': 'rsi_short_threshold',
+                            'old': rsi_short_old,
+                            'new': rsi_short_nw,
                             'reason': reason_text,
                         })
                     logger.info(
