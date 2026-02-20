@@ -136,12 +136,14 @@ def register_ai_endpoints(app):
             ai_manager = get_ai_manager()
 
             # Проверяем доступность AI (лицензия)
+            # ВАЖНО: license.valid = фактическая валидность лицензии (подпись, срок, HWID)
+            # is_available() = license + загрузка модулей — для бейджа показываем только лицензию
             license_status = ai_manager.get_status()
             license_obj = license_status.get('license') or {}
             return jsonify({
                 'success': True,
                 'license': {
-                    'valid': ai_manager.is_available(),
+                    'valid': license_obj.get('valid', False),
                     'type': license_obj.get('type') or license_status.get('license_type'),
                     'expires_at': license_obj.get('expires_at') or license_status.get('expires_at'),
                     'features': license_status.get('features', {}),
