@@ -3678,6 +3678,13 @@ input:checked + .toggle-slider:before {
     margin: 12px 0 16px 0;
 }
 
+.fullai-configs-details .fullai-configs-arrow {
+    display: inline-block;
+}
+.fullai-configs-details[open] .fullai-configs-arrow {
+    transform: rotate(90deg);
+}
+
 .fullai-cards {
     display: flex;
     flex-wrap: wrap;

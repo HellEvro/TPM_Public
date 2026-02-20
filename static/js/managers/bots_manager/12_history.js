@@ -279,7 +279,18 @@
                 }
             }
             currentEl.textContent = Object.keys(current || {}).length ? JSON.stringify(current, null, 2) : '—';
-            previousEl.textContent = previous && Object.keys(previous).length ? JSON.stringify(previous, null, 2) : '—';
+            let prevText;
+            if (previous && Object.keys(previous).length) {
+                prevText = JSON.stringify(previous, null, 2);
+                const same = JSON.stringify(current || {}) === JSON.stringify(previous);
+                previousEl.style.color = same ? 'var(--text-muted,#888)' : 'var(--blue-color,#4fc3f7)';
+                previousEl.setAttribute('title', same ? 'То же, что текущий' : 'Конфиг менялся — это предыдущая версия');
+            } else {
+                prevText = val === '_global' ? '— (глобальный не хранится в истории)' : '— Конфиг не менялся (FullAI ещё не сохранял параметры для этой монеты)';
+                previousEl.style.color = 'var(--text-muted,#888)';
+                previousEl.removeAttribute('title');
+            }
+            previousEl.textContent = prevText;
             currentEl.setAttribute('title', updatedAt && val !== '_global' ? 'Обновлено: ' + updatedAt : '');
         };
         if (!selectEl.hasAttribute('data-fullai-config-bound')) {

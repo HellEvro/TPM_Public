@@ -4803,21 +4803,39 @@ class BotsDatabase:
             return None
 
     def load_all_full_ai_configs_for_analytics(self) -> Dict[str, Any]:
-        """Для аналитики: глобальный конфиг + по монетам текущий и предыдущий."""
+        """Для аналитики: глобальный конфиг + по монетам текущий и предыдущий.
+        Включает монеты из full_ai_coin_params + торговавшиеся (bot_trades_history, fullai_events, active bots, leaderboard)."""
         result = {'global_config': {}, 'coin_configs': {}}
         try:
             from bots_modules.imports_and_globals import bots_data
             result['global_config'] = dict(bots_data.get('full_ai_config') or bots_data.get('auto_bot_config') or {})
+            global_cfg = result['global_config']
             all_params = self.load_all_full_ai_coin_params()
-            for sym, current in all_params.items():
+            traded_symbols = set()
+            traded_symbols.update(self.get_distinct_trade_symbols(500))
+            try:
+                from bot_engine.fullai_analytics import get_distinct_symbols
+                traded_symbols.update(get_distinct_symbols(500))
+            except Exception:
+                pass
+            for sym in ((bots_data or {}).get('bots') or {}).keys():
+                if sym:
+                    traded_symbols.add(sym)
+            traded_symbols.update(self.get_fullai_leaderboard_symbols(300))
+            all_symbols = sorted(set(all_params.keys()) | traded_symbols)
+            for sym in all_symbols:
+                current = all_params.get(sym)
+                if current is None:
+                    current = dict(global_cfg)
                 prev = self.load_full_ai_coin_params_previous(sym)
                 updated_at = None
-                with self.lock:
-                    with self._get_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT updated_at FROM full_ai_coin_params WHERE symbol = ?", (sym,))
-                        row = cursor.fetchone()
-                        updated_at = row[0] if row else None
+                if sym in all_params:
+                    with self.lock:
+                        with self._get_connection() as conn:
+                            cursor = conn.cursor()
+                            cursor.execute("SELECT updated_at FROM full_ai_coin_params WHERE symbol = ?", (sym,))
+                            row = cursor.fetchone()
+                            updated_at = row[0] if row else None
                 result['coin_configs'][sym] = {
                     'current': current,
                     'previous': prev,
@@ -6387,6 +6405,36 @@ class BotsDatabase:
             logger.error(f"❌ Ошибка загрузки истории сделок: {e}")
             import traceback
             pass
+            return []
+
+    def get_distinct_trade_symbols(self, limit: int = 200) -> List[str]:
+        """Уникальные символы из истории сделок (для селектора монет в FullAI аналитике)."""
+        try:
+            with self.lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT DISTINCT symbol FROM bot_trades_history WHERE symbol IS NOT NULL AND symbol != '' ORDER BY symbol LIMIT ?",
+                        (limit,),
+                    )
+                    return [r[0] for r in cursor.fetchall() if r[0]]
+        except Exception as e:
+            logger.debug("get_distinct_trade_symbols: %s", e)
+            return []
+
+    def get_fullai_leaderboard_symbols(self, limit: int = 300) -> List[str]:
+        """Уникальные символы из fullai_param_leaderboard (монеты, по которым FullAI менял параметры)."""
+        try:
+            with self.lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT DISTINCT symbol FROM fullai_param_leaderboard WHERE symbol IS NOT NULL AND symbol != '' ORDER BY symbol LIMIT ?",
+                        (limit,),
+                    )
+                    return [r[0] for r in cursor.fetchall() if r[0]]
+        except Exception as e:
+            logger.debug("get_fullai_leaderboard_symbols: %s", e)
             return []
     
     # ==================== МЕТОДЫ МИГРАЦИИ ====================
