@@ -2442,13 +2442,23 @@ def load_all_coins_rsi():
     except Exception as _e:
         pass  # при ошибке — продолжаем как обычно (full mode)
 
-    # ⚡ БЕЗ БЛОКИРОВКИ: проверяем флаг без блокировки
-    if coins_rsi_data["update_in_progress"]:
-        logger.info("Обновление RSI уже выполняется...")
-        return False
+    # ⚡ Таймаут зависшего обновления: если update_in_progress > 5 мин — сбрасываем и запускаем заново
+    RSI_UPDATE_STALE_SEC = 300
+    if coins_rsi_data.get("update_in_progress"):
+        started_at = coins_rsi_data.get("rsi_update_started_at") or 0
+        elapsed = time.time() - started_at
+        if elapsed > RSI_UPDATE_STALE_SEC:
+            logger.warning(
+                f"⚠️ Обновление RSI зависло {elapsed:.0f}с назад — сбрасываем флаг и запускаем заново"
+            )
+            coins_rsi_data["update_in_progress"] = False
+        else:
+            logger.info("Обновление RSI уже выполняется...")
+            return False
 
     # ⚡ УСТАНАВЛИВАЕМ флаг БЕЗ блокировки
     coins_rsi_data["update_in_progress"] = True
+    coins_rsi_data["rsi_update_started_at"] = time.time()
     # ✅ UI блокировка уже установлена в continuous_data_loader
 
     if shutdown_flag.is_set():

@@ -1828,38 +1828,21 @@ def timeframe_config():
             try:
                 from bots_modules.imports_and_globals import coins_rsi_data, rsi_data_lock
                 with rsi_data_lock:
-                    # Полностью очищаем кэш свечей
                     coins_rsi_data['candles_cache'] = {}
                     coins_rsi_data['last_candles_update'] = None
                     coins_rsi_data['last_update'] = None
-                    # Очищаем данные монет, чтобы они перезагрузились с новым таймфреймом
                     coins_rsi_data['coins'] = {}
+                    coins_rsi_data['update_in_progress'] = False  # Сбрасываем, чтобы continuous loader смог рассчитать RSI
                     logger.info("🗑️ Кэш свечей и RSI данных очищен для перезагрузки с новым таймфреймом")
             except Exception as clear_err:
                 logger.warning(f"⚠️ Не удалось очистить кэш свечей: {clear_err}")
             
-            # Триггерим перезагрузку RSI данных в фоновом режиме
-            try:
-                from bots_modules.filters import load_all_coins_rsi
-                import threading
-                def reload_rsi():
-                    try:
-                        logger.info(f"🔄 Запуск перезагрузки RSI данных для таймфрейма {new_timeframe}...")
-                        load_all_coins_rsi()
-                        logger.info(f"✅ RSI данные перезагружены для таймфрейма {new_timeframe}")
-                    except Exception as reload_err:
-                        logger.error(f"❌ Ошибка перезагрузки RSI данных: {reload_err}")
-                
-                # Запускаем в отдельном потоке, чтобы не блокировать ответ
-                reload_thread = threading.Thread(target=reload_rsi, daemon=True)
-                reload_thread.start()
-                logger.info("🔄 Запущен поток перезагрузки RSI данных")
-            except Exception as trigger_err:
-                logger.warning(f"⚠️ Не удалось запустить перезагрузку RSI данных: {trigger_err}")
+            # Не запускаем отдельный поток load_all_coins_rsi: кэш пуст, поток бы делал 500+ API вызовов
+            # и блокировал continuous_data_loader. Он сам загрузит свечи и RSI на следующем раунде.
             
             return jsonify({
                 'success': True,
-                'message': f'Таймфрейм изменен с {old_timeframe} на {new_timeframe}. Данные сохраняются, начинается перезагрузка RSI...',
+                'message': f'Таймфрейм изменен с {old_timeframe} на {new_timeframe}. Continuous loader загрузит свечи и RSI на следующем раунде.',
                 'old_timeframe': old_timeframe,
                 'new_timeframe': new_timeframe
             })

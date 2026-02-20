@@ -600,6 +600,7 @@ coins_rsi_data = {
     'coins': {},  # Словарь всех монет с RSI данными
     'last_update': None,
     'update_in_progress': False,
+    'rsi_update_started_at': 0.0,  # Timestamp: когда установили update_in_progress (для таймаута)
     'total_coins': 0,
     'successful_coins': 0,
     'failed_coins': 0,
