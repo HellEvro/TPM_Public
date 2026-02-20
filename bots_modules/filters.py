@@ -2550,8 +2550,8 @@ def load_all_coins_rsi():
                             future.cancel()
                         break
 
-                    # Таймаут пакета: 10 воркеров, семафор 8 — 100 символов могут занять до 3 мин при задержках API
-                    batch_timeout = 200
+                    # Таймаут пакета: 100 символов при задержках API/rate limit — увеличиваем до 6 мин
+                    batch_timeout = 360
                     result_timeout = 30
                     try:
                         for future in concurrent.futures.as_completed(
