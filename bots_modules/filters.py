@@ -508,7 +508,7 @@ def get_coin_candles_only(symbol, exchange_obj=None, timeframe=None, bulk_mode=F
         exchange_obj: Объект биржи (опционально)
         timeframe: Таймфрейм для загрузки (если None - используется системный)
         bulk_mode: Если True — для Bybit один запрос без чанков
-        bulk_limit: В bulk_mode — сколько свечей (для зрелости 1000 = ~166 дней на 4h)
+        bulk_limit: В bulk_mode — сколько свечей (для зрелости — min_candles или 1000)
     """
     try:
         if shutdown_flag.is_set():
@@ -3611,8 +3611,12 @@ def check_coin_maturity_stored_or_verify(symbol):
             from bots_modules.maturity import get_maturity_timeframe
             maturity_tf = get_maturity_timeframe()
         except Exception:
-            maturity_tf = '4h'
-        # bulk_limit=1000: на 4h = 166 дней, покрывает монеты с историей 130+ дней (NOMUSDT и др.)
+            try:
+                from bot_engine.config_loader import get_current_timeframe, TIMEFRAME
+                maturity_tf = get_current_timeframe() or TIMEFRAME or '5m'
+            except Exception:
+                maturity_tf = '5m'
+        # Загружаем свечи по УКАЗАННОМУ системному ТФ, считаем, строим RSI, проверяем зоны
         result = get_coin_candles_only(symbol, None, maturity_tf, bulk_mode=True, bulk_limit=1000)
         if not result or not result.get('candles'):
             reason = f"Нет свечей (API)"

@@ -497,7 +497,7 @@ def calculate_all_coins_maturity():
                 
                 candles = _get_candles_from_cache(candles_cache, symbol, maturity_tf)
                 if not candles:
-                    # Fallback: загружаем 4h/1000 свечей с API (кэш может содержать только системный ТФ)
+                    # Fallback: загружаем свечи по СИСТЕМНОМУ ТФ с API (кэш может быть пуст)
                     try:
                         from bots_modules.filters import get_coin_candles_only
                         res = get_coin_candles_only(symbol, None, maturity_tf, bulk_mode=True, bulk_limit=1000)
