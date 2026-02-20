@@ -3177,16 +3177,46 @@ def sync_bots_with_exchange():
                                         logger.warning(
                                             f"[SYNC_EXCHANGE] ⚠️ Ошибка сохранения истории в bots_data.db: {bots_db_error}"
                                         )
-                                    # FullAI аналитика: всегда записываем real_close при закрытии (входы уже есть — закрытия должны быть тоже)
+                                    # FullAI аналитика: различаем закрытие по лимитке бота vs вручную (сравниваем exit с TP/SL)
                                     try:
                                         from bots_modules.fullai_adaptive import record_real_close
+                                        from bots_modules.imports_and_globals import get_effective_auto_bot_config
+                                        ac = get_effective_auto_bot_config() or {}
+                                        tp_pct = float(bot_data.get('take_profit_percent') or ac.get('take_profit_percent') or 15)
+                                        sl_pct = float(bot_data.get('max_loss_percent') or ac.get('max_loss_percent') or ac.get('stop_loss_percent') or 10)
+                                        ep, xp = float(entry_price or 0), float(exit_price or 0)
+                                        close_source = 'CLOSED_ON_EXCHANGE'
+                                        order_type_exit = '—'
+                                        limit_price_exit = None
+                                        if ep > 0 and xp > 0 and direction_upper in ('LONG', 'SHORT'):
+                                            if direction_upper == 'LONG':
+                                                bot_tp = ep * (1 + tp_pct / 100)
+                                                bot_sl = ep * (1 - sl_pct / 100)
+                                            else:
+                                                bot_tp = ep * (1 - tp_pct / 100)
+                                                bot_sl = ep * (1 + sl_pct / 100)
+                                            tol = 0.005
+                                            if abs(xp - bot_tp) / max(bot_tp, 1e-9) <= tol:
+                                                close_source = 'BOT_LIMIT_TP'
+                                                order_type_exit = 'Limit'
+                                                limit_price_exit = bot_tp
+                                            elif abs(xp - bot_sl) / max(bot_sl, 1e-9) <= tol:
+                                                close_source = 'BOT_LIMIT_SL'
+                                                order_type_exit = 'Limit'
+                                                limit_price_exit = bot_sl
+                                            else:
+                                                close_source = 'MANUAL_OR_EXTERNAL'
+                                                order_type_exit = 'Market'
                                         extra = {
                                             'entry_price': entry_price,
                                             'exit_price': exit_price,
                                             'pnl_usdt': pnl_usdt,
                                             'direction': direction_upper,
+                                            'close_source': close_source,
+                                            'order_type_exit': order_type_exit,
+                                            'limit_price_exit': limit_price_exit,
                                         }
-                                        record_real_close(symbol, roi_percent, reason='CLOSED_ON_EXCHANGE', extra=extra)
+                                        record_real_close(symbol, roi_percent, reason=close_source, extra=extra)
                                     except Exception as fa_err:
                                         logger.debug("[SYNC_EXCHANGE] FullAI analytics real_close: %s", fa_err)
                                     logger.info(

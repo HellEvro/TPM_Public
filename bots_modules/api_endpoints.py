@@ -1663,6 +1663,8 @@ def close_position_endpoint():
                             'exit_price': exit_price,
                             'pnl_usdt': pnl_usdt,
                             'direction': direction,
+                            'close_source': 'MANUAL_CLOSE_UI',
+                            'order_type_exit': 'Market',
                         }
                         record_real_close(symbol, roi_pct, reason='MANUAL_CLOSE_UI', extra=extra)
                     except Exception as fa_err:

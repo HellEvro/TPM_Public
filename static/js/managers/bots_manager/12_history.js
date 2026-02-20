@@ -245,6 +245,11 @@
             } else if (ev.event_type === 'real_open') {
                 details = ex.details_entry || (ex.take_profit_percent != null && ex.stop_loss_percent != null ? 'TP=' + ex.take_profit_percent + '%, SL=' + ex.stop_loss_percent + '%' : '—');
                 conclusion = ex.attempt_label || 'Реальная сделка';
+            } else if (ev.event_type === 'real_close') {
+                const closeSrc = ex.close_source || ev.reason || '';
+                const closeLabels = { BOT_LIMIT_TP: 'По лимитке бота (TP)', BOT_LIMIT_SL: 'По лимитке бота (SL)', RSI_EXIT: 'По лимитке бота (RSI)', MANUAL_CLOSE_UI: 'Вручную (UI)', MANUAL_OR_EXTERNAL: 'Вручную/внешне', CLOSED_ON_EXCHANGE: 'На бирже (неизв.)' };
+                details = closeLabels[closeSrc] || closeSrc || (ex.success !== undefined ? (ex.success ? 'успех' : 'убыток') : '') || '—';
+                conclusion = pnlPct != null ? (pnlPct >= 0 ? 'Прибыль. ' + (closeLabels[closeSrc] || closeSrc || '') : 'Убыток. ' + (closeLabels[closeSrc] || closeSrc || '')) : (closeLabels[closeSrc] || closeSrc || '—');
             } else {
                 details = ev.reason || (ex.success !== undefined ? (ex.success ? 'успех' : 'убыток') : '') || '—';
                 conclusion = pnlPct != null ? (pnlPct >= 0 ? 'Прибыль. ' + (ev.reason || '') : 'Убыток. ' + (ev.reason || '')) : '—';
