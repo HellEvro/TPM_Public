@@ -149,4 +149,4 @@ def _check_position_and_decide(symbol: str) -> None:
         except Exception:
             pass
     except Exception as e:
-        logger.exception("[FullAI Monitor] %s: %s", symbol, str(e))
+        logger.exception("[FullAI Monitor] %s: %s" % (symbol, e))
