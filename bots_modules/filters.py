@@ -3233,11 +3233,18 @@ def process_auto_bot_signals(exchange_obj=None):
                     actual_price = float(entry_result.get('entry_price') or new_bot.entry_price or intended_price or 0)
                     if not actual_price and intended_price:
                         actual_price = intended_price
+                    msg = (entry_result.get('message') or '')
+                    action = entry_result.get('action') or ''
+                    order_type_actual = 'Limit' if (
+                        msg in ('limit_order_placed', 'limit_order_pending', 'limit_orders_restored')
+                        or action == 'limit_orders_placed'
+                        or entry_result.get('orders_count')
+                    ) else 'Market'
                     extra = build_real_open_extra(
                         symbol=symbol, direction=direction,
                         intended_price=intended_price or actual_price,
                         actual_price=actual_price,
-                        order_type='Market', delay_sec=_delay,
+                        order_type=order_type_actual, delay_sec=_delay,
                     )
                     append_event(
                         symbol=symbol,
