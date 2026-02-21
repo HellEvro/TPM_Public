@@ -975,12 +975,76 @@ def analyze_pairs_parallel(pairs, max_workers=10):
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         return list(filter(None, executor.map(analyze_symbol, pairs)))
 
+def _update_positions_data_from_list(positions, rapid_growth, pnl_threshold):
+    """Обновляет positions_data из списка позиций (для force_refresh)."""
+    global positions_data
+    pnl_threshold = float(pnl_threshold) if pnl_threshold else DEFAULTS.PNL_THRESHOLD
+    high_profitable = []
+    profitable = []
+    losing = []
+    total_profit = total_loss = 0
+    for p in positions:
+        pnl = float(p.get('pnl', 0))
+        if pnl > 0:
+            (high_profitable if pnl >= pnl_threshold else profitable).append(p)
+            total_profit += pnl
+        elif pnl < 0:
+            losing.append(p)
+            total_loss += pnl
+    high_profitable.sort(key=lambda x: x.get('pnl', 0), reverse=True)
+    profitable.sort(key=lambda x: x.get('pnl', 0), reverse=True)
+    losing.sort(key=lambda x: x.get('pnl', 0))
+    all_prof = high_profitable + profitable
+    all_prof.sort(key=lambda x: x.get('pnl', 0), reverse=True)
+    positions_data.update({
+        'high_profitable': high_profitable,
+        'profitable': profitable,
+        'losing': losing,
+        'rapid_growth': rapid_growth or [],
+        'total_trades': len(positions),
+        'stats': {
+            'total_pnl': total_profit + total_loss,
+            'total_profit': total_profit,
+            'total_loss': total_loss,
+            'high_profitable_count': len(high_profitable),
+            'profitable_count': len(high_profitable) + len(profitable),
+            'losing_count': len(losing),
+            'top_profitable': all_prof[:3],
+            'top_losing': losing[:3],
+            'total_trades': len(positions),
+        },
+        'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    })
+    save_positions_data(positions_data)
+
 @app.route('/get_positions')
 def get_positions():
     pnl_threshold = float(request.args.get('pnl_threshold', DEFAULTS.PNL_THRESHOLD))
-    
+333333333333333    force_refresh = request.args.get('force_refresh', '0') == '1'
+
     all_available_pairs = []  # Больше не используется
-    
+
+    # force_refresh: принудительно получаем свежие позиции с биржи или Bots
+    if force_refresh:
+        try:
+            if not DEMO_MODE and current_exchange and hasattr(current_exchange, 'get_positions'):
+                pos_list, rapid = current_exchange.get_positions()
+                if pos_list:
+                    _update_positions_data_from_list(pos_list, rapid, pnl_threshold)
+            if not positions_data.get('total_trades', 0) and not DEMO_MODE:
+                resp = requests.get('http://127.0.0.1:5001/api/bots/positions-for-app', timeout=5)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get('success') and data.get('total_trades', 0) > 0:
+                        hp = data.get('high_profitable', [])
+                        pf = data.get('profitable', [])
+                        ls = data.get('losing', [])
+                        raw = data.get('positions') or (hp + pf + ls)
+                        if raw:
+                            _update_positions_data_from_list(raw, data.get('rapid_growth', []), pnl_threshold)
+        except Exception as e:
+            logging.getLogger('app').debug(f"[POSITIONS] force_refresh: {e}")
+
     all_positions = (positions_data['high_profitable'] +
                     positions_data['profitable'] +
                     positions_data['losing'])
@@ -1181,7 +1245,7 @@ def get_positions():
 
 @app.route('/api/positions')
 def api_positions():
-    """API endpoint for positions - redirects to get_positions"""
+    """API endpoint for positions - redirects to get_positions. ?force_refresh=1 — принудительное обновление с биржи/Bots."""
     return get_positions()
 
 @app.route('/api/balance')

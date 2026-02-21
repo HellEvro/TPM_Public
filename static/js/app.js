@@ -897,10 +897,10 @@ class App {
     }
 }
 
-// Глобальная функция для обновления позиций
-function updatePositions() {
+// Глобальная функция для обновления позиций (forceRefresh = принудительно с биржи/Bots)
+function updatePositions(forceRefresh = true) {
     if (window.app && window.app.positionsManager) {
-        window.app.positionsManager.updateData();
+        window.app.positionsManager.updateData(forceRefresh);
     }
 }
 

@@ -96,7 +96,7 @@
             if (symbol) params.set('symbol', symbol);
             params.set('_', String(Date.now()));
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 45000);
+            const timeoutId = setTimeout(() => controller.abort(), 90000);
             const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/fullai?${params}`, { cache: 'no-store', signal: controller.signal });
             clearTimeout(timeoutId);
             return response.json();
@@ -123,7 +123,7 @@
                 fullai_configs: data.fullai_configs || null
             });
         } catch (err) {
-            const msg = (err && err.name === 'AbortError') ? 'Таймаут загрузки (45 с). Попробуйте сузить период или символ.' : ((err && err.message) || String(err));
+            const msg = (err && err.name === 'AbortError') ? 'Таймаут загрузки (90 с). Попробуйте сузить период или символ.' : ((err && err.message) || String(err));
             if (summaryEl) summaryEl.innerHTML = `<div class="analytics-error">❌ ${msg}</div>`;
             if (eventsEl) eventsEl.innerHTML = '';
             console.error('[BotsManager] Ошибка аналитики FullAI:', err);

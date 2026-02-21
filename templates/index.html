@@ -28,6 +28,8 @@
     <script src="{{ url_for('static', filename='js/state_manager.js') }}"></script>
 
     <script src="{{ url_for('static', filename='js/positions.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/api_service.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/positions_manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/statistics_manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/exchange_manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/position_closer.js') }}"></script>
@@ -87,6 +89,7 @@
         <h1 class="header-title">Trading Positions Monitor</h1>
         <div class="last-update header-update">
             <span data-translate="last-update">Последнее обновление</span>: <span id="update-time">-</span>
+            <button type="button" id="refresh-positions-btn" class="refresh-btn-inline" title="Обновить позиции с биржи" onclick="updatePositions(true)">🔄</button>
         </div>
     </div>
 

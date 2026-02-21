@@ -7,6 +7,7 @@ class PositionsManager {
             stateManager.subscribe('positions.pnlThreshold', this.handlePnlThresholdChange.bind(this)),
             stateManager.subscribe('positions.reduceLoad', this.handleReduceLoadChange.bind(this))
         ];
+        this._initialLoadDone = false;
 
         // Инициализируем состояние из StateManager
         const state = stateManager.getState('positions');
@@ -31,17 +32,23 @@ class PositionsManager {
         this.updateData();
     }
 
-    async updateData() {
+    async updateData(forceRefresh = false) {
+        if (!this._initialLoadDone) {
+            forceRefresh = true;
+            this._initialLoadDone = true;
+        }
         try {
-            Logger.debug('POSITIONS', 'Fetching positions data...');
+            Logger.debug('POSITIONS', 'Fetching positions data...', forceRefresh ? '(force refresh)' : '');
             stateManager.setState('positions.isLoading', true);
             
             const response = await ApiService.getPositions({
                 pnl_threshold: this.pnlThreshold,
-                reduce_load: this.reduceLoad
+                reduce_load: this.reduceLoad,
+                force_refresh: forceRefresh ? 1 : 0
             }).catch(async () => {
                 Logger.warn('POSITIONS', 'Falling back to direct fetch');
-                const resp = await fetch('/api/positions');
+                const q = new URLSearchParams({ pnl_threshold: this.pnlThreshold, force_refresh: forceRefresh ? 1 : 0 });
+                const resp = await fetch(`/api/positions?${q}`);
                 return resp.json();
             });
 
@@ -175,6 +182,12 @@ class PositionsManager {
 
     getPnlThreshold() {
         return stateManager.getState('positions.pnlThreshold');
+    }
+
+    setReduceLoad(value) {
+        this.reduceLoad = Boolean(value);
+        stateManager.setState('positions.reduceLoad', this.reduceLoad);
+        localStorage.setItem('reduceLoad', value ? 'true' : 'false');
     }
 
     destroy() {

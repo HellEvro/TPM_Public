@@ -2098,7 +2098,7 @@ const TRANSLATIONS = {
 };
 
 // Интервалы обновления
-const UPDATE_INTERVAL = 2000;  // Интервал обновления основных данных (2 секунды)
+const UPDATE_INTERVAL = 1000;  // Интервал обновления страницы Позиции (1 секунда)
 const CHART_UPDATE_INTERVAL = 60000;  // Интервал обновления графика (1 минута)
 const CLOSED_PNL_UPDATE_INTERVAL = 10000;  // Интервал обновления закрытых позиций (10 секунд)
 
