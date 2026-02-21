@@ -113,10 +113,23 @@ def _check_position_and_decide(symbol: str) -> None:
         else:
             profit_percent = (entry_price - current_price) / entry_price * 100.0
 
+        entry_ts = None
+        start_time = _bot_val(bot, 'position_start_time') or _bot_val(bot, 'entry_time')
+        if start_time:
+            try:
+                from datetime import datetime
+                if hasattr(start_time, 'timestamp'):
+                    entry_ts = start_time.timestamp()
+                elif isinstance(start_time, str):
+                    dt = datetime.fromisoformat(start_time.replace('Z', ''))
+                    entry_ts = dt.timestamp()
+            except Exception:
+                pass
         position_info = {
             'entry_price': entry_price,
             'position_side': position_side,
             'position_size_coins': _bot_val(bot, 'position_size_coins') or (pos.get('size') if isinstance(pos, dict) else None),
+            'entry_timestamp': entry_ts,
         }
         fullai_config = get_effective_auto_bot_config()
         coin_params = get_effective_coin_settings(symbol)

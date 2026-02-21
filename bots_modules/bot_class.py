@@ -1744,10 +1744,24 @@ class NewTradingBot:
                                 pass
                         if data_context is None:
                             data_context = {'candles': candles_exit}
+                        entry_ts = None
+                        if self.position_start_time:
+                            try:
+                                entry_ts = self.position_start_time.timestamp()
+                            except Exception:
+                                pass
+                        if entry_ts is None and hasattr(self, 'entry_time') and self.entry_time:
+                            try:
+                                from datetime import datetime
+                                dt = datetime.fromisoformat(str(self.entry_time).replace('Z', ''))
+                                entry_ts = dt.timestamp()
+                            except Exception:
+                                pass
                         position_info = {
                             'entry_price': self.entry_price,
                             'position_side': self.position_side,
                             'position_size_coins': getattr(self, 'position_size_coins', None),
+                            'entry_timestamp': entry_ts,
                         }
                         decision = get_ai_exit_decision(
                             self.symbol, position_info, candles_exit, profit_percent, fullai_config, coin_params,

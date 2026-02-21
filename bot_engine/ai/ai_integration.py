@@ -793,12 +793,31 @@ def get_ai_exit_decision(
     """
     Решение ИИ о закрытии позиции сейчас (FullAI). При full_ai_control решение о выходе принимает только ИИ.
     data_context: полный контекст от get_fullai_data_context (свечи из БД, system: RSI/тренд/сигнал, custom индикаторы).
+    position может содержать entry_timestamp или position_start_time для проверки минимального времени удержания.
     Возвращает close_now, reason, confidence.
     """
     prii_config = prii_config or {}
     coin_params = coin_params or {}
     result = {'close_now': False, 'reason': 'Hold', 'confidence': 0.0}
     try:
+        # Минимальное время удержания: не закрывать в первые 90 сек (защита от «вход — сразу выход»)
+        min_hold_sec = 90
+        entry_ts = position.get('entry_timestamp') or position.get('position_start_time')
+        if entry_ts is not None:
+            import time
+            if isinstance(entry_ts, str):
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(entry_ts.replace('Z', '+00:00'))
+                    entry_sec = dt.timestamp()
+                except Exception:
+                    entry_sec = 0
+            else:
+                entry_sec = float(entry_ts) / 1000 if entry_ts > 1e12 else float(entry_ts)
+            age_sec = time.time() - entry_sec if entry_sec else 0
+            if 0 < age_sec < min_hold_sec:
+                return result
+
         # Простая эвристика: сильная прибыль или сильный убыток — закрыть (далее можно заменить на модель)
         tp = float(prii_config.get('take_profit_percent') or coin_params.get('take_profit_percent') or 15)
         sl = float(prii_config.get('max_loss_percent') or coin_params.get('max_loss_percent') or 10)

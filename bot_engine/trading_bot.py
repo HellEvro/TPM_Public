@@ -985,6 +985,16 @@ class TradingBot:
                     except Exception as ai_error:
                         pass
                     
+                    # FullAI: SL < 5% срабатывает от шума — не допускаем слишком узкий стоп
+                    try:
+                        from bots import bots_data, bots_data_lock
+                        with bots_data_lock:
+                            ac = bots_data.get('auto_bot_config', {}) or {}
+                        if ac.get('full_ai_control') and sl_percent < 5.0:
+                            sl_percent = 5.0
+                    except Exception:
+                        pass
+                    
                     # Устанавливаем стоп-лосс (стандартный или адаптивный)
                     stop_result = self._place_stop_loss(side, self.entry_price, sl_percent)
                     if stop_result and stop_result.get('success'):
