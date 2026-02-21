@@ -1767,7 +1767,7 @@ class NewTradingBot:
                                 entry_ts = dt.timestamp()
                             except Exception:
                                 pass
-                                        position_info = {
+                        position_info = {
                             'entry_price': self.entry_price,
                             'position_side': self.position_side,
                             'position_size_coins': getattr(self, 'position_size_coins', None),
