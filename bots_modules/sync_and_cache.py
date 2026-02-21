@@ -2600,16 +2600,9 @@ def check_missing_stop_losses():
                     bot_instance.position_start_time = datetime.fromtimestamp(entry_timestamp)
 
                 decision = bot_instance._evaluate_protection_decision(current_price)
-                # full_ai: не обновляем protections (break-even, trailing) — они меняют SL на бирже
-                full_ai = False
-                try:
-                    with bots_data_lock:
-                        full_ai = bool((bots_data.get('auto_bot_config') or {}).get('full_ai_control', False))
-                except Exception:
-                    pass
-                if not full_ai:
-                    # Обновляем защитные механизмы (break-even стоп, trailing) — ставят SL/TP на бирже
-                    bot_instance._update_protection_mechanisms(current_price)
+                # ✅ Восстановлена логика как до FullAI: всегда обновляем protections (break-even, trailing)
+                # Полный Режим ИИ управляет выходом только для своих ботов — не блокирует SL/TP для обычных
+                bot_instance._update_protection_mechanisms(current_price)
                 protection_config = bot_instance._get_effective_protection_config()
 
                 updates = {
@@ -2651,9 +2644,8 @@ def check_missing_stop_losses():
                 )
                 existing_stop_value = _safe_float(existing_stop_loss)
 
-                # ✅ ИСПРАВЛЕНО: Обновляем стоп-лосс, даже если он уже установлен, если нужен новый стоп
-                # При full_ai_control не перезаписываем — выход решает FullAI
-                if not full_ai and desired_stop and _needs_price_update(position_side, desired_stop, existing_stop_value):
+                # ✅ Обновляем стоп-лосс (логика как до FullAI — стопы всегда ставятся)
+                if desired_stop and _needs_price_update(position_side, desired_stop, existing_stop_value):
                     try:
                         sl_response = current_exchange.update_stop_loss(
                             symbol=symbol,
@@ -2683,10 +2675,9 @@ def check_missing_stop_losses():
                 existing_take_value = _safe_float(existing_take_profit)
 
                 # Проверяем, есть ли уже тейк-профит на бирже
-                # При full_ai_control не перезаписываем TP
                 if existing_take_profit and existing_take_profit.strip():
                     pass  # Тейк-профит уже установлен, пропускаем
-                elif not full_ai and desired_take and _needs_price_update(position_side, desired_take, existing_take_value):
+                elif desired_take and _needs_price_update(position_side, desired_take, existing_take_value):
                     try:
                         tp_response = current_exchange.update_take_profit(
                             symbol=symbol,

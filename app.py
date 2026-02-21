@@ -1020,7 +1020,7 @@ def _update_positions_data_from_list(positions, rapid_growth, pnl_threshold):
 @app.route('/get_positions')
 def get_positions():
     pnl_threshold = float(request.args.get('pnl_threshold', DEFAULTS.PNL_THRESHOLD))
-333333333333333    force_refresh = request.args.get('force_refresh', '0') == '1'
+    force_refresh = request.args.get('force_refresh', '0') == '1'
 
     all_available_pairs = []  # Больше не используется
 
