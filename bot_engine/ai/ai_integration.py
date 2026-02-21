@@ -839,16 +839,26 @@ def get_ai_exit_decision(
         if not candles and data_context:
             candles = data_context.get('candles') or []
         # Опционально: вызов AIManager для anomaly (FullAI работает без AI Premium — TP/SL выше уже сработали)
+        # Троттлинг: AI-анализ (LSTM, паттерны) не чаще 1 раза в 60 сек на символ — избегаем спама в логах и подвисаний
+        _ai_exit_throttle_sec = 60
         try:
             from bot_engine.ai import get_ai_manager
             ai_manager = get_ai_manager()
             if ai_manager and ai_manager.is_available() and candles and len(candles) >= 5:
-                coin_data = {'current_price': candles[-1].get('close'), 'in_position': True}
-                analysis = ai_manager.analyze_coin(symbol, coin_data, candles)
-                if analysis and analysis.get('anomaly_score', {}).get('is_anomaly'):
-                    result['close_now'] = True
-                    result['reason'] = 'Anomaly: exit'
-                    result['confidence'] = 0.9
+                _now = time.time()
+                _last = getattr(get_ai_exit_decision, '_last_analyze', {}).get(symbol, 0)
+                if _now - _last < _ai_exit_throttle_sec:
+                    pass  # Пропускаем AI-анализ, используем только TP/SL
+                else:
+                    if not hasattr(get_ai_exit_decision, '_last_analyze'):
+                        get_ai_exit_decision._last_analyze = {}
+                    get_ai_exit_decision._last_analyze[symbol] = _now
+                    coin_data = {'current_price': candles[-1].get('close'), 'in_position': True}
+                    analysis = ai_manager.analyze_coin(symbol, coin_data, candles)
+                    if analysis and analysis.get('anomaly_score', {}).get('is_anomaly'):
+                        result['close_now'] = True
+                        result['reason'] = 'Anomaly: exit'
+                        result['confidence'] = 0.9
         except Exception:
             pass  # AI Premium сбой — FullAI продолжает по TP/SL
         return result

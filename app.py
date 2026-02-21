@@ -1017,21 +1017,10 @@ def _update_positions_data_from_list(positions, rapid_growth, pnl_threshold):
     })
     save_positions_data(positions_data)
 
-POSITIONS_CACHE_MAX_AGE_SEC = 2  # Макс. возраст кэша позиций; при превышении — принудительное обновление с биржи
-
 @app.route('/get_positions')
 def get_positions():
     pnl_threshold = float(request.args.get('pnl_threshold', DEFAULTS.PNL_THRESHOLD))
     force_refresh = request.args.get('force_refresh', '0') == '1'
-
-    # Если кэш устарел (>2 сек) — принудительно обновляем (реальное время)
-    if not force_refresh and positions_data.get('last_update'):
-        try:
-            last = datetime.strptime(positions_data['last_update'], '%Y-%m-%d %H:%M:%S')
-            if (datetime.now() - last).total_seconds() > POSITIONS_CACHE_MAX_AGE_SEC:
-                force_refresh = True
-        except (ValueError, TypeError):
-            pass
 
     all_available_pairs = []  # Больше не используется
 

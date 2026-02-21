@@ -15,18 +15,26 @@ logger = logging.getLogger('FullAI')
 
 _monitor_thread: Optional[threading.Thread] = None
 _monitor_stop = threading.Event()
-_monitor_interval_sec = 1.0
+
+
+def _get_monitor_interval() -> float:
+    """Интервал проверки = POSITION_SYNC_INTERVAL (2 сек), чтобы не спамить AI-анализом каждую секунду."""
+    try:
+        from configs.bot_config import SystemConfig
+        return float(SystemConfig.POSITION_SYNC_INTERVAL or 2)
+    except Exception:
+        return 2.0
 
 
 def start_fullai_monitor() -> bool:
-    """Запускает мониторинг FullAI (ежесекундная проверка позиций)."""
+    """Запускает мониторинг FullAI (проверка позиций каждые N сек по POSITION_SYNC_INTERVAL)."""
     global _monitor_thread
     if _monitor_thread and _monitor_thread.is_alive():
         return True
     _monitor_stop.clear()
     _monitor_thread = threading.Thread(target=_monitor_loop, daemon=True)
     _monitor_thread.start()
-    logger.info("[FullAI Monitor] Запущен — проверка позиций каждую секунду")
+    logger.info("[FullAI Monitor] Запущен — проверка позиций каждые %.0f сек", _get_monitor_interval())
     return True
 
 
@@ -62,7 +70,7 @@ def _get_symbols_in_position() -> list:
 
 
 def _monitor_loop() -> None:
-    while not _monitor_stop.wait(_monitor_interval_sec):
+    while not _monitor_stop.wait(_get_monitor_interval()):
         if not _is_fullai_enabled():
             continue
         symbols = _get_symbols_in_position()

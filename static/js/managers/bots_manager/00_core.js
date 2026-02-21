@@ -27,7 +27,7 @@ class BotsManager {
         this._lastAccountDisplay = null;
         this._lastServiceStatus = { status: null, message: null };
         
-        // Единый интервал обновления UI и мониторинга ботов (2 сек — более частое обновление для реального времени)
+        // Единый интервал обновления UI и мониторинга ботов (2 сек)
         this.refreshInterval = 2000;
         this.monitoringTimer = null;
         
