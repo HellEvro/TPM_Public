@@ -1688,35 +1688,38 @@ class NewTradingBot:
             self.current_price = price
             profit_percent = self._calc_profit_percent(price)
 
-            # 0. Ожидание безубытка: если ранее отложили закрытие (в зоне RSI/тейков + минус),
-            #    закрываем только при profit >= 0.05% (запас от округления/шума) и только по свежей цене.
-            if exit_waiting and market_price and profit_percent >= 0.05:
-                logger.info(f"[NEW_BOT_{self.symbol}] 🎯 Безубыток достигнут — закрываем (ожидание завершено)")
-                self._clear_exit_waiting_breakeven()
-                self._close_position_on_exchange('BREAKEVEN_WAIT_EXIT')
-                return {'success': True, 'action': f"CLOSE_{self.position_side}", 'reason': 'BREAKEVEN_WAIT_EXIT'}
+            # full_ai_control: закрытие решает ТОЛЬКО FullAI (get_ai_exit_decision). Protections/break-even
+            # обходили 90-сек и вызывали мгновенные выходы с нулём — отключаем их.
+            with bots_data_lock:
+                _full_ai_control = bool((bots_data.get('auto_bot_config') or {}).get('full_ai_control', False))
 
-            # 1. Проверяем защитные механизмы
-            protection_result = self.check_protection_mechanisms(price)
-            if protection_result['should_close']:
-                if self._should_defer_close_for_breakeven(protection_result['reason'], profit_percent):
-                    self._set_exit_waiting_breakeven()
-                    logger.info(
-                        f"[NEW_BOT_{self.symbol}] ⏳ В зоне закрытия ({protection_result['reason']}), "
-                        f"позиция в минусе ({profit_percent:.2f}%) — ждём безубыток"
-                    )
-                else:
+            if not _full_ai_control:
+                # 0. Ожидание безубытка: если ранее отложили закрытие (в зоне RSI/тейков + минус),
+                #    закрываем только при profit >= 0.05% (запас от округления/шума) и только по свежей цене.
+                if exit_waiting and market_price and profit_percent >= 0.05:
+                    logger.info(f"[NEW_BOT_{self.symbol}] 🎯 Безубыток достигнут — закрываем (ожидание завершено)")
                     self._clear_exit_waiting_breakeven()
-                    logger.info(f"[NEW_BOT_{self.symbol}] 🛡️ Закрываем: {protection_result['reason']}")
-                    self._close_position_on_exchange(protection_result['reason'])
-                    return {'success': True, 'action': f"CLOSE_{self.position_side}", 'reason': protection_result['reason']}
+                    self._close_position_on_exchange('BREAKEVEN_WAIT_EXIT')
+                    return {'success': True, 'action': f"CLOSE_{self.position_side}", 'reason': 'BREAKEVEN_WAIT_EXIT'}
+
+                # 1. Проверяем защитные механизмы (SL, TP, break-even, trailing)
+                protection_result = self.check_protection_mechanisms(price)
+                if protection_result['should_close']:
+                    if self._should_defer_close_for_breakeven(protection_result['reason'], profit_percent):
+                        self._set_exit_waiting_breakeven()
+                        logger.info(
+                            f"[NEW_BOT_{self.symbol}] ⏳ В зоне закрытия ({protection_result['reason']}), "
+                            f"позиция в минусе ({profit_percent:.2f}%) — ждём безубыток"
+                        )
+                    else:
+                        self._clear_exit_waiting_breakeven()
+                        logger.info(f"[NEW_BOT_{self.symbol}] 🛡️ Закрываем: {protection_result['reason']}")
+                        self._close_position_on_exchange(protection_result['reason'])
+                        return {'success': True, 'action': f"CLOSE_{self.position_side}", 'reason': protection_result['reason']}
             
-            # 2. Проверяем условия закрытия по RSI (универсальная функция)
+            # 2. Проверяем условия закрытия: FullAI или RSI
             # Адаптивно: мин. свечи ИЛИ мин. минуты (по ТФ) ИЛИ ранний выход, если цена уже сдвинулась на X%
             if self.position_side in ['LONG', 'SHORT']:
-                with bots_data_lock:
-                    _cfg = bots_data.get('auto_bot_config', {})
-                    _full_ai_control = _cfg.get('full_ai_control', False)
                 if _full_ai_control:
                     try:
                         from bots_modules.imports_and_globals import get_effective_auto_bot_config, get_effective_coin_settings

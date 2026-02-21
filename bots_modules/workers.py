@@ -441,15 +441,15 @@ def positions_monitor_worker():
                             last_rsi_close_check = current_time
                             continue
 
-                    # ✅ RSI данные загружены - выполняем проверку закрытия
+                    # ✅ При full_ai_control закрытие делает fullai_monitor — workers не закрывает по RSI
                     with bots_data_lock:
-                        # Получаем только ботов в позиции
+                        full_ai = bool((bots_data.get('auto_bot_config') or {}).get('full_ai_control', False))
                         bots_in_position = {
                             symbol: bot_data for symbol, bot_data in bots_data.get('bots', {}).items()
                             if bot_data.get('status') in ['in_position_long', 'in_position_short']
                         }
 
-                    if bots_in_position:
+                    if bots_in_position and not full_ai:
                         for symbol, bot_data in bots_in_position.items():
                             try:
                                 position_side = bot_data.get('position_side')

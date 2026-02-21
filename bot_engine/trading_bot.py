@@ -985,13 +985,13 @@ class TradingBot:
                     except Exception as ai_error:
                         pass
                     
-                    # FullAI: SL < 5% срабатывает от шума — не допускаем слишком узкий стоп
+                    # FullAI: SL < 8% срабатывает от обычных колебаний — не допускаем узкий стоп
                     try:
                         from bots import bots_data, bots_data_lock
                         with bots_data_lock:
                             ac = bots_data.get('auto_bot_config', {}) or {}
-                        if ac.get('full_ai_control') and sl_percent < 5.0:
-                            sl_percent = 5.0
+                        if ac.get('full_ai_control') and sl_percent < 8.0:
+                            sl_percent = 8.0
                     except Exception:
                         pass
                     
