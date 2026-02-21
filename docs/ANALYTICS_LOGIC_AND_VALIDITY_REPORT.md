@@ -26,9 +26,9 @@
 | **Sync** (позиция исчезла) | False | RSI_EXIT/BOT_LIMIT_TP/SL (найдено в bots_db) | Пропуск дубликатов: не логируем, не сохраняем, не record_real_close |
 | **Sync** (позиция исчезла) | True | — | Только удаление бота из памяти |
 
-**Проверка дубликатов:** `_check_if_trade_already_closed` сравнивает `entry_price` (точность 0.0001) и `entry_timestamp` (окно ±2 мин). При расхождении (timezone, точность) возможен двойной учёт.
+**Проверка дубликатов:** `_check_if_trade_already_closed` использует окно 10 минут (`from_ts_sec`/`to_ts_sec`). Сравнивает `entry_price` (строго Δ < 0.0001) и `entry_timestamp` (±2 мин). **Fallback:** при `timestamp_match` и расхождении entry_price в пределах 1% — считается дубликатом (учёт проскальзывания).
 
-**Запрос effective_reason:** Окно 5 минут назад. Если бот сохраняет позже — sync может не найти запись и поставить CLOSED_ON_EXCHANGE.
+**Запрос effective_reason:** Окно 5 минут назад. При нормальной скорости покрывает гонку sync/бот.
 
 ---
 
@@ -52,29 +52,19 @@
 
 ## 4. Выявленные риски и несоответствия
 
-### 4.1. virtual_only в filters — возможный баг
+### 4.1. virtual_only в filters — возможный баг ✅
 
 **Ситуация:** При FullAI Adaptive, если AI даёт WAIT, ставится `last_ai_result['virtual_only'] = True` и монета попадает в `potential_coins`.
 
-**Проблема:** В цикле создания ботов (`process_auto_bot_signals`) нет проверки `virtual_only`. Вызывается `enter_position(direction, force_market_entry=True)` → **открывается реальная позиция вместо виртуальной**.
+**Было:** Риск реального входа вместо виртуального.
 
-**Где ожидается виртуальный вход:** В `bot_class.should_open_long` при `get_next_action() == 'virtual_open'` вызывается `record_virtual_open` и возвращается False (реального входа нет). Но `process_auto_bot_signals` создаёт бота напрямую и не использует `should_open_long` — он обходит эту логику.
+**Исправлено:** В `process_auto_bot_signals` перед `create_new_bot` добавлена проверка: при `virtual_only` вызывается `record_virtual_open`, затем `continue` — `enter_position` не вызывается.
 
-**Рекомендация:** В `process_auto_bot_signals` перед `enter_position` добавить:
-```python
-if last_ai_result and last_ai_result.get('virtual_only'):
-    from bots_modules.fullai_adaptive import record_virtual_open
-    record_virtual_open(symbol, direction, float(coin.get('price') or coin.get('coin_data', {}).get('price') or 0))
-    continue
-```
-
-### 4.2. Дублирование при быстром sync
+### 4.2. Дублирование при быстром sync ✅
 
 **Сценарий:** Бот закрывает позицию и сохраняет в bots_db. Sync запускается сразу после и ещё не видит запись (задержка, другая транзакция).
 
-**Результат:** `_check_if_trade_already_closed` → False, `effective_reason` из recent trades не находится. Sync пишет CLOSED_ON_EXCHANGE и создаёт вторую запись в bots_db (если `skip_save` не сработал).
-
-**Смягчение:** Окно `get_bot_trades_history(from_ts_sec=now-300)` даёт 5 минут. При нормальной скорости это должно покрывать гонку. `_check_if_trade_already_closed` не использует `from_ts_sec`, поэтому может не видеть только что сохранённую сделку.
+**Смягчение реализовано:** `_check_if_trade_already_closed` использует `from_ts_sec`/`to_ts_sec` (окно 10 минут) — видит недавние сделки. Окно effective_reason — 5 минут. Риск двойной записи снижен, но при экстремальной задержке БД теоретически возможен.
 
 ### 4.3. Совпадение entry_price и entry_timestamp ✅
 
@@ -82,13 +72,13 @@ if last_ai_result and last_ai_result.get('virtual_only'):
 
 **Реализовано:** Fallback: при `timestamp_match` и расхождении entry_price в пределах 1% — считать дубликатом (учёт проскальзывания).
 
-### 4.4. Источники decision_source
+### 4.4. Источники decision_source ✅
 
 - **bot_class:** `_last_decision_source` из `_set_decision_source`
-- **sync trade_data:** `bot_data.get("decision_source", "SCRIPT")` — в `bot_data` может не быть поля `decision_source`, будет "SCRIPT" по умолчанию
+- **NewTradingBot.to_dict():** включает `decision_source` — sync получает корректное значение из bot_data
 - **fullai_analytics:** Не хранит decision_source напрямую; реальный/виртуальный — через event_type
 
-**Рекомендация:** Явно сохранять `decision_source` в bots_data при создании/обновлении бота, чтобы sync всегда брал корректное значение.
+**Реализовано:** `decision_source` сохраняется в `bot_data` через `NewTradingBot.to_dict()` при создании бота.
 
 ---
 
@@ -131,12 +121,12 @@ if last_ai_result and last_ai_result.get('virtual_only'):
 4. Проверка дубликатов через `_check_if_trade_already_closed`
 5. transformer_predictor проверяется только при AI_USE_TRANSFORMER
 
-### 6.2. Уязвимые места
+### 6.2. Уязвимые места (актуальное состояние)
 
-1. **virtual_only в filters** — риск реального входа вместо виртуального
-2. **Гонка sync/бот** — возможны двойные записи при быстром закрытии
-3. **Нет from_ts в _check_if_trade_already_closed** — проверка по «последние 10» без фильтра по времени
-4. **decision_source в sync** — берётся из bot_data, поле может отсутствовать
+1. ~~virtual_only в filters~~ — **исправлено:** проверка добавлена
+2. **Гонка sync/бот** — смягчено (from_ts 10 мин, fallback 1%), при экстремальной задержке БД теоретически возможны двойные записи
+3. ~~Нет from_ts в _check_if_trade_already_closed~~ — **исправлено:** добавлен фильтр 10 минут
+4. ~~decision_source в sync~~ — **исправлено:** сохраняется в to_dict()
 
 ---
 
