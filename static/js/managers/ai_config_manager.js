@@ -125,6 +125,8 @@ class AIConfigManager {
             // Smart Money Concepts
             this.setCheckbox('smcEnabled', config.smc_enabled !== false);
             this.updateSmcStatusText();
+            // Parameter Quality Predictor
+            this.setCheckbox('parameterQualityEnabled', config.parameter_quality_enabled !== false);
             // Auto Training
             this.setCheckbox('autoTrainEnabled', config.auto_train_enabled);
             this.setCheckbox('autoUpdateData', config.auto_update_data);
@@ -150,7 +152,8 @@ class AIConfigManager {
         return [
             'anomalyDetectionEnabled', 'lstmEnabled', 'patternEnabled',
             'riskManagementEnabled', 'optimalEntryEnabled', 'selfLearningEnabled', 'smcEnabled',
-            'autoTrainEnabled', 'autoUpdateData', 'autoRetrain', 'logPredictions', 'logAnomalies', 'logPatterns'
+            'parameterQualityEnabled', 'autoTrainEnabled', 'autoUpdateData', 'autoRetrain',
+            'logPredictions', 'logAnomalies', 'logPatterns'
         ];
     }
     
@@ -193,6 +196,7 @@ class AIConfigManager {
                 optimal_entry_enabled: masterOn && this.getCheckbox('optimalEntryEnabled'),
                 self_learning_enabled: masterOn && this.getCheckbox('selfLearningEnabled'),
                 smc_enabled: masterOn && this.getCheckbox('smcEnabled'),
+                parameter_quality_enabled: masterOn && this.getCheckbox('parameterQualityEnabled'),
                 auto_train_enabled: masterOn && this.getCheckbox('autoTrainEnabled'),
                 auto_update_data: masterOn && this.getCheckbox('autoUpdateData'),
                 data_update_interval: parseInt(this.getValue('dataUpdateInterval')),

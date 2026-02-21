@@ -161,15 +161,26 @@ __all__ = []
 AIManager = None
 get_ai_manager = _get_ai_manager_stub
 
+def _safe_get_ai_manager(real_get):
+    """Обёртка: при сбое AI Premium возвращаем заглушку — FullAI продолжает работать."""
+    def _wrapped():
+        try:
+            return real_get()
+        except Exception as e:
+            _logger.debug("[AI] get_ai_manager сбой, возврат заглушки: %s", e)
+            return _get_ai_manager_stub()
+    return _wrapped
+
 # Пытаемся загрузить ai_manager из версионированной директории
 try:
     ai_manager_module = _load_pyc_module('ai_manager', 'bot_engine.ai.ai_manager')
     if ai_manager_module is not None:
         AIManager = ai_manager_module.AIManager
-        get_ai_manager = ai_manager_module.get_ai_manager
+        get_ai_manager = _safe_get_ai_manager(ai_manager_module.get_ai_manager)
         __all__ = ['AIManager', 'get_ai_manager']
     else:
-        from .ai_manager import AIManager, get_ai_manager
+        from .ai_manager import AIManager, get_ai_manager as _raw
+        get_ai_manager = _safe_get_ai_manager(_raw)
         __all__ = ['AIManager', 'get_ai_manager']
 except ImportError as e:
     err_msg = str(e).lower()
@@ -183,7 +194,8 @@ except ImportError as e:
         __all__ = ['get_ai_manager']
 except Exception as e:
     try:
-        from .ai_manager import AIManager, get_ai_manager
+        from .ai_manager import AIManager, get_ai_manager as _raw
+        get_ai_manager = _safe_get_ai_manager(_raw)
         __all__ = ['AIManager', 'get_ai_manager']
     except Exception:
         get_ai_manager = _get_ai_manager_stub

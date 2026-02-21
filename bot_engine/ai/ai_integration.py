@@ -718,15 +718,17 @@ def get_ai_entry_decision(
     min_conf = _confidence_01(prii_config.get('ai_min_confidence', 0.7))
     result = {'allowed': False, 'confidence': 0.0, 'reason': 'AI not available'}
     try:
-        # FullAI: модель — основной решатель. Не блокируем до вызова ИИ; аналитика только снижает уверенность.
+        # FullAI: при недоступности AI Premium — НЕ блокируем вход, используем RSI-сигналы (FullAI работает без AI Premium)
         from bot_engine.ai import get_ai_manager
         ai_manager = get_ai_manager()
         if not ai_manager or not ai_manager.is_available():
-            result['reason'] = 'AI modules or license not available'
+            result['allowed'] = True
+            result['confidence'] = 0.6
+            result['reason'] = 'AI Premium недоступен, FullAI: вход по RSI-сигналам'
             return result
         coin_data = {'current_price': current_price}
         analysis = ai_manager.analyze_coin(symbol, coin_data, candles or [])
-        if not analysis.get('available'):
+        if not analysis or not analysis.get('available'):
             result['reason'] = analysis.get('reason', 'AI analysis failed')
             return result
         # Голосование: LSTM, pattern, anomaly
@@ -793,12 +795,33 @@ def get_ai_exit_decision(
     """
     Решение ИИ о закрытии позиции сейчас (FullAI). При full_ai_control решение о выходе принимает только ИИ.
     data_context: полный контекст от get_fullai_data_context (свечи из БД, system: RSI/тренд/сигнал, custom индикаторы).
+    position может содержать entry_timestamp или position_start_time для проверки минимального времени удержания.
     Возвращает close_now, reason, confidence.
     """
     prii_config = prii_config or {}
     coin_params = coin_params or {}
     result = {'close_now': False, 'reason': 'Hold', 'confidence': 0.0}
     try:
+        # Минимальное время удержания: не закрывать в первые 90 сек (защита от «вход — сразу выход»)
+        min_hold_sec = 90
+        entry_ts = position.get('entry_timestamp') or position.get('position_start_time')
+        if entry_ts is None:
+            # Нет времени входа — не рискуем, блокируем закрытие (может быть race при первом тике)
+            return result
+        import time
+        if isinstance(entry_ts, str):
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(entry_ts.replace('Z', '+00:00'))
+                entry_sec = dt.timestamp()
+            except Exception:
+                entry_sec = 0
+        else:
+            entry_sec = float(entry_ts) / 1000 if entry_ts > 1e12 else float(entry_ts)
+        age_sec = time.time() - entry_sec if entry_sec else 0
+        if 0 < age_sec < min_hold_sec:
+            return result
+
         # Простая эвристика: сильная прибыль или сильный убыток — закрыть (далее можно заменить на модель)
         tp = float(prii_config.get('take_profit_percent') or coin_params.get('take_profit_percent') or 15)
         sl = float(prii_config.get('max_loss_percent') or coin_params.get('max_loss_percent') or 10)
@@ -815,16 +838,19 @@ def get_ai_exit_decision(
         # Используем data_context (свечи из БД, индикаторы) если передан
         if not candles and data_context:
             candles = data_context.get('candles') or []
-        # Опционально: вызов AIManager для более сложного решения (LSTM/pattern на выход)
-        from bot_engine.ai import get_ai_manager
-        ai_manager = get_ai_manager()
-        if ai_manager and ai_manager.is_available() and candles and len(candles) >= 5:
-            coin_data = {'current_price': candles[-1].get('close'), 'in_position': True}
-            analysis = ai_manager.analyze_coin(symbol, coin_data, candles)
-            if analysis.get('anomaly_score', {}).get('is_anomaly'):
-                result['close_now'] = True
-                result['reason'] = 'Anomaly: exit'
-                result['confidence'] = 0.9
+        # Опционально: вызов AIManager для anomaly (FullAI работает без AI Premium — TP/SL выше уже сработали)
+        try:
+            from bot_engine.ai import get_ai_manager
+            ai_manager = get_ai_manager()
+            if ai_manager and ai_manager.is_available() and candles and len(candles) >= 5:
+                coin_data = {'current_price': candles[-1].get('close'), 'in_position': True}
+                analysis = ai_manager.analyze_coin(symbol, coin_data, candles)
+                if analysis and analysis.get('anomaly_score', {}).get('is_anomaly'):
+                    result['close_now'] = True
+                    result['reason'] = 'Anomaly: exit'
+                    result['confidence'] = 0.9
+        except Exception:
+            pass  # AI Premium сбой — FullAI продолжает по TP/SL
         return result
     except Exception as e:
         logger.exception(f"get_ai_exit_decision {symbol}: {e}")

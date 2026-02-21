@@ -153,9 +153,18 @@ def get_config_value(config_dict, key):
 
 
 def reload_config():
-    """Перезагрузить configs.bot_config и config_loader. Вызывать после изменения конфига на диске."""
+    """Перезагрузить configs.bot_config и config_loader. Вызывать после изменения конфига на диске.
+    После reload восстанавливает таймфрейм из файла (или сохраняет текущий, если файл старый)."""
     import configs.bot_config as _cfg
     import bot_engine.config_loader as _loader
+    # Сохраняем текущий таймфрейм до reload (на случай race с load_system_config)
+    saved_tf = _loader._current_timeframe if hasattr(_loader, '_current_timeframe') else None
     importlib.reload(_cfg)
     importlib.reload(_loader)
+    # После reload _current_timeframe = None. Берём из файла, иначе восстанавливаем
+    new_tf = _loader._get_default_timeframe()
+    if new_tf:
+        _loader._current_timeframe = new_tf
+    elif saved_tf:
+        _loader._current_timeframe = saved_tf
     return _loader

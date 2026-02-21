@@ -22,6 +22,10 @@ import shutil
 
 logger = logging.getLogger('BotsService')
 
+# Метрики: доля закрытий с effective_reason из bots_db (для рекомендаций ANALYTICS_LOGIC_AND_VALIDITY_REPORT)
+_sync_closes_total = 0
+_sync_closes_from_bots_db = 0
+
 # Импорт SystemConfig
 from bot_engine.config_loader import SystemConfig
 from bot_engine.bot_history import log_position_closed as history_log_position_closed
@@ -175,12 +179,16 @@ def _check_if_trade_already_closed(bot_id, symbol, entry_price, entry_time_str):
             except Exception:
                 pass
         
-        # Проверяем последние 10 закрытых сделок
+        # Проверяем последние 10 закрытых сделок за последние 10 минут (фильтр по exit_timestamp)
+        now_sec = datetime.now().timestamp()
+        from_ts_sec = now_sec - 600  # 10 минут
         existing_trades = bots_db.get_bot_trades_history(
             bot_id=bot_id,
             symbol=symbol,
             status='CLOSED',
-            limit=10
+            limit=10,
+            from_ts_sec=from_ts_sec,
+            to_ts_sec=now_sec + 60,
         )
         
         if not existing_trades:
@@ -188,6 +196,7 @@ def _check_if_trade_already_closed(bot_id, symbol, entry_price, entry_time_str):
         
         # Проверяем на дубликаты: если уже есть закрытая сделка с той же позицией (symbol, entry_price, entry_time) — не сохраняем повторно
         # КРИТИЧНО: не только MANUAL_CLOSE — иначе при закрытии ботом (SL/TP/RSI) sync потом дописывает вторую запись
+        # Fallback (4.3): при проскальзывании entry_price — считать дубликатом, если timestamp совпадает и цена в пределах 1%
         for existing_trade in existing_trades:
             existing_entry_price = existing_trade.get('entry_price')
             existing_entry_ts = existing_trade.get('entry_timestamp')
@@ -203,10 +212,17 @@ def _check_if_trade_already_closed(bot_id, symbol, entry_price, entry_time_str):
                     ent_ts *= 1000
             except (TypeError, ValueError):
                 continue
-            price_match = existing_entry_price is not None and abs(float(existing_entry_price) - float(entry_price)) < 0.0001
             timestamp_match = abs(ex_ts - ent_ts) < 120000  # 2 минуты
-            if price_match and timestamp_match:
-                return True  # дубликат — уже есть запись о закрытии этой позиции
+            if not timestamp_match:
+                continue
+            price_match_strict = existing_entry_price is not None and abs(float(existing_entry_price) - float(entry_price)) < 0.0001
+            if price_match_strict:
+                return True  # дубликат — точное совпадение
+            # Fallback: timestamp совпал, цена в пределах 1% (проскальзывание)
+            if existing_entry_price is not None and entry_price and float(entry_price) > 0:
+                price_diff_pct = abs(float(existing_entry_price) - float(entry_price)) / float(entry_price)
+                if price_diff_pct < 0.01:
+                    return True  # дубликат — небольшая разница в цене входа
         return False
     except Exception as e:
         pass
@@ -695,7 +711,6 @@ def load_system_config():
         # Автообновление UI всегда включено (настройка убрана из интерфейса)
         SystemConfig.AUTO_REFRESH_UI = True
 
-        logger.info("[SYSTEM_CONFIG] ✅ Конфигурация перезагружена из configs/bot_config.py")
         return True
 
     except Exception as e:
@@ -1898,7 +1913,7 @@ def sync_positions_with_exchange():
         synced_count = 0
         errors_count = 0
         
-        # Grace period 90 сек: не удаляем бота, только что открывшего позицию (рассинхрон API биржи)
+        # Grace period 90 сек: не удаляем бота, только что открывшего позицию (рассинхрон API)
         _GRACE_SEC = 90
 
         # Обрабатываем ботов без позиций на бирже
@@ -1906,7 +1921,7 @@ def sync_positions_with_exchange():
             if symbol not in exchange_dict:
                 logger.warning(f"[POSITION_SYNC] ⚠️ Бот {symbol} без позиции на бирже (статус: {bot_data['status']})")
 
-                # Только position_start_time или entry_timestamp — НЕ last_update (меняется при любом обновлении)
+                # Только position_start_time или entry_timestamp — НЕ last_update!
                 with bots_data_lock:
                     full_bot = bots_data.get('bots', {}).get(symbol, {})
                 entry_ts_raw = full_bot.get('position_start_time') or full_bot.get('entry_timestamp')
@@ -1924,14 +1939,14 @@ def sync_positions_with_exchange():
                         pass
                 age_sec = (time.time() - entry_sec) if entry_sec else 999
                 if age_sec < _GRACE_SEC:
-                    logger.info(f"[POSITION_SYNC] ⏳ Бот {symbol} недавно открыт ({age_sec:.0f}с < {_GRACE_SEC}с) — ждём появления позиции на бирже")
+                    logger.info(f"[POSITION_SYNC] ⏳ Бот {symbol} недавно открыт ({age_sec:.0f}с) — ждём позицию на бирже")
                     continue
 
                 # ВАЖНО: Проверяем, действительно ли позиция закрылась
                 try:
                     # Проверяем, есть ли активные ордера для этого символа
                     has_active_orders = check_active_orders(symbol)
-                    
+
                     if not has_active_orders:
                         # ✅ КРИТИЧНО: УДАЛЯЕМ бота, а не переводим в IDLE - позиции нет на бирже!
                         with bots_data_lock:
@@ -2585,9 +2600,16 @@ def check_missing_stop_losses():
                     bot_instance.position_start_time = datetime.fromtimestamp(entry_timestamp)
 
                 decision = bot_instance._evaluate_protection_decision(current_price)
-                # ✅ ИСПРАВЛЕНО: Обновляем защитные механизмы (включая break-even стоп)
-                # Это нужно для установки break-even стопа на бирже при изменении конфига
-                bot_instance._update_protection_mechanisms(current_price)
+                # full_ai: не обновляем protections (break-even, trailing) — они меняют SL на бирже
+                full_ai = False
+                try:
+                    with bots_data_lock:
+                        full_ai = bool((bots_data.get('auto_bot_config') or {}).get('full_ai_control', False))
+                except Exception:
+                    pass
+                if not full_ai:
+                    # Обновляем защитные механизмы (break-even стоп, trailing) — ставят SL/TP на бирже
+                    bot_instance._update_protection_mechanisms(current_price)
                 protection_config = bot_instance._get_effective_protection_config()
 
                 updates = {
@@ -2630,8 +2652,8 @@ def check_missing_stop_losses():
                 existing_stop_value = _safe_float(existing_stop_loss)
 
                 # ✅ ИСПРАВЛЕНО: Обновляем стоп-лосс, даже если он уже установлен, если нужен новый стоп
-                # Проверяем, нужно ли обновить стоп-лосс на бирже
-                if desired_stop and _needs_price_update(position_side, desired_stop, existing_stop_value):
+                # При full_ai_control не перезаписываем — выход решает FullAI
+                if not full_ai and desired_stop and _needs_price_update(position_side, desired_stop, existing_stop_value):
                     try:
                         sl_response = current_exchange.update_stop_loss(
                             symbol=symbol,
@@ -2661,9 +2683,10 @@ def check_missing_stop_losses():
                 existing_take_value = _safe_float(existing_take_profit)
 
                 # Проверяем, есть ли уже тейк-профит на бирже
+                # При full_ai_control не перезаписываем TP
                 if existing_take_profit and existing_take_profit.strip():
                     pass  # Тейк-профит уже установлен, пропускаем
-                elif desired_take and _needs_price_update(position_side, desired_take, existing_take_value):
+                elif not full_ai and desired_take and _needs_price_update(position_side, desired_take, existing_take_value):
                     try:
                         tp_response = current_exchange.update_take_profit(
                             symbol=symbol,
@@ -3035,8 +3058,7 @@ def sync_bots_with_exchange():
                                 BOT_STATUS.get('IN_POSITION_SHORT')
                             ]:
                                 continue
-
-                            # Grace period 90 сек: только что открытая позиция может ещё не появиться в API
+                            # Grace period 90 сек: только position_start_time/entry_timestamp, НЕ last_update
                             _GRACE_SEC = 90
                             entry_ts_raw = bot_data.get('position_start_time') or bot_data.get('entry_timestamp')
                             entry_sec = 0
@@ -3072,13 +3094,33 @@ def sync_bots_with_exchange():
                                 entry_price = float(bot_data.get('entry_price') or 0.0)
                             except (TypeError, ValueError):
                                 entry_price = 0.0
+                            if not entry_price or entry_price <= 0:
+                                try:
+                                    exchange_obj = get_exchange()
+                                    if exchange_obj and hasattr(exchange_obj, 'get_closed_pnl'):
+                                        closed_list = exchange_obj.get_closed_pnl(sort_by='time', period='day') or []
+                                        for cp in closed_list:
+                                            if (cp.get('symbol') or '').upper() == (symbol or '').upper():
+                                                ep = float(cp.get('entry_price') or 0) or 0
+                                                if ep > 0:
+                                                    entry_price = ep
+                                                    if cp.get('exit_price'):
+                                                        try:
+                                                            xp = float(cp.get('exit_price') or 0)
+                                                            if xp > 0 and not exit_price:
+                                                                exit_price = xp
+                                                        except (TypeError, ValueError):
+                                                            pass
+                                                break
+                                except Exception as _:
+                                    pass
                             
                             # ✅ УПРОЩЕНО: Проверяем дубликаты сразу после получения entry_price
                             bot_id = bot_data.get('id') or symbol
                             already_closed_trade = _check_if_trade_already_closed(bot_id, symbol, entry_price, entry_time_str)
 
-                            # Получаем рыночную цену для фиксации закрытия
-                            if manual_closed:
+                            # Получаем цену выхода (с биржи или текущую)
+                            if manual_closed and not exit_price:
                                 try:
                                     exchange_obj = get_exchange()
                                     if exchange_obj and hasattr(exchange_obj, 'get_ticker'):
@@ -3111,6 +3153,9 @@ def sync_bots_with_exchange():
                                     margin_val = None
                                 if margin_val and margin_val != 0:
                                     roi_percent = (pnl_usdt / margin_val) * 100.0
+                                elif entry_price and position_size_coins and entry_price > 0:
+                                    notional = entry_price * position_size_coins
+                                    roi_percent = (pnl_usdt / notional) * 100.0
 
                             if manual_closed:
                                 # entry_time_str уже получен выше
@@ -3137,85 +3182,152 @@ def sync_bots_with_exchange():
                                 }
 
                                 if not already_closed_trade:
-                                    # КРИТИЧНО: Позиция исчезла на бирже, бот её не закрывал — причина неизвестна
-                                    # (SL/TP/ликвидация/ручное закрытие). Не помечаем как MANUAL_CLOSE.
-                                    history_log_position_closed(
-                                        bot_id=bot_id,
-                                        symbol=symbol,
-                                        direction=direction or 'UNKNOWN',
-                                        exit_price=exit_price or entry_price or 0.0,
-                                        pnl=pnl_usdt,
-                                        roi=roi_percent,
-                                        reason='CLOSED_ON_EXCHANGE',
-                                        entry_data=entry_data,
-                                        market_data=market_data,
-                                        is_simulated=False,
-                                    )
+                                    # Пытаемся взять причину из bots_db — бот мог успеть сохранить закрытие
+                                    effective_reason = 'CLOSED_ON_EXCHANGE'
+                                    try:
+                                        from bot_engine.bots_database import get_bots_database
+                                        _bots_db = get_bots_database()
+                                        recent = _bots_db.get_bot_trades_history(
+                                            symbol=symbol, status='CLOSED', limit=5,
+                                            from_ts_sec=(datetime.now().timestamp() - 300),
+                                            to_ts_sec=datetime.now().timestamp() + 60,
+                                        ) or []
+                                        for rt in recent:
+                                            cr = (rt.get('close_reason') or '').strip()
+                                            if cr and cr != 'CLOSED_ON_EXCHANGE' and cr.upper() not in ('', 'UNKNOWN'):
+                                                effective_reason = cr
+                                                _sync_closes_from_bots_db += 1
+                                                pct = 100.0 * _sync_closes_from_bots_db / (_sync_closes_total + 1) if (_sync_closes_total + 1) else 0
+                                                logger.info(f"[SYNC] Используем причину из bots_db: {effective_reason} (доля: {_sync_closes_from_bots_db}/{_sync_closes_total + 1} = {pct:.1f}%)")
+                                                break
+                                        _sync_closes_total += 1
+                                    except Exception:
+                                        pass
+                                    # Если бот уже сохранил — не дублируем логи (history + FullAI)
+                                    if effective_reason == 'CLOSED_ON_EXCHANGE':
+                                        history_log_position_closed(
+                                            bot_id=bot_id,
+                                            symbol=symbol,
+                                            direction=direction or 'UNKNOWN',
+                                            exit_price=exit_price or entry_price or 0.0,
+                                            pnl=pnl_usdt,
+                                            roi=roi_percent,
+                                            reason=effective_reason,
+                                            entry_data=entry_data,
+                                            market_data=market_data,
+                                            is_simulated=False,
+                                        )
 
                                     # КРИТИЧНО: Также сохраняем в bots_data.db для истории торговли ботов
+                                    # (если effective_reason взят из bots_db — бот уже сохранил, дубликат не создаём)
                                     try:
                                         from bot_engine.bots_database import get_bots_database
                                         bots_db = get_bots_database()
-                                        # Аккуратно рассчитываем entry_timestamp, чтобы избежать NameError
-                                        entry_timestamp = None
-                                        if entry_time_str:
-                                            try:
-                                                entry_dt = datetime.fromisoformat(
-                                                    entry_time_str.replace("Z", "")
-                                                )
-                                                entry_timestamp = entry_dt.timestamp() * 1000
-                                            except Exception:
+                                        skip_save = (effective_reason != 'CLOSED_ON_EXCHANGE')  # бот уже сохранил
+                                        if not skip_save:
+                                            # Аккуратно рассчитываем entry_timestamp
+                                            entry_timestamp = None
+                                            if entry_time_str:
+                                                try:
+                                                    entry_dt = datetime.fromisoformat(
+                                                        entry_time_str.replace("Z", "")
+                                                    )
+                                                    entry_timestamp = entry_dt.timestamp() * 1000
+                                                except Exception:
+                                                    entry_timestamp = datetime.now().timestamp() * 1000
+                                            else:
+                                                entry_time_str = datetime.now().isoformat()
                                                 entry_timestamp = datetime.now().timestamp() * 1000
-                                        else:
-                                            entry_time_str = datetime.now().isoformat()
-                                            entry_timestamp = datetime.now().timestamp() * 1000
 
-                                        trade_data = {
-                                            "bot_id": bot_id,
-                                            "symbol": symbol,
-                                            "direction": direction or "UNKNOWN",
-                                            "entry_price": entry_price or 0.0,
-                                            "exit_price": exit_price or entry_price or 0.0,
-                                            "entry_time": entry_time_str,
-                                            "exit_time": datetime.now().isoformat(),
-                                            "entry_timestamp": entry_timestamp,
-                                            "exit_timestamp": datetime.now().timestamp() * 1000,
-                                            "position_size_usdt": bot_data.get("volume_value"),
-                                            "position_size_coins": position_size_coins,
-                                            "pnl": pnl_usdt,
-                                            "roi": roi_percent,
-                                            "status": "CLOSED",
-                                            "close_reason": "CLOSED_ON_EXCHANGE",
-                                            "decision_source": bot_data.get(
-                                                "decision_source", "SCRIPT"
-                                            ),
-                                            "ai_decision_id": bot_data.get("ai_decision_id"),
-                                            "ai_confidence": bot_data.get("ai_confidence"),
-                                            "entry_rsi": None,  # TODO: получить из entry_data если есть
-                                            "exit_rsi": None,
-                                            "entry_trend": entry_data.get("trend"),
-                                            "exit_trend": None,
-                                            "entry_volatility": entry_data.get("volatility"),
-                                            "entry_volume_ratio": None,
-                                            "is_successful": pnl_usdt > 0 if pnl_usdt else False,
-                                            "is_simulated": False,
-                                            "source": "bot_manual_close",
-                                            "order_id": None,
-                                            "extra_data": {
-                                                "entry_data": entry_data,
-                                                "market_data": market_data,
-                                            },
-                                        }
+                                            trade_data = {
+                                                "bot_id": bot_id,
+                                                "symbol": symbol,
+                                                "direction": direction or "UNKNOWN",
+                                                "entry_price": entry_price or 0.0,
+                                                "exit_price": exit_price or entry_price or 0.0,
+                                                "entry_time": entry_time_str,
+                                                "exit_time": datetime.now().isoformat(),
+                                                "entry_timestamp": entry_timestamp,
+                                                "exit_timestamp": datetime.now().timestamp() * 1000,
+                                                "position_size_usdt": bot_data.get("volume_value"),
+                                                "position_size_coins": position_size_coins,
+                                                "pnl": pnl_usdt,
+                                                "roi": roi_percent,
+                                                "status": "CLOSED",
+                                                "close_reason": effective_reason,
+                                                "decision_source": bot_data.get(
+                                                    "decision_source", "SCRIPT"
+                                                ),
+                                                "ai_decision_id": bot_data.get("ai_decision_id"),
+                                                "ai_confidence": bot_data.get("ai_confidence"),
+                                                "entry_rsi": None,  # TODO: получить из entry_data если есть
+                                                "exit_rsi": None,
+                                                "entry_trend": entry_data.get("trend"),
+                                                "exit_trend": None,
+                                                "entry_volatility": entry_data.get("volatility"),
+                                                "entry_volume_ratio": None,
+                                                "is_successful": pnl_usdt > 0 if pnl_usdt else False,
+                                                "is_simulated": False,
+                                                "source": "bot_manual_close",
+                                                "order_id": None,
+                                                "extra_data": {
+                                                    "entry_data": entry_data,
+                                                    "market_data": market_data,
+                                                },
+                                            }
 
-                                        trade_id = bots_db.save_bot_trade_history(trade_data)
-                                        if trade_id:
-                                            logger.info(
-                                                f"[SYNC_EXCHANGE] ✅ История сделки {symbol} сохранена в bots_data.db (ID: {trade_id})"
-                                            )
+                                            trade_id = bots_db.save_bot_trade_history(trade_data)
+                                            if trade_id:
+                                                logger.info(
+                                                    f"[SYNC_EXCHANGE] ✅ История сделки {symbol} сохранена в bots_data.db (ID: {trade_id})"
+                                                )
                                     except Exception as bots_db_error:
                                         logger.warning(
                                             f"[SYNC_EXCHANGE] ⚠️ Ошибка сохранения истории в bots_data.db: {bots_db_error}"
                                         )
+                                    # FullAI аналитика — только когда sync первый обнаружил закрытие (бот уже не логировал)
+                                    if effective_reason == 'CLOSED_ON_EXCHANGE':
+                                        try:
+                                            from bots_modules.fullai_adaptive import record_real_close
+                                            from bots_modules.imports_and_globals import get_effective_auto_bot_config
+                                            ac = get_effective_auto_bot_config() or {}
+                                            tp_pct = float(bot_data.get('take_profit_percent') or ac.get('take_profit_percent') or 15)
+                                            sl_pct = float(bot_data.get('max_loss_percent') or ac.get('max_loss_percent') or ac.get('stop_loss_percent') or 10)
+                                            ep, xp = float(entry_price or 0), float(exit_price or 0)
+                                            close_source = 'CLOSED_ON_EXCHANGE'
+                                            order_type_exit = '—'
+                                            limit_price_exit = None
+                                            if ep > 0 and xp > 0 and direction_upper in ('LONG', 'SHORT'):
+                                                if direction_upper == 'LONG':
+                                                    bot_tp = ep * (1 + tp_pct / 100)
+                                                    bot_sl = ep * (1 - sl_pct / 100)
+                                                else:
+                                                    bot_tp = ep * (1 - tp_pct / 100)
+                                                    bot_sl = ep * (1 + sl_pct / 100)
+                                                tol = 0.005
+                                                if abs(xp - bot_tp) / max(bot_tp, 1e-9) <= tol:
+                                                    close_source = 'BOT_LIMIT_TP'
+                                                    order_type_exit = 'Limit'
+                                                    limit_price_exit = bot_tp
+                                                elif abs(xp - bot_sl) / max(bot_sl, 1e-9) <= tol:
+                                                    close_source = 'BOT_LIMIT_SL'
+                                                    order_type_exit = 'Limit'
+                                                    limit_price_exit = bot_sl
+                                                else:
+                                                    close_source = 'MANUAL_OR_EXTERNAL'
+                                                    order_type_exit = 'Market'
+                                            extra = {
+                                                'entry_price': entry_price,
+                                                'exit_price': exit_price,
+                                                'pnl_usdt': pnl_usdt,
+                                                'direction': direction_upper,
+                                                'close_source': close_source,
+                                                'order_type_exit': order_type_exit,
+                                                'limit_price_exit': limit_price_exit,
+                                            }
+                                            record_real_close(symbol, roi_percent, reason=close_source, extra=extra)
+                                        except Exception as fa_err:
+                                            logger.debug("[SYNC_EXCHANGE] FullAI analytics real_close: %s", fa_err)
                                     logger.info(
                                         f"[SYNC_EXCHANGE] 📤 {symbol}: позиция закрыта на бирже вне бота "
                                         f"(entry={entry_price:.6f}, exit={exit_price:.6f}, pnl={pnl_usdt:.2f} USDT)"

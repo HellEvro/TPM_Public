@@ -31,6 +31,16 @@ except ImportError:  # pragma: no cover - fallback если scikit-learn не у
 
 logger = logging.getLogger('LSTM')
 
+try:
+    from bot_engine.utils.rsi_utils import calculate_rsi_history
+except ImportError:
+    calculate_rsi_history = None
+
+try:
+    from utils.rsi_calculator import calculate_ema
+except ImportError:
+    calculate_ema = None
+
 # Отключаем предупреждения PyTorch
 warnings.filterwarnings('ignore', category=UserWarning, module='torch')
 
@@ -458,6 +468,35 @@ class LSTMPredictor:
         logger.info(f"Создана новая модель: {arch_name}")
         logger.info(f"Архитектура: {sequence_length} свечей -> {n_features} признаков")
     
+    def _compute_missing_indicator(
+        self, close: np.ndarray, feature: str
+    ) -> Optional[np.ndarray]:
+        """Вычисляет RSI или EMA из close, если функция недоступна — None."""
+        n = len(close)
+        if feature == 'rsi':
+            if calculate_rsi_history is None or n < 15:
+                return None
+            hist = calculate_rsi_history(close.tolist(), period=14)
+            if hist is None:
+                return None
+            # rsi_history короче на period+1 — дополняем 50 (нейтральный RSI)
+            pad = n - len(hist)
+            return np.concatenate([np.full(pad, 50.0), np.array(hist, dtype=np.float32)])
+        if feature == 'ema_fast' and calculate_ema is not None:
+            ema = calculate_ema(close.tolist(), period=12)
+            if not ema:
+                return None
+            # EMA короче на period-1 — дополняем первым значением EMA
+            pad = n - len(ema)
+            return np.concatenate([np.full(pad, float(ema[0])), np.array(ema, dtype=np.float32)])
+        if feature == 'ema_slow' and calculate_ema is not None:
+            ema = calculate_ema(close.tolist(), period=26)
+            if not ema:
+                return None
+            pad = n - len(ema)
+            return np.concatenate([np.full(pad, float(ema[0])), np.array(ema, dtype=np.float32)])
+        return None
+
     def prepare_features(self, candles: List[Dict]) -> np.ndarray:
         """
         Подготавливает признаки из свечей для модели
@@ -469,27 +508,31 @@ class LSTMPredictor:
             Массив признаков для модели
         """
         if len(candles) < self.config['sequence_length']:
-            pass
             return None
-        
+
         df = pd.DataFrame(candles)
-        
+        close = df['close'].values if 'close' in df.columns else None
+
         # Извлекаем необходимые признаки
         features = []
         for feature in self.config['features']:
             if feature in df.columns:
                 features.append(df[feature].values)
+            elif close is not None and feature in ('rsi', 'ema_fast', 'ema_slow'):
+                computed = self._compute_missing_indicator(close, feature)
+                if computed is not None:
+                    features.append(computed)
+                else:
+                    features.append(np.full(len(df), 50.0 if feature == 'rsi' else np.nanmean(close)))
             else:
-                # Если признака нет, заполняем нулями
-                logger.warning(f"Признак {feature} не найден в данных")
                 features.append(np.zeros(len(df)))
-        
+
         # Транспонируем, чтобы получить (samples, features)
         features = np.array(features).T
-        
+
         # Берем последние sequence_length свечей
         features = features[-self.config['sequence_length']:]
-        
+
         return features.astype(np.float32)
     
     def predict(

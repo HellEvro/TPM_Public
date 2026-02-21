@@ -215,6 +215,27 @@ def get_events(
         return []
 
 
+def get_distinct_symbols(limit: int = 500) -> List[str]:
+    """Список уникальных символов из событий FullAI (для селектора монет в аналитике)."""
+    path = _ensure_db_exists()
+    if not path.exists():
+        return []
+    try:
+        with _lock:
+            conn = sqlite3.connect(str(path), timeout=10)
+            try:
+                rows = conn.execute(
+                    "SELECT DISTINCT symbol FROM fullai_events WHERE symbol IS NOT NULL AND symbol != '' ORDER BY symbol LIMIT ?",
+                    (limit,),
+                ).fetchall()
+                return [r[0] for r in rows if r[0]]
+            finally:
+                conn.close()
+    except Exception as e:
+        logger.warning("FullAI analytics get_distinct_symbols: %s", e)
+        return []
+
+
 def get_summary(
     symbol: Optional[str] = None,
     from_ts: Optional[float] = None,

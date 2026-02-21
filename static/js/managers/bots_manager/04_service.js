@@ -151,15 +151,7 @@
             const data = await response.json();
             
             if (data.success) {
-                    // ✅ ОПТИМИЗАЦИЯ: Проверяем версию данных - обновляем UI только при изменениях.
-                    // При forceUpdate (например после обновления ручных позиций) всегда применяем данные.
                     const currentDataVersion = data.data_version || 0;
-                    if (!forceUpdate && currentDataVersion === this.lastDataVersion && this.coinsRsiData.length > 0) {
-                        this.logDebug('[BotsManager] ⏭️ Данные не изменились (version=' + currentDataVersion + '), пропускаем обновление UI');
-                        return;
-                    }
-                    
-                    this.logDebug('[BotsManager] 🔄 Данные обновились (version: ' + this.lastDataVersion + ' → ' + currentDataVersion + ')');
                     this.lastDataVersion = currentDataVersion;
                     
                     // Сохраняем флаг загрузки и статистику для отображения при пустом списке
@@ -291,14 +283,16 @@
             const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/mature-coins-list`);
             const data = await response.json();
             
-            if (data.success && data.mature_coins) {
-                // Помечаем зрелые монеты в данных
+            if (data.success) {
+                const enableMaturity = (this.cachedAutoBotConfig || this.autoBotConfig || {}).enable_maturity_check !== false;
                 let markedCount = 0;
                 this.coinsRsiData.forEach(coin => {
-                    coin.is_mature = data.mature_coins.includes(coin.symbol);
-                    if (coin.is_mature) {
-                        markedCount++;
+                    if (!enableMaturity) {
+                        coin.is_mature = true; // Проверка отключена — все зрелые
+                    } else if (data.mature_coins) {
+                        coin.is_mature = data.mature_coins.includes(coin.symbol);
                     }
+                    if (coin.is_mature) markedCount++;
                 });
                 
                 // ✅ ИСПРАВЛЕНИЕ: Обновляем счетчик зрелых монет в UI

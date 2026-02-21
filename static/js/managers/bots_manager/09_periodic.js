@@ -67,15 +67,39 @@
 
         this.logDebug(`[BotsManager] 📊 Статистика обновлена: всего=${bots.length}, активных=${activeCount}, в позиции=${inPositionCount}, PnL=${formattedPnL}`);
     },
+            stopPeriodicUpdate() {
+        if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+            this.updateInterval = null;
+        }
+        if (this.accountUpdateInterval) {
+            clearInterval(this.accountUpdateInterval);
+            this.accountUpdateInterval = null;
+        }
+        this.stopBotMonitoring();
+        this.logDebug('[BotsManager] ⏹️ Периодическое обновление остановлено');
+    },
+            restartPeriodicUpdate() {
+        this.stopPeriodicUpdate();
+        this.startPeriodicUpdate();
+        console.log('[BotsManager] 🔄 Периодическое обновление перезапущено (интервал: ' + (this.refreshInterval/1000) + ' сек)');
+    },
             startPeriodicUpdate() {
-        // Обновляем данные с единым интервалом
+        this.stopPeriodicUpdate();
+        // Обновляем данные с интервалом = position_sync_interval (список монет слева, фильтры, боты, мониторинг)
         this.updateInterval = setInterval(() => {
             if (this.serviceOnline) {
                 this.logDebug('[BotsManager] 🔄 Автообновление данных...');
                 
-                // Обновляем основные данные
+                // Обновляем основные данные (список монет, фильтры, конфиг, боты)
                 this.loadCoinsRsiData();
-                this.loadDelistedCoins(); // Загружаем делистинговые монеты
+                this.loadFiltersData();      // Whitelist, blacklist, scope
+                // НЕ загружаем конфиг при активной вкладке «Конфигурация» — иначе перезаписываем форму и теряются несохранённые изменения
+                const configTab = document.getElementById('configTab');
+                if (!configTab || !configTab.classList.contains('active')) {
+                    this.loadConfigurationData();
+                }
+                this.loadDelistedCoins();    // Делистинговые монеты
                 this.loadAccountInfo();
                 
                 // КРИТИЧЕСКИ ВАЖНО: Всегда обновляем состояние автобота и ботов

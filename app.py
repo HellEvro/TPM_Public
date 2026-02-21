@@ -2050,6 +2050,54 @@ def get_coins_with_rsi():
     status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 
+@app.route('/api/bots/mature-coins-list', methods=['GET'])
+def get_mature_coins_list():
+    """Список зрелых монет (прокси к сервису ботов)"""
+    result = call_bots_service('/api/bots/mature-coins-list')
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
+@app.route('/api/bots/delisted-coins', methods=['GET'])
+def get_delisted_coins():
+    """Делистинговые монеты (прокси к сервису ботов)"""
+    result = call_bots_service('/api/bots/delisted-coins')
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
+@app.route('/api/bots/history', methods=['GET'])
+def get_bots_history():
+    """История действий ботов (прокси к сервису ботов)"""
+    endpoint = '/api/bots/history'
+    if request.query_string:
+        endpoint += '?' + request.query_string.decode('utf-8')
+    result = call_bots_service(endpoint, timeout=15)
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
+@app.route('/api/bots/statistics', methods=['GET'])
+def get_bots_statistics():
+    """Статистика ботов (прокси к сервису ботов)"""
+    endpoint = '/api/bots/statistics'
+    if request.query_string:
+        endpoint += '?' + request.query_string.decode('utf-8')
+    result = call_bots_service(endpoint, timeout=15)
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
+@app.route('/api/bots/history/clear', methods=['POST'])
+def clear_bots_history():
+    """Очистка истории (прокси к сервису ботов)"""
+    result = call_bots_service('/api/bots/history/clear', method='POST', data={})
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
+@app.route('/api/bots/history/demo', methods=['POST'])
+def demo_bots_history():
+    """Демо-данные истории (прокси к сервису ботов)"""
+    result = call_bots_service('/api/bots/history/demo', method='POST', data={})
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
 @app.route('/api/bots/individual-settings/<symbol>', methods=['GET', 'POST'])
 def individual_settings(symbol):
     """Индивидуальные настройки бота (прокси к сервису ботов)"""
@@ -2122,6 +2170,18 @@ def export_config():
     return jsonify(result), status_code
 
 
+@app.route('/api/bots/timeframe', methods=['GET', 'POST'])
+def bots_timeframe():
+    """Прокси смены таймфрейма — критично для RSI Time фильтра (свечи 1m vs 6h)."""
+    if request.method == 'GET':
+        result = call_bots_service('/api/bots/timeframe', method='GET')
+    else:
+        data = request.get_json()
+        result = call_bots_service('/api/bots/timeframe', method='POST', data=data)
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
+
 @app.route('/api/bots/system-config', methods=['GET', 'POST'])
 def system_config():
     """Системные настройки (прокси к сервису ботов)"""
@@ -2143,6 +2203,43 @@ def ai_config():
     else:
         data = request.get_json()
         result = call_bots_service('/api/ai/config', method='POST', data=data)
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
+
+@app.route('/api/bots/refresh-rsi-all', methods=['POST'])
+def refresh_rsi_all():
+    """Полное обновление RSI всех монет (прокси к сервису ботов)"""
+    result = call_bots_service('/api/bots/refresh-rsi-all', method='POST', data={}, timeout=120)
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
+@app.route('/api/bots/analytics', methods=['GET'])
+@app.route('/api/bots/analytics/<path:subpath>', methods=['GET', 'POST'])
+def bots_analytics_proxy(subpath=''):
+    """Прокси для аналитики: /api/bots/analytics, /api/bots/analytics/fullai, rsi-audit, sync-from-exchange, ai-reanalyze и т.д."""
+    endpoint = '/api/bots/analytics'
+    if subpath:
+        endpoint += '/' + subpath
+    if request.query_string:
+        endpoint += '?' + request.query_string.decode('utf-8')
+    data = request.get_json(silent=True) if request.method == 'POST' else None
+    timeout = 30 if 'ai-reanalyze' in subpath else 15
+    result = call_bots_service(endpoint, method=request.method, data=data, timeout=timeout)
+    status_code = result.get('status_code', 200 if result.get('success') else 500)
+    return jsonify(result), status_code
+
+
+@app.route('/api/bots/<path:subpath>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
+def bots_generic_proxy(subpath):
+    """Универсальный прокси для /api/bots/* — все запросы, не перехваченные выше, идут в сервис ботов.
+    Покрывает: stop, pause, resume, delete, active-detailed, fullai-config, import-config, trades и др."""
+    endpoint = f'/api/bots/{subpath}'
+    if request.query_string:
+        endpoint += '?' + request.query_string.decode('utf-8')
+    data = request.get_json(silent=True) if request.method in ('POST', 'PUT', 'PATCH') else None
+    timeout = 120 if 'refresh-rsi' in subpath or 'import-config' in subpath else 30
+    result = call_bots_service(endpoint, method=request.method, data=data, timeout=timeout)
     status_code = result.get('status_code', 200 if result.get('success') else 500)
     return jsonify(result), status_code
 

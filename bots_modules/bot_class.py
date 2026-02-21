@@ -549,11 +549,6 @@ class NewTradingBot:
                             action = get_next_action(self.symbol, True)
                             if action == 'real_open':
                                 logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход LONG (уверенность: {decision.get('confidence', 0):.2%})")
-                                try:
-                                    from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                                    append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='LONG', is_virtual=False, confidence=decision.get('confidence'), extra={'price': current_price})
-                                except Exception:
-                                    pass
                                 self._set_decision_source('AI', decision)
                                 return True
                             if action == 'virtual_open':
@@ -563,19 +558,25 @@ class NewTradingBot:
                         except ImportError:
                             pass
                         logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход LONG (уверенность: {decision.get('confidence', 0):.2%})")
-                        try:
-                            from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                            append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='LONG', is_virtual=False, confidence=decision.get('confidence'), extra={'price': current_price})
-                        except Exception:
-                            pass
                         self._set_decision_source('AI', decision)
                         return True
-                    logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: отказ LONG — {decision.get('reason', '')}")
+                    # FullAI Adaptive: при отказе (WAIT/low conf) — виртуальный вход для обучения
                     try:
-                        from bot_engine.fullai_analytics import append_event, EVENT_REFUSED
-                        append_event(symbol=self.symbol, event_type=EVENT_REFUSED, direction='LONG', reason=decision.get('reason', ''), extra={'price': current_price, 'confidence': decision.get('confidence')})
-                    except Exception:
-                        pass
+                        from bots_modules.fullai_adaptive import is_adaptive_enabled, record_virtual_open
+                        if is_adaptive_enabled():
+                            record_virtual_open(self.symbol, 'LONG', current_price)
+                            logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI Adaptive: виртуальный LONG при WAIT (уверенность: {decision.get('confidence', 0):.2%}) — {decision.get('reason', '')}")
+                        else:
+                            from bot_engine.fullai_analytics import append_event, EVENT_REFUSED
+                            append_event(symbol=self.symbol, event_type=EVENT_REFUSED, direction='LONG', reason=decision.get('reason', ''), extra={'price': current_price, 'confidence': decision.get('confidence')})
+                            logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: отказ LONG — {decision.get('reason', '')}")
+                    except ImportError:
+                        try:
+                            from bot_engine.fullai_analytics import append_event, EVENT_REFUSED
+                            append_event(symbol=self.symbol, event_type=EVENT_REFUSED, direction='LONG', reason=decision.get('reason', ''), extra={'price': current_price, 'confidence': decision.get('confidence')})
+                        except Exception:
+                            pass
+                        logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: отказ LONG — {decision.get('reason', '')}")
                     return False
                 except Exception as e:
                     logger.exception(f"[NEW_BOT_{self.symbol}] FullAI вход LONG: {e}")
@@ -736,11 +737,6 @@ class NewTradingBot:
                             action = get_next_action(self.symbol, True)
                             if action == 'real_open':
                                 logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход SHORT (уверенность: {decision.get('confidence', 0):.2%})")
-                                try:
-                                    from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                                    append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='SHORT', is_virtual=False, confidence=decision.get('confidence'), extra={'price': current_price})
-                                except Exception:
-                                    pass
                                 self._set_decision_source('AI', decision)
                                 return True
                             if action == 'virtual_open':
@@ -750,19 +746,25 @@ class NewTradingBot:
                         except ImportError:
                             pass
                         logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: вход SHORT (уверенность: {decision.get('confidence', 0):.2%})")
-                        try:
-                            from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                            append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='SHORT', is_virtual=False, confidence=decision.get('confidence'), extra={'price': current_price})
-                        except Exception:
-                            pass
                         self._set_decision_source('AI', decision)
                         return True
-                    logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: отказ SHORT — {decision.get('reason', '')}")
+                    # FullAI Adaptive: при отказе (WAIT/low conf) — виртуальный вход для обучения
                     try:
-                        from bot_engine.fullai_analytics import append_event, EVENT_REFUSED
-                        append_event(symbol=self.symbol, event_type=EVENT_REFUSED, direction='SHORT', reason=decision.get('reason', ''), extra={'price': current_price, 'confidence': decision.get('confidence')})
-                    except Exception:
-                        pass
+                        from bots_modules.fullai_adaptive import is_adaptive_enabled, record_virtual_open
+                        if is_adaptive_enabled():
+                            record_virtual_open(self.symbol, 'SHORT', current_price)
+                            logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI Adaptive: виртуальный SHORT при WAIT (уверенность: {decision.get('confidence', 0):.2%}) — {decision.get('reason', '')}")
+                        else:
+                            from bot_engine.fullai_analytics import append_event, EVENT_REFUSED
+                            append_event(symbol=self.symbol, event_type=EVENT_REFUSED, direction='SHORT', reason=decision.get('reason', ''), extra={'price': current_price, 'confidence': decision.get('confidence')})
+                            logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: отказ SHORT — {decision.get('reason', '')}")
+                    except ImportError:
+                        try:
+                            from bot_engine.fullai_analytics import append_event, EVENT_REFUSED
+                            append_event(symbol=self.symbol, event_type=EVENT_REFUSED, direction='SHORT', reason=decision.get('reason', ''), extra={'price': current_price, 'confidence': decision.get('confidence')})
+                        except Exception:
+                            pass
+                        logger.info(f"[NEW_BOT_{self.symbol}] 🧠 FullAI: отказ SHORT — {decision.get('reason', '')}")
                     return False
                 except Exception as e:
                     logger.exception(f"[NEW_BOT_{self.symbol}] FullAI вход SHORT: {e}")
@@ -1153,40 +1155,30 @@ class NewTradingBot:
                     logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Нет свечей для проверки защиты от повторных входов")
                     return {'allowed': True, 'reason': 'No candles provided'}
                 
-                # ✅ ИСПРАВЛЕНО: Получаем timestamp последней свечи (проверяем оба варианта: 'timestamp' и 'time')
-                last_candle = candles[-1]  # Последняя свеча - самая новая
+                # Получаем timestamp последней свечи
+                last_candle = candles[-1]
                 last_candle_timestamp = last_candle.get('timestamp') or last_candle.get('time', 0)
-                
-                # Если timestamp в миллисекундах, конвертируем в секунды
                 if last_candle_timestamp > 1e12:
                     last_candle_timestamp = last_candle_timestamp / 1000
                 
-                # ✅ ИСПРАВЛЕНО: Подсчитываем количество свечей с момента закрытия
-                # Свечи уже отсортированы по времени (старые -> новые)
                 candles_passed = 0
-                
-                # ✅ ИСПРАВЛЕНО: Ищем первую свечу, которая ПОЛНОСТЬЮ позже времени закрытия
-                # Проверяем оба варианта ключа: 'timestamp' и 'time'
                 for i, candle in enumerate(candles):
                     candle_timestamp = candle.get('timestamp') or candle.get('time', 0)
                     if candle_timestamp > 1e12:
                         candle_timestamp = candle_timestamp / 1000
-                    
-                    # Если начало свечи >= времени закрытия, считаем эту и все последующие свечи
                     if candle_timestamp >= exit_timestamp:
                         candles_passed = len(candles) - i
                         break
                 
-                # ✅ ИСПРАВЛЕНО: Если не нашли через перебор, считаем по времени (более надежно)
-                if candles_passed == 0:
+                if candles_passed == 0 and last_candle_timestamp > exit_timestamp and CANDLE_INTERVAL_SECONDS > 0:
                     time_diff_seconds = last_candle_timestamp - exit_timestamp
-                    if time_diff_seconds > 0:
-                        # Считаем количество полных 6-часовых интервалов (минимум 1)
-                        candles_passed = max(1, int(time_diff_seconds / CANDLE_INTERVAL_SECONDS))
+                    candles_passed = max(1, int(time_diff_seconds / CANDLE_INTERVAL_SECONDS))
                 
-                # ✅ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА
-                if candles_passed == 0 and last_candle_timestamp > exit_timestamp:
-                    candles_passed = 1
+                # Fallback: по текущему времени (всегда корректен при устаревших свечах)
+                if candles_passed == 0:
+                    time_diff_seconds = current_time - exit_timestamp
+                    if time_diff_seconds > 0 and CANDLE_INTERVAL_SECONDS > 0:
+                        candles_passed = max(1, int(time_diff_seconds / CANDLE_INTERVAL_SECONDS))
                 
                 # ✅ ИСПРАВЛЕНО: Конвертируем loss_reentry_candles в int для корректного сравнения
                 try:
@@ -1495,6 +1487,7 @@ class NewTradingBot:
 
     def _handle_idle_state(self, rsi, trend, candles, price):
         """Бот в списке = проверки пройдены → по рынку заходим по условиям КОНФИГА (rsi_long_threshold, rsi_short_threshold)."""
+        import time
         try:
             with bots_data_lock:
                 auto_bot_enabled = bots_data['auto_bot_config']['enabled']
@@ -1503,25 +1496,63 @@ class NewTradingBot:
             # Направление и момент входа — только по настройкам конфига (should_open_long / should_open_short)
             if self.should_open_long(rsi, trend, candles):
                 logger.info(f"[NEW_BOT_{self.symbol}] 🚀 Вход LONG (условия конфига; лимит/рынок — по настройкам)")
+                _t0 = time.time()
                 if self._open_position_on_exchange('LONG', price):
+                    _delay = time.time() - _t0
                     try:
                         from bots_modules.fullai_adaptive import on_trade_open
                         on_trade_open(self.symbol)
                     except ImportError:
                         pass
                     self.update_status(BOT_STATUS['IN_POSITION_LONG'], price, 'LONG')
+                    # FullAI аналитика: всегда real_open с полными данными (тип, проскальз., задержка, TP/SL, попытка)
+                    try:
+                        with bots_data_lock:
+                            ac = bots_data.get('auto_bot_config', {})
+                        force_m = not (ac.get('limit_orders_entry_enabled') or ac.get('rsi_limit_entry_enabled'))
+                        intended = float(price or 0)
+                        actual = float(self.entry_price or intended or 0)
+                        from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
+                        from bots_modules.fullai_adaptive import build_real_open_extra
+                        extra = build_real_open_extra(
+                            symbol=self.symbol, direction='LONG',
+                            intended_price=intended or actual, actual_price=actual,
+                            order_type='Market' if force_m else 'Limit', delay_sec=_delay,
+                        )
+                        append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='LONG', is_virtual=False, reason=extra.get('attempt_label', 'Реальная сделка'), extra=extra)
+                    except Exception:
+                        pass
                     return {'success': True, 'action': 'OPEN_LONG', 'status': self.status}
                 logger.error(f"[NEW_BOT_{self.symbol}] ❌ Не удалось открыть LONG позицию")
                 return {'success': False, 'error': 'Failed to open LONG position'}
             if self.should_open_short(rsi, trend, candles):
                 logger.info(f"[NEW_BOT_{self.symbol}] 🚀 Вход SHORT (условия конфига; лимит/рынок — по настройкам)")
+                _t0 = time.time()
                 if self._open_position_on_exchange('SHORT', price):
+                    _delay = time.time() - _t0
                     try:
                         from bots_modules.fullai_adaptive import on_trade_open
                         on_trade_open(self.symbol)
                     except ImportError:
                         pass
                     self.update_status(BOT_STATUS['IN_POSITION_SHORT'], price, 'SHORT')
+                    # FullAI аналитика: всегда real_open с полными данными
+                    try:
+                        with bots_data_lock:
+                            ac = bots_data.get('auto_bot_config', {})
+                        force_m = not (ac.get('limit_orders_entry_enabled') or ac.get('rsi_limit_entry_enabled'))
+                        intended = float(price or 0)
+                        actual = float(self.entry_price or intended or 0)
+                        from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
+                        from bots_modules.fullai_adaptive import build_real_open_extra
+                        extra = build_real_open_extra(
+                            symbol=self.symbol, direction='SHORT',
+                            intended_price=intended or actual, actual_price=actual,
+                            order_type='Market' if force_m else 'Limit', delay_sec=_delay,
+                        )
+                        append_event(symbol=self.symbol, event_type=EVENT_REAL_OPEN, direction='SHORT', is_virtual=False, reason=extra.get('attempt_label', 'Реальная сделка'), extra=extra)
+                    except Exception:
+                        pass
                     return {'success': True, 'action': 'OPEN_SHORT', 'status': self.status}
                 logger.error(f"[NEW_BOT_{self.symbol}] ❌ Не удалось открыть SHORT позицию")
                 return {'success': False, 'error': 'Failed to open SHORT position'}
@@ -1657,35 +1688,38 @@ class NewTradingBot:
             self.current_price = price
             profit_percent = self._calc_profit_percent(price)
 
-            # 0. Ожидание безубытка: если ранее отложили закрытие (в зоне RSI/тейков + минус),
-            #    закрываем только при profit >= 0.05% (запас от округления/шума) и только по свежей цене.
-            if exit_waiting and market_price and profit_percent >= 0.05:
-                logger.info(f"[NEW_BOT_{self.symbol}] 🎯 Безубыток достигнут — закрываем (ожидание завершено)")
-                self._clear_exit_waiting_breakeven()
-                self._close_position_on_exchange('BREAKEVEN_WAIT_EXIT')
-                return {'success': True, 'action': f"CLOSE_{self.position_side}", 'reason': 'BREAKEVEN_WAIT_EXIT'}
+            # full_ai_control: закрытие решает ТОЛЬКО FullAI (get_ai_exit_decision). Protections/break-even
+            # обходили 90-сек и вызывали мгновенные выходы с нулём — отключаем их.
+            with bots_data_lock:
+                _full_ai_control = bool((bots_data.get('auto_bot_config') or {}).get('full_ai_control', False))
 
-            # 1. Проверяем защитные механизмы
-            protection_result = self.check_protection_mechanisms(price)
-            if protection_result['should_close']:
-                if self._should_defer_close_for_breakeven(protection_result['reason'], profit_percent):
-                    self._set_exit_waiting_breakeven()
-                    logger.info(
-                        f"[NEW_BOT_{self.symbol}] ⏳ В зоне закрытия ({protection_result['reason']}), "
-                        f"позиция в минусе ({profit_percent:.2f}%) — ждём безубыток"
-                    )
-                else:
+            if not _full_ai_control:
+                # 0. Ожидание безубытка: если ранее отложили закрытие (в зоне RSI/тейков + минус),
+                #    закрываем только при profit >= 0.05% (запас от округления/шума) и только по свежей цене.
+                if exit_waiting and market_price and profit_percent >= 0.05:
+                    logger.info(f"[NEW_BOT_{self.symbol}] 🎯 Безубыток достигнут — закрываем (ожидание завершено)")
                     self._clear_exit_waiting_breakeven()
-                    logger.info(f"[NEW_BOT_{self.symbol}] 🛡️ Закрываем: {protection_result['reason']}")
-                    self._close_position_on_exchange(protection_result['reason'])
-                    return {'success': True, 'action': f"CLOSE_{self.position_side}", 'reason': protection_result['reason']}
+                    self._close_position_on_exchange('BREAKEVEN_WAIT_EXIT')
+                    return {'success': True, 'action': f"CLOSE_{self.position_side}", 'reason': 'BREAKEVEN_WAIT_EXIT'}
+
+                # 1. Проверяем защитные механизмы (SL, TP, break-even, trailing)
+                protection_result = self.check_protection_mechanisms(price)
+                if protection_result['should_close']:
+                    if self._should_defer_close_for_breakeven(protection_result['reason'], profit_percent):
+                        self._set_exit_waiting_breakeven()
+                        logger.info(
+                            f"[NEW_BOT_{self.symbol}] ⏳ В зоне закрытия ({protection_result['reason']}), "
+                            f"позиция в минусе ({profit_percent:.2f}%) — ждём безубыток"
+                        )
+                    else:
+                        self._clear_exit_waiting_breakeven()
+                        logger.info(f"[NEW_BOT_{self.symbol}] 🛡️ Закрываем: {protection_result['reason']}")
+                        self._close_position_on_exchange(protection_result['reason'])
+                        return {'success': True, 'action': f"CLOSE_{self.position_side}", 'reason': protection_result['reason']}
             
-            # 2. Проверяем условия закрытия по RSI (универсальная функция)
+            # 2. Проверяем условия закрытия: FullAI или RSI
             # Адаптивно: мин. свечи ИЛИ мин. минуты (по ТФ) ИЛИ ранний выход, если цена уже сдвинулась на X%
             if self.position_side in ['LONG', 'SHORT']:
-                with bots_data_lock:
-                    _cfg = bots_data.get('auto_bot_config', {})
-                    _full_ai_control = _cfg.get('full_ai_control', False)
                 if _full_ai_control:
                     try:
                         from bots_modules.imports_and_globals import get_effective_auto_bot_config, get_effective_coin_settings
@@ -1713,10 +1747,24 @@ class NewTradingBot:
                                 pass
                         if data_context is None:
                             data_context = {'candles': candles_exit}
+                        entry_ts = None
+                        if self.position_start_time:
+                            try:
+                                entry_ts = self.position_start_time.timestamp()
+                            except Exception:
+                                pass
+                        if entry_ts is None and hasattr(self, 'entry_time') and self.entry_time:
+                            try:
+                                from datetime import datetime
+                                dt = datetime.fromisoformat(str(self.entry_time).replace('Z', ''))
+                                entry_ts = dt.timestamp()
+                            except Exception:
+                                pass
                         position_info = {
                             'entry_price': self.entry_price,
                             'position_side': self.position_side,
                             'position_size_coins': getattr(self, 'position_size_coins', None),
+                            'entry_timestamp': entry_ts,
                         }
                         decision = get_ai_exit_decision(
                             self.symbol, position_info, candles_exit, profit_percent, fullai_config, coin_params,
@@ -2874,34 +2922,31 @@ class NewTradingBot:
             except Exception as _ai_anal_err:
                 logger.debug(f"[NEW_BOT_{self.symbol}] ai_analytics log_trade_close: {_ai_anal_err}")
 
-            # FullAI: записываем каждое закрытие в аналитику (FullAI/RSI/SL/безубыток/ручное)
+            # FullAI: всегда записываем каждое закрытие в аналитику (FullAI/RSI/SL/безубыток/ручное) — для полноты журнала
             try:
-                from bots_modules.imports_and_globals import bots_data, bots_data_lock
-                with bots_data_lock:
-                    _cfg = bots_data.get('auto_bot_config', {})
-                if _cfg.get('full_ai_control', False):
-                    from bots_modules.fullai_adaptive import record_real_close
-                    fullai_extra = {
-                        'entry_price': self.entry_price,
-                        'exit_price': exit_price,
-                        'entry_rsi': entry_rsi,
-                        'exit_rsi': exit_rsi,
-                        'direction': self.position_side,
-                        'order_type_exit': close_result.get('order_type_exit', 'Limit') if close_result else None,
-                        'limit_price_exit': close_result.get('close_price') if close_result else None,
-                        'ts_order_placed_exit': close_result.get('ts_order_placed') if close_result else None,
-                        'order_id_exit': close_result.get('order_id') if close_result else None,
-                    }
-                    limit_exit = close_result.get('close_price') if close_result else None
-                    if limit_exit and limit_exit > 0 and exit_price is not None:
-                        if self.position_side == 'LONG':
-                            fullai_extra['slippage_exit_pct'] = round((float(exit_price) - float(limit_exit)) / float(limit_exit) * 100, 4)
-                        else:
-                            fullai_extra['slippage_exit_pct'] = round((float(limit_exit) - float(exit_price)) / float(limit_exit) * 100, 4)
-                    ts_placed = close_result.get('ts_order_placed') if close_result else None
-                    if ts_placed is not None:
-                        fullai_extra['delay_sec'] = round(datetime.now().timestamp() - float(ts_placed), 2)
-                    record_real_close(self.symbol, pnl_pct, reason=reason, extra=fullai_extra)
+                from bots_modules.fullai_adaptive import record_real_close
+                fullai_extra = {
+                    'entry_price': self.entry_price,
+                    'exit_price': exit_price,
+                    'pnl_usdt': pnl,
+                    'entry_rsi': entry_rsi,
+                    'exit_rsi': exit_rsi,
+                    'direction': self.position_side,
+                    'order_type_exit': close_result.get('order_type_exit', 'Limit') if close_result else None,
+                    'limit_price_exit': close_result.get('close_price') if close_result else None,
+                    'ts_order_placed_exit': close_result.get('ts_order_placed') if close_result else None,
+                    'order_id_exit': close_result.get('order_id') if close_result else None,
+                }
+                limit_exit = close_result.get('close_price') if close_result else None
+                if limit_exit and limit_exit > 0 and exit_price is not None:
+                    if self.position_side == 'LONG':
+                        fullai_extra['slippage_exit_pct'] = round((float(exit_price) - float(limit_exit)) / float(limit_exit) * 100, 4)
+                    else:
+                        fullai_extra['slippage_exit_pct'] = round((float(limit_exit) - float(exit_price)) / float(limit_exit) * 100, 4)
+                ts_placed = close_result.get('ts_order_placed') if close_result else None
+                if ts_placed is not None:
+                    fullai_extra['delay_sec'] = round(datetime.now().timestamp() - float(ts_placed), 2)
+                record_real_close(self.symbol, pnl_pct, reason=reason, extra=fullai_extra)
             except Exception as fullai_log_err:
                 logger.debug(f"[NEW_BOT_{self.symbol}] FullAI analytics при закрытии: {fullai_log_err}")
             
@@ -2929,16 +2974,36 @@ class NewTradingBot:
                 logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка сохранения timestamp закрытия: {timestamp_error}")
             
             # ВАЖНО: Обновляем результат решения AI для переобучения
+            decision_source = getattr(self, '_last_decision_source', 'SCRIPT')
             if hasattr(self, 'ai_decision_id') and self.ai_decision_id:
                 try:
                     from bot_engine.ai.ai_integration import update_ai_decision_result
                     is_successful = pnl > 0
                     update_ai_decision_result(self.ai_decision_id, pnl, pnl_pct, is_successful)
-                    pass
                     self.ai_decision_id = None
                 except Exception as ai_track_error:
                     pass
-            
+            elif decision_source == 'AI':
+                # FullAI: ai_decision_id не ставится (get_ai_entry_decision), но сделка AI-драйвен — отправляем в самообучение
+                try:
+                    from bot_engine.ai.ai_self_learning import process_trade_for_self_learning
+                    meta = getattr(self, '_last_ai_decision_meta', {}) or {}
+                    trade_result = {
+                        'symbol': self.symbol,
+                        'direction': self.position_side,
+                        'pnl': pnl,
+                        'roi': pnl_pct,
+                        'is_successful': pnl > 0,
+                        'ai_confidence': meta.get('ai_confidence'),
+                        'ai_signal': meta.get('ai_signal'),
+                        'entry_data': entry_data,
+                        'market_data': market_data,
+                        'timestamp': datetime.now().isoformat(),
+                    }
+                    process_trade_for_self_learning(trade_result)
+                except Exception as sl_err:
+                    logger.debug(f"[NEW_BOT_{self.symbol}] Self-learning: {sl_err}")
+
         except Exception as e:
             pass
     
@@ -3030,7 +3095,8 @@ class NewTradingBot:
             'stop_loss': getattr(self, 'stop_loss', None) or self.config.get('stop_loss'),
             'take_profit': getattr(self, 'take_profit', None) or self.config.get('take_profit'),
             'current_price': getattr(self, 'current_price', None) or self.config.get('current_price'),
-            'ai_decision_id': getattr(self, 'ai_decision_id', None)
+            'ai_decision_id': getattr(self, 'ai_decision_id', None),
+            'decision_source': getattr(self, '_last_decision_source', 'SCRIPT'),
         }
 
     def _build_trading_bot_bridge_config(self):
@@ -3061,12 +3127,31 @@ class NewTradingBot:
             'trailing_update_interval': self.config.get('trailing_update_interval', auto_config.get('trailing_update_interval', 3)),
         }
 
-        # Переносим дополнительные индивидуальные параметры, если они были сохранены в self.config
+        # Переносим дополнительные индивидуальные параметры
         for key in ('rsi_exit_long_with_trend', 'rsi_exit_long_against_trend',
                     'rsi_exit_short_with_trend', 'rsi_exit_short_against_trend',
-                    'entry_trend'):
+                    'entry_trend', 'rsi_limit_entry_enabled', 'rsi_limit_offset_percent',
+                    'rsi_long_threshold', 'rsi_short_threshold', 'entry_timeframe'):
             if key in self.config:
                 config[key] = self.config[key]
+        for key in ('rsi_limit_entry_enabled', 'rsi_limit_offset_percent',
+                    'rsi_long_threshold', 'rsi_short_threshold'):
+            if key not in config and key in auto_config:
+                config[key] = auto_config[key]
+        try:
+            from bots_modules.imports_and_globals import get_effective_coin_settings
+            coin_params = get_effective_coin_settings(self.symbol) or {}
+            for key in ('rsi_long_threshold', 'rsi_short_threshold',):
+                if key in coin_params and coin_params[key] is not None:
+                    config[key] = coin_params[key]
+        except Exception:
+            pass
+        if 'entry_timeframe' not in config:
+            try:
+                from bot_engine.config_loader import get_current_timeframe
+                config['entry_timeframe'] = get_current_timeframe()
+            except Exception:
+                pass
 
         return config
 

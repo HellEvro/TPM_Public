@@ -340,10 +340,10 @@ _individual_coin_settings_state = {
 # Импортирован как BOT_ENGINE_DEFAULT_CONFIG
 DEFAULT_AUTO_BOT_CONFIG = BOT_ENGINE_DEFAULT_CONFIG
 
-# Константы зрелости монет только из конфига (DEFAULT_AUTO_BOT_CONFIG)
-MIN_CANDLES_FOR_MATURITY = BOT_ENGINE_DEFAULT_CONFIG.get('min_candles_for_maturity')
-MIN_RSI_LOW = BOT_ENGINE_DEFAULT_CONFIG.get('min_rsi_low')
-MAX_RSI_HIGH = BOT_ENGINE_DEFAULT_CONFIG.get('max_rsi_high')
+# Константы зрелости монет из конфига (fallback 400/35/65 как в bot_config.py)
+MIN_CANDLES_FOR_MATURITY = BOT_ENGINE_DEFAULT_CONFIG.get('min_candles_for_maturity') or 400
+MIN_RSI_LOW = BOT_ENGINE_DEFAULT_CONFIG.get('min_rsi_low') or 35
+MAX_RSI_HIGH = BOT_ENGINE_DEFAULT_CONFIG.get('max_rsi_high') or 65
 
 # Состояние процессов системы
 process_state = {
@@ -600,6 +600,7 @@ coins_rsi_data = {
     'coins': {},  # Словарь всех монет с RSI данными
     'last_update': None,
     'update_in_progress': False,
+    'rsi_update_started_at': 0.0,  # Timestamp: когда установили update_in_progress (для таймаута)
     'total_coins': 0,
     'successful_coins': 0,
     'failed_coins': 0,
@@ -704,9 +705,10 @@ def load_auto_bot_config():
             'rsi_time_filter_candles': 8,
             'rsi_time_filter_lower': 35,
             'rsi_time_filter_upper': 65,
+            'leverage': 10,  # Кредитное плечо — fallback если отсутствует в файле
         }
         for k, default_val in _required_auto_bot_keys.items():
-            if k not in merged_config:
+            if k not in merged_config or merged_config[k] is None:
                 merged_config[k] = default_val
         
         # ✅ Логируем leverage только при первой загрузке или при изменении (не спамим)
@@ -722,9 +724,7 @@ def load_auto_bot_config():
             load_auto_bot_config._leverage_logged = True
             load_auto_bot_config._last_leverage = leverage_from_file
         
-        # ✅ Проверяем, что значение действительно есть в конфиге (только при ошибке)
-        if leverage_from_file is None:
-            logger.error(f"[CONFIG] ❌ КРИТИЧЕСКАЯ ОШИБКА: leverage отсутствует в DEFAULT_AUTO_BOT_CONFIG!")
+        # leverage уже подставлен из _required_auto_bot_keys при отсутствии
         
         # ✅ Загружаем фильтры (whitelist, blacklist) из БД, но scope загружается из файла!
         # ✅ КРИТИЧЕСКИ ВАЖНО: scope теперь хранится ТОЛЬКО в файле, не в БД
@@ -776,7 +776,7 @@ def load_auto_bot_config():
             try:
                 from bot_engine.ai import get_ai_manager
                 if not get_ai_manager().is_available():
-                    logger.warning("[FullAI] Полный режим ИИ включён в конфиге, но ИИ недоступен (лицензия не валидна). Переключатель оставлен включённым — после исправления лицензии режим заработает.")
+                    logger.warning("[FullAI] AI Premium недоступен (лицензия/модули). FullAI продолжит работу по RSI-сигналам.")
                 else:
                     # FullAI включён через конфиг и лицензия валидна — авто-включение ИИ, если был выключен
                     ai_before = merged_config.get('ai_enabled', False)
@@ -1090,10 +1090,10 @@ def load_individual_coin_settings():
                         settings['rsi_time_filter_enabled'] = True
                         settings_updated = True
                     
-                    # Гарантируем минимум 2 свечи
+                    # Минимально 1 свеча (уважаем конфиг пользователя, не переопределяем 1→2)
                     rsi_time_filter_candles = settings.get('rsi_time_filter_candles')
-                    if rsi_time_filter_candles is not None and rsi_time_filter_candles < 2:
-                        settings['rsi_time_filter_candles'] = max(2, rsi_time_filter_candles)
+                    if rsi_time_filter_candles is not None and rsi_time_filter_candles < 1:
+                        settings['rsi_time_filter_candles'] = max(1, rsi_time_filter_candles)
                         settings_updated = True
                     
                     if settings_updated:
@@ -1653,7 +1653,7 @@ def close_position_for_bot(symbol, position_side, reason='Manual close'):
         except Exception as e:
             logger.error(f" {symbol}: ⚠️ Ошибка получения размера позиции с биржи: {e}")
 
-        # Fallback 1: из bots_data (position_size_coins — монеты; volume_value/position_size — USDT)
+        # Fallback 1: bots_data (position_size_coins или volume_value/entry_price)
         if not position_size:
             try:
                 with bots_data_lock:
@@ -1664,15 +1664,15 @@ def close_position_for_bot(symbol, position_side, reason='Manual close'):
                     entry_pr = float(bot_data.get('entry_price') or 0)
                     if ps_coins and float(ps_coins) > 0:
                         position_size = abs(float(ps_coins))
-                        logger.info(f" {symbol}: Размер из bots_data.position_size_coins: {position_size}")
+                        logger.info(f" {symbol}: Размер из bots_data: {position_size}")
                     elif ps_usdt and entry_pr > 0:
                         position_size = abs(float(ps_usdt)) / entry_pr
                         if position_size > 0:
-                            logger.info(f" {symbol}: Размер из bots_data (volume_value/entry_price): {position_size}")
+                            logger.info(f" {symbol}: Размер из volume_value/entry_price: {position_size}")
             except Exception:
                 pass
 
-        # Fallback 2: прямой запрос Bybit API по символу
+        # Fallback 2: прямой Bybit API
         if not position_size and hasattr(exch, 'client'):
             try:
                 resp = exch.client.get_positions(category="linear", symbol=f"{symbol}USDT", limit=1)
@@ -1686,7 +1686,7 @@ def close_position_for_bot(symbol, position_side, reason='Manual close'):
                         need_long = (position_side or '').upper() == 'LONG'
                         if is_long == need_long:
                             position_size = sz
-                            logger.info(f" {symbol}: Размер из прямого API Bybit: {position_size}")
+                            logger.info(f" {symbol}: Размер из Bybit API: {position_size}")
                             break
             except Exception:
                 pass

@@ -136,12 +136,14 @@ def register_ai_endpoints(app):
             ai_manager = get_ai_manager()
 
             # Проверяем доступность AI (лицензия)
+            # ВАЖНО: license.valid = фактическая валидность лицензии (подпись, срок, HWID)
+            # is_available() = license + загрузка модулей — для бейджа показываем только лицензию
             license_status = ai_manager.get_status()
             license_obj = license_status.get('license') or {}
             return jsonify({
                 'success': True,
                 'license': {
-                    'valid': ai_manager.is_available(),
+                    'valid': license_obj.get('valid', False),
                     'type': license_obj.get('type') or license_status.get('license_type'),
                     'expires_at': license_obj.get('expires_at') or license_status.get('expires_at'),
                     'features': license_status.get('features', {}),
@@ -174,6 +176,8 @@ def register_ai_endpoints(app):
                     'pattern_min_confidence': AIConfig.AI_PATTERN_MIN_CONFIDENCE,
                     'pattern_weight': AIConfig.AI_PATTERN_WEIGHT,
 
+                    # Parameter Quality Predictor (ML модель параметров — может тормозить систему)
+                    'parameter_quality_enabled': getattr(AIConfig, 'AI_PARAMETER_QUALITY_ENABLED', True),
                     # Auto Training
                     'auto_train_enabled': AIConfig.AI_AUTO_TRAIN_ENABLED,
                     'auto_update_data': AIConfig.AI_AUTO_UPDATE_DATA,
@@ -237,7 +241,8 @@ def register_ai_endpoints(app):
             _BOOL_KEYS = (
                 'ai_enabled', 'anomaly_detection_enabled', 'anomaly_log_enabled',
                 'lstm_enabled', 'pattern_enabled', 'risk_management_enabled',
-                'optimal_entry_enabled', 'auto_train_enabled', 'auto_update_data', 'auto_retrain',
+                'optimal_entry_enabled', 'parameter_quality_enabled',
+                'auto_train_enabled', 'auto_update_data', 'auto_retrain',
                 'log_predictions', 'log_anomalies', 'log_patterns',
                 'self_learning_enabled', 'smc_enabled'
             )
@@ -249,13 +254,29 @@ def register_ai_endpoints(app):
             if data.get('ai_enabled') is False:
                 _AI_CHILD_FLAGS = (
                     'anomaly_detection_enabled', 'anomaly_log_enabled', 'lstm_enabled', 'pattern_enabled',
-                    'risk_management_enabled', 'optimal_entry_enabled', 'auto_train_enabled', 'auto_update_data',
-                    'auto_retrain', 'log_predictions', 'log_anomalies', 'log_patterns',
+                    'risk_management_enabled', 'optimal_entry_enabled', 'parameter_quality_enabled',
+                    'auto_train_enabled', 'auto_update_data', 'auto_retrain',
+                    'log_predictions', 'log_anomalies', 'log_patterns',
                     'self_learning_enabled', 'smc_enabled'
                 )
                 for k in _AI_CHILD_FLAGS:
                     data[k] = False
                 logger.info("[AI_CONFIG] ai_enabled=False → все дочерние AI флаги принудительно выключены")
+                # Синхронизируем auto_bot_config: выключаем full_ai_control и ai_enabled для соответствия UI
+                try:
+                    from bots_modules.imports_and_globals import bots_data, bots_data_lock
+                    from bots_modules.sync_and_cache import save_auto_bot_config
+                    with bots_data_lock:
+                        ac = bots_data.get('auto_bot_config')
+                        if ac is None:
+                            bots_data['auto_bot_config'] = ac = {}
+                        if ac.get('full_ai_control') or ac.get('ai_enabled'):
+                            ac['full_ai_control'] = False
+                            ac['ai_enabled'] = False
+                            save_auto_bot_config()
+                            logger.info("[AI_CONFIG] ai_enabled=False → full_ai_control и ai_enabled сброшены в auto_bot_config")
+                except Exception as e:
+                    logger.debug("[AI_CONFIG] Синхронизация auto_bot_config при выкл AI: %s", e)
 
             # Получаем текущие значения для сравнения
             from bot_engine.config_loader import AIConfig, RiskConfig
@@ -273,6 +294,7 @@ def register_ai_endpoints(app):
                 'risk_management_enabled': AIConfig.AI_RISK_MANAGEMENT_ENABLED,
                 'risk_update_interval': AIConfig.AI_RISK_UPDATE_INTERVAL,
                 'optimal_entry_enabled': RiskConfig.AI_OPTIMAL_ENTRY_ENABLED,
+                'parameter_quality_enabled': getattr(AIConfig, 'AI_PARAMETER_QUALITY_ENABLED', True),
                 'auto_train_enabled': AIConfig.AI_AUTO_TRAIN_ENABLED,
                 'auto_update_data': AIConfig.AI_AUTO_UPDATE_DATA,
                 'auto_retrain': AIConfig.AI_AUTO_RETRAIN,
@@ -341,6 +363,12 @@ def register_ai_endpoints(app):
                         if log_ai_config_change('risk_update_interval', old_config['risk_update_interval'], data['risk_update_interval']):
                             changes_count += 1
                         line = f"    AI_RISK_UPDATE_INTERVAL = {data['risk_update_interval']}\n"
+
+                    # Parameter Quality Predictor (ML модель параметров)
+                    elif 'AI_PARAMETER_QUALITY_ENABLED =' in line and 'parameter_quality_enabled' in data:
+                        if log_ai_config_change('parameter_quality_enabled', old_config.get('parameter_quality_enabled'), data['parameter_quality_enabled']):
+                            changes_count += 1
+                        line = f"    AI_PARAMETER_QUALITY_ENABLED = {data['parameter_quality_enabled']}\n"
 
                     # Auto Training
                     elif 'AI_AUTO_TRAIN_ENABLED =' in line and 'auto_train_enabled' in data:
@@ -446,6 +474,23 @@ def register_ai_endpoints(app):
 
             from bot_engine.config_loader import reload_config
             reload_config()
+
+            # При выключении AI модулей — сбрасываем Full AI и ai_enabled в auto_bot_config (чтобы не было блокировок «AI рекомендует WAIT»)
+            if data.get('ai_enabled') is False:
+                try:
+                    from bots_modules.imports_and_globals import bots_data, bots_data_lock
+                    from bots_modules.sync_and_cache import save_auto_bot_config
+                    with bots_data_lock:
+                        ac = bots_data.get('auto_bot_config') or {}
+                        if ac.get('full_ai_control') or ac.get('ai_enabled'):
+                            ac['full_ai_control'] = False
+                            ac['ai_enabled'] = False
+                            bots_data['auto_bot_config'] = ac
+                            save_auto_bot_config()
+                            logger.info("[AI_CONFIG] ai_enabled=False → full_ai_control и ai_enabled сброшены в auto_bot_config")
+                except Exception as _e:
+                    logger.debug("[AI_CONFIG] Сброс full_ai_control при выкл AI: %s", _e)
+
             # Выводим итоговое сообщение
             if changes_count > 0:
                 logger.info(f"[AI_CONFIG] ✅ AI модули: изменено параметров: {changes_count}, конфигурация сохранена и перезагружена")

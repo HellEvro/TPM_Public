@@ -207,6 +207,13 @@
     color: var(--text-color) !important;  /* Белый текст для всех элементов */
 }
 
+/* Причина WAIT — чтобы было понятно чего ждать */
+.coin-signal .wait-reason {
+    color: var(--text-muted, #888);
+    font-size: 0.9em;
+    font-weight: normal;
+}
+
 .delisting-indicator {
     color: var(--red-bright);
     font-size: 14px;
