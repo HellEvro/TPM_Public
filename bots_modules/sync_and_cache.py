@@ -3030,13 +3030,33 @@ def sync_bots_with_exchange():
                                 entry_price = float(bot_data.get('entry_price') or 0.0)
                             except (TypeError, ValueError):
                                 entry_price = 0.0
+                            if not entry_price or entry_price <= 0:
+                                try:
+                                    exchange_obj = get_exchange()
+                                    if exchange_obj and hasattr(exchange_obj, 'get_closed_pnl'):
+                                        closed_list = exchange_obj.get_closed_pnl(sort_by='time', period='day') or []
+                                        for cp in closed_list:
+                                            if (cp.get('symbol') or '').upper() == (symbol or '').upper():
+                                                ep = float(cp.get('entry_price') or 0) or 0
+                                                if ep > 0:
+                                                    entry_price = ep
+                                                    if cp.get('exit_price'):
+                                                        try:
+                                                            xp = float(cp.get('exit_price') or 0)
+                                                            if xp > 0 and not exit_price:
+                                                                exit_price = xp
+                                                        except (TypeError, ValueError):
+                                                            pass
+                                                break
+                                except Exception as _:
+                                    pass
                             
                             # ✅ УПРОЩЕНО: Проверяем дубликаты сразу после получения entry_price
                             bot_id = bot_data.get('id') or symbol
                             already_closed_trade = _check_if_trade_already_closed(bot_id, symbol, entry_price, entry_time_str)
 
-                            # Получаем рыночную цену для фиксации закрытия
-                            if manual_closed:
+                            # Получаем цену выхода (с биржи или текущую)
+                            if manual_closed and not exit_price:
                                 try:
                                     exchange_obj = get_exchange()
                                     if exchange_obj and hasattr(exchange_obj, 'get_ticker'):

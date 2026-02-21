@@ -198,8 +198,8 @@
                 const pnlClass = (roiPct != null ? (roiPct >= 0 ? 'positive' : 'negative') : (pnlUsdt != null ? (pnlUsdt >= 0 ? 'positive' : 'negative') : ''));
                 const pnlPctStr = roiPct != null ? ((roiPct >= 0 ? '+' : '') + roiPct.toFixed(2) + '%') : '—';
                 const pnlUsdtStr = tr.is_virtual ? '—' : (pnlUsdt != null ? ((pnlUsdt >= 0 ? '+' : '') + pnlUsdt.toFixed(2)) : '—');
-                const entryPrice = tr.entry_price != null ? Number(tr.entry_price).toFixed(6) : '—';
-                const exitPrice = tr.exit_price != null ? Number(tr.exit_price).toFixed(6) : '—';
+                const entryPrice = (tr.entry_price != null && Number(tr.entry_price) > 0) ? Number(tr.entry_price).toFixed(6) : '—';
+                const exitPrice = (tr.exit_price != null && Number(tr.exit_price) > 0) ? Number(tr.exit_price).toFixed(6) : '—';
                 const conclusion = tr.conclusion || (pnlUsdt >= 0 || roiPct >= 0 ? 'Прибыль' : 'Убыток');
                 const virtualBadge = tr.is_virtual ? ' <span class="virtual-pnl-badge" style="background:#9c27b0;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;">Виртуальная</span>' : '';
                 closedTradesHtml += '<tr><td>' + this._formatTsLocal(tr.ts, tr.ts_iso || tr.exit_time) + '</td><td>' + (tr.symbol || '') + virtualBadge + '</td><td>' + (tr.direction || '') + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlPctStr + '</td><td class="' + pnlClass + '">' + pnlUsdtStr + '</td><td>' + (tr.close_reason || '—') + '</td><td>' + (conclusion || '—') + '</td></tr>';
@@ -229,16 +229,22 @@
             const label = eventLabels[ev.event_type] || ev.event_type;
             const dir = ev.direction || '—';
             const ex = ev.extra || {};
-            const entryPrice = ex.entry_price != null ? Number(ex.entry_price).toFixed(6) : (ev.event_type === 'real_open' || ev.event_type === 'refused' ? (ex.price != null ? Number(ex.price).toFixed(6) : '—') : '—');
-            const exitPrice = ex.exit_price != null ? Number(ex.exit_price).toFixed(6) : '—';
+            const entryPrice = (ex.entry_price != null && Number(ex.entry_price) > 0) ? Number(ex.entry_price).toFixed(6) : (ev.event_type === 'real_open' || ev.event_type === 'refused' ? (ex.price != null && Number(ex.price) > 0 ? Number(ex.price).toFixed(6) : '—') : '—');
+            const exitPrice = (ex.exit_price != null && Number(ex.exit_price) > 0) ? Number(ex.exit_price).toFixed(6) : '—';
             const limitExit = ex.limit_price_exit != null ? Number(ex.limit_price_exit).toFixed(6) : '—';
             const isEntry = ev.event_type === 'real_open' || ev.event_type === 'virtual_open';
             const orderType = isEntry ? (ex.order_type_entry || '—') : (ex.order_type_exit || '—');
             const tsPlaced = ex.ts_order_placed_exit != null ? this._formatTsLocal(ex.ts_order_placed_exit, null) : '—';
             const slippage = isEntry ? (ex.slippage_entry_pct != null ? Number(ex.slippage_entry_pct).toFixed(2) + '%' : '—') : (ex.slippage_exit_pct != null ? Number(ex.slippage_exit_pct).toFixed(2) + '%' : '—');
             const delay = isEntry ? (ex.delay_entry_sec != null ? String(Number(ex.delay_entry_sec).toFixed(1)) : '—') : (ex.delay_sec != null ? String(Number(ex.delay_sec).toFixed(1)) : '—');
-            const pnlPct = ev.pnl_percent != null ? Number(ev.pnl_percent) : (ex.pnl_percent != null ? Number(ex.pnl_percent) : null);
-            const pnlUsdt = ex.pnl_usdt != null ? Number(ex.pnl_usdt) : null;
+            let pnlPct = ev.pnl_percent != null ? Number(ev.pnl_percent) : (ex.pnl_percent != null ? Number(ex.pnl_percent) : null);
+            let pnlUsdt = ex.pnl_usdt != null ? Number(ex.pnl_usdt) : null;
+            const hasValidEntry = ex.entry_price != null && Number(ex.entry_price) > 0;
+            const hasValidExit = ex.exit_price != null && Number(ex.exit_price) > 0;
+            if ((ev.event_type === 'real_close' || ev.event_type === 'virtual_close') && !hasValidEntry && hasValidExit) {
+                pnlPct = null;
+                pnlUsdt = null;
+            }
             const isProfit = (pnlUsdt != null && pnlUsdt > 0) || (pnlPct != null && pnlPct > 0);
             const isLoss = (pnlUsdt != null && pnlUsdt < 0) || (pnlPct != null && pnlPct < 0);
             const pnlClass = isLoss ? 'negative' : (isProfit ? 'positive' : '');
