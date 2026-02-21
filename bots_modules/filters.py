@@ -3111,7 +3111,8 @@ def process_auto_bot_signals(exchange_obj=None):
                         if last_ai_result.get('ai_used') and last_ai_result.get('should_open'):
                             logger.info(f" 🤖 AI разрешает вход {symbol} (уверенность {last_ai_result.get('ai_confidence', 0):.0%})")
                     except Exception as ai_err:
-                        pass
+                        # AI Premium сбой — не блокируем FullAI, разрешаем вход по RSI
+                        last_ai_result = {'ai_used': False, 'should_open': True, 'reason': 'AI error, RSI fallback'}
                 potential_coins.append({
                     'symbol': symbol,
                     'rsi': rsi,

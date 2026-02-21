@@ -36,54 +36,60 @@ def _get_ai_param_recommendation(
     """
     # 1) ParameterQualityPredictor: модель предсказания качества параметров (обучена на исходах)
     try:
-        from bot_engine.ai.parameter_quality_predictor import ParameterQualityPredictor
-        predictor = ParameterQualityPredictor()
-        if predictor.is_trained and predictor.model:
-            base_rsi = {
-                'oversold': current.get('rsi_long_threshold') or fullai_global.get('rsi_long_threshold') or 29,
-                'overbought': current.get('rsi_short_threshold') or fullai_global.get('rsi_short_threshold') or 71,
-                'exit_long_with_trend': current.get('rsi_exit_long_with_trend') or fullai_global.get('rsi_exit_long_with_trend') or 65,
-                'exit_long_against_trend': current.get('rsi_exit_long_against_trend') or fullai_global.get('rsi_exit_long_against_trend') or 60,
-                'exit_short_with_trend': current.get('rsi_exit_short_with_trend') or fullai_global.get('rsi_exit_short_with_trend') or 35,
-                'exit_short_against_trend': current.get('rsi_exit_short_against_trend') or fullai_global.get('rsi_exit_short_against_trend') or 40,
-            }
-            risk = {
-                'stop_loss': float(current.get('max_loss_percent') or fullai_global.get('max_loss_percent') or 10),
-                'take_profit': float(current.get('take_profit_percent') or fullai_global.get('take_profit_percent') or 15),
-                'trailing_stop_activation': float(current.get('trailing_stop_activation') or fullai_global.get('trailing_stop_activation') or 20),
-                'trailing_stop_distance': float(current.get('trailing_stop_distance') or fullai_global.get('trailing_stop_distance') or 5),
-            }
-            suggestions = predictor.suggest_optimal_params(base_rsi, risk_params=risk, num_suggestions=3)
-            if suggestions:
-                best_rsi, quality = suggestions[0]
-                new_params = {
-                    **current,
-                    'take_profit_percent': round(risk.get('take_profit', 15), 1),
-                    'max_loss_percent': round(risk.get('stop_loss', 10), 1),
-                    'rsi_long_threshold': best_rsi.get('oversold', base_rsi['oversold']),
-                    'rsi_short_threshold': best_rsi.get('overbought', base_rsi['overbought']),
-                    'rsi_exit_long_with_trend': best_rsi.get('exit_long_with_trend', base_rsi['exit_long_with_trend']),
-                    'rsi_exit_long_against_trend': best_rsi.get('exit_long_against_trend', base_rsi['exit_long_against_trend']),
-                    'rsi_exit_short_with_trend': best_rsi.get('exit_short_with_trend', base_rsi['exit_short_with_trend']),
-                    'rsi_exit_short_against_trend': best_rsi.get('exit_short_against_trend', base_rsi['exit_short_against_trend']),
+        from bot_engine.config_loader import AIConfig
+        if getattr(AIConfig, 'AI_PARAMETER_QUALITY_ENABLED', True):
+            from bot_engine.ai.parameter_quality_predictor import ParameterQualityPredictor
+            predictor = ParameterQualityPredictor()
+            if predictor.is_trained and predictor.model:
+                base_rsi = {
+                    'oversold': current.get('rsi_long_threshold') or fullai_global.get('rsi_long_threshold') or 29,
+                    'overbought': current.get('rsi_short_threshold') or fullai_global.get('rsi_short_threshold') or 71,
+                    'exit_long_with_trend': current.get('rsi_exit_long_with_trend') or fullai_global.get('rsi_exit_long_with_trend') or 65,
+                    'exit_long_against_trend': current.get('rsi_exit_long_against_trend') or fullai_global.get('rsi_exit_long_against_trend') or 60,
+                    'exit_short_with_trend': current.get('rsi_exit_short_with_trend') or fullai_global.get('rsi_exit_short_with_trend') or 35,
+                    'exit_short_against_trend': current.get('rsi_exit_short_against_trend') or fullai_global.get('rsi_exit_short_against_trend') or 40,
                 }
-                reason = (
-                    "ИИ сам обучился на истории сделок: модель предсказания качества параметров рекомендует эти значения "
-                    "(понимает, как параметры влияют на исход сделок). Предсказанное качество: %.2f." % quality
-                )
-                return (new_params, reason)
+                risk = {
+                    'stop_loss': float(current.get('max_loss_percent') or fullai_global.get('max_loss_percent') or 10),
+                    'take_profit': float(current.get('take_profit_percent') or fullai_global.get('take_profit_percent') or 15),
+                    'trailing_stop_activation': float(current.get('trailing_stop_activation') or fullai_global.get('trailing_stop_activation') or 20),
+                    'trailing_stop_distance': float(current.get('trailing_stop_distance') or fullai_global.get('trailing_stop_distance') or 5),
+                }
+                suggestions = predictor.suggest_optimal_params(base_rsi, risk_params=risk, num_suggestions=3)
+                if suggestions:
+                    best_rsi, quality = suggestions[0]
+                    new_params = {
+                        **current,
+                        'take_profit_percent': round(risk.get('take_profit', 15), 1),
+                        'max_loss_percent': round(risk.get('stop_loss', 10), 1),
+                        'rsi_long_threshold': best_rsi.get('oversold', base_rsi['oversold']),
+                        'rsi_short_threshold': best_rsi.get('overbought', base_rsi['overbought']),
+                        'rsi_exit_long_with_trend': best_rsi.get('exit_long_with_trend', base_rsi['exit_long_with_trend']),
+                        'rsi_exit_long_against_trend': best_rsi.get('exit_long_against_trend', base_rsi['exit_long_against_trend']),
+                        'rsi_exit_short_with_trend': best_rsi.get('exit_short_with_trend', base_rsi['exit_short_with_trend']),
+                        'rsi_exit_short_against_trend': best_rsi.get('exit_short_against_trend', base_rsi['exit_short_against_trend']),
+                    }
+                    reason = (
+                        "ИИ сам обучился на истории сделок: модель предсказания качества параметров рекомендует эти значения "
+                        "(понимает, как параметры влияют на исход сделок). Предсказанное качество: %.2f." % quality
+                    )
+                    return (new_params, reason)
     except Exception as e:
         logger.debug("[FullAI learner] ParameterQualityPredictor не применим: %s", e)
 
     # 2) AIContinuousLearning: база знаний по сделкам, оптимальные параметры по символу
     try:
-        from bot_engine.ai.ai_continuous_learning import AIContinuousLearning
-        cl = AIContinuousLearning()
-        raw_trades = [{'symbol': e.get('symbol'), 'pnl': e.get('roi', 0) * 0.01, 'success': e.get('success')} for e in evals]
-        # Вызываем обучение только при достаточном числе сделок (≥10), иначе learn_from_real_trades только спамит логи
-        if raw_trades and len(raw_trades) >= 10:
-            cl.learn_from_real_trades(raw_trades)
-        optimal = cl.get_optimal_parameters_for_symbol(symbol)
+        from bot_engine.config_loader import AIConfig
+        if getattr(AIConfig, 'AI_PARAMETER_QUALITY_ENABLED', True):
+            from bot_engine.ai.ai_continuous_learning import AIContinuousLearning
+            cl = AIContinuousLearning()
+            raw_trades = [{'symbol': e.get('symbol'), 'pnl': e.get('roi', 0) * 0.01, 'success': e.get('success')} for e in evals]
+            # Вызываем обучение только при достаточном числе сделок (≥10), иначе learn_from_real_trades только спамит логи
+            if raw_trades and len(raw_trades) >= 10:
+                cl.learn_from_real_trades(raw_trades)
+            optimal = cl.get_optimal_parameters_for_symbol(symbol)
+        else:
+            optimal = None
         if optimal and isinstance(optimal, dict):
             new_params = {**current}
             for key in ('take_profit_percent', 'max_loss_percent', 'rsi_long_threshold', 'rsi_short_threshold'):

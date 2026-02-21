@@ -31,6 +31,16 @@ class AIContinuousLearning:
     
     def __init__(self):
         """Инициализация модуля постоянного обучения"""
+        # Если Parameter Quality отключён — минимальная инициализация (avoid heavy load)
+        try:
+            from bot_engine.config_loader import AIConfig
+            if not getattr(AIConfig, 'AI_PARAMETER_QUALITY_ENABLED', True):
+                self.data_dir = 'data/ai'
+                self.ai_db = None
+                self.knowledge_base = {}
+                return
+        except Exception:
+            pass
         self.data_dir = 'data/ai'
         
         # Подключаемся к БД
@@ -405,6 +415,13 @@ class AIContinuousLearning:
         Args:
             trades: Список реальных сделок с результатами
         """
+        # Ранний выход: Parameter Quality отключён в настройках AI
+        try:
+            from bot_engine.config_loader import AIConfig
+            if not getattr(AIConfig, 'AI_PARAMETER_QUALITY_ENABLED', True):
+                return
+        except Exception:
+            pass
         # Фильтруем сделки по whitelist/blacklist
         original_trades_count = len(trades)
         filtered_trades = []

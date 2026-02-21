@@ -176,6 +176,8 @@ def register_ai_endpoints(app):
                     'pattern_min_confidence': AIConfig.AI_PATTERN_MIN_CONFIDENCE,
                     'pattern_weight': AIConfig.AI_PATTERN_WEIGHT,
 
+                    # Parameter Quality Predictor (ML модель параметров — может тормозить систему)
+                    'parameter_quality_enabled': getattr(AIConfig, 'AI_PARAMETER_QUALITY_ENABLED', True),
                     # Auto Training
                     'auto_train_enabled': AIConfig.AI_AUTO_TRAIN_ENABLED,
                     'auto_update_data': AIConfig.AI_AUTO_UPDATE_DATA,
@@ -239,7 +241,8 @@ def register_ai_endpoints(app):
             _BOOL_KEYS = (
                 'ai_enabled', 'anomaly_detection_enabled', 'anomaly_log_enabled',
                 'lstm_enabled', 'pattern_enabled', 'risk_management_enabled',
-                'optimal_entry_enabled', 'auto_train_enabled', 'auto_update_data', 'auto_retrain',
+                'optimal_entry_enabled', 'parameter_quality_enabled',
+                'auto_train_enabled', 'auto_update_data', 'auto_retrain',
                 'log_predictions', 'log_anomalies', 'log_patterns',
                 'self_learning_enabled', 'smc_enabled'
             )
@@ -251,8 +254,9 @@ def register_ai_endpoints(app):
             if data.get('ai_enabled') is False:
                 _AI_CHILD_FLAGS = (
                     'anomaly_detection_enabled', 'anomaly_log_enabled', 'lstm_enabled', 'pattern_enabled',
-                    'risk_management_enabled', 'optimal_entry_enabled', 'auto_train_enabled', 'auto_update_data',
-                    'auto_retrain', 'log_predictions', 'log_anomalies', 'log_patterns',
+                    'risk_management_enabled', 'optimal_entry_enabled', 'parameter_quality_enabled',
+                    'auto_train_enabled', 'auto_update_data', 'auto_retrain',
+                    'log_predictions', 'log_anomalies', 'log_patterns',
                     'self_learning_enabled', 'smc_enabled'
                 )
                 for k in _AI_CHILD_FLAGS:
@@ -290,6 +294,7 @@ def register_ai_endpoints(app):
                 'risk_management_enabled': AIConfig.AI_RISK_MANAGEMENT_ENABLED,
                 'risk_update_interval': AIConfig.AI_RISK_UPDATE_INTERVAL,
                 'optimal_entry_enabled': RiskConfig.AI_OPTIMAL_ENTRY_ENABLED,
+                'parameter_quality_enabled': getattr(AIConfig, 'AI_PARAMETER_QUALITY_ENABLED', True),
                 'auto_train_enabled': AIConfig.AI_AUTO_TRAIN_ENABLED,
                 'auto_update_data': AIConfig.AI_AUTO_UPDATE_DATA,
                 'auto_retrain': AIConfig.AI_AUTO_RETRAIN,
@@ -358,6 +363,12 @@ def register_ai_endpoints(app):
                         if log_ai_config_change('risk_update_interval', old_config['risk_update_interval'], data['risk_update_interval']):
                             changes_count += 1
                         line = f"    AI_RISK_UPDATE_INTERVAL = {data['risk_update_interval']}\n"
+
+                    # Parameter Quality Predictor (ML модель параметров)
+                    elif 'AI_PARAMETER_QUALITY_ENABLED =' in line and 'parameter_quality_enabled' in data:
+                        if log_ai_config_change('parameter_quality_enabled', old_config.get('parameter_quality_enabled'), data['parameter_quality_enabled']):
+                            changes_count += 1
+                        line = f"    AI_PARAMETER_QUALITY_ENABLED = {data['parameter_quality_enabled']}\n"
 
                     # Auto Training
                     elif 'AI_AUTO_TRAIN_ENABLED =' in line and 'auto_train_enabled' in data:

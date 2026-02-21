@@ -650,11 +650,15 @@ class AISelfLearning:
         logger.info(f"{'✅' if enabled else '❌'} Адаптивное обучение {'включено' if enabled else 'выключено'}")
 
     def _get_continuous_learning(self):
-        """Ленивая загрузка AIContinuousLearning для оценки производительности"""
+        """Ленивая загрузка AIContinuousLearning для оценки производительности (только если Parameter Quality включён)"""
         if not hasattr(self, '_continuous_learning') or self._continuous_learning is None:
             try:
-                from bot_engine.ai.ai_continuous_learning import AIContinuousLearning
-                self._continuous_learning = AIContinuousLearning()
+                from bot_engine.config_loader import AIConfig
+                if not getattr(AIConfig, 'AI_PARAMETER_QUALITY_ENABLED', True):
+                    self._continuous_learning = None
+                else:
+                    from bot_engine.ai.ai_continuous_learning import AIContinuousLearning
+                    self._continuous_learning = AIContinuousLearning()
             except Exception as e:
                 logger.warning(f"⚠️ Не удалось подключить AIContinuousLearning: {e}")
                 self._continuous_learning = None

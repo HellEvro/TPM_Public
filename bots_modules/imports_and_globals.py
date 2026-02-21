@@ -705,9 +705,10 @@ def load_auto_bot_config():
             'rsi_time_filter_candles': 8,
             'rsi_time_filter_lower': 35,
             'rsi_time_filter_upper': 65,
+            'leverage': 10,  # Кредитное плечо — fallback если отсутствует в файле
         }
         for k, default_val in _required_auto_bot_keys.items():
-            if k not in merged_config:
+            if k not in merged_config or merged_config[k] is None:
                 merged_config[k] = default_val
         
         # ✅ Логируем leverage только при первой загрузке или при изменении (не спамим)
@@ -723,9 +724,7 @@ def load_auto_bot_config():
             load_auto_bot_config._leverage_logged = True
             load_auto_bot_config._last_leverage = leverage_from_file
         
-        # ✅ Проверяем, что значение действительно есть в конфиге (только при ошибке)
-        if leverage_from_file is None:
-            logger.error(f"[CONFIG] ❌ КРИТИЧЕСКАЯ ОШИБКА: leverage отсутствует в DEFAULT_AUTO_BOT_CONFIG!")
+        # leverage уже подставлен из _required_auto_bot_keys при отсутствии
         
         # ✅ Загружаем фильтры (whitelist, blacklist) из БД, но scope загружается из файла!
         # ✅ КРИТИЧЕСКИ ВАЖНО: scope теперь хранится ТОЛЬКО в файле, не в БД
@@ -777,7 +776,7 @@ def load_auto_bot_config():
             try:
                 from bot_engine.ai import get_ai_manager
                 if not get_ai_manager().is_available():
-                    logger.warning("[FullAI] Полный режим ИИ включён в конфиге, но ИИ недоступен (лицензия не валидна). Переключатель оставлен включённым — после исправления лицензии режим заработает.")
+                    logger.warning("[FullAI] AI Premium недоступен (лицензия/модули). FullAI продолжит работу по RSI-сигналам.")
                 else:
                     # FullAI включён через конфиг и лицензия валидна — авто-включение ИИ, если был выключен
                     ai_before = merged_config.get('ai_enabled', False)
