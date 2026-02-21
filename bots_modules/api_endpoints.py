@@ -5610,6 +5610,78 @@ def get_ai_analytics_context():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+def _enrich_real_close_events_with_closed_trades(events, closed_trades):
+    """
+    Обогащает события real_close корректными PnL/entry/exit из closed_trades (bots_data.db).
+    Когда fullai_events записан с entry_price=0 (закрытие на бирже), отображаются нули.
+    Сопоставляем по символу и времени выхода (в пределах 2 мин).
+    """
+    if not events or not closed_trades:
+        return events
+    by_symbol_ts = {}
+    for t in closed_trades:
+        sym = (t.get('symbol') or '').upper()
+        if not sym:
+            continue
+        ts = t.get('ts') or 0
+        if ts:
+            ts_sec = int(ts / 1000) if ts > 1e12 else int(ts)
+            bucket = ts_sec // 60
+            key = (sym, bucket)
+            if key not in by_symbol_ts:
+                by_symbol_ts[key] = []
+            by_symbol_ts[key].append(t)
+    result = []
+    for ev in events:
+        if ev.get('event_type') != 'real_close':
+            result.append(ev)
+            continue
+        ex = ev.get('extra') or {}
+        try:
+            ep = float(ex.get('entry_price') or 0)
+        except (TypeError, ValueError):
+            ep = 0
+        needs_enrich = ep <= 0
+        if not needs_enrich:
+            result.append(ev)
+            continue
+        sym = (ev.get('symbol') or '').upper()
+        ev_ts = ev.get('ts') or 0
+        if not ev_ts:
+            result.append(ev)
+            continue
+        ev_sec = int(ev_ts) if ev_ts < 1e12 else int(ev_ts / 1000)
+        best = None
+        best_diff = 999999
+        for b in [-2, -1, 0, 1, 2]:
+            bucket = (ev_sec // 60) + b
+            cands = by_symbol_ts.get((sym, bucket)) or []
+            for t in cands:
+                t_ts = t.get('ts') or 0
+                t_sec = int(t_ts / 1000) if t_ts > 1e12 else int(t_ts)
+                diff = abs(t_sec - ev_sec)
+                if diff < best_diff and diff <= 180:
+                    best_diff = diff
+                    best = t
+        if best:
+            extra = dict(ex)
+            if best.get('entry_price') is not None:
+                extra['entry_price'] = best.get('entry_price')
+            if best.get('exit_price') is not None:
+                extra['exit_price'] = best.get('exit_price')
+            if best.get('pnl_usdt') is not None:
+                extra['pnl_usdt'] = best.get('pnl_usdt')
+            roi = best.get('roi_pct')
+            if roi is not None:
+                extra['pnl_percent'] = float(roi)
+            ev = dict(ev)
+            ev['extra'] = extra
+            if roi is not None:
+                ev['pnl_percent'] = float(roi)
+        result.append(ev)
+    return result
+
+
 @bots_app.route('/api/bots/analytics/fullai', methods=['GET'])
 def get_fullai_analytics():
     """Аналитика FullAI: события и сводка из data/fullai_analytics.db + винрейт/PnL по сделкам бота из bots_data.db."""
@@ -5625,6 +5697,7 @@ def get_fullai_analytics():
         db_info = get_db_info()
         bot_trades_stats = _compute_bot_trades_stats(symbol=symbol, from_ts=from_ts, to_ts=to_ts)
         closed_trades = _get_closed_trades_for_table(symbol=symbol, from_ts=from_ts, to_ts=to_ts, limit=limit)
+        events = _enrich_real_close_events_with_closed_trades(events, closed_trades)
         fullai_configs = {}
         try:
             from bot_engine.bots_database import get_bots_database
