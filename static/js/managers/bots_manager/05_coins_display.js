@@ -64,7 +64,9 @@
             const isMature = coin.is_mature || false;
             const matureClass = isMature ? 'mature-coin' : '';
             
-            // Убраны спам логи для лучшей отладки
+            // Причина WAIT — чтобы было понятно чего ждать
+            const waitReason = (effectiveSignal === 'WAIT' || !effectiveSignal) ? this.getWaitReasonShort(coin) : '';
+            const waitReasonDisplay = waitReason ? ` <span class="wait-reason" title="${String(waitReason).replace(/"/g, '&quot;')}">(${waitReason.length > 24 ? waitReason.slice(0, 21) + '…' : waitReason})</span>` : '';
             
             return `
                 <li class="coin-item ${rsiClass} ${trendClass} ${signalClass} ${manualClass} ${matureClass} ${unavailableClass} ${delistingClass} ${newCoinClass}" data-symbol="${coin.symbol}">
@@ -106,7 +108,7 @@
                             <span class="coin-price">$${coin.price?.toFixed(6) || '0'}</span>
                         </div>
                         <div class="coin-signal">
-                            <small class="signal-text">${effectiveSignal || 'WAIT'}</small>
+                            <small class="signal-text">${effectiveSignal || 'WAIT'}${waitReasonDisplay}</small>
                             ${this.generateEnhancedSignalInfo(coin)}
                             ${this.generateTimeFilterInfo(coin)}
                             ${this.generateAntiPumpFilterInfo(coin)}
@@ -437,8 +439,9 @@
             return 'WAIT';
         }
         
-        // 4. Проверяем зрелость монеты
-        if (coin.is_mature === false) {
+        // 4. Проверяем зрелость монеты (ТОЛЬКО если включена в конфиге!)
+        const cfg = this.cachedAutoBotConfig || {};
+        if (cfg.enable_maturity_check !== false && coin.is_mature === false) {
             return 'WAIT';
         }
         
@@ -491,6 +494,46 @@
         
         // Возвращаем проверенный сигнал (effective_signal из API уже обработан в начале функции)
         return signal;
+    },
+            /** Краткая причина WAIT для отображения в списке монет (понятно чего ждать) */
+            getWaitReasonShort(coin) {
+        if (!coin) return '';
+        const autoConfig = this.cachedAutoBotConfig || {};
+        const baseSignal = coin.signal || 'WAIT';
+        if (coin.blocked_by_exit_scam === true && autoConfig.exit_scam_enabled !== false) {
+            const r = (coin.exit_scam_info && coin.exit_scam_info.reason) ? coin.exit_scam_info.reason : '';
+            return r || 'ExitScam';
+        }
+        if (coin.blocked_by_rsi_time === true && autoConfig.rsi_time_filter_enabled !== false) {
+            const r = (coin.time_filter_info && coin.time_filter_info.reason) ? coin.time_filter_info.reason : '';
+            return r || 'RSI Time фильтр';
+        }
+        if (coin.blocked_by_loss_reentry === true && autoConfig.loss_reentry_protection !== false) {
+            return 'Повторный вход после убытка';
+        }
+        if (autoConfig.enable_maturity_check !== false && coin.is_mature === false) {
+            return coin.maturity_reason || 'Незрелая монета';
+        }
+        if (coin.blocked_by_scope === true) return 'Blacklist/Scope';
+        if (coin.enhanced_rsi && coin.enhanced_rsi.enabled && coin.enhanced_rsi.enhanced_signal === 'WAIT' && baseSignal !== 'WAIT') {
+            return 'Enhanced RSI';
+        }
+        const tf = this.currentTimeframe || document.getElementById('systemTimeframe')?.value || '6h';
+        const rsiKey = `rsi${tf}`;
+        const trendKey = `trend${tf}`;
+        const rsi = coin[rsiKey] || coin.rsi6h || coin.rsi || 50;
+        const trend = coin[trendKey] || coin.trend6h || coin.trend || 'NEUTRAL';
+        const rsiLong = autoConfig.rsi_long_threshold || 29;
+        const rsiShort = autoConfig.rsi_short_threshold || 71;
+        if (baseSignal === 'ENTER_LONG' && autoConfig.avoid_down_trend && rsi <= rsiLong && trend === 'DOWN') return 'DOWN тренд';
+        if (baseSignal === 'ENTER_SHORT' && autoConfig.avoid_up_trend && rsi >= rsiShort && trend === 'UP') return 'UP тренд';
+        if (baseSignal === 'WAIT') {
+            if (rsi > rsiLong && rsi < rsiShort) return `RSI ${rsi.toFixed(0)} — нейтральная зона`;
+            if (rsi <= rsiLong) return `RSI ${rsi.toFixed(0)} — зона LONG, но WAIT`;
+            if (rsi >= rsiShort) return `RSI ${rsi.toFixed(0)} — зона SHORT, но WAIT`;
+            return 'RSI вне зоны входа';
+        }
+        return '';
     },
             updateSignalCounters() {
         // Подсчитываем все категории
@@ -1346,8 +1389,11 @@
             activeStatusData.manual_position = 'MANUAL';
         }
         
-        // Maturity (зрелость монеты)
-        if (coin.is_mature === true) {
+        // Maturity (зрелость монеты) — только если проверка включена
+        const maturityEnabled = (this.cachedAutoBotConfig || this.autoBotConfig || {}).enable_maturity_check !== false;
+        if (!maturityEnabled) {
+            activeStatusData.maturity = 'Проверка зрелости отключена';
+        } else if (coin.is_mature === true) {
             const actualCandles = coin.candles_count || 'N/A';
             const minCandles = this.autoBotConfig?.min_candles_for_maturity || 400;
             activeStatusData.maturity = window.languageUtils.getTranslation('mature_coin_description', {candles: actualCandles, min: minCandles});
@@ -1639,8 +1685,18 @@
             });
         }
         
-        // 2. Зрелость монеты
-        if (coin.is_mature) {
+        // 2. Зрелость монеты (только если проверка включена)
+        const maturityCheckOn = (this.cachedAutoBotConfig || this.autoBotConfig || {}).enable_maturity_check !== false;
+        if (!maturityCheckOn) {
+            realFilters.push({
+                itemId: 'maturityDiamondItem',
+                valueId: 'selectedCoinMaturityDiamond',
+                iconId: 'maturityDiamondIcon',
+                value: 'Проверка зрелости отключена',
+                icon: '',
+                description: 'Глобальная проверка зрелости выключена в настройках'
+            });
+        } else if (coin.is_mature) {
             const actualCandles = coin.candles_count || 'N/A';
             const minCandles = this.autoBotConfig?.min_candles_for_maturity || 400;
             realFilters.push({

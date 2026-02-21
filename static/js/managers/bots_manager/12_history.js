@@ -94,7 +94,10 @@
             const params = new URLSearchParams({ from_ts: String(from_ts), to_ts: String(to_ts), limit: '300' });
             if (symbol) params.set('symbol', symbol);
             params.set('_', String(Date.now()));
-            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/fullai?${params}`, { cache: 'no-store' });
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 45000);
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/fullai?${params}`, { cache: 'no-store', signal: controller.signal });
+            clearTimeout(timeoutId);
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
             if (!data.success) throw new Error(data.error || 'Нет данных');
@@ -112,14 +115,30 @@
                 fullai_configs: data.fullai_configs || null
             });
         } catch (err) {
-            if (summaryEl) summaryEl.innerHTML = `<div class="analytics-error">❌ ${(err && err.message) || String(err)}</div>`;
+            const msg = (err && err.name === 'AbortError') ? 'Таймаут загрузки (45 с). Попробуйте сузить период или символ.' : ((err && err.message) || String(err));
+            if (summaryEl) summaryEl.innerHTML = `<div class="analytics-error">❌ ${msg}</div>`;
             if (eventsEl) eventsEl.innerHTML = '';
             console.error('[BotsManager] Ошибка аналитики FullAI:', err);
         } finally {
             if (loadingEl) loadingEl.style.display = 'none';
         }
     },
-            renderFullaiAnalytics(summary, events, summaryEl, eventsEl, meta) {
+            /** Форматирует время в локальную зону ПК. ts — Unix (сек или мс), tsIso — ISO (UTC если без смещения). */
+            _formatTsLocal(ts, tsIso) {
+                const opts = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+                if (ts != null && !isNaN(ts)) {
+                    const ms = ts > 1e12 ? ts : (ts > 1e9 ? ts * 1000 : ts);
+                    const d = new Date(ms);
+                    return isNaN(d.getTime()) ? (tsIso || '—') : d.toLocaleString(undefined, opts);
+                }
+                if (tsIso && typeof tsIso === 'string') {
+                    const s = /[Z+-]\d{2}:?\d{2}$/.test(tsIso) ? tsIso : tsIso + 'Z';
+                    const d = new Date(s);
+                    return isNaN(d.getTime()) ? tsIso : d.toLocaleString(undefined, opts);
+                }
+                return '—';
+            }
+        , renderFullaiAnalytics(summary, events, summaryEl, eventsEl, meta) {
         if (!summaryEl) return;
         const botStats = (meta && meta.bot_trades_stats) || null;
         const totalInDb = (meta && meta.total_events) != null ? meta.total_events : null;
@@ -183,7 +202,7 @@
                 const exitPrice = tr.exit_price != null ? Number(tr.exit_price).toFixed(6) : '—';
                 const conclusion = tr.conclusion || (pnlUsdt >= 0 || roiPct >= 0 ? 'Прибыль' : 'Убыток');
                 const virtualBadge = tr.is_virtual ? ' <span class="virtual-pnl-badge" style="background:#9c27b0;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;">Виртуальная</span>' : '';
-                closedTradesHtml += '<tr><td>' + (tr.ts_iso || tr.exit_time || '') + '</td><td>' + (tr.symbol || '') + virtualBadge + '</td><td>' + (tr.direction || '') + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlPctStr + '</td><td class="' + pnlClass + '">' + pnlUsdtStr + '</td><td>' + (tr.close_reason || '—') + '</td><td>' + (conclusion || '—') + '</td></tr>';
+                closedTradesHtml += '<tr><td>' + this._formatTsLocal(tr.ts, tr.ts_iso || tr.exit_time) + '</td><td>' + (tr.symbol || '') + virtualBadge + '</td><td>' + (tr.direction || '') + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlPctStr + '</td><td class="' + pnlClass + '">' + pnlUsdtStr + '</td><td>' + (tr.close_reason || '—') + '</td><td>' + (conclusion || '—') + '</td></tr>';
             });
             closedTradesHtml += '</tbody></table>';
         }
@@ -215,7 +234,7 @@
             const limitExit = ex.limit_price_exit != null ? Number(ex.limit_price_exit).toFixed(6) : '—';
             const isEntry = ev.event_type === 'real_open' || ev.event_type === 'virtual_open';
             const orderType = isEntry ? (ex.order_type_entry || '—') : (ex.order_type_exit || '—');
-            const tsPlaced = ex.ts_order_placed_exit != null ? (function() { const d = new Date(ex.ts_order_placed_exit * 1000); return d.toISOString ? d.toISOString().slice(0, 19).replace('T', ' ') : d.toLocaleString(); })() : '—';
+            const tsPlaced = ex.ts_order_placed_exit != null ? this._formatTsLocal(ex.ts_order_placed_exit, null) : '—';
             const slippage = isEntry ? (ex.slippage_entry_pct != null ? Number(ex.slippage_entry_pct).toFixed(2) + '%' : '—') : (ex.slippage_exit_pct != null ? Number(ex.slippage_exit_pct).toFixed(2) + '%' : '—');
             const delay = isEntry ? (ex.delay_entry_sec != null ? String(Number(ex.delay_entry_sec).toFixed(1)) : '—') : (ex.delay_sec != null ? String(Number(ex.delay_sec).toFixed(1)) : '—');
             const pnlPct = ev.pnl_percent != null ? Number(ev.pnl_percent) : (ex.pnl_percent != null ? Number(ex.pnl_percent) : null);
@@ -255,7 +274,7 @@
                 conclusion = pnlPct != null ? (pnlPct >= 0 ? 'Прибыль. ' + (ev.reason || '') : 'Убыток. ' + (ev.reason || '')) : '—';
             }
             const rowClass = ev.event_type === 'params_change' ? 'fullai-event-params' : (ev.event_type === 'virtual_close' ? (ex.success ? 'fullai-event-virt-ok' : 'fullai-event-virt-fail') : '');
-            table += '<tr class="' + rowClass + '"><td>' + (ev.ts_iso || '') + '</td><td>' + (ev.symbol || '') + '</td><td>' + label + '</td><td>' + dir + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlStr + '</td><td class="' + pnlClass + '">' + pnlUsdtStr + '</td><td>' + limitExit + '</td><td>' + orderType + '</td><td>' + tsPlaced + '</td><td>' + slippage + '</td><td>' + delay + '</td><td>' + details + '</td><td>' + conclusion + '</td></tr>';
+            table += '<tr class="' + rowClass + '"><td>' + this._formatTsLocal(ev.ts, ev.ts_iso) + '</td><td>' + (ev.symbol || '') + '</td><td>' + label + '</td><td>' + dir + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlStr + '</td><td class="' + pnlClass + '">' + pnlUsdtStr + '</td><td>' + limitExit + '</td><td>' + orderType + '</td><td>' + tsPlaced + '</td><td>' + slippage + '</td><td>' + delay + '</td><td>' + details + '</td><td>' + conclusion + '</td></tr>';
         });
         table += '</tbody></table>';
         eventsEl.innerHTML = table + closedTradesHtml;

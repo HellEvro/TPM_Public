@@ -3072,20 +3072,25 @@ def process_auto_bot_signals(exchange_obj=None):
                             candles=candles_for_ai
                         )
                         if last_ai_result.get('ai_used') and not last_ai_result.get('should_open'):
-                            # FullAI Adaptive: при WAIT/блоке — не пропускать, а добавлять как virtual_only
-                            try:
-                                from bots_modules.fullai_adaptive import is_adaptive_enabled
-                                if is_adaptive_enabled():
-                                    logger.info(f" 🤖 AI рекомендует WAIT {symbol}: {last_ai_result.get('reason', '')} → виртуальная сделка для обучения")
-                                    last_ai_result['virtual_only'] = True
-                                else:
+                            ai_override = filter_config.get('ai_override_original', True)
+                            if not ai_override:
+                                # AI рекомендательный — не блокируем, бот будет создан (bot_class учтёт)
+                                logger.info(f" 🤖 AI рекомендует WAIT {symbol}: {last_ai_result.get('reason', '')} — используем скриптовые правила")
+                            else:
+                                # FullAI Adaptive: при WAIT/блоке — не пропускать, а добавлять как virtual_only
+                                try:
+                                    from bots_modules.fullai_adaptive import is_adaptive_enabled
+                                    if is_adaptive_enabled():
+                                        logger.info(f" 🤖 AI рекомендует WAIT {symbol}: {last_ai_result.get('reason', '')} → виртуальная сделка для обучения")
+                                        last_ai_result['virtual_only'] = True
+                                    else:
+                                        logger.info(f" 🤖 AI блокирует вход {symbol}: {last_ai_result.get('reason', 'AI prediction')} — монета не в списке")
+                                        diag_skipped_ai += 1
+                                        continue
+                                except ImportError:
                                     logger.info(f" 🤖 AI блокирует вход {symbol}: {last_ai_result.get('reason', 'AI prediction')} — монета не в списке")
                                     diag_skipped_ai += 1
                                     continue
-                            except ImportError:
-                                logger.info(f" 🤖 AI блокирует вход {symbol}: {last_ai_result.get('reason', 'AI prediction')} — монета не в списке")
-                                diag_skipped_ai += 1
-                                continue
                         if last_ai_result.get('ai_used') and last_ai_result.get('should_open'):
                             logger.info(f" 🤖 AI разрешает вход {symbol} (уверенность {last_ai_result.get('ai_confidence', 0):.0%})")
                     except Exception as ai_err:

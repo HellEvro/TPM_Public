@@ -80,7 +80,8 @@ def _get_ai_param_recommendation(
         from bot_engine.ai.ai_continuous_learning import AIContinuousLearning
         cl = AIContinuousLearning()
         raw_trades = [{'symbol': e.get('symbol'), 'pnl': e.get('roi', 0) * 0.01, 'success': e.get('success')} for e in evals]
-        if raw_trades:
+        # Вызываем обучение только при достаточном числе сделок (≥10), иначе learn_from_real_trades только спамит логи
+        if raw_trades and len(raw_trades) >= 10:
             cl.learn_from_real_trades(raw_trades)
         optimal = cl.get_optimal_parameters_for_symbol(symbol)
         if optimal and isinstance(optimal, dict):

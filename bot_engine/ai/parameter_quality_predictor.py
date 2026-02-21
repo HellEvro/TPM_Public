@@ -145,7 +145,7 @@ class ParameterQualityPredictor:
                         self.expected_features = scaler_features
                         # Модель может использоваться с legacy режимом
                         self.is_trained = True
-                        logger.info(f"✅ Загружена модель предсказания качества параметров (legacy режим: {scaler_features} признаков)")
+                        logger.debug(f"✅ Загружена модель предсказания качества параметров (legacy режим: {scaler_features} признаков)")
                     else:
                         logger.warning(
                             f"⚠️ Несовместимость признаков: модель ожидает {scaler_features} признаков, "
@@ -163,7 +163,7 @@ class ParameterQualityPredictor:
                     # Количество признаков совпадает - используем новую версию
                     self.expected_features = expected_features
                     self.is_trained = True
-                    logger.info(f"✅ Загружена модель предсказания качества параметров ({expected_features} признаков)")
+                    logger.debug(f"✅ Загружена модель предсказания качества параметров ({expected_features} признаков)")
         except Exception as e:
             pass
             self.is_trained = False

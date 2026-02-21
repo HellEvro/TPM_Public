@@ -713,7 +713,9 @@ def get_coins_with_rsi():
                                 config=filter_config,
                                 candles=None
                             )
-                            if ai_result.get('ai_used') and not ai_result.get('should_open'):
+                            # AI блокирует только когда ai_override_original=True; иначе AI рекомендательный — не блокируем
+                            ai_override = filter_config.get('ai_override_original', True)
+                            if ai_result.get('ai_used') and not ai_result.get('should_open') and ai_override:
                                 effective_signal = 'WAIT'
                                 cleaned_coin['effective_signal'] = 'WAIT'
                                 cleaned_coin['signal_block_reason'] = ai_result.get('reason') or 'AI не рекомендует вход'
@@ -3970,6 +3972,15 @@ def auto_bot_config():
                 except Exception as e:
                     logger.error(f" ❌ Ошибка очистки файла зрелых монет: {e}")
             
+            # ✅ При ОТКЛЮЧЕНИИ проверки зрелости — сразу помечаем все монеты зрелыми в кэше
+            if 'enable_maturity_check' in data and data.get('enable_maturity_check') is False:
+                try:
+                    from bots_modules.filters import update_is_mature_flags_in_rsi_data
+                    update_is_mature_flags_in_rsi_data()
+                    logger.info(" ✅ Проверка зрелости выключена — все монеты помечены зрелыми")
+                except Exception as e:
+                    logger.warning(f" ⚠️ Не удалось обновить флаги зрелости: {e}")
+            
             # КРИТИЧЕСКИ ВАЖНО: При включении Auto Bot запускаем немедленную проверку
             # Показываем блок только если enabled реально изменился с False на True
             if 'enabled' in data and old_config.get('enabled') == False and data['enabled'] == True:
@@ -5666,16 +5677,20 @@ def _get_closed_trades_for_table(symbol=None, from_ts=None, to_ts=None, limit=50
                 elif ep > 0 and t.get('direction', '').upper() == 'SHORT':
                     roi_pct = ((ep - xp) / ep) * 100
             reason = t.get('close_reason') or ''
-            # ИИ-анализатор выводов: детальный, разнообразный анализ по сделке
-            try:
-                from bot_engine.ai.trade_conclusion_analyzer import analyze_trade_conclusion
-                trade_for_analysis = {
-                    **t,
-                    'roi': roi_pct if roi_pct is not None else t.get('roi'),
-                    'pnl': pnl,
-                }
-                conclusion = analyze_trade_conclusion(trade_for_analysis)
-            except Exception:
+            # ИИ-анализатор выводов: детальный анализ — только для первых 20 сделок (ускоряет загрузку)
+            conclusion = None
+            if len(out) < 20:
+                try:
+                    from bot_engine.ai.trade_conclusion_analyzer import analyze_trade_conclusion
+                    trade_for_analysis = {
+                        **t,
+                        'roi': roi_pct if roi_pct is not None else t.get('roi'),
+                        'pnl': pnl,
+                    }
+                    conclusion = analyze_trade_conclusion(trade_for_analysis)
+                except Exception:
+                    pass
+            if conclusion is None:
                 if pnl >= 0:
                     conclusion = 'Прибыль. ' + (reason if reason else 'Закрыто по условию')
                     if reason and any(x in reason.upper() for x in ('TP', 'TAKE_PROFIT', 'ТЕЙК')):
