@@ -139,6 +139,16 @@ def _check_position_and_decide(symbol: str) -> None:
             'position_size_coins': _bot_val(bot, 'position_size_coins') or (pos.get('size') if isinstance(pos, dict) else None),
             'entry_timestamp': entry_ts,
         }
+        protections = {
+            'trailing_stop_price': _bot_val(bot, 'trailing_stop_price'),
+            'trailing_active': bool(_bot_val(bot, 'trailing_active')),
+            'break_even_activated': bool(_bot_val(bot, 'break_even_activated')),
+            'break_even_stop_price': _bot_val(bot, 'break_even_stop_price'),
+            'max_profit_achieved': float(_bot_val(bot, 'max_profit_achieved') or 0),
+            'current_price': current_price,
+        }
+        ctx = dict(ctx) if ctx else {}
+        ctx['protections'] = protections
         fullai_config = get_effective_auto_bot_config()
         coin_params = get_effective_coin_settings(symbol)
 

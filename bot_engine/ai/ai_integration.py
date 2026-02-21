@@ -822,6 +822,12 @@ def get_ai_exit_decision(
         if 0 < age_sec < min_hold_sec:
             return result
 
+        # Параметры защит: FullAI их использует и учится на них (trailing/break-even)
+        prot = (data_context or {}).get('protections') or {}
+        trailing_active = bool(prot.get('trailing_active'))
+        trailing_stop_price = prot.get('trailing_stop_price')
+        current_price = prot.get('current_price')
+
         # Простая эвристика: сильная прибыль или сильный убыток — закрыть (далее можно заменить на модель)
         tp = float(prii_config.get('take_profit_percent') or coin_params.get('take_profit_percent') or 15)
         sl = float(prii_config.get('max_loss_percent') or coin_params.get('max_loss_percent') or 10)
@@ -835,6 +841,23 @@ def get_ai_exit_decision(
             result['reason'] = f'Stop loss ({pnl_percent:.2f}% <= -{sl}%)'
             result['confidence'] = 1.0
             return result
+        # Трейлинг активен и цена подошла к стопу — FullAI может закрыть «заранее», фиксируя прибыль
+        if trailing_active and trailing_stop_price and current_price and current_price > 0:
+            pos_side = (position.get('position_side') or '').upper()
+            if pos_side == 'LONG':
+                # LONG: стоп ниже цены; если цена упала близко к стопу — выход
+                if current_price <= trailing_stop_price * 1.002:  # в пределах 0.2%
+                    result['close_now'] = True
+                    result['reason'] = f'Trailing stop near ({current_price:.6f} ~ {trailing_stop_price:.6f})'
+                    result['confidence'] = 0.95
+                    return result
+            else:
+                # SHORT: стоп выше цены; если цена поднялась близко к стопу — выход
+                if current_price >= trailing_stop_price * 0.998:
+                    result['close_now'] = True
+                    result['reason'] = f'Trailing stop near ({current_price:.6f} ~ {trailing_stop_price:.6f})'
+                    result['confidence'] = 0.95
+                    return result
         # Используем data_context (свечи из БД, индикаторы) если передан
         if not candles and data_context:
             candles = data_context.get('candles') or []

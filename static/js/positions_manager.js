@@ -8,8 +8,6 @@ class PositionsManager {
             stateManager.subscribe('positions.reduceLoad', this.handleReduceLoadChange.bind(this))
         ];
         this._initialLoadDone = false;
-        this._updateCallCount = 0;
-        this._forceRefreshInterval = 2;  // Каждые 2 обновления (≈2 сек) — запрос свежих данных с биржи
 
         // Инициализируем состояние из StateManager
         const state = stateManager.getState('positions');
@@ -38,12 +36,6 @@ class PositionsManager {
         if (!this._initialLoadDone) {
             forceRefresh = true;
             this._initialLoadDone = true;
-        } else if (!forceRefresh) {
-            this._updateCallCount = (this._updateCallCount || 0) + 1;
-            if (this._updateCallCount >= this._forceRefreshInterval) {
-                forceRefresh = true;
-                this._updateCallCount = 0;
-            }
         }
         try {
             Logger.debug('POSITIONS', 'Fetching positions data...', forceRefresh ? '(force refresh)' : '');

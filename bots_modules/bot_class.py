@@ -1717,6 +1717,13 @@ class NewTradingBot:
                         self._close_position_on_exchange(protection_result['reason'])
                         return {'success': True, 'action': f"CLOSE_{self.position_side}", 'reason': protection_result['reason']}
             
+            # При full_ai_control — всё равно обновляем трейлинг/break-even на бирже (не закрываем по ним, решает FullAI)
+            if _full_ai_control:
+                try:
+                    self._update_protection_mechanisms(price)
+                except Exception as _e:
+                    logger.debug(f"[NEW_BOT_{self.symbol}] Обновление защитных механизмов (full_ai): {_e}")
+
             # 2. Проверяем условия закрытия: FullAI или RSI
             # Адаптивно: мин. свечи ИЛИ мин. минуты (по ТФ) ИЛИ ранний выход, если цена уже сдвинулась на X%
             if self.position_side in ['LONG', 'SHORT']:
@@ -1760,12 +1767,25 @@ class NewTradingBot:
                                 entry_ts = dt.timestamp()
                             except Exception:
                                 pass
-                        position_info = {
+                                        position_info = {
                             'entry_price': self.entry_price,
                             'position_side': self.position_side,
                             'position_size_coins': getattr(self, 'position_size_coins', None),
                             'entry_timestamp': entry_ts,
                         }
+                        # Передаём данные защит: FullAI видит трейлинг/break-even и может использовать их в решении
+                        protections = {
+                            'trailing_stop_price': self._safe_float(self.trailing_stop_price),
+                            'trailing_active': bool(self.trailing_active),
+                            'break_even_activated': bool(self.break_even_activated),
+                            'break_even_stop_price': self._safe_float(self.break_even_stop_price),
+                            'max_profit_achieved': getattr(self, 'max_profit_achieved', 0) or 0,
+                            'current_price': self._safe_float(self.current_price),
+                        }
+                        if data_context is None:
+                            data_context = {}
+                        data_context = dict(data_context)
+                        data_context['protections'] = protections
                         decision = get_ai_exit_decision(
                             self.symbol, position_info, candles_exit, profit_percent, fullai_config, coin_params,
                             data_context=data_context
@@ -2232,12 +2252,27 @@ class NewTradingBot:
         result = {'should_close': False, 'reason': None}
 
         try:
-            config = get_auto_bot_config()
+            from bots_modules.imports_and_globals import get_effective_auto_bot_config
+            config = get_effective_auto_bot_config()
         except Exception:
             config = {}
-
-        activation = self._safe_float(config.get('trailing_stop_activation'), 0.0) or 0.0
-        stop_distance = max(0.0, self._safe_float(config.get('trailing_stop_distance'), 0.0) or 0.0)
+        if not config:
+            try:
+                config = get_auto_bot_config()
+            except Exception:
+                config = {}
+        base = {}
+        try:
+            base = get_auto_bot_config() or {}
+        except Exception:
+            pass
+        # FullAI и обычный режим: trailing из effective конфига или fallback на auto_bot_config
+        activation = self._safe_float(
+            config.get('trailing_stop_activation') or base.get('trailing_stop_activation'), 0.0
+        ) or 0.0
+        stop_distance = max(0.0, self._safe_float(
+            config.get('trailing_stop_distance') or base.get('trailing_stop_distance'), 0.0
+        ) or 0.0)
         take_distance = max(0.0, self._safe_float(config.get('trailing_take_distance'), 0.0) or 0.0)
         update_interval = max(0.0, self._safe_float(config.get('trailing_update_interval'), 0.0) or 0.0)
 
