@@ -340,10 +340,10 @@ _individual_coin_settings_state = {
 # Импортирован как BOT_ENGINE_DEFAULT_CONFIG
 DEFAULT_AUTO_BOT_CONFIG = BOT_ENGINE_DEFAULT_CONFIG
 
-# Константы зрелости монет из конфига (fallback 400/35/65 как в bot_config.py)
-MIN_CANDLES_FOR_MATURITY = BOT_ENGINE_DEFAULT_CONFIG.get('min_candles_for_maturity') or 400
-MIN_RSI_LOW = BOT_ENGINE_DEFAULT_CONFIG.get('min_rsi_low') or 35
-MAX_RSI_HIGH = BOT_ENGINE_DEFAULT_CONFIG.get('max_rsi_high') or 65
+# Константы зрелости монет только из конфига (DEFAULT_AUTO_BOT_CONFIG)
+MIN_CANDLES_FOR_MATURITY = BOT_ENGINE_DEFAULT_CONFIG.get('min_candles_for_maturity')
+MIN_RSI_LOW = BOT_ENGINE_DEFAULT_CONFIG.get('min_rsi_low')
+MAX_RSI_HIGH = BOT_ENGINE_DEFAULT_CONFIG.get('max_rsi_high')
 
 # Состояние процессов системы
 process_state = {
@@ -600,7 +600,6 @@ coins_rsi_data = {
     'coins': {},  # Словарь всех монет с RSI данными
     'last_update': None,
     'update_in_progress': False,
-    'rsi_update_started_at': 0.0,  # Timestamp: когда установили update_in_progress (для таймаута)
     'total_coins': 0,
     'successful_coins': 0,
     'failed_coins': 0,
@@ -705,10 +704,9 @@ def load_auto_bot_config():
             'rsi_time_filter_candles': 8,
             'rsi_time_filter_lower': 35,
             'rsi_time_filter_upper': 65,
-            'leverage': 10,  # Кредитное плечо — fallback если отсутствует в файле
         }
         for k, default_val in _required_auto_bot_keys.items():
-            if k not in merged_config or merged_config[k] is None:
+            if k not in merged_config:
                 merged_config[k] = default_val
         
         # ✅ Логируем leverage только при первой загрузке или при изменении (не спамим)
@@ -724,7 +722,9 @@ def load_auto_bot_config():
             load_auto_bot_config._leverage_logged = True
             load_auto_bot_config._last_leverage = leverage_from_file
         
-        # leverage уже подставлен из _required_auto_bot_keys при отсутствии
+        # ✅ Проверяем, что значение действительно есть в конфиге (только при ошибке)
+        if leverage_from_file is None:
+            logger.error(f"[CONFIG] ❌ КРИТИЧЕСКАЯ ОШИБКА: leverage отсутствует в DEFAULT_AUTO_BOT_CONFIG!")
         
         # ✅ Загружаем фильтры (whitelist, blacklist) из БД, но scope загружается из файла!
         # ✅ КРИТИЧЕСКИ ВАЖНО: scope теперь хранится ТОЛЬКО в файле, не в БД
@@ -776,7 +776,7 @@ def load_auto_bot_config():
             try:
                 from bot_engine.ai import get_ai_manager
                 if not get_ai_manager().is_available():
-                    logger.warning("[FullAI] AI Premium недоступен (лицензия/модули). FullAI продолжит работу по RSI-сигналам.")
+                    logger.warning("[FullAI] Полный режим ИИ включён в конфиге, но ИИ недоступен (лицензия не валидна). Переключатель оставлен включённым — после исправления лицензии режим заработает.")
                 else:
                     # FullAI включён через конфиг и лицензия валидна — авто-включение ИИ, если был выключен
                     ai_before = merged_config.get('ai_enabled', False)
@@ -1090,10 +1090,10 @@ def load_individual_coin_settings():
                         settings['rsi_time_filter_enabled'] = True
                         settings_updated = True
                     
-                    # Минимально 1 свеча (уважаем конфиг пользователя, не переопределяем 1→2)
+                    # Гарантируем минимум 2 свечи
                     rsi_time_filter_candles = settings.get('rsi_time_filter_candles')
-                    if rsi_time_filter_candles is not None and rsi_time_filter_candles < 1:
-                        settings['rsi_time_filter_candles'] = max(1, rsi_time_filter_candles)
+                    if rsi_time_filter_candles is not None and rsi_time_filter_candles < 2:
+                        settings['rsi_time_filter_candles'] = max(2, rsi_time_filter_candles)
                         settings_updated = True
                     
                     if settings_updated:
@@ -1641,10 +1641,9 @@ def close_position_for_bot(symbol, position_side, reason='Manual close'):
             side_for_exchange = 'Long' if position_side in ['LONG', 'Long'] else 'Short' if position_side in ['SHORT', 'Short'] else position_side
             
             for pos in positions_list:
-                pos_symbol = pos.get('symbol', '').replace('USDT', '')
-                if pos_symbol != symbol:
+                pos_sym = pos.get('symbol', '').replace('USDT', '')
+                if pos_sym != symbol:
                     continue
-                # Bybit get_positions возвращает side='Long'/'Short', сырой API — 'Buy'/'Sell'
                 raw_side = pos.get('side', '')
                 pos_side = 'Long' if raw_side in ('Buy', 'Long') else 'Short' if raw_side in ('Sell', 'Short') else None
                 if pos_side == side_for_exchange and abs(float(pos.get('size', 0))) > 0:
@@ -1653,44 +1652,45 @@ def close_position_for_bot(symbol, position_side, reason='Manual close'):
                     break
         except Exception as e:
             logger.error(f" {symbol}: ⚠️ Ошибка получения размера позиции с биржи: {e}")
-        
-        # Fallback 1: берём размер из bots_data (position_size_coins — в монетах; position_size/volume_value — в USDT)
+
+        # Fallback 1: из bots_data (position_size_coins — монеты; volume_value/position_size — USDT)
         if not position_size:
             try:
                 with bots_data_lock:
                     bot_data = bots_data.get('bots', {}).get(symbol, {})
-                if bot_data and bot_data.get('position_side', '').upper() == position_side.upper():
+                if bot_data and (bot_data.get('position_side') or '').upper() == (position_side or '').upper():
                     ps_coins = bot_data.get('position_size_coins')
                     ps_usdt = bot_data.get('position_size') or bot_data.get('volume_value')
                     entry_pr = float(bot_data.get('entry_price') or 0)
                     if ps_coins and float(ps_coins) > 0:
                         position_size = abs(float(ps_coins))
-                        logger.info(f" {symbol}: Используем position_size_coins из bots_data: {position_size}")
-                    elif ps_usdt and entry_pr and entry_pr > 0:
+                        logger.info(f" {symbol}: Размер из bots_data.position_size_coins: {position_size}")
+                    elif ps_usdt and entry_pr > 0:
                         position_size = abs(float(ps_usdt)) / entry_pr
                         if position_size > 0:
-                            logger.info(f" {symbol}: Рассчитан размер из volume_value/entry_price: {position_size}")
-            except Exception as fb_err:
-                logger.debug(f" {symbol}: Fallback из bots_data: {fb_err}")
-        
-        # Fallback 2: прямой запрос Bybit API по символу (когда get_positions не вернул)
+                            logger.info(f" {symbol}: Размер из bots_data (volume_value/entry_price): {position_size}")
+            except Exception:
+                pass
+
+        # Fallback 2: прямой запрос Bybit API по символу
         if not position_size and hasattr(exch, 'client'):
             try:
                 resp = exch.client.get_positions(category="linear", symbol=f"{symbol}USDT", limit=1)
                 if resp.get('retCode') == 0:
                     for p in (resp.get('result') or {}).get('list', []):
                         sz = abs(float(p.get('size', 0) or 0))
-                        if sz > 0:
-                            pos_side_raw = p.get('side', '')
-                            need_long = position_side.upper() == 'LONG'
-                            is_long = pos_side_raw in ('Buy', 'Long')
-                            if (need_long and is_long) or (not need_long and not is_long):
-                                position_size = sz
-                                logger.info(f" {symbol}: Размер из прямого API Bybit: {position_size}")
-                                break
-            except Exception as api_err:
-                logger.debug(f" {symbol}: Прямой API Bybit: {api_err}")
-        
+                        if sz <= 0:
+                            continue
+                        rs = p.get('side', '')
+                        is_long = rs in ('Buy', 'Long')
+                        need_long = (position_side or '').upper() == 'LONG'
+                        if is_long == need_long:
+                            position_size = sz
+                            logger.info(f" {symbol}: Размер из прямого API Bybit: {position_size}")
+                            break
+            except Exception:
+                pass
+
         if not position_size:
             logger.error(f" {symbol}: ❌ Не удалось определить размер позиции")
             return {'success': False, 'error': 'Position size not found on exchange'}

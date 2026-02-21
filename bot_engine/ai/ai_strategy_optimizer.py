@@ -703,22 +703,21 @@ class AIStrategyOptimizer:
         logger.info(f"   📈 Свечей для тестирования: {len(candles)}")
         logger.info(f"   🧠 Используем базу знаний для улучшения торговой методики")
 
-        # Загружаем базу знаний для использования опыта (только если Parameter Quality включён)
+        # Загружаем базу знаний для использования опыта
         knowledge_base = {}
         successful_rsi_ranges = {}
         try:
-            from bot_engine.config_loader import AIConfig
-            if getattr(AIConfig, 'AI_PARAMETER_QUALITY_ENABLED', True):
-                from bot_engine.ai.ai_continuous_learning import AIContinuousLearning
-                continuous_learning = AIContinuousLearning()
-                knowledge_base = continuous_learning.knowledge_base
-                # Используем знания о успешных RSI диапазонах для приоритизации тестов
-                successful_rsi_ranges = knowledge_base.get('successful_patterns', {}).get('rsi_ranges', {})
-                if successful_rsi_ranges:
-                    best_rsi_range = max(successful_rsi_ranges.items(), key=lambda x: x[1])[0] if successful_rsi_ranges else None
-                    logger.info(f"   💡 База знаний: успешные входы в диапазоне RSI {best_rsi_range}")
+            from bot_engine.ai.ai_continuous_learning import AIContinuousLearning
+            continuous_learning = AIContinuousLearning()
+            knowledge_base = continuous_learning.knowledge_base
+
+            # Используем знания о успешных RSI диапазонах для приоритизации тестов
+            successful_rsi_ranges = knowledge_base.get('successful_patterns', {}).get('rsi_ranges', {})
+            if successful_rsi_ranges:
+                best_rsi_range = max(successful_rsi_ranges.items(), key=lambda x: x[1])[0] if successful_rsi_ranges else None
+                logger.info(f"   💡 База знаний: успешные входы в диапазоне RSI {best_rsi_range}")
         except Exception as kb_error:
-            pass
+                        pass
 
         try:
             # Загружаем базовые параметры из bot_config.py

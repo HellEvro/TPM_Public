@@ -51,9 +51,10 @@ class BotsManager {
         this.isProgrammaticChange = false;
         this.aiConfigDirty = false;
         
-        // URL для API: используем тот же origin (app.py проксирует на bots.py), чтобы избежать
-        // CORS и блокировок файрвола при прямом обращении к порту 5001 из браузера.
-        this.BOTS_SERVICE_URL = window.location.origin || 'http://127.0.0.1:5000';
+        // URL сервиса ботов — всегда порт 5001 (сервис bots.py)
+        const hostname = window.location.hostname || '127.0.0.1';
+        const protocol = window.location.protocol || 'http:';
+        this.BOTS_SERVICE_URL = `${protocol}//${hostname}:5001`;
         this.apiUrl = this.BOTS_SERVICE_URL + '/api/bots';
         console.log('[BotsManager] 🔗 BOTS_SERVICE_URL:', this.BOTS_SERVICE_URL);
         
@@ -139,12 +140,14 @@ class BotsManager {
                 }
             }
             
-            // Сначала загружаем конфиг (в т.ч. position_sync_interval для интервала обновления списка монет слева)
-            await this.loadConfigurationData();
-            // Запускаем периодическое обновление с интервалом из конфига
+            // Запускаем периодическое обновление
             this.startPeriodicUpdate();
-            // Повторная загрузка конфига через 2 сек (для актуализации после инициализации сервиса)
-            setTimeout(() => this.loadConfigurationData(), 2000);
+            
+            // Принудительная загрузка конфигурации
+            setTimeout(() => {
+                console.log('[BotsManager] 🔄 Принудительная загрузка конфигурации...');
+                this.loadConfigurationData();
+            }, 2000);
             
             // Принудительное обновление состояния автобота и ботов (только при первой загрузке)
             setTimeout(() => {

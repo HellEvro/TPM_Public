@@ -364,7 +364,7 @@ class AITrainer:
         # Валидация минимальных значений
         rsi_time_filter_candles = rsi_time_filter.get('candles')
         if rsi_time_filter_candles is not None:
-            rsi_time_filter_candles = max(1, rsi_time_filter_candles)  # Минимум 1 свеча (конфиг соблюдается)
+            rsi_time_filter_candles = max(2, rsi_time_filter_candles)  # Минимум 2 свечи
         
         max_position_hours = risk_params.get('max_position_hours')
         if max_position_hours is not None and max_position_hours > 0:
@@ -4432,7 +4432,7 @@ class AITrainer:
                     # КРИТИЧЕСКИ ВАЖНО: Временной фильтр всегда должен быть включен, AI не может его отключить
                     coin_rsi_time_filter_enabled = True  # Всегда включен, AI не может отключить
                     coin_base_config['rsi_time_filter_enabled'] = coin_rsi_time_filter_enabled
-                    coin_rsi_time_filter_candles = max(1, min(30, coin_base_rsi_time_filter_candles + coin_rng.randint(-4, 4)))
+                    coin_rsi_time_filter_candles = max(2, min(30, coin_base_rsi_time_filter_candles + coin_rng.randint(-4, 4)))
                     coin_rsi_time_filter_upper = max(50, min(85, coin_base_rsi_time_filter_upper + coin_rng.randint(-6, 6)))
                     coin_rsi_time_filter_lower = max(15, min(50, coin_base_rsi_time_filter_lower + coin_rng.randint(-6, 6)))
                     if coin_rsi_time_filter_lower >= coin_rsi_time_filter_upper:

@@ -1005,7 +1005,5 @@ def get_analytics_for_ai(report: Dict[str, Any]) -> Dict[str, Any]:
         },
         "unsuccessful_coins": unsuccessful_coins,
         "unsuccessful_settings": unsuccessful_settings,
-        "successful_coins": bot.get("successful_coins", []),
-        "successful_settings": bot.get("successful_settings", []),
         "generated_at": report.get("generated_at"),
     }

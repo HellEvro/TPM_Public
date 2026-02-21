@@ -3678,13 +3678,6 @@ input:checked + .toggle-slider:before {
     margin: 12px 0 16px 0;
 }
 
-.fullai-configs-details .fullai-configs-arrow {
-    display: inline-block;
-}
-.fullai-configs-details[open] .fullai-configs-arrow {
-    transform: rotate(90deg);
-}
-
 .fullai-cards {
     display: flex;
     flex-wrap: wrap;
@@ -3748,16 +3741,6 @@ input:checked + .toggle-slider:before {
 .fullai-events-table th {
     background: var(--bg-secondary);
     font-weight: 600;
-}
-
-.fullai-events-table tr.fullai-event-params {
-    background: rgba(255, 193, 7, 0.12);
-}
-.fullai-events-table tr.fullai-event-virt-ok {
-    background: rgba(76, 175, 80, 0.12);
-}
-.fullai-events-table tr.fullai-event-virt-fail {
-    background: rgba(244, 67, 54, 0.12);
 }
 
 /* Фильтры истории */

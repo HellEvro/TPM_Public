@@ -80,19 +80,12 @@ class ParameterQualityPredictor:
         try:
             from bot_engine.ai.ai_database import get_ai_database
             self.ai_db = get_ai_database()
+            pass
         except Exception as e:
             logger.warning(f"⚠️ Не удалось подключиться к AI Database: {e}")
             self.ai_db = None
         
-        # Загружаем модель если есть (пропуск если Parameter Quality отключён)
-        try:
-            from bot_engine.config_loader import AIConfig
-            if not getattr(AIConfig, 'AI_PARAMETER_QUALITY_ENABLED', True):
-                self.model = None
-                self.is_trained = False
-                return
-        except Exception:
-            pass
+        # Загружаем модель если есть
         self._load_model()
     
     def _load_model(self):
@@ -152,7 +145,7 @@ class ParameterQualityPredictor:
                         self.expected_features = scaler_features
                         # Модель может использоваться с legacy режимом
                         self.is_trained = True
-                        logger.debug(f"✅ Загружена модель предсказания качества параметров (legacy режим: {scaler_features} признаков)")
+                        logger.info(f"✅ Загружена модель предсказания качества параметров (legacy режим: {scaler_features} признаков)")
                     else:
                         logger.warning(
                             f"⚠️ Несовместимость признаков: модель ожидает {scaler_features} признаков, "
@@ -170,7 +163,7 @@ class ParameterQualityPredictor:
                     # Количество признаков совпадает - используем новую версию
                     self.expected_features = expected_features
                     self.is_trained = True
-                    logger.debug(f"✅ Загружена модель предсказания качества параметров ({expected_features} признаков)")
+                    logger.info(f"✅ Загружена модель предсказания качества параметров ({expected_features} признаков)")
         except Exception as e:
             pass
             self.is_trained = False

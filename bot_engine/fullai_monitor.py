@@ -113,23 +113,10 @@ def _check_position_and_decide(symbol: str) -> None:
         else:
             profit_percent = (entry_price - current_price) / entry_price * 100.0
 
-        entry_ts = None
-        start_time = _bot_val(bot, 'position_start_time') or _bot_val(bot, 'entry_time')
-        if start_time:
-            try:
-                from datetime import datetime
-                if hasattr(start_time, 'timestamp'):
-                    entry_ts = start_time.timestamp()
-                elif isinstance(start_time, str):
-                    dt = datetime.fromisoformat(start_time.replace('Z', ''))
-                    entry_ts = dt.timestamp()
-            except Exception:
-                pass
         position_info = {
             'entry_price': entry_price,
             'position_side': position_side,
             'position_size_coins': _bot_val(bot, 'position_size_coins') or (pos.get('size') if isinstance(pos, dict) else None),
-            'entry_timestamp': entry_ts,
         }
         fullai_config = get_effective_auto_bot_config()
         coin_params = get_effective_coin_settings(symbol)
@@ -148,20 +135,9 @@ def _check_position_and_decide(symbol: str) -> None:
 
         reason = decision.get('reason') or 'FullAI_EXIT'
         logger.info("[FullAI Monitor] %s: закрытие — %s", symbol, reason)
-        closed = False
-        if not isinstance(bot, dict):
-            close_fn = getattr(bot, '_close_position_on_exchange', None)
-            if callable(close_fn):
-                close_fn(reason)
-                closed = True
-        if not closed:
-            try:
-                from bots_modules.imports_and_globals import close_position_for_bot
-                side = position_side or _bot_val(bot, 'position_side') or (_bot_val(bot, 'position') or {}).get('side') or 'LONG'
-                result = close_position_for_bot(symbol, side, reason)
-                closed = result.get('success', False)
-            except Exception as ec:
-                logger.warning("[FullAI Monitor] %s: не удалось закрыть через close_position_for_bot: %s", symbol, ec)
+        close_fn = getattr(bot, '_close_position_on_exchange', None) if not isinstance(bot, dict) else None
+        if callable(close_fn):
+            close_fn(reason)
         try:
             from bots_modules.fullai_scoring import record_trade_result
             record_trade_result(symbol, success=(profit_percent >= 0))

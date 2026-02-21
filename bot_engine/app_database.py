@@ -792,66 +792,7 @@ class AppDatabase:
         except Exception as e:
             logger.debug("Ошибка сохранения виртуальной сделки: %s", e)
             return False
-
-    def get_virtual_closed_trades(
-        self,
-        symbol: Optional[str] = None,
-        from_ts_sec: Optional[int] = None,
-        to_ts_sec: Optional[int] = None,
-        limit: int = 500,
-    ) -> List[Dict]:
-        """Загружает виртуальные закрытые сделки для FullAI аналитики. Timestamps в секундах."""
-        try:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
-                now_ms = int(time.time() * 1000)
-                start_ms = (from_ts_sec * 1000) if from_ts_sec is not None else 0
-                end_ms = (to_ts_sec * 1000) if to_ts_sec is not None else now_ms
-                query = """
-                    SELECT symbol, side, entry_price, exit_price, size,
-                           closed_pnl, closed_pnl_percent, close_timestamp, entry_timestamp
-                    FROM virtual_closed_pnl
-                    WHERE close_timestamp >= ? AND close_timestamp <= ?
-                """
-                params: List[Any] = [start_ms, end_ms]
-                if symbol:
-                    query += " AND symbol = ?"
-                    params.append(symbol.upper())
-                query += " ORDER BY close_timestamp DESC LIMIT ?"
-                params.append(limit)
-                cursor.execute(query, params)
-                rows = cursor.fetchall()
-                out = []
-                for row in rows:
-                    ts = row['close_timestamp'] or 0
-                    ts_sec = ts / 1000 if ts > 1e10 else ts
-                    try:
-                        ts_iso = datetime.fromtimestamp(ts_sec).strftime('%Y-%m-%dT%H:%M:%S')
-                    except Exception:
-                        ts_iso = ''
-                    roi_pct = float(row['closed_pnl_percent'] or 0)
-                    conclusion = ('Прибыль' if roi_pct >= 0 else 'Убыток') + ' (виртуальная сделка)'
-                    out.append({
-                        'symbol': row['symbol'],
-                        'direction': (row['side'] or 'LONG').upper(),
-                        'entry_price': row['entry_price'],
-                        'exit_price': row['exit_price'],
-                        'entry_time': '',
-                        'exit_time': ts_iso,
-                        'ts': ts,
-                        'ts_iso': ts_iso,
-                        'close_reason': 'Виртуальная (FullAI)',
-                        'pnl_usdt': 0,
-                        'roi_pct': round(roi_pct, 2),
-                        'is_successful': roi_pct >= 0,
-                        'conclusion': conclusion,
-                        'is_virtual': True,
-                    })
-                return out
-        except Exception as e:
-            logger.debug("Ошибка загрузки виртуальных сделок: %s", e)
-            return []
-
+    
     def get_closed_pnl(self, sort_by: str = 'time', period: str = 'all', 
                        start_date: Optional[str] = None, 
                        end_date: Optional[str] = None,

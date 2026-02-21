@@ -985,7 +985,7 @@ class TradingBot:
                     except Exception as ai_error:
                         pass
                     
-                    # Устанавливаем стоп-лосс (используем значение из конфига, без принудительной подмены)
+                    # Устанавливаем стоп-лосс (стандартный или адаптивный)
                     stop_result = self._place_stop_loss(side, self.entry_price, sl_percent)
                     if stop_result and stop_result.get('success'):
                         self.logger.info(f" {self.symbol}: ✅ Стоп-лосс установлен на {sl_percent}%")

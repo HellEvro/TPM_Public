@@ -31,16 +31,6 @@ class AIContinuousLearning:
     
     def __init__(self):
         """Инициализация модуля постоянного обучения"""
-        # Если Parameter Quality отключён — минимальная инициализация (avoid heavy load)
-        try:
-            from bot_engine.config_loader import AIConfig
-            if not getattr(AIConfig, 'AI_PARAMETER_QUALITY_ENABLED', True):
-                self.data_dir = 'data/ai'
-                self.ai_db = None
-                self.knowledge_base = {}
-                return
-        except Exception:
-            pass
         self.data_dir = 'data/ai'
         
         # Подключаемся к БД
@@ -54,7 +44,7 @@ class AIContinuousLearning:
         # Загружаем базу знаний из БД
         self.knowledge_base = self._load_knowledge_base()
         
-        logger.debug("✅ AIContinuousLearning инициализирован")
+        logger.info("✅ AIContinuousLearning инициализирован")
     
     def _load_knowledge_base(self) -> Dict:
         """Загрузить базу знаний о торговле из БД"""
@@ -415,13 +405,10 @@ class AIContinuousLearning:
         Args:
             trades: Список реальных сделок с результатами
         """
-        # Ранний выход: Parameter Quality отключён в настройках AI
-        try:
-            from bot_engine.config_loader import AIConfig
-            if not getattr(AIConfig, 'AI_PARAMETER_QUALITY_ENABLED', True):
-                return
-        except Exception:
-            pass
+        logger.info("=" * 80)
+        logger.info("🧠 ПОСТОЯННОЕ ОБУЧЕНИЕ НА РЕАЛЬНЫХ СДЕЛКАХ")
+        logger.info("=" * 80)
+        
         # Фильтруем сделки по whitelist/blacklist
         original_trades_count = len(trades)
         filtered_trades = []
@@ -434,20 +421,12 @@ class AIContinuousLearning:
         filtered_count = len(trades)
         skipped_by_filter = original_trades_count - filtered_count
         
-        # Ранний выход при недостатке сделок — без INFO-логов (избегаем спама при 0 результатах)
-        if len(trades) < 10:
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(
-                    "Пропуск обучения: сделок %s (после фильтра %s), нужно ≥10. Фильтр whitelist/blacklist: %s→%s.",
-                    original_trades_count, filtered_count, original_trades_count, filtered_count
-                )
-            return
-        
-        logger.info("=" * 80)
-        logger.info("🧠 ПОСТОЯННОЕ ОБУЧЕНИЕ НА РЕАЛЬНЫХ СДЕЛКАХ")
-        logger.info("=" * 80)
         if skipped_by_filter > 0:
             logger.info(f"🎯 Фильтрация по whitelist/blacklist: {original_trades_count} → {filtered_count} сделок ({skipped_by_filter} пропущено)")
+        
+        if len(trades) < 10:
+            logger.info(f"⏳ Недостаточно сделок для обучения (есть {len(trades)}, нужно минимум 10)")
+            return
         
         # Анализируем результаты
         analysis = self.analyze_trade_results(trades)

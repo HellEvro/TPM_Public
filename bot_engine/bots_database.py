@@ -1378,15 +1378,6 @@ class BotsDatabase:
                 )
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_full_ai_coin_params_symbol ON full_ai_coin_params(symbol)")
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS full_ai_coin_params_history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    symbol TEXT NOT NULL,
-                    params_json TEXT NOT NULL,
-                    saved_at TEXT NOT NULL
-                )
-            """)
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_full_ai_coin_params_history_symbol ON full_ai_coin_params_history(symbol)")
             # Рейтинг комбинаций параметров FullAI: очки, серии побед, иерархия для отката при провале
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS fullai_param_leaderboard (
@@ -1694,21 +1685,6 @@ class BotsDatabase:
                     logger.info("📦 Миграция: создана таблица fullai_param_leaderboard (FullAI scoring)")
                 except Exception as e:
                     logger.warning("⚠️ Ошибка создания fullai_param_leaderboard: %s", e)
-            if not self._table_exists(cursor, 'full_ai_coin_params_history'):
-                try:
-                    cursor.execute("""
-                        CREATE TABLE full_ai_coin_params_history (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            symbol TEXT NOT NULL,
-                            params_json TEXT NOT NULL,
-                            saved_at TEXT NOT NULL
-                        )
-                    """)
-                    cursor.execute("CREATE INDEX IF NOT EXISTS idx_full_ai_coin_params_history_symbol ON full_ai_coin_params_history(symbol)")
-                    conn.commit()
-                    logger.info("📦 Миграция: создана таблица full_ai_coin_params_history (FullAI config history)")
-                except Exception as e:
-                    logger.warning("⚠️ Ошибка создания full_ai_coin_params_history: %s", e)
             
             # ==================== МИГРАЦИЯ: Добавляем break_even_stop_set в таблицу bots ====================
             if self._table_exists(cursor, 'bots'):
@@ -4724,7 +4700,7 @@ class BotsDatabase:
             return None
     
     def save_full_ai_coin_params(self, symbol: str, params: Dict[str, Any]) -> bool:
-        """Сохраняет параметры FullAI для одной монеты. Предыдущие — в full_ai_coin_params_history."""
+        """Сохраняет параметры FullAI для одной монеты."""
         try:
             now = datetime.now().isoformat()
             params_json = json.dumps(params, ensure_ascii=False)
@@ -4732,18 +4708,10 @@ class BotsDatabase:
                 with self._get_connection() as conn:
                     cursor = conn.cursor()
                     cursor.execute(
-                        "SELECT params_json, created_at FROM full_ai_coin_params WHERE symbol = ?", (symbol,)
+                        "SELECT created_at FROM full_ai_coin_params WHERE symbol = ?", (symbol,)
                     )
                     existing = cursor.fetchone()
-                    created_at = existing[1] if existing else now
-                    if existing and existing[0]:
-                        try:
-                            cursor.execute(
-                                "INSERT INTO full_ai_coin_params_history (symbol, params_json, saved_at) VALUES (?, ?, ?)",
-                                (symbol, existing[0], now)
-                            )
-                        except Exception as he:
-                            logger.debug("FullAI history insert: %s", he)
+                    created_at = existing[0] if existing else now
                     cursor.execute("""
                         INSERT OR REPLACE INTO full_ai_coin_params (symbol, params_json, updated_at, created_at)
                         VALUES (?, ?, ?, ?)
@@ -4783,67 +4751,6 @@ class BotsDatabase:
         except Exception as e:
             logger.error(f"❌ Ошибка загрузки full_ai_coin_params: {e}")
             return {}
-
-    def load_full_ai_coin_params_previous(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Загружает предыдущие параметры FullAI для монеты (последняя запись в истории)."""
-        try:
-            with self.lock:
-                with self._get_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "SELECT params_json FROM full_ai_coin_params_history WHERE symbol = ? ORDER BY saved_at DESC LIMIT 1",
-                        (symbol,)
-                    )
-                    row = cursor.fetchone()
-            if row and row[0]:
-                return json.loads(row[0])
-            return None
-        except Exception as e:
-            logger.debug("load_full_ai_coin_params_previous %s: %s", symbol, e)
-            return None
-
-    def load_all_full_ai_configs_for_analytics(self) -> Dict[str, Any]:
-        """Для аналитики: глобальный конфиг + по монетам текущий и предыдущий.
-        Включает монеты из full_ai_coin_params + торговавшиеся (bot_trades_history, fullai_events, active bots, leaderboard)."""
-        result = {'global_config': {}, 'coin_configs': {}}
-        try:
-            from bots_modules.imports_and_globals import bots_data
-            result['global_config'] = dict(bots_data.get('full_ai_config') or bots_data.get('auto_bot_config') or {})
-            global_cfg = result['global_config']
-            all_params = self.load_all_full_ai_coin_params()
-            traded_symbols = set()
-            traded_symbols.update(self.get_distinct_trade_symbols(500))
-            try:
-                from bot_engine.fullai_analytics import get_distinct_symbols
-                traded_symbols.update(get_distinct_symbols(500))
-            except Exception:
-                pass
-            for sym in ((bots_data or {}).get('bots') or {}).keys():
-                if sym:
-                    traded_symbols.add(sym)
-            traded_symbols.update(self.get_fullai_leaderboard_symbols(300))
-            all_symbols = sorted(set(all_params.keys()) | traded_symbols)
-            for sym in all_symbols:
-                current = all_params.get(sym)
-                if current is None:
-                    current = dict(global_cfg)
-                prev = self.load_full_ai_coin_params_previous(sym)
-                updated_at = None
-                if sym in all_params:
-                    with self.lock:
-                        with self._get_connection() as conn:
-                            cursor = conn.cursor()
-                            cursor.execute("SELECT updated_at FROM full_ai_coin_params WHERE symbol = ?", (sym,))
-                            row = cursor.fetchone()
-                            updated_at = row[0] if row else None
-                result['coin_configs'][sym] = {
-                    'current': current,
-                    'previous': prev,
-                    'updated_at': updated_at,
-                }
-        except Exception as e:
-            logger.error("load_all_full_ai_configs_for_analytics: %s", e)
-        return result
     
     # ==================== FullAI: рейтинг комбинаций параметров (очки, серии) ====================
     
@@ -6405,36 +6312,6 @@ class BotsDatabase:
             logger.error(f"❌ Ошибка загрузки истории сделок: {e}")
             import traceback
             pass
-            return []
-
-    def get_distinct_trade_symbols(self, limit: int = 200) -> List[str]:
-        """Уникальные символы из истории сделок (для селектора монет в FullAI аналитике)."""
-        try:
-            with self.lock:
-                with self._get_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "SELECT DISTINCT symbol FROM bot_trades_history WHERE symbol IS NOT NULL AND symbol != '' ORDER BY symbol LIMIT ?",
-                        (limit,),
-                    )
-                    return [r[0] for r in cursor.fetchall() if r[0]]
-        except Exception as e:
-            logger.debug("get_distinct_trade_symbols: %s", e)
-            return []
-
-    def get_fullai_leaderboard_symbols(self, limit: int = 300) -> List[str]:
-        """Уникальные символы из fullai_param_leaderboard (монеты, по которым FullAI менял параметры)."""
-        try:
-            with self.lock:
-                with self._get_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "SELECT DISTINCT symbol FROM fullai_param_leaderboard WHERE symbol IS NOT NULL AND symbol != '' ORDER BY symbol LIMIT ?",
-                        (limit,),
-                    )
-                    return [r[0] for r in cursor.fetchall() if r[0]]
-        except Exception as e:
-            logger.debug("get_fullai_leaderboard_symbols: %s", e)
             return []
     
     # ==================== МЕТОДЫ МИГРАЦИИ ====================

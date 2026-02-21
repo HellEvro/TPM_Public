@@ -96,14 +96,13 @@ def get_fullai_data_context(
         if include_system_indicators:
             try:
                 from bots_modules.imports_and_globals import coins_rsi_data, rsi_data_lock
-                from bot_engine.config_loader import get_rsi_from_coin_data, get_trend_from_coin_data, get_current_timeframe
+                from bots_modules.filters import get_rsi_from_coin_data, get_trend_from_coin_data
                 with rsi_data_lock:
                     coin_data = (coins_rsi_data.get('coins') or {}).get(symbol, {})
                 if coin_data:
-                    tf = get_current_timeframe()
                     ctx['system'] = {
-                        'rsi': get_rsi_from_coin_data(coin_data, timeframe=tf),
-                        'trend': get_trend_from_coin_data(coin_data, timeframe=tf),
+                        'rsi': get_rsi_from_coin_data(coin_data),
+                        'trend': get_trend_from_coin_data(coin_data),
                         'signal': coin_data.get('signal', 'WAIT'),
                     }
             except Exception as e:

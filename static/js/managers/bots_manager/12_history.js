@@ -76,8 +76,7 @@
     }
 
     /**
-     * Загрузка и отображение аналитики FullAI (события и сводка из data/fullai_analytics.db).
-     * Аналитика считается в фоновом воркере — при status=loading повторяем запрос (polling).
+     * Загрузка и отображение аналитики FullAI (события и сводка из data/fullai_analytics.db)
      */,
             async loadFullaiAnalytics() {
         const loadingEl = document.getElementById('fullaiAnalyticsLoading');
@@ -85,84 +84,42 @@
         const eventsEl = document.getElementById('fullaiAnalyticsEvents');
         const periodHours = parseInt(document.getElementById('fullaiAnalyticsPeriod')?.value, 10) || 168;
         const symbol = (document.getElementById('fullaiAnalyticsSymbol')?.value || '').trim().toUpperCase() || undefined;
-        const eventFilter = document.getElementById('fullaiAnalyticsEventFilter')?.value || 'all';
         const from_ts = (Date.now() / 1000) - periodHours * 3600;
         const to_ts = Date.now() / 1000;
         if (loadingEl) loadingEl.style.display = 'flex';
         if (summaryEl) summaryEl.innerHTML = '';
         if (eventsEl) eventsEl.innerHTML = '';
-        const fetchData = async () => {
+        try {
             const params = new URLSearchParams({ from_ts: String(from_ts), to_ts: String(to_ts), limit: '300' });
             if (symbol) params.set('symbol', symbol);
-            params.set('_', String(Date.now()));
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 45000);
-            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/fullai?${params}`, { cache: 'no-store', signal: controller.signal });
-            clearTimeout(timeoutId);
-            return response.json();
-        };
-        try {
-            let data = await fetchData();
-            if (!data.success && data.error) throw new Error(data.error);
-            while (data.status === 'loading') {
-                await new Promise(r => setTimeout(r, 1500));
-                data = await fetchData();
-            }
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/fullai?${params}`);
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
             if (!data.success) throw new Error(data.error || 'Нет данных');
-            let events = data.events || [];
-            if (eventFilter === 'params_and_virtual') {
-                events = events.filter(e => ['params_change', 'virtual_open', 'virtual_close', 'round_success'].indexOf(e.event_type) >= 0);
-            } else if (eventFilter === 'entries_only') {
-                events = events.filter(e => ['real_open', 'virtual_open'].indexOf(e.event_type) >= 0);
-            }
-            this.renderFullaiAnalytics(data.summary || {}, events, summaryEl, eventsEl, {
+            this.renderFullaiAnalytics(data.summary || {}, data.events || [], summaryEl, eventsEl, {
                 db_path: data.db_path,
                 total_events: data.total_events,
                 bot_trades_stats: data.bot_trades_stats || null,
-                closed_trades: data.closed_trades || [],
-                fullai_configs: data.fullai_configs || null
+                closed_trades: data.closed_trades || []
             });
         } catch (err) {
-            const msg = (err && err.name === 'AbortError') ? 'Таймаут загрузки (45 с). Попробуйте сузить период или символ.' : ((err && err.message) || String(err));
-            if (summaryEl) summaryEl.innerHTML = `<div class="analytics-error">❌ ${msg}</div>`;
+            if (summaryEl) summaryEl.innerHTML = `<div class="analytics-error">❌ ${(err && err.message) || String(err)}</div>`;
             if (eventsEl) eventsEl.innerHTML = '';
             console.error('[BotsManager] Ошибка аналитики FullAI:', err);
         } finally {
             if (loadingEl) loadingEl.style.display = 'none';
         }
     },
-            /** Форматирует время в локальную зону ПК. ts — Unix (сек или мс), tsIso — ISO (UTC если без смещения). */
-            _formatTsLocal(ts, tsIso) {
-                const opts = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
-                if (ts != null && !isNaN(ts)) {
-                    const ms = ts > 1e12 ? ts : (ts > 1e9 ? ts * 1000 : ts);
-                    const d = new Date(ms);
-                    return isNaN(d.getTime()) ? (tsIso || '—') : d.toLocaleString(undefined, opts);
-                }
-                if (tsIso && typeof tsIso === 'string') {
-                    const s = /[Z+-]\d{2}:?\d{2}$/.test(tsIso) ? tsIso : tsIso + 'Z';
-                    const d = new Date(s);
-                    return isNaN(d.getTime()) ? tsIso : d.toLocaleString(undefined, opts);
-                }
-                return '—';
-            }
-        , renderFullaiAnalytics(summary, events, summaryEl, eventsEl, meta) {
+            renderFullaiAnalytics(summary, events, summaryEl, eventsEl, meta) {
         if (!summaryEl) return;
         const botStats = (meta && meta.bot_trades_stats) || null;
         const totalInDb = (meta && meta.total_events) != null ? meta.total_events : null;
         const dbPath = (meta && meta.db_path) || '';
         const s = summary;
-        // Реальные сделки: bots_data.db приоритет; если losses=0 но fullai_analytics нашёл убытки — используем их
-        const botTotal = (botStats != null) ? (botStats.total || 0) : 0;
-        const botWins = (botStats != null) ? (botStats.wins || 0) : 0;
-        const botLosses = (botStats != null) ? (botStats.losses || 0) : 0;
-        const sumLosses = s.real_losses || 0;
-        const sumWins = s.real_wins || 0;
-        const realClose = (botStats != null && botTotal > 0) ? botTotal : (s.real_close || 0);
-        const realWins = (botStats != null && botTotal > 0) ? botWins : sumWins;
-        const realLosses = (botStats != null && botTotal > 0)
-            ? (botLosses > 0 ? botLosses : Math.max(botLosses, sumLosses))
-            : sumLosses;
+        // Реальные сделки: используем bots_data.db (истинный источник), если есть — иначе fullai_analytics
+        const realClose = (botStats != null) ? (botStats.total || 0) : (s.real_close || 0);
+        const realWins = (botStats != null) ? (botStats.wins || 0) : (s.real_wins || 0);
+        const realLosses = (botStats != null) ? (botStats.losses || 0) : (s.real_losses || 0);
         const winRate = (botStats != null && botStats.win_rate_pct != null) ? String(botStats.win_rate_pct) : (s.real_total > 0 ? ((s.real_wins / s.real_total) * 100).toFixed(1) : '—');
         const virtualRate = s.virtual_total > 0 ? ((s.virtual_ok / s.virtual_total) * 100).toFixed(1) : '—';
         let html = '';
@@ -193,26 +150,23 @@
         html += '<p class="fullai-events-note" style="font-size:0.85rem;color:var(--text-muted,#888);margin-top:0.25rem;">Карточки «Реальные закрытия/в плюс/в минус/Win rate» — из bots_data.db (история ботов). Остальные карточки — события FullAI (записываются только при включённом FullAI).</p>';
         summaryEl.innerHTML = html + cards;
 
-        this._renderFullaiConfigsBlock(meta && meta.fullai_configs);
-
-        // Сначала — события входов/выходов (как FullAI входит: реал./вирт.), затем — закрытые сделки
         let closedTradesHtml = '';
         const closedTrades = (meta && meta.closed_trades) || [];
         if (closedTrades.length > 0) {
-            closedTradesHtml = '<h4 style="margin-top:1.5rem;">Закрытые сделки (PnL и вывод)</h4><table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Напр.</th><th>Вход</th><th>Выход</th><th>PnL %</th><th>PnL USDT</th><th>Причина</th><th>Вывод</th></tr></thead><tbody>';
+            closedTradesHtml = '<h4 style="margin-top:0.5rem;">Закрытые сделки (PnL и вывод)</h4>';
+            closedTradesHtml += '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Напр.</th><th>Вход</th><th>Выход</th><th>PnL %</th><th>PnL USDT</th><th>Причина</th><th>Вывод</th></tr></thead><tbody>';
             closedTrades.forEach(tr => {
                 const pnlUsdt = tr.pnl_usdt != null ? Number(tr.pnl_usdt) : null;
                 const roiPct = tr.roi_pct != null ? Number(tr.roi_pct) : null;
-                const pnlClass = (roiPct != null ? (roiPct >= 0 ? 'positive' : 'negative') : (pnlUsdt != null ? (pnlUsdt >= 0 ? 'positive' : 'negative') : ''));
+                const pnlClass = pnlUsdt != null ? (pnlUsdt >= 0 ? 'positive' : 'negative') : '';
                 const pnlPctStr = roiPct != null ? ((roiPct >= 0 ? '+' : '') + roiPct.toFixed(2) + '%') : '—';
-                const pnlUsdtStr = tr.is_virtual ? '—' : (pnlUsdt != null ? ((pnlUsdt >= 0 ? '+' : '') + pnlUsdt.toFixed(2)) : '—');
-                const entryPrice = (tr.entry_price != null && Number(tr.entry_price) > 0) ? Number(tr.entry_price).toFixed(6) : '—';
-                const exitPrice = (tr.exit_price != null && Number(tr.exit_price) > 0) ? Number(tr.exit_price).toFixed(6) : '—';
-                const conclusion = tr.conclusion || (pnlUsdt >= 0 || roiPct >= 0 ? 'Прибыль' : 'Убыток');
-                const virtualBadge = tr.is_virtual ? ' <span class="virtual-pnl-badge" style="background:#9c27b0;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;">Виртуальная</span>' : '';
-                closedTradesHtml += '<tr><td>' + this._formatTsLocal(tr.ts, tr.ts_iso || tr.exit_time) + '</td><td>' + (tr.symbol || '') + virtualBadge + '</td><td>' + (tr.direction || '') + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlPctStr + '</td><td class="' + pnlClass + '">' + pnlUsdtStr + '</td><td>' + (tr.close_reason || '—') + '</td><td>' + (conclusion || '—') + '</td></tr>';
+                const pnlUsdtStr = pnlUsdt != null ? ((pnlUsdt >= 0 ? '+' : '') + pnlUsdt.toFixed(2)) : '—';
+                const entryPrice = tr.entry_price != null ? Number(tr.entry_price).toFixed(6) : '—';
+                const exitPrice = tr.exit_price != null ? Number(tr.exit_price).toFixed(6) : '—';
+                const conclusion = tr.conclusion || (pnlUsdt >= 0 ? 'Прибыль' : 'Убыток');
+                closedTradesHtml += '<tr><td>' + (tr.ts_iso || tr.exit_time || '') + '</td><td>' + (tr.symbol || '') + '</td><td>' + (tr.direction || '') + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlPctStr + '</td><td class="' + pnlClass + '">' + pnlUsdtStr + '</td><td>' + (tr.close_reason || '—') + '</td><td>' + (conclusion || '—') + '</td></tr>';
             });
-            closedTradesHtml += '</tbody></table>';
+            closedTradesHtml += '</tbody></table><h4 style="margin-top:1.5rem;">Последние события FullAI</h4>';
         }
 
         if (!eventsEl) return;
@@ -228,116 +182,30 @@
             return;
         }
         if (events.length === 0 && closedTrades.length > 0) {
-            eventsEl.innerHTML = '<h4 style="margin-top:0.5rem;">Последние события FullAI (входы/выходы)</h4><p class="analytics-placeholder">Нет событий входов за период. Реальные входы появляются при создании бота FullAI.</p>' + (closedTrades.length ? '<h4 style="margin-top:1.5rem;">Закрытые сделки (PnL)</h4>' : '') + closedTradesHtml;
+            eventsEl.innerHTML = closedTradesHtml;
             return;
         }
-        let table = '<h4 style="margin-top:0.5rem;">Последние события FullAI (входы реал./вирт., выходы, блокировки)</h4>';
-        table += '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Событие</th><th>Направление</th><th>Вход</th><th>Выход</th><th>PnL %</th><th>PnL USDT</th><th>Лимит выхода</th><th>Тип</th><th>Время заявки</th><th>Проскальз.%</th><th>Задержка с</th><th>Детали</th><th>Вывод</th></tr></thead><tbody>';
+        let table = '<table class="fullai-events-table"><thead><tr><th>Время</th><th>Символ</th><th>Событие</th><th>Направление</th><th>Вход</th><th>Выход</th><th>PnL %</th><th>Лимит выхода</th><th>Тип</th><th>Время заявки</th><th>Проскальз.%</th><th>Задержка с</th><th>Детали</th><th>Вывод</th></tr></thead><tbody>';
         events.forEach(ev => {
             const label = eventLabels[ev.event_type] || ev.event_type;
             const dir = ev.direction || '—';
             const ex = ev.extra || {};
-            const entryPrice = (ex.entry_price != null && Number(ex.entry_price) > 0) ? Number(ex.entry_price).toFixed(6) : (ev.event_type === 'real_open' || ev.event_type === 'refused' ? (ex.price != null && Number(ex.price) > 0 ? Number(ex.price).toFixed(6) : '—') : '—');
-            const exitPrice = (ex.exit_price != null && Number(ex.exit_price) > 0) ? Number(ex.exit_price).toFixed(6) : '—';
+            const entryPrice = ex.entry_price != null ? Number(ex.entry_price).toFixed(6) : (ev.event_type === 'real_open' || ev.event_type === 'refused' ? (ex.price != null ? Number(ex.price).toFixed(6) : '—') : '—');
+            const exitPrice = ex.exit_price != null ? Number(ex.exit_price).toFixed(6) : '—';
             const limitExit = ex.limit_price_exit != null ? Number(ex.limit_price_exit).toFixed(6) : '—';
-            const isEntry = ev.event_type === 'real_open' || ev.event_type === 'virtual_open';
-            const orderType = isEntry ? (ex.order_type_entry || '—') : (ex.order_type_exit || '—');
-            const tsPlaced = ex.ts_order_placed_exit != null ? this._formatTsLocal(ex.ts_order_placed_exit, null) : '—';
-            const slippage = isEntry ? (ex.slippage_entry_pct != null ? Number(ex.slippage_entry_pct).toFixed(2) + '%' : '—') : (ex.slippage_exit_pct != null ? Number(ex.slippage_exit_pct).toFixed(2) + '%' : '—');
-            const delay = isEntry ? (ex.delay_entry_sec != null ? String(Number(ex.delay_entry_sec).toFixed(1)) : '—') : (ex.delay_sec != null ? String(Number(ex.delay_sec).toFixed(1)) : '—');
-            let pnlPct = ev.pnl_percent != null ? Number(ev.pnl_percent) : (ex.pnl_percent != null ? Number(ex.pnl_percent) : null);
-            let pnlUsdt = ex.pnl_usdt != null ? Number(ex.pnl_usdt) : null;
-            const hasValidEntry = ex.entry_price != null && Number(ex.entry_price) > 0;
-            const hasValidExit = ex.exit_price != null && Number(ex.exit_price) > 0;
-            if ((ev.event_type === 'real_close' || ev.event_type === 'virtual_close') && !hasValidEntry && hasValidExit) {
-                pnlPct = null;
-                pnlUsdt = null;
-            }
-            const isProfit = (pnlUsdt != null && pnlUsdt > 0) || (pnlPct != null && pnlPct > 0);
-            const isLoss = (pnlUsdt != null && pnlUsdt < 0) || (pnlPct != null && pnlPct < 0);
-            const pnlClass = isLoss ? 'negative' : (isProfit ? 'positive' : '');
+            const orderType = ex.order_type_exit || '—';
+            const tsPlaced = ex.ts_order_placed_exit != null ? (function() { const d = new Date(ex.ts_order_placed_exit * 1000); return d.toISOString ? d.toISOString().slice(0, 19).replace('T', ' ') : d.toLocaleString(); })() : '—';
+            const slippage = ex.slippage_exit_pct != null ? Number(ex.slippage_exit_pct).toFixed(2) + '%' : '—';
+            const delay = ex.delay_sec != null ? String(Number(ex.delay_sec).toFixed(1)) : '—';
+            const pnlPct = ev.pnl_percent != null ? Number(ev.pnl_percent) : (ex.pnl_percent != null ? Number(ex.pnl_percent) : null);
+            const pnlClass = pnlPct != null ? (pnlPct >= 0 ? 'positive' : 'negative') : '';
             const pnlStr = pnlPct != null ? ((pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%') : '—';
-            const pnlUsdtStr = ev.event_type === 'virtual_close' ? '—' : (pnlUsdt != null ? ((pnlUsdt >= 0 ? '+' : '') + pnlUsdt.toFixed(2)) : '—');
-            let details = '—';
-            let conclusion = '—';
-            if (ev.event_type === 'params_change') {
-                details = ev.reason || 'Мутация';
-                const parts = [];
-                if (ex.new_rsi_long != null) parts.push('RSI L=' + ex.new_rsi_long);
-                if (ex.new_rsi_short != null) parts.push('S=' + ex.new_rsi_short);
-                if (ex.new_tp != null) parts.push('TP=' + ex.new_tp + '%');
-                if (ex.new_sl != null) parts.push('SL=' + ex.new_sl + '%');
-                conclusion = parts.length ? parts.join(', ') : '—';
-            } else if (ev.event_type === 'virtual_close') {
-                const ok = ex.success !== false;
-                details = ok ? '✅ Успех' : '❌ Убыток';
-                conclusion = pnlStr !== '—' ? (ok ? '✅ ' + pnlStr : '❌ ' + pnlStr) : (ok ? '✅ В плюс' : '❌ В минус');
-            } else if (ev.event_type === 'virtual_open') {
-                details = ex.entry_price != null ? 'Вход ' + Number(ex.entry_price).toFixed(6) : '—';
-                conclusion = ex.attempt_label || 'Попытка виртуальная';
-            } else if (ev.event_type === 'real_open') {
-                details = ex.details_entry || (ex.take_profit_percent != null && ex.stop_loss_percent != null ? 'TP=' + ex.take_profit_percent + '%, SL=' + ex.stop_loss_percent + '%' : '—');
-                conclusion = ex.attempt_label || 'Реальная сделка';
-            } else if (ev.event_type === 'real_close') {
-                const closeSrc = ex.close_source || ev.reason || '';
-                const closeLabels = { BOT_LIMIT_TP: 'По лимитке бота (TP)', BOT_LIMIT_SL: 'По лимитке бота (SL)', RSI_EXIT: 'По лимитке бота (RSI)', MANUAL_CLOSE_UI: 'Вручную (UI)', MANUAL_OR_EXTERNAL: 'Вручную/внешне', CLOSED_ON_EXCHANGE: 'На бирже (неизв.)' };
-                details = closeLabels[closeSrc] || closeSrc || (ex.success !== undefined ? (ex.success ? 'успех' : 'убыток') : '') || '—';
-                conclusion = pnlPct != null ? (pnlPct >= 0 ? 'Прибыль. ' + (closeLabels[closeSrc] || closeSrc || '') : 'Убыток. ' + (closeLabels[closeSrc] || closeSrc || '')) : (closeLabels[closeSrc] || closeSrc || '—');
-            } else {
-                details = ev.reason || (ex.success !== undefined ? (ex.success ? 'успех' : 'убыток') : '') || '—';
-                conclusion = pnlPct != null ? (pnlPct >= 0 ? 'Прибыль. ' + (ev.reason || '') : 'Убыток. ' + (ev.reason || '')) : '—';
-            }
-            const rowClass = ev.event_type === 'params_change' ? 'fullai-event-params' : (ev.event_type === 'virtual_close' ? (ex.success ? 'fullai-event-virt-ok' : 'fullai-event-virt-fail') : '');
-            table += '<tr class="' + rowClass + '"><td>' + this._formatTsLocal(ev.ts, ev.ts_iso) + '</td><td>' + (ev.symbol || '') + '</td><td>' + label + '</td><td>' + dir + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlStr + '</td><td class="' + pnlClass + '">' + pnlUsdtStr + '</td><td>' + limitExit + '</td><td>' + orderType + '</td><td>' + tsPlaced + '</td><td>' + slippage + '</td><td>' + delay + '</td><td>' + details + '</td><td>' + conclusion + '</td></tr>';
+            const details = ev.reason || (ev.extra && ev.extra.success !== undefined ? (ev.extra.success ? 'успех' : 'убыток') : '') || '—';
+            const conclusion = pnlPct != null ? (pnlPct >= 0 ? 'Прибыль. ' + (ev.reason || '') : 'Убыток. ' + (ev.reason || '')) : '—';
+            table += '<tr><td>' + (ev.ts_iso || '') + '</td><td>' + (ev.symbol || '') + '</td><td>' + label + '</td><td>' + dir + '</td><td>' + entryPrice + '</td><td>' + exitPrice + '</td><td class="' + pnlClass + '">' + pnlStr + '</td><td>' + limitExit + '</td><td>' + orderType + '</td><td>' + tsPlaced + '</td><td>' + slippage + '</td><td>' + delay + '</td><td>' + details + '</td><td>' + conclusion + '</td></tr>';
         });
         table += '</tbody></table>';
-        eventsEl.innerHTML = table + closedTradesHtml;
-    },
-
-    _renderFullaiConfigsBlock(fullaiConfigs) {
-        const selectEl = document.getElementById('fullaiConfigCoinSelect');
-        const currentEl = document.getElementById('fullaiConfigCurrent');
-        const previousEl = document.getElementById('fullaiConfigPrevious');
-        if (!selectEl || !currentEl || !previousEl) return;
-        const cfg = fullaiConfigs || { global_config: {}, coin_configs: {} };
-        const coins = Object.keys(cfg.coin_configs || {}).sort();
-        const options = [{ value: '_global', text: 'Глобальный конфиг' }];
-        coins.forEach(sym => options.push({ value: sym, text: sym }));
-        selectEl.innerHTML = options.map(o => '<option value="' + o.value + '">' + o.text + '</option>').join('');
-        const renderSelected = () => {
-            const val = selectEl.value;
-            let current = null, previous = null, updatedAt = null;
-            if (val === '_global') {
-                current = cfg.global_config || {};
-                previous = null;
-            } else {
-                const coin = (cfg.coin_configs || {})[val];
-                if (coin) {
-                    current = coin.current || {};
-                    previous = coin.previous || null;
-                    updatedAt = coin.updated_at || null;
-                }
-            }
-            currentEl.textContent = Object.keys(current || {}).length ? JSON.stringify(current, null, 2) : '—';
-            let prevText;
-            if (previous && Object.keys(previous).length) {
-                prevText = JSON.stringify(previous, null, 2);
-                const same = JSON.stringify(current || {}) === JSON.stringify(previous);
-                previousEl.style.color = same ? 'var(--text-muted,#888)' : 'var(--blue-color,#4fc3f7)';
-                previousEl.setAttribute('title', same ? 'То же, что текущий' : 'Конфиг менялся — это предыдущая версия');
-            } else {
-                prevText = val === '_global' ? '— (глобальный не хранится в истории)' : '— Конфиг не менялся (FullAI ещё не сохранял параметры для этой монеты)';
-                previousEl.style.color = 'var(--text-muted,#888)';
-                previousEl.removeAttribute('title');
-            }
-            previousEl.textContent = prevText;
-            currentEl.setAttribute('title', updatedAt && val !== '_global' ? 'Обновлено: ' + updatedAt : '');
-        };
-        if (!selectEl.hasAttribute('data-fullai-config-bound')) {
-            selectEl.setAttribute('data-fullai-config-bound', 'true');
-            selectEl.addEventListener('change', renderSelected);
-        }
-        renderSelected();
+        eventsEl.innerHTML = closedTradesHtml + table;
     }
 
     /**
@@ -433,7 +301,7 @@
     }
 
     /**
-     * Запускает ручной анализ ИИ в фоновом воркере. Polling результата — основной поток не блокируется.
+     * Запускает ручной анализ ИИ: обновление данных, подход к сделкам и переобучение (в фоне).
      * Показывает изменения в формате «старое → новое».
      */,
             async runAiReanalyze() {
@@ -443,66 +311,34 @@
         if (btn) { btn.disabled = true; btn.textContent = '⏳ Запуск...'; }
         if (resultEl) { resultEl.style.display = 'none'; resultEl.innerHTML = ''; }
         try {
-            const periodHours = parseInt(document.getElementById('fullaiAnalyticsPeriod')?.value, 10) || 168;
-            const symbol = (document.getElementById('fullaiAnalyticsSymbol')?.value || '').trim().toUpperCase() || null;
-            const daysBack = Math.max(1, Math.ceil(periodHours / 24));
-            const body = JSON.stringify({ days_back: daysBack, symbol: symbol || null, limit: 2000 });
-            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/ai-reanalyze`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: body
-            });
+            const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/ai-reanalyze`, { method: 'POST' });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
             if (!data.success) throw new Error(data.error || 'Не удалось запустить');
 
-            if (btn) btn.textContent = '⏳ Анализ в фоне...';
-            let res = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/ai-reanalyze/result`);
-            let pollData = await res.json();
-            let pollCount = 0;
-            while (pollData.result && pollData.result.running && pollCount < 60) {
-                await new Promise(r => setTimeout(r, 1500));
-                res = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/ai-reanalyze/result`);
-                pollData = await res.json();
-                pollCount++;
-            }
-            const data2 = pollData.result || {};
-            const changes = data2.fullai_changes || [];
-            const insights = data2.insights || { mistakes: [], successes: [], recommendations: [] };
+            const changes = data.changes || [];
             if (resultEl) {
                 resultEl.style.display = 'block';
-                let html = '<p style="margin: 0 0 8px; font-weight:600;">' + (data2.message || data.message || 'Готово.') + '</p>';
-                if ((insights.mistakes && insights.mistakes.length) || (insights.successes && insights.successes.length) || (insights.recommendations && insights.recommendations.length)) {
-                    html += '<div style="margin-top: 10px; font-size: 0.9em;">';
-                    if (insights.mistakes && insights.mistakes.length) {
-                        html += '<p style="margin: 4px 0; color: var(--red-color, #f44336);"><strong>❌ Ошибки (что избегать):</strong></p><ul style="margin: 0 0 8px 20px;">';
-                        insights.mistakes.forEach(m => { html += '<li>' + m + '</li>'; });
-                        html += '</ul>';
-                    }
-                    if (insights.successes && insights.successes.length) {
-                        html += '<p style="margin: 4px 0; color: var(--green-color, #4caf50);"><strong>✅ Успехи (что повторять):</strong></p><ul style="margin: 0 0 8px 20px;">';
-                        insights.successes.forEach(s => { html += '<li>' + s + '</li>'; });
-                        html += '</ul>';
-                    }
-                    if (insights.recommendations && insights.recommendations.length) {
-                        html += '<p style="margin: 4px 0; color: var(--blue-color, #2196f3);"><strong>💡 Рекомендации:</strong></p><ul style="margin: 0 0 8px 20px;">';
-                        insights.recommendations.forEach(r => { html += '<li>' + r + '</li>'; });
-                        html += '</ul>';
-                    }
-                    html += '</div>';
-                }
                 if (changes.length > 0) {
-                    const paramNames = { take_profit_percent: 'TP%', max_loss_percent: 'SL%', rsi_long_threshold: 'RSI long', rsi_short_threshold: 'RSI short' };
+                    const paramNames = {
+                        take_profit_percent: 'TP%',
+                        max_loss_percent: 'SL%',
+                        rsi_long_threshold: 'RSI long',
+                        rsi_short_threshold: 'RSI short'
+                    };
                     const isPercent = (p) => p === 'take_profit_percent' || p === 'max_loss_percent';
-                    html += '<p style="margin: 10px 0 4px; font-weight:600;">📝 Изменения параметров:</p><ul style="margin: 0 0 0 16px;">';
+                    let html = '<strong>🧠 Изменения ИИ:</strong><ul style="margin: 6px 0 0 16px;">';
                     changes.forEach(c => {
                         const p = paramNames[c.param] || c.param;
                         const suf = isPercent(c.param) ? '%' : '';
-                        html += '<li><code>' + c.symbol + '</code> ' + p + ': <span style="text-decoration:line-through">' + c.old + suf + '</span> → <strong>' + c.new + suf + '</strong></li>';
+                        html += `<li><code>${c.symbol}</code> ${p}: <span style="text-decoration:line-through">${c.old}${suf}</span> → <strong>${c.new}${suf}</strong></li>`;
                     });
                     html += '</ul>';
+                    html += '<p style="margin: 8px 0 0; color: var(--text-muted, #666); font-size: 0.85em;">' + (data.message || '') + '</p>';
+                    resultEl.innerHTML = html;
+                } else {
+                    resultEl.innerHTML = '<strong>🧠</strong> ' + (data.message || 'Готово. Изменений параметров нет.');
                 }
-                resultEl.innerHTML = html;
             } else {
                 alert(data.message || 'ИИ анализирует и обновляет данные в фоне.');
             }

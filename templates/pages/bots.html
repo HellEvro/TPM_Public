@@ -2443,20 +2443,6 @@
                         </div>
 
                         <div class="config-block-row">
-                            <h4>🤖 ML модель параметров</h4>
-                            <div class="config-item">
-                                <label class="config-label">
-                                    <span class="label-text">Оценка качества параметров (Parameter Quality):</span>
-                                </label>
-                                <label class="toggle-switch">
-                                    <input type="checkbox" id="parameterQualityEnabled" />
-                                    <span class="toggle-slider"></span>
-                                </label>
-                                <small class="config-help">ML модель предсказания качества параметров. Выключить, если тормозит систему.</small>
-                            </div>
-                        </div>
-
-                        <div class="config-block-row">
                             <h4>🔄 <span data-translate="auto_training_title">Auto Training</span></h4>
                             <div class="config-item">
                                 <label class="config-label">
@@ -2750,14 +2736,6 @@
                     </div>
                 </div>
                 <div class="analytics-subtab-content" id="analyticsPanelFullai" data-analytics-subtab="fullai" role="tabpanel" hidden>
-                    <div class="fullai-how-it-works" style="margin-bottom:1rem;padding:1rem;background:var(--bg-secondary,#1a1a2e);border-radius:8px;border:1px solid var(--border,#333);">
-                        <strong>📌 Как FullAI входит в сделки:</strong>
-                        <ul style="margin:0.5rem 0 0 1.2rem;padding:0;font-size:0.9rem;">
-                            <li><b>Вход реал.</b> — реальный ордер на бирже (деньги в сделке)</li>
-                            <li><b>Вход вирт.</b> — виртуальная сделка (обкатка, без ордера)</li>
-                        </ul>
-                        <p style="margin:0.5rem 0 0;font-size:0.85rem;color:var(--text-muted,#888);">Карточки ниже — счётчики. Таблица «Последние события» — каждый вход/выход с датой и символом.</p>
-                    </div>
                     <p class="analytics-subtab-desc">События ПРИИ: реальные и виртуальные входы/выходы, блокировки, отказы ИИ, смена параметров. БД: <code>data/fullai_analytics.db</code>.</p>
                     <div class="analytics-controls">
                         <label class="analytics-option">
@@ -2772,16 +2750,8 @@
                             <span>Символ:</span>
                             <input type="text" id="fullaiAnalyticsSymbol" placeholder="все" style="width: 90px;" />
                         </label>
-                        <label class="analytics-option">
-                            <span>Показать:</span>
-                            <select id="fullaiAnalyticsEventFilter">
-                                <option value="all">Все события</option>
-                                <option value="entries_only">Только входы (реал. + вирт.)</option>
-                                <option value="params_and_virtual">Смена параметров и виртуальные</option>
-                            </select>
-                        </label>
                         <button type="button" class="btn btn-primary" id="fullaiAnalyticsRunBtn">Обновить</button>
-                        <button type="button" class="btn btn-secondary" id="aiReanalyzeBtn" title="ИИ изучит закрытые сделки: найдёт ошибки (что избегать), успехи (что повторять), обновит параметры">
+                        <button type="button" class="btn btn-secondary" id="aiReanalyzeBtn" title="ИИ проанализирует ситуацию, обновит данные и подход к сделкам, переобучится (в фоне)">
                             🧠 ИИ: проанализировать и обновить
                         </button>
                     </div>
@@ -2791,33 +2761,6 @@
                         <span>Загрузка...</span>
                     </div>
                     <div id="fullaiAnalyticsSummary" class="fullai-summary-cards"></div>
-                    <div class="fullai-configs-block fullai-configs-collapsible" style="margin-top:1.5rem;background:var(--bg-secondary,#1a1a2e);border-radius:8px;border:1px solid var(--border,#333);">
-                        <details class="fullai-configs-details">
-                            <summary class="fullai-configs-summary" style="padding:0.75rem 1rem;cursor:pointer;user-select:none;display:flex;align-items:center;gap:0.5rem;font-weight:600;">
-                                <span class="fullai-configs-arrow" style="transition:transform 0.2s;">▶</span>
-                                <span>🧠 Конфиги ИИ (текущий и предыдущий)</span>
-                            </summary>
-                            <div class="fullai-configs-inner" style="padding:0 1rem 1rem;border-top:1px solid var(--border,#333);">
-                                <p class="form-text text-muted" style="font-size:0.85rem;margin:0.75rem 0 0.5rem;">Выберите монету — показываются текущий и предыдущий конфиги, по которым работает FullAI.</p>
-                                <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
-                                    <span>Монета:</span>
-                                    <select id="fullaiConfigCoinSelect" class="form-control form-control-sm" style="width:auto;max-width:180px;">
-                                        <option value="_global">Глобальный конфиг</option>
-                                    </select>
-                                </label>
-                                <div class="row" style="display:flex;flex-wrap:wrap;gap:1rem;">
-                                    <div class="fullai-config-current" style="flex:1;min-width:280px;">
-                                        <strong>Текущий конфиг</strong>
-                                        <pre id="fullaiConfigCurrent" style="margin:0.5rem 0;padding:0.75rem;background:#0d0d14;border-radius:6px;font-size:0.8rem;overflow-x:auto;max-height:220px;overflow-y:auto;"></pre>
-                                    </div>
-                                    <div class="fullai-config-previous" style="flex:1;min-width:280px;">
-                                        <strong>Предыдущий конфиг</strong>
-                                        <pre id="fullaiConfigPrevious" style="margin:0.5rem 0;padding:0.75rem;background:#0d0d14;border-radius:6px;font-size:0.8rem;overflow-x:auto;max-height:220px;overflow-y:auto;color:var(--text-muted,#888);"></pre>
-                                    </div>
-                                </div>
-                            </div>
-                        </details>
-                    </div>
                     <div class="fullai-events-table-wrap">
                         <h4>Последние события</h4>
                         <div id="fullaiAnalyticsEvents"></div>

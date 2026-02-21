@@ -513,14 +513,9 @@
         console.log('[BotsManager] 🔍 systemConfig.position_sync_interval:', systemConfig.position_sync_interval);
         if (positionSyncIntervalEl && systemConfig.position_sync_interval !== undefined) {
             positionSyncIntervalEl.value = systemConfig.position_sync_interval;
-            // Интервал UI = position_sync_interval (список монет слева, фильтры, боты, мониторинг) — минимум 1 сек
-            const newInterval = Math.max(1000, systemConfig.position_sync_interval * 1000);
-            const intervalChanged = this.refreshInterval !== newInterval;
-            this.refreshInterval = newInterval;
-            console.log('[BotsManager] 🔄 Синхронизация позиций и обновление списка монет слева:', systemConfig.position_sync_interval, 'сек');
-            if (intervalChanged && typeof this.restartPeriodicUpdate === 'function') {
-                this.restartPeriodicUpdate();
-            }
+            // Минимум 5 сек — иначе интерфейс мигает как стробоскоп
+            this.refreshInterval = Math.max(5000, systemConfig.position_sync_interval * 1000);
+            console.log('[BotsManager] 🔄 Синхронизация позиций и период обновления UI (RSI, боты, мониторинг):', systemConfig.position_sync_interval, 'сек');
         } else if (positionSyncIntervalEl) {
             positionSyncIntervalEl.value = 600;
             this.refreshInterval = 600 * 1000;

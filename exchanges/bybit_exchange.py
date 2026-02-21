@@ -325,7 +325,7 @@ class BybitExchange(BaseExchange):
                             active_positions = [p for p in positions if abs(float(p['size'])) > 0]
                             all_positions.extend(active_positions)
                             
-                            cursor = ((response or {}).get('result') or {}).get('nextPageCursor')
+                            cursor = response['result'].get('nextPageCursor')
                             if not cursor:
                                 break
                                 
@@ -620,30 +620,6 @@ class BybitExchange(BaseExchange):
                 period_start = end_time - (547 * 24 * 60 * 60 * 1000)
                 period_end = end_time
             
-            def _fetch_closed_pnl_page(params, retry_on_10002=True):
-                """Один запрос get_closed_pnl с retry при 10002 (timestamp)."""
-                try:
-                    return self.client.get_closed_pnl(**params)
-                except Exception as e:
-                    err_str = str(e)
-                    if retry_on_10002 and ('10002' in err_str or 'timestamp' in err_str.lower() or 'recv_window' in err_str.lower()):
-                        try:
-                            r = self.client.get_server_time()
-                            if isinstance(r, dict) and r.get('retCode') == 0:
-                                server_ms = r.get('time') or (r.get('result') or {}).get('timeSecond', 0) * 1000
-                                if server_ms:
-                                    sync_bybit_time_from_server(int(server_ms))
-                            current_rw = getattr(self.client, 'recv_window', 20000)
-                            self.client.recv_window = min(current_rw + 2500, 60000)
-                            logger.error(
-                                "❌ [BYBIT] get_closed_pnl timestamp (10002). Synced time + recv_window. Retrying..."
-                            )
-                            return self.client.get_closed_pnl(**params)
-                        except Exception as retry_e:
-                            logger.error(f"Error fetching closed PNL (retry): {retry_e}")
-                            raise
-                    raise
-
             # Разбиваем запрос на периоды по 7 дней для избежания лимитов API
             if period == 'all' or (period_end - period_start) > (7 * 24 * 60 * 60 * 1000):
                 # Для больших периодов разбиваем на части
@@ -664,45 +640,30 @@ class BybitExchange(BaseExchange):
                             if cursor:
                                 params["cursor"] = cursor
                             
-                            response = _fetch_closed_pnl_page(params)
+                            response = self.client.get_closed_pnl(**params)
                             
                             if not response:
                                 break
                             
-                            # Обрабатываем ошибки API
+                            # Обрабатываем ошибку API о лимите в 2 года
                             if response.get('retCode') != 0:
                                 ret_msg = response.get('retMsg', '')
-                                ret_code = response.get('retCode', 0)
-                                if '2 years' in ret_msg or ret_code == 10001:
+                                # Если ошибка о лимите в 2 года, пропускаем этот период
+                                if '2 years' in ret_msg or 'ErrCode: 10001' in ret_msg:
                                     logger.warning(f"Bybit API: Cannot query data older than 2 years. Skipping period {current_start}-{current_end}")
                                     break
-                                if ret_code == 10002 or 'timestamp' in ret_msg.lower() or 'recv_window' in ret_msg.lower():
-                                    try:
-                                        r = self.client.get_server_time()
-                                        if isinstance(r, dict) and r.get('retCode') == 0:
-                                            server_ms = r.get('time') or (r.get('result') or {}).get('timeSecond', 0) * 1000
-                                            if server_ms:
-                                                sync_bybit_time_from_server(int(server_ms))
-                                        current_rw = getattr(self.client, 'recv_window', 20000)
-                                        self.client.recv_window = min(current_rw + 2500, 60000)
-                                        logger.error("❌ [BYBIT] get_closed_pnl 10002. Synced time + recv_window. Retrying...")
-                                        response = self.client.get_closed_pnl(**params)
-                                        if not response or response.get('retCode') != 0:
-                                            break
-                                    except Exception as retry_err:
-                                        logger.error(f"get_closed_pnl retry after 10002: {retry_err}")
-                                        break
                                 else:
+                                    # Для других ошибок также прерываем
                                     break
                             
-                            positions = ((response or {}).get('result') or {}).get('list', [])
+                            positions = response['result'].get('list', [])
                             if not positions:
                                 break
                             
                             for pos in positions:
                                 all_closed_pnl.append(build_pnl_record(pos))
                             
-                            cursor = ((response or {}).get('result') or {}).get('nextPageCursor')
+                            cursor = response['result'].get('nextPageCursor')
                             if not cursor:
                                 break
                                 
@@ -726,45 +687,30 @@ class BybitExchange(BaseExchange):
                         if cursor:
                             params["cursor"] = cursor
                         
-                        response = _fetch_closed_pnl_page(params)
+                        response = self.client.get_closed_pnl(**params)
                         
                         if not response:
                             break
                         
-                        # Обрабатываем ошибки API
+                        # Обрабатываем ошибку API о лимите в 2 года
                         if response.get('retCode') != 0:
                             ret_msg = response.get('retMsg', '')
-                            ret_code = response.get('retCode', 0)
-                            if '2 years' in ret_msg or ret_code == 10001:
+                            # Если ошибка о лимите в 2 года, пропускаем этот период
+                            if '2 years' in ret_msg or 'ErrCode: 10001' in ret_msg:
                                 logger.warning(f"Bybit API: Cannot query data older than 2 years. Period {period_start}-{period_end} is too old")
                                 break
-                            if ret_code == 10002 or 'timestamp' in ret_msg.lower() or 'recv_window' in ret_msg.lower():
-                                try:
-                                    r = self.client.get_server_time()
-                                    if isinstance(r, dict) and r.get('retCode') == 0:
-                                        server_ms = r.get('time') or (r.get('result') or {}).get('timeSecond', 0) * 1000
-                                        if server_ms:
-                                            sync_bybit_time_from_server(int(server_ms))
-                                    current_rw = getattr(self.client, 'recv_window', 20000)
-                                    self.client.recv_window = min(current_rw + 2500, 60000)
-                                    logger.error("❌ [BYBIT] get_closed_pnl 10002. Synced time + recv_window. Retrying...")
-                                    response = self.client.get_closed_pnl(**params)
-                                    if not response or response.get('retCode') != 0:
-                                        break
-                                except Exception as retry_err:
-                                    logger.error(f"get_closed_pnl retry after 10002: {retry_err}")
-                                    break
                             else:
+                                # Для других ошибок также прерываем
                                 break
                         
-                        positions = ((response or {}).get('result') or {}).get('list', [])
+                        positions = response['result'].get('list', [])
                         if not positions:
                             break
                         
                         for pos in positions:
                             all_closed_pnl.append(build_pnl_record(pos))
                         
-                        cursor = ((response or {}).get('result') or {}).get('nextPageCursor')
+                        cursor = response['result'].get('nextPageCursor')
                         if not cursor:
                             break
                             
@@ -2876,8 +2822,7 @@ class BybitExchange(BaseExchange):
                         logger.info(f"[BYBIT_BOT] 📊 {symbol}: Размер позиции {requested_qty_usdt:.2f} USDT < minNotionalValue={min_usdt_from_notional}, "
                                     f"остаток {available_usdt:.2f} USDT — увеличиваем до минимума и размещаем ордер.")
                     # Увеличиваем до minNotional только если остаток достаточен (проверено выше)
-                    # Буфер 10%: Bybit может проверять по mark price или округлять — 2% было недостаточно (ErrCode: 110094)
-                    min_required_usdt = min_usdt_from_notional * 1.10
+                    min_required_usdt = min_usdt_from_notional * 1.02
                     min_coins_for_notional = math.ceil(min_required_usdt / price_for_notional_check / qty_step) * qty_step
                     rounded_coins = min_coins_for_notional
                     if skip_min_notional_enforcement:

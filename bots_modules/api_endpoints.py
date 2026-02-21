@@ -421,6 +421,67 @@ def get_account_info():
         response.headers.add('Access-Control-Allow-Origin', '*')
         return response, 500
 
+
+@bots_app.route('/api/bots/positions-for-app', methods=['GET'])
+def get_positions_for_app():
+    """
+    Позиции с биржи в формате app.py (Positions).
+    Fallback, когда app.py не видит позиции (разные процессы).
+    """
+    try:
+        if not ensure_exchange_initialized():
+            return jsonify({'success': False, 'error': 'Exchange not initialized'}), 500
+        exch = get_exchange()
+        if not exch:
+            return jsonify({'success': False, 'error': 'Exchange not initialized'}), 500
+        positions, rapid_growth = exch.get_positions()
+        if not positions:
+            return jsonify({
+                'success': True,
+                'high_profitable': [], 'profitable': [], 'losing': [],
+                'stats': {'total_trades': 0, 'high_profitable_count': 0, 'profitable_count': 0,
+                          'losing_count': 0, 'top_profitable': [], 'top_losing': [],
+                          'total_pnl': 0, 'total_profit': 0, 'total_loss': 0},
+                'rapid_growth': [], 'total_trades': 0
+            })
+        pnl_threshold = getattr(SystemConfig, 'PNL_THRESHOLD', None) or 10
+        high_p, prof, los = [], [], []
+        total_profit = total_loss = 0
+        for pos in positions:
+            pnl = float(pos.get('pnl', 0))
+            if pnl > 0:
+                (high_p if pnl >= pnl_threshold else prof).append(pos)
+                total_profit += pnl
+            elif pnl < 0:
+                los.append(pos)
+                total_loss += pnl
+        high_p.sort(key=lambda x: x.get('pnl', 0), reverse=True)
+        prof.sort(key=lambda x: x.get('pnl', 0), reverse=True)
+        los.sort(key=lambda x: x.get('pnl', 0))
+        all_prof = high_p + prof
+        all_prof.sort(key=lambda x: x.get('pnl', 0), reverse=True)
+        return jsonify({
+            'success': True,
+            'high_profitable': high_p, 'profitable': prof, 'losing': los,
+            'stats': {
+                'total_trades': len(positions),
+                'high_profitable_count': len(high_p),
+                'profitable_count': len(high_p) + len(prof),
+                'losing_count': len(los),
+                'top_profitable': all_prof[:3],
+                'top_losing': los[:3],
+                'total_pnl': total_profit + total_loss,
+                'total_profit': total_profit,
+                'total_loss': total_loss
+            },
+            'rapid_growth': rapid_growth or [],
+            'total_trades': len(positions)
+        })
+    except Exception as e:
+        logger.error(f"[POSITIONS_FOR_APP] {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @bots_app.route('/api/bots/manual-positions/refresh', methods=['POST'])
 def refresh_manual_positions():
     """Обновить список монет с ручными позициями на бирже (позиции БЕЗ ботов)"""
@@ -626,7 +687,7 @@ def get_coins_with_rsi():
                 
                 essential_fields = ['symbol', rsi_key, trend_key, 'rsi_zone', 'signal', 'price', 
                                   'change24h', 'last_update', 'blocked_by_scope', 'has_existing_position',
-                                  'is_mature', 'maturity_reason', 'blocked_by_exit_scam', 'blocked_by_rsi_time', 'blocked_by_loss_reentry',
+                                  'is_mature', 'blocked_by_exit_scam', 'blocked_by_rsi_time', 'blocked_by_loss_reentry',
                                   'trading_status', 'is_delisting']
                 # Также добавляем старые ключи для обратной совместимости
                 essential_fields.extend(['rsi6h', 'trend6h', 'rsi', 'trend'])
@@ -685,16 +746,10 @@ def get_coins_with_rsi():
                 effective_signal = get_effective_signal(cleaned_coin)
                 cleaned_coin['effective_signal'] = effective_signal
                 # В список LONG/SHORT слева попадают только монеты, прошедшие проверку AI (как в potential_coins)
-                # КРИТИЧНО: AI блокировка только когда AIConfig.AI_ENABLED и (ai_enabled или full_ai_control)
                 if effective_signal in ('ENTER_LONG', 'ENTER_SHORT'):
                     try:
                         auto_config = bots_data.get('auto_bot_config', {})
-                        from bot_engine.config_live import get_ai_config_attr
-                        ai_modules_on = get_ai_config_attr('AI_ENABLED', False)
-                        ai_check_needed = bool(
-                            ai_modules_on and (auto_config.get('ai_enabled') or auto_config.get('full_ai_control'))
-                        )
-                        if ai_check_needed:
+                        if auto_config.get('ai_enabled'):
                             from bot_engine.ai.ai_integration import should_open_position_with_ai
                             direction = 'LONG' if effective_signal == 'ENTER_LONG' else 'SHORT'
                             rsi_val = cleaned_coin.get('rsi') or cleaned_coin.get(rsi_key)
@@ -713,9 +768,7 @@ def get_coins_with_rsi():
                                 config=filter_config,
                                 candles=None
                             )
-                            # AI блокирует только когда ai_override_original=True; иначе AI рекомендательный — не блокируем
-                            ai_override = filter_config.get('ai_override_original', True)
-                            if ai_result.get('ai_used') and not ai_result.get('should_open') and ai_override:
+                            if ai_result.get('ai_used') and not ai_result.get('should_open'):
                                 effective_signal = 'WAIT'
                                 cleaned_coin['effective_signal'] = 'WAIT'
                                 cleaned_coin['signal_block_reason'] = ai_result.get('reason') or 'AI не рекомендует вход'
@@ -1072,15 +1125,13 @@ def create_bot_endpoint():
         if enable_maturity_check_coin and not has_manual_position:
             # Проверяем зрелость по текущему системному ТФ (хранилище или загрузка свечей при верификации)
             from bots_modules.filters import check_coin_maturity_stored_or_verify
-            is_mature, maturity_reason = check_coin_maturity_stored_or_verify(symbol)
-            if not is_mature:
+            if not check_coin_maturity_stored_or_verify(symbol):
                 from bot_engine.config_loader import get_current_timeframe
                 tf = get_current_timeframe()
-                err_msg = maturity_reason or f'Проверка по таймфрейму {tf}'
-                logger.warning(f" {symbol}: Монета не прошла проверку зрелости: {err_msg}")
+                logger.warning(f" {symbol}: Монета не прошла проверку зрелости (ТФ {tf})")
                 return jsonify({
                     'success': False,
-                    'error': f'Монета {symbol} не прошла проверку зрелости: {err_msg}'
+                    'error': f'Монета {symbol} не прошла проверку зрелости (проверка по таймфрейму {tf})'
                 }), 400
         elif has_manual_position:
             logger.info(f" ✋ {symbol}: Ручная позиция обнаружена - проверка зрелости пропущена")
@@ -1191,43 +1242,11 @@ def create_bot_endpoint():
                                 force_market = False
                         except Exception:
                             pass
-                        import time
-                        intended_price = 0.0
-                        try:
-                            with rsi_data_lock:
-                                _cd = coins_rsi_data.get('coins', {}).get(symbol, {})
-                            intended_price = float(_cd.get('price', 0) or 0)
-                        except Exception:
-                            pass
-                        _t0 = time.time()
                         result = trading_bot._enter_position(direction, force_market_entry=force_market)
-                        _delay = time.time() - _t0
                         if result and result.get('success'):
                             logger.info(f" ✅ Успешно вошли в {direction} позицию для {symbol}")
                             with bots_data_lock:
                                 bots_data['bots'][symbol] = trading_bot.to_dict()
-                            # FullAI аналитика: всегда запись real_open с полными данными
-                            try:
-                                from bot_engine.fullai_analytics import append_event, EVENT_REAL_OPEN
-                                from bots_modules.fullai_adaptive import build_real_open_extra
-                                actual_price = float(result.get('entry_price') or intended_price or 0)
-                                order_type = 'Limit' if not force_market else 'Market'
-                                extra = build_real_open_extra(
-                                    symbol=symbol, direction=direction,
-                                    intended_price=intended_price or actual_price,
-                                    actual_price=actual_price,
-                                    order_type=order_type, delay_sec=_delay,
-                                )
-                                append_event(
-                                    symbol=symbol,
-                                    event_type=EVENT_REAL_OPEN,
-                                    direction=direction,
-                                    is_virtual=False,
-                                    reason=extra.get('attempt_label', 'Реальная сделка'),
-                                    extra=extra,
-                                )
-                            except Exception as _fa_err:
-                                logger.debug("FullAI analytics real_open (API): %s", _fa_err)
                         else:
                             error_msg = (result or {}).get('error', 'unknown')
                             if 'MIN_NOTIONAL' in error_msg or '110007' in error_msg or 'меньше минимального ордера' in error_msg or 'Недостаточно доступного остатка' in error_msg:
@@ -1657,20 +1676,6 @@ def close_position_endpoint():
                     tid = bots_db.save_bot_trade_history(trade_data)
                     if tid:
                         logger.info(f" ✅ Закрытие через UI: сделка {symbol} сохранена в bots_data.db (ID: {tid})")
-                    # FullAI аналитика: всегда записываем real_close при закрытии (для полноты журнала событий)
-                    try:
-                        from bots_modules.fullai_adaptive import record_real_close
-                        extra = {
-                            'entry_price': entry_price,
-                            'exit_price': exit_price,
-                            'pnl_usdt': pnl_usdt,
-                            'direction': direction,
-                            'close_source': 'MANUAL_CLOSE_UI',
-                            'order_type_exit': 'Market',
-                        }
-                        record_real_close(symbol, roi_pct, reason='MANUAL_CLOSE_UI', extra=extra)
-                    except Exception as fa_err:
-                        logger.debug("FullAI analytics real_close UI: %s", fa_err)
             except Exception as save_err:
                 logger.warning(f" ⚠️ Ошибка сохранения сделки в bot_trades_history: {save_err}")
 
@@ -1882,21 +1887,38 @@ def timeframe_config():
             try:
                 from bots_modules.imports_and_globals import coins_rsi_data, rsi_data_lock
                 with rsi_data_lock:
+                    # Полностью очищаем кэш свечей
                     coins_rsi_data['candles_cache'] = {}
                     coins_rsi_data['last_candles_update'] = None
                     coins_rsi_data['last_update'] = None
+                    # Очищаем данные монет, чтобы они перезагрузились с новым таймфреймом
                     coins_rsi_data['coins'] = {}
-                    coins_rsi_data['update_in_progress'] = False  # Сбрасываем, чтобы continuous loader смог рассчитать RSI
                     logger.info("🗑️ Кэш свечей и RSI данных очищен для перезагрузки с новым таймфреймом")
             except Exception as clear_err:
                 logger.warning(f"⚠️ Не удалось очистить кэш свечей: {clear_err}")
             
-            # Не запускаем отдельный поток load_all_coins_rsi: кэш пуст, поток бы делал 500+ API вызовов
-            # и блокировал continuous_data_loader. Он сам загрузит свечи и RSI на следующем раунде.
+            # Триггерим перезагрузку RSI данных в фоновом режиме
+            try:
+                from bots_modules.filters import load_all_coins_rsi
+                import threading
+                def reload_rsi():
+                    try:
+                        logger.info(f"🔄 Запуск перезагрузки RSI данных для таймфрейма {new_timeframe}...")
+                        load_all_coins_rsi()
+                        logger.info(f"✅ RSI данные перезагружены для таймфрейма {new_timeframe}")
+                    except Exception as reload_err:
+                        logger.error(f"❌ Ошибка перезагрузки RSI данных: {reload_err}")
+                
+                # Запускаем в отдельном потоке, чтобы не блокировать ответ
+                reload_thread = threading.Thread(target=reload_rsi, daemon=True)
+                reload_thread.start()
+                logger.info("🔄 Запущен поток перезагрузки RSI данных")
+            except Exception as trigger_err:
+                logger.warning(f"⚠️ Не удалось запустить перезагрузку RSI данных: {trigger_err}")
             
             return jsonify({
                 'success': True,
-                'message': f'Таймфрейм изменен с {old_timeframe} на {new_timeframe}. Continuous loader загрузит свечи и RSI на следующем раунде.',
+                'message': f'Таймфрейм изменен с {old_timeframe} на {new_timeframe}. Данные сохраняются, начинается перезагрузка RSI...',
                 'old_timeframe': old_timeframe,
                 'new_timeframe': new_timeframe
             })
@@ -3972,15 +3994,6 @@ def auto_bot_config():
                 except Exception as e:
                     logger.error(f" ❌ Ошибка очистки файла зрелых монет: {e}")
             
-            # ✅ При ОТКЛЮЧЕНИИ проверки зрелости — сразу помечаем все монеты зрелыми в кэше
-            if 'enable_maturity_check' in data and data.get('enable_maturity_check') is False:
-                try:
-                    from bots_modules.filters import update_is_mature_flags_in_rsi_data
-                    update_is_mature_flags_in_rsi_data()
-                    logger.info(" ✅ Проверка зрелости выключена — все монеты помечены зрелыми")
-                except Exception as e:
-                    logger.warning(f" ⚠️ Не удалось обновить флаги зрелости: {e}")
-            
             # КРИТИЧЕСКИ ВАЖНО: При включении Auto Bot запускаем немедленную проверку
             # Показываем блок только если enabled реально изменился с False на True
             if 'enabled' in data and old_config.get('enabled') == False and data['enabled'] == True:
@@ -5513,88 +5526,59 @@ def get_rsi_audit():
 
 
 # Последний результат ai-reanalyze (для отображения пользователю и polling)
-_last_ai_reanalyze_result = {'ts': 0, 'fullai_changes': [], 'insights': {}, 'message': '', 'running': False}
-_ai_reanalyze_lock = threading.Lock()
-
-
-def _ai_reanalyze_worker_thread(days_back, symbol_filter, limit):
-    """Фоновый воркер: ИИ анализирует сделки и обновляет параметры. Основной поток не блокируется."""
-    global _last_ai_reanalyze_result
-    fullai_changes = []
-    insights = {'mistakes': [], 'successes': [], 'recommendations': []}
-    fullai_msg = 'FullAI выключен, параметры не менялись'
-    try:
-        from bot_engine.ai_analytics import invalidate_analytics_cache
-        invalidate_analytics_cache()
-        from bots_modules.imports_and_globals import bots_data, bots_data_lock
-        with bots_data_lock:
-            full_ai = (bots_data.get('auto_bot_config') or {}).get('full_ai_control', False)
-        if full_ai:
-            from bots_modules.fullai_trades_learner import run_fullai_trades_analysis
-            r = run_fullai_trades_analysis(
-                days_back=days_back,
-                min_trades_per_symbol=2,
-                adjust_params=True,
-                symbol_filter=symbol_filter,
-                limit=limit,
-            )
-            fullai_changes = r.get('changes') or []
-            insights = r.get('insights') or insights
-            analyzed = r.get('analyzed', 0)
-            updated_cnt = len(r.get('updated_symbols') or [])
-            if fullai_changes:
-                fullai_msg = f"Проанализировано {analyzed} сделок. Обновлено {len(fullai_changes)} параметров по {updated_cnt} монетам."
-            else:
-                fullai_msg = f"Проанализировано {analyzed} сделок. Изменений параметров нет."
-        else:
-            fullai_msg = 'FullAI выключен. Включите FullAI для обновления параметров по сделкам.'
-    except Exception as e:
-        logger.warning("ai-reanalyze fullai: %s", e)
-        fullai_msg = f"FullAI: ошибка — {e}"
-
-    with _ai_reanalyze_lock:
-        _last_ai_reanalyze_result = {
-            'ts': time.time(),
-            'fullai_changes': fullai_changes,
-            'insights': insights,
-            'message': fullai_msg,
-            'running': False,
-        }
-    with _fullai_analytics_lock:
-        _fullai_analytics_cache['ts'] = 0
+_last_ai_reanalyze_result = {'ts': 0, 'fullai_changes': [], 'ai_retrain': None, 'running': False}
 
 
 @bots_app.route('/api/bots/analytics/ai-reanalyze', methods=['POST'])
 def ai_reanalyze_and_update():
     """
-    Ручной запуск: ИИ анализирует закрытые сделки в отдельном потоке.
-    Возвращает сразу; результат — через GET /api/bots/analytics/ai-reanalyze/result (polling).
+    Ручной запуск: FullAI анализирует сделки из bot_trades_history и обновляет параметры.
+    - Сбрасывает кеш аналитики
+    - FullAI learner: анализ закрытых сделок, торговой аналитики, подбор TP/SL по монетам
+    НЕ использует AutoTrainer/AIContinuousLearning (whitelist → 0 сделок).
     """
     global _last_ai_reanalyze_result
     try:
-        data = request.get_json(silent=True) or {}
-        days_back = int(data.get('days_back') or data.get('period_days') or 7)
-        symbol_filter = (data.get('symbol') or '').strip().upper() or None
-        limit = min(5000, max(500, int(data.get('limit') or 2000)))
+        import time
+        from bot_engine.ai_analytics import invalidate_analytics_cache
+        invalidate_analytics_cache()
 
-        with _ai_reanalyze_lock:
-            if _last_ai_reanalyze_result.get('running'):
-                return jsonify({'success': True, 'message': 'Анализ уже выполняется', 'status': 'running'})
-            _last_ai_reanalyze_result = {'running': True, 'ts': time.time()}
+        fullai_changes = []
+        fullai_msg = 'FullAI выключен, параметры не менялись'
+        try:
+            from bots_modules.imports_and_globals import bots_data, bots_data_lock
+            with bots_data_lock:
+                full_ai = (bots_data.get('auto_bot_config') or {}).get('full_ai_control', False)
+            if full_ai:
+                from bots_modules.fullai_trades_learner import run_fullai_trades_analysis
+                r = run_fullai_trades_analysis(days_back=7, min_trades_per_symbol=2, adjust_params=True)
+                fullai_changes = r.get('changes') or []
+                if fullai_changes:
+                    fullai_msg = f"FullAI: обновлено {len(fullai_changes)} параметров"
+                else:
+                    fullai_msg = 'FullAI: изменений нет (win_rate в норме или мало сделок)'
+            else:
+                # Даже без FullAI — можно показать что анализ сделок выполнен (торговая аналитика)
+                fullai_msg = 'FullAI выключен. Включите FullAI для обновления параметров по сделкам.'
+        except Exception as e:
+            logger.warning("ai-reanalyze fullai: %s", e)
+            fullai_msg = f"FullAI: ошибка — {e}"
 
-        t = threading.Thread(
-            target=_ai_reanalyze_worker_thread,
-            args=(days_back, symbol_filter, limit),
-            daemon=True,
-            name='AIReanalyzeWorker',
-        )
-        t.start()
+        _last_ai_reanalyze_result = {
+            'ts': time.time(),
+            'fullai_changes': fullai_changes,
+            'ai_retrain': None,
+            'running': False,
+        }
 
-        return jsonify({'success': True, 'message': 'Запущено в фоне', 'status': 'running'})
+        return jsonify({
+            'success': True,
+            'message': fullai_msg,
+            'started': True,
+            'changes': fullai_changes,
+        })
     except Exception as e:
         logger.exception("ai-reanalyze: %s", e)
-        with _ai_reanalyze_lock:
-            _last_ai_reanalyze_result = {'running': False, 'message': str(e)}
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5623,174 +5607,30 @@ def get_ai_analytics_context():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-def _enrich_real_close_events_with_closed_trades(events, closed_trades):
-    """
-    Обогащает события real_close корректными PnL/entry/exit из closed_trades (bots_data.db).
-    Когда fullai_events записан с entry_price=0 (закрытие на бирже), отображаются нули.
-    Сопоставляем по символу и времени выхода (в пределах 2 мин).
-    """
-    if not events or not closed_trades:
-        return events
-    by_symbol_ts = {}
-    for t in closed_trades:
-        sym = (t.get('symbol') or '').upper()
-        if not sym:
-            continue
-        ts = t.get('ts') or 0
-        if ts:
-            ts_sec = int(ts / 1000) if ts > 1e12 else int(ts)
-            bucket = ts_sec // 60
-            key = (sym, bucket)
-            if key not in by_symbol_ts:
-                by_symbol_ts[key] = []
-            by_symbol_ts[key].append(t)
-    result = []
-    for ev in events:
-        if ev.get('event_type') != 'real_close':
-            result.append(ev)
-            continue
-        ex = ev.get('extra') or {}
-        try:
-            ep = float(ex.get('entry_price') or 0)
-        except (TypeError, ValueError):
-            ep = 0
-        needs_enrich = ep <= 0
-        if not needs_enrich:
-            result.append(ev)
-            continue
-        sym = (ev.get('symbol') or '').upper()
-        ev_ts = ev.get('ts') or 0
-        if not ev_ts:
-            result.append(ev)
-            continue
-        ev_sec = int(ev_ts) if ev_ts < 1e12 else int(ev_ts / 1000)
-        best = None
-        best_diff = 999999
-        for b in [-2, -1, 0, 1, 2]:
-            bucket = (ev_sec // 60) + b
-            cands = by_symbol_ts.get((sym, bucket)) or []
-            for t in cands:
-                t_ts = t.get('ts') or 0
-                t_sec = int(t_ts / 1000) if t_ts > 1e12 else int(t_ts)
-                diff = abs(t_sec - ev_sec)
-                if diff < best_diff and diff <= 180:
-                    best_diff = diff
-                    best = t
-        if best:
-            extra = dict(ex)
-            if best.get('entry_price') is not None:
-                extra['entry_price'] = best.get('entry_price')
-            if best.get('exit_price') is not None:
-                extra['exit_price'] = best.get('exit_price')
-            if best.get('pnl_usdt') is not None:
-                extra['pnl_usdt'] = best.get('pnl_usdt')
-            roi = best.get('roi_pct')
-            if roi is not None:
-                extra['pnl_percent'] = float(roi)
-            ev = dict(ev)
-            ev['extra'] = extra
-            if roi is not None:
-                ev['pnl_percent'] = float(roi)
-        result.append(ev)
-    return result
-
-
-# Кэш и воркер для FullAI аналитики — тяжёлые вычисления в отдельном потоке, основной поток не блокируется
-_fullai_analytics_cache = {'result': None, 'ts': 0, 'params_key': None}
-_fullai_analytics_worker = None
-_fullai_analytics_lock = threading.Lock()
-_FULLAI_CACHE_TTL = 90  # секунд — кэш считается свежим
-
-
-def _compute_fullai_analytics_impl(symbol, from_ts, to_ts, limit):
-    """Тяжёлая часть: выполняется в воркере."""
-    from bot_engine.fullai_analytics import get_events, get_summary, get_db_info
-    limit = min(max(1, limit), 2000)
-    summary = get_summary(symbol=symbol, from_ts=from_ts, to_ts=to_ts)
-    events = get_events(symbol=symbol, from_ts=from_ts, to_ts=to_ts, limit=limit)
-    db_info = get_db_info()
-    bot_trades_stats = _compute_bot_trades_stats(symbol=symbol, from_ts=from_ts, to_ts=to_ts)
-    closed_trades = _get_closed_trades_for_table(symbol=symbol, from_ts=from_ts, to_ts=to_ts, limit=limit)
-    events = _enrich_real_close_events_with_closed_trades(events, closed_trades)
-    fullai_configs = {}
-    try:
-        from bot_engine.bots_database import get_bots_database
-        db = get_bots_database()
-        fullai_configs = db.load_all_full_ai_configs_for_analytics()
-    except Exception:
-        pass
-    return {
-        'success': True,
-        'summary': summary,
-        'events': events,
-        'closed_trades': closed_trades,
-        'bot_trades_stats': bot_trades_stats,
-        'fullai_configs': fullai_configs,
-        'db_path': db_info.get('db_path'),
-        'total_events': db_info.get('total_events'),
-    }
-
-
-def _fullai_analytics_worker_thread(params_key, symbol, from_ts, to_ts, limit):
-    """Фоновый воркер: вычисляет аналитику, обновляет кэш, завершается."""
-    global _fullai_analytics_worker
-    try:
-        result = _compute_fullai_analytics_impl(symbol, from_ts, to_ts, limit)
-        with _fullai_analytics_lock:
-            _fullai_analytics_cache['result'] = result
-            _fullai_analytics_cache['ts'] = time.time()
-            _fullai_analytics_cache['params_key'] = params_key
-            _fullai_analytics_worker = None
-    except Exception as e:
-        logger.exception("Ошибка FullAI аналитики (воркер): %s", e)
-        with _fullai_analytics_lock:
-            _fullai_analytics_cache['result'] = {'success': False, 'error': str(e)}
-            _fullai_analytics_cache['ts'] = time.time()
-            _fullai_analytics_cache['params_key'] = params_key
-            _fullai_analytics_worker = None
-
-
 @bots_app.route('/api/bots/analytics/fullai', methods=['GET'])
 def get_fullai_analytics():
-    """Аналитика FullAI: вычисления в отдельном потоке. При status=loading — UI опрашивает повторно."""
-    global _fullai_analytics_worker
+    """Аналитика FullAI: события и сводка из data/fullai_analytics.db + винрейт/PnL по сделкам бота из bots_data.db."""
     try:
+        from bot_engine.fullai_analytics import get_events, get_summary, get_db_info
         symbol = request.args.get('symbol', '').strip().upper() or None
         from_ts = request.args.get('from_ts', type=float)
         to_ts = request.args.get('to_ts', type=float)
         limit = request.args.get('limit', type=int) or 500
-        params_key = (symbol, from_ts, to_ts, limit)
-
-        with _fullai_analytics_lock:
-            cache = _fullai_analytics_cache
-            worker = _fullai_analytics_worker
-            cached_result = cache.get('result')
-            cache_ts = cache.get('ts', 0)
-            cache_params = cache.get('params_key')
-            cache_fresh = (cache_params == params_key and (time.time() - cache_ts) < _FULLAI_CACHE_TTL)
-
-            if cache_fresh and cached_result:
-                return jsonify(cached_result)
-
-            if worker is not None:
-                # Воркер уже выполняет тот же запрос — отдаём loading
-                return jsonify({
-                    'success': True,
-                    'status': 'loading',
-                    'cached': cached_result if cache_params == params_key else None,
-                })
-
-            # Запускаем воркер
-            t = threading.Thread(
-                target=_fullai_analytics_worker_thread,
-                args=(params_key, symbol, from_ts, to_ts, limit),
-                daemon=True,
-                name='FullAIAnalyticsWorker',
-            )
-            _fullai_analytics_worker = t
-            t.start()
-
-        return jsonify({'success': True, 'status': 'loading'})
+        limit = min(max(1, limit), 2000)
+        summary = get_summary(symbol=symbol, from_ts=from_ts, to_ts=to_ts)
+        events = get_events(symbol=symbol, from_ts=from_ts, to_ts=to_ts, limit=limit)
+        db_info = get_db_info()
+        bot_trades_stats = _compute_bot_trades_stats(symbol=symbol, from_ts=from_ts, to_ts=to_ts)
+        closed_trades = _get_closed_trades_for_table(symbol=symbol, from_ts=from_ts, to_ts=to_ts, limit=limit)
+        return jsonify({
+            'success': True,
+            'summary': summary,
+            'events': events,
+            'closed_trades': closed_trades,
+            'bot_trades_stats': bot_trades_stats,
+            'db_path': db_info['db_path'],
+            'total_events': db_info['total_events'],
+        })
     except Exception as e:
         logger.exception("Ошибка аналитики FullAI: %s", e)
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -5798,8 +5638,8 @@ def get_fullai_analytics():
 
 def _get_closed_trades_for_table(symbol=None, from_ts=None, to_ts=None, limit=500):
     """
-    Закрытые сделки из bots_data.db + виртуальные из app_data.db.
-    Отображаются вместе (реальные и виртуальные) с подписью «Виртуальная».
+    Закрытые сделки из bots_data.db с PnL и сгенерированным выводом (что хорошо/что не так).
+    Возвращает список для таблицы в UI.
     """
     try:
         from bot_engine.bots_database import get_bots_database
@@ -5810,7 +5650,9 @@ def _get_closed_trades_for_table(symbol=None, from_ts=None, to_ts=None, limit=50
             limit=min(limit, 500),
             from_ts_sec=from_ts,
             to_ts_sec=to_ts,
-        ) or []
+        )
+        if not trades:
+            return []
         out = []
         for t in trades:
             pnl = float(t.get('pnl') or 0)
@@ -5826,20 +5668,16 @@ def _get_closed_trades_for_table(symbol=None, from_ts=None, to_ts=None, limit=50
                 elif ep > 0 and t.get('direction', '').upper() == 'SHORT':
                     roi_pct = ((ep - xp) / ep) * 100
             reason = t.get('close_reason') or ''
-            # ИИ-анализатор выводов: детальный анализ — только для первых 20 сделок (ускоряет загрузку)
-            conclusion = None
-            if len(out) < 20:
-                try:
-                    from bot_engine.ai.trade_conclusion_analyzer import analyze_trade_conclusion
-                    trade_for_analysis = {
-                        **t,
-                        'roi': roi_pct if roi_pct is not None else t.get('roi'),
-                        'pnl': pnl,
-                    }
-                    conclusion = analyze_trade_conclusion(trade_for_analysis)
-                except Exception:
-                    pass
-            if conclusion is None:
+            # ИИ-анализатор выводов: детальный, разнообразный анализ по сделке
+            try:
+                from bot_engine.ai.trade_conclusion_analyzer import analyze_trade_conclusion
+                trade_for_analysis = {
+                    **t,
+                    'roi': roi_pct if roi_pct is not None else t.get('roi'),
+                    'pnl': pnl,
+                }
+                conclusion = analyze_trade_conclusion(trade_for_analysis)
+            except Exception:
                 if pnl >= 0:
                     conclusion = 'Прибыль. ' + (reason if reason else 'Закрыто по условию')
                     if reason and any(x in reason.upper() for x in ('TP', 'TAKE_PROFIT', 'ТЕЙК')):
@@ -5875,24 +5713,8 @@ def _get_closed_trades_for_table(symbol=None, from_ts=None, to_ts=None, limit=50
                 'roi_pct': round(roi_pct, 2) if roi_pct is not None else None,
                 'is_successful': bool(t.get('is_successful')) or pnl > 0,
                 'conclusion': conclusion,
-                'is_virtual': False,
             })
-        # Добавляем виртуальные сделки (FullAI) — в том же списке, с подписью «Виртуальная»
-        try:
-            from bot_engine.app_database import get_app_database
-            app_db = get_app_database()
-            virtual_trades = app_db.get_virtual_closed_trades(
-                symbol=symbol,
-                from_ts_sec=from_ts,
-                to_ts_sec=to_ts,
-                limit=min(limit, 500),
-            )
-            out.extend(virtual_trades)
-        except Exception:
-            pass
-        # Сортируем по времени (новые первые) и ограничиваем
-        out.sort(key=lambda x: int(x.get('ts') or 0), reverse=True)
-        return out[:limit]
+        return out
     except Exception as e:
         import logging
         logging.getLogger(__name__).debug("closed_trades_for_table: %s", e)
