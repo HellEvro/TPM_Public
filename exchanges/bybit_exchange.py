@@ -2876,7 +2876,8 @@ class BybitExchange(BaseExchange):
                         logger.info(f"[BYBIT_BOT] 📊 {symbol}: Размер позиции {requested_qty_usdt:.2f} USDT < minNotionalValue={min_usdt_from_notional}, "
                                     f"остаток {available_usdt:.2f} USDT — увеличиваем до минимума и размещаем ордер.")
                     # Увеличиваем до minNotional только если остаток достаточен (проверено выше)
-                    min_required_usdt = min_usdt_from_notional * 1.02
+                    # Буфер 10%: Bybit может проверять по mark price или округлять — 2% было недостаточно (ErrCode: 110094)
+                    min_required_usdt = min_usdt_from_notional * 1.10
                     min_coins_for_notional = math.ceil(min_required_usdt / price_for_notional_check / qty_step) * qty_step
                     rounded_coins = min_coins_for_notional
                     if skip_min_notional_enforcement:
