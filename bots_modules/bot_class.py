@@ -3095,7 +3095,8 @@ class NewTradingBot:
             'stop_loss': getattr(self, 'stop_loss', None) or self.config.get('stop_loss'),
             'take_profit': getattr(self, 'take_profit', None) or self.config.get('take_profit'),
             'current_price': getattr(self, 'current_price', None) or self.config.get('current_price'),
-            'ai_decision_id': getattr(self, 'ai_decision_id', None)
+            'ai_decision_id': getattr(self, 'ai_decision_id', None),
+            'decision_source': getattr(self, '_last_decision_source', 'SCRIPT'),
         }
 
     def _build_trading_bot_bridge_config(self):

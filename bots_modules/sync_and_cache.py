@@ -22,6 +22,10 @@ import shutil
 
 logger = logging.getLogger('BotsService')
 
+# Метрики: доля закрытий с effective_reason из bots_db (для рекомендаций ANALYTICS_LOGIC_AND_VALIDITY_REPORT)
+_sync_closes_total = 0
+_sync_closes_from_bots_db = 0
+
 # Импорт SystemConfig
 from bot_engine.config_loader import SystemConfig
 from bot_engine.bot_history import log_position_closed as history_log_position_closed
@@ -175,12 +179,16 @@ def _check_if_trade_already_closed(bot_id, symbol, entry_price, entry_time_str):
             except Exception:
                 pass
         
-        # Проверяем последние 10 закрытых сделок
+        # Проверяем последние 10 закрытых сделок за последние 10 минут (фильтр по exit_timestamp)
+        now_sec = datetime.now().timestamp()
+        from_ts_sec = now_sec - 600  # 10 минут
         existing_trades = bots_db.get_bot_trades_history(
             bot_id=bot_id,
             symbol=symbol,
             status='CLOSED',
-            limit=10
+            limit=10,
+            from_ts_sec=from_ts_sec,
+            to_ts_sec=now_sec + 60,
         )
         
         if not existing_trades:
@@ -3140,7 +3148,11 @@ def sync_bots_with_exchange():
                                             cr = (rt.get('close_reason') or '').strip()
                                             if cr and cr != 'CLOSED_ON_EXCHANGE' and cr.upper() not in ('', 'UNKNOWN'):
                                                 effective_reason = cr
+                                                _sync_closes_from_bots_db += 1
+                                                pct = 100.0 * _sync_closes_from_bots_db / (_sync_closes_total + 1) if (_sync_closes_total + 1) else 0
+                                                logger.info(f"[SYNC] Используем причину из bots_db: {effective_reason} (доля: {_sync_closes_from_bots_db}/{_sync_closes_total + 1} = {pct:.1f}%)")
                                                 break
+                                        _sync_closes_total += 1
                                     except Exception:
                                         pass
                                     # Если бот уже сохранил — не дублируем логи (history + FullAI)

@@ -3193,6 +3193,17 @@ def process_auto_bot_signals(exchange_obj=None):
                 continue
             logger.info(f" ✅ {symbol}: вход {direction} — {verify_reason}")
 
+            # FullAI Adaptive: virtual_only — не открывать реальную позицию, только виртуальную для обучения
+            if last_ai_result and last_ai_result.get('virtual_only'):
+                try:
+                    from bots_modules.fullai_adaptive import record_virtual_open
+                    price = float(coin.get('price') or coin.get('coin_data', {}).get('price') or 0)
+                    record_virtual_open(symbol, direction, price)
+                    logger.info(f" 🧪 {symbol}: виртуальный вход {direction} (AI WAIT → обучение)")
+                except Exception as v_err:
+                    logger.debug("virtual_only record_virtual_open: %s", v_err)
+                continue
+
             # Создаём бота в памяти, входим по рынку, в список добавляем только после успешного входа
             try:
                 logger.info(f" 🚀 Создаем бота для {symbol} ({signal}, RSI: {rsi_now:.1f})")
