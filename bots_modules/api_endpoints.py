@@ -421,7 +421,6 @@ def get_account_info():
         response.headers.add('Access-Control-Allow-Origin', '*')
         return response, 500
 
-
 @bots_app.route('/api/bots/positions-for-app', methods=['GET'])
 def get_positions_for_app():
     """
@@ -438,6 +437,7 @@ def get_positions_for_app():
         if not positions:
             return jsonify({
                 'success': True,
+                'positions': [], 'rapid_growth': [],
                 'high_profitable': [], 'profitable': [], 'losing': [],
                 'stats': {'total_trades': 0, 'high_profitable_count': 0, 'profitable_count': 0,
                           'losing_count': 0, 'top_profitable': [], 'top_losing': [],
@@ -462,6 +462,8 @@ def get_positions_for_app():
         all_prof.sort(key=lambda x: x.get('pnl', 0), reverse=True)
         return jsonify({
             'success': True,
+            'positions': positions,
+            'rapid_growth': rapid_growth or [],
             'high_profitable': high_p, 'profitable': prof, 'losing': los,
             'stats': {
                 'total_trades': len(positions),
@@ -474,13 +476,11 @@ def get_positions_for_app():
                 'total_profit': total_profit,
                 'total_loss': total_loss
             },
-            'rapid_growth': rapid_growth or [],
             'total_trades': len(positions)
         })
     except Exception as e:
         logger.error(f"[POSITIONS_FOR_APP] {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @bots_app.route('/api/bots/manual-positions/refresh', methods=['POST'])
 def refresh_manual_positions():

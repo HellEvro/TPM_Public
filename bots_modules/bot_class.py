@@ -2432,6 +2432,42 @@ class NewTradingBot:
     def _close_position_on_exchange(self, reason):
         """Закрывает позицию на бирже"""
         try:
+            # БАГ-ФИКС: Движение < 0.2% за первые 1–5 сек — шум/баг, блокируем закрытие.
+            # При движении >= 0.2% — разрешаем (реальный скачок, TP/SL).
+            MIN_HOLD_SEC = 5
+            PNL_THRESHOLD_ALLOW_CLOSE = 0.2  # % — при |PnL| < 0.2% в первые 5 сек считаем багом
+            entry_ts = None
+            if self.position_start_time:
+                try:
+                    entry_ts = self.position_start_time.timestamp() if hasattr(self.position_start_time, 'timestamp') else None
+                except Exception:
+                    pass
+            if entry_ts is None:
+                entry_ts = getattr(self, 'entry_timestamp', None)
+                if entry_ts is not None:
+                    entry_ts = float(entry_ts) / 1000 if entry_ts > 1e12 else float(entry_ts)
+            if entry_ts is not None and entry_ts > 0:
+                import time as _t
+                age_sec = _t.time() - entry_ts
+                if 0 < age_sec < MIN_HOLD_SEC:
+                    # Проверяем PnL — при движении >= 0.5% разрешаем (реальный скачок)
+                    price_for_pnl = self.current_price
+                    if not price_for_pnl and self.exchange:
+                        try:
+                            t = self.exchange.get_ticker(self.symbol)
+                            price_for_pnl = (t.get('last') or t.get('markPrice') or t.get('mark')) if t else None
+                        except Exception:
+                            pass
+                    price_for_pnl = price_for_pnl or self.entry_price
+                    pnl_pct = self._calc_profit_percent(price_for_pnl) if price_for_pnl else 0
+                    if abs(pnl_pct or 0) < PNL_THRESHOLD_ALLOW_CLOSE:
+                        logger.info(
+                            f"[NEW_BOT_{self.symbol}] ⏳ Блокируем шумовое закрытие: {age_sec:.0f}с, "
+                            f"PnL={pnl_pct:.2f}% (порог 0.2%), причина={reason}"
+                        )
+                        return False
+                    # Резкий скачок — разрешаем закрыть
+
             if not self.exchange:
                 logger.error(f"[NEW_BOT_{self.symbol}] ❌ Биржа не инициализирована")
                 return False

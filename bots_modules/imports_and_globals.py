@@ -1657,7 +1657,7 @@ def close_position_for_bot(symbol, position_side, reason='Manual close'):
         if not position_size:
             try:
                 with bots_data_lock:
-                    bot_data = bots_data.get('bots', {}).get(symbol, {})
+                    bot_data = bots_data.get('bots', {}).get(symbol) or bots_data.get('bots', {}).get(symbol + 'USDT')
                 if bot_data and (bot_data.get('position_side') or '').upper() == (position_side or '').upper():
                     ps_coins = bot_data.get('position_size_coins')
                     ps_usdt = bot_data.get('position_size') or bot_data.get('volume_value')
@@ -1675,7 +1675,7 @@ def close_position_for_bot(symbol, position_side, reason='Manual close'):
         # Fallback 2: прямой Bybit API
         if not position_size and hasattr(exch, 'client'):
             try:
-                resp = exch.client.get_positions(category="linear", symbol=f"{symbol}USDT", limit=1)
+                resp = exch.client.get_positions(category="linear", symbol=f"{symbol}USDT", limit=5)
                 if resp.get('retCode') == 0:
                     for p in (resp.get('result') or {}).get('list', []):
                         sz = abs(float(p.get('size', 0) or 0))
@@ -1692,7 +1692,7 @@ def close_position_for_bot(symbol, position_side, reason='Manual close'):
                 pass
 
         if not position_size:
-            logger.error(f" {symbol}: ❌ Не удалось определить размер позиции")
+            logger.error(f" {symbol}: ❌ Не удалось определить размер позиции (биржа, bots_data, Bybit API)")
             return {'success': False, 'error': 'Position size not found on exchange'}
         
         # Вызываем close_position с размером

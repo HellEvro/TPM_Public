@@ -179,13 +179,15 @@ from bot_engine.backup_service import run_backup_scheduler_loop
 
 # Проверка валидности API ключей
 def check_api_keys():
-    """Проверяет наличие настроенных API ключей"""
+    """Проверяет наличие настроенных API ключей.
+    Ключи загружаются из configs/keys.py (через configs.app_config).
+    НЕ требуется app/keys.py — проверяем EXCHANGES из конфига.
+    """
     try:
-        # Проверяем наличие файла с ключами
-        if not os.path.exists('app/keys.py'):
-            return False
-            
+        # EXCHANGES загружается из configs.keys (через configs.app_config)
         active_exchange = EXCHANGES.get(ACTIVE_EXCHANGE, {})
+        if not active_exchange:
+            return False
         api_key = active_exchange.get('api_key', '')
         api_secret = active_exchange.get('api_secret', '')
         
@@ -236,15 +238,15 @@ if not check_api_keys():
     sys.stderr.write("\n")
     sys.stderr.write("📌 Текущий статус:\n")
     sys.stderr.write(f"   Биржа: {ACTIVE_EXCHANGE}\n")
-    if not os.path.exists('app/keys.py'):
-        sys.stderr.write("   Файл с ключами: app/keys.py НЕ НАЙДЕН\n")
+    keys_path = _CONFIGS_DIR / "keys.py"
+    if not keys_path.exists():
+        sys.stderr.write("   Файл configs/keys.py НЕ НАЙДЕН\n")
     else:
-        sys.stderr.write("   API ключи: НЕ НАСТРОЕНЫ или СОДЕРЖАТ ПРИМЕРЫ\n")
+        sys.stderr.write("   API ключи в configs/keys.py: НЕ НАСТРОЕНЫ или СОДЕРЖАТ ПРИМЕРЫ\n")
     sys.stderr.write("\n")
     sys.stderr.write("💡 Что нужно сделать:\n")
-    sys.stderr.write("   1. Скопируйте configs/app_config.example.py -> configs/app_config.py (если еще не сделали)\n")
-    sys.stderr.write("   2. Создайте app/keys.py с реальными ключами\n")
-    sys.stderr.write("   3. Или добавьте ключи в configs/app_config.py или configs/keys.py\n")
+    sys.stderr.write("   1. Скопируйте configs/keys.example.py -> configs/keys.py (если ещё не сделали)\n")
+    sys.stderr.write("   2. Добавьте реальные API ключи в configs/keys.py\n")
     sys.stderr.write("   4. Перезапустите приложение\n")
     sys.stderr.write("\n")
     sys.stderr.write("⚠️  Приложение запущено в DEMO режиме (только UI, без торговли)\n")
@@ -769,18 +771,22 @@ def background_update():
                 )
 
             positions, rapid_growth = current_exchange.get_positions()
-            if not positions:
-                # Fallback: app и bots в разных процессах — пробуем взять позиции с Bots
+            # Fallback: app и Bots — разные процессы; если app не видит позиции, пробуем Bots API
+            if not positions and not DEMO_MODE:
                 try:
-                    resp = requests.get('http://127.0.0.1:5001/api/bots/positions-for-app', timeout=5)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        if data.get('success') and data.get('total_trades', 0) > 0:
+                    bots_url = getattr(background_update, '_bots_fallback_url', None)
+                    if bots_url is None:
+                        background_update._bots_fallback_url = 'http://127.0.0.1:5001'
+                    r = requests.get(f'{background_update._bots_fallback_url}/api/bots/positions-for-app', timeout=5)
+                    if r.status_code == 200:
+                        data = r.json()
+                        positions = data.get('positions', [])
+                        rapid_growth = data.get('rapid_growth', [])
+                        if not positions and data.get('success') and data.get('total_trades', 0) > 0:
                             positions = (data.get('high_profitable', []) + data.get('profitable', []) +
                                         data.get('losing', []))
-                            rapid_growth = data.get('rapid_growth', [])
-                            if positions:
-                                logging.getLogger('app').info(f"[POSITIONS] Fallback: {len(positions)} позиций с Bots")
+                        if positions:
+                            logging.getLogger('app').info(f"[APP] Fallback: {len(positions)} позиций с Bots API")
                 except Exception:
                     pass
             if not positions:
@@ -2620,6 +2626,17 @@ if __name__ == '__main__':
         try:
             app_logger.info("[APP] 🔄 Принудительное обновление positions_data при запуске...")
             positions, rapid_growth = current_exchange.get_positions()
+            if not positions and not DEMO_MODE:
+                try:
+                    r = requests.get('http://127.0.0.1:5001/api/bots/positions-for-app', timeout=5)
+                    if r.status_code == 200:
+                        data = r.json()
+                        positions = data.get('positions', [])
+                        rapid_growth = data.get('rapid_growth', [])
+                        if positions:
+                            app_logger.info(f"[APP] Fallback: {len(positions)} позиций с Bots API")
+                except Exception:
+                    pass
             if positions:
                 positions_data['total_trades'] = len(positions)
                 positions_data['rapid_growth'] = rapid_growth
