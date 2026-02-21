@@ -3469,16 +3469,23 @@ class BybitExchange(BaseExchange):
                 formatted_orders = []
                 for order in orders:
                     order_type = order.get('orderType', '').lower()  # 'Limit' или 'Market'
+                    ct = order.get('createdTime', 0)
+                    try:
+                        created_time_ms = int(ct) if ct else 0
+                    except (TypeError, ValueError):
+                        created_time_ms = 0
                     formatted_orders.append({
                         'order_id': order.get('orderId', ''),
                         'orderId': order.get('orderId', ''),
                         'id': order.get('orderId', ''),
                         'symbol': order.get('symbol', '').replace('USDT', ''),
                         'side': order.get('side', ''),
-                        'order_type': order_type,  # Добавляем тип ордера
+                        'order_type': order_type,
                         'price': float(order.get('price', 0)),
                         'quantity': float(order.get('qty', 0)),
-                        'status': order.get('orderStatus', '')
+                        'status': order.get('orderStatus', ''),
+                        'createdTime': created_time_ms,
+                        'created_time_ms': created_time_ms,
                     })
                 return formatted_orders
             else:
@@ -3488,7 +3495,35 @@ class BybitExchange(BaseExchange):
         except Exception as e:
             logger.error(f"[BYBIT_BOT] ❌ Ошибка получения открытых ордеров для {symbol}: {e}")
             return []
-    
+
+    def cancel_order(self, symbol, order_id):
+        """
+        Отменяет ордер на Bybit.
+
+        Args:
+            symbol (str): Символ без USDT (например, 'BTC')
+            order_id (str): ID ордера для отмены
+
+        Returns:
+            dict: {success: bool, message: str}
+        """
+        try:
+            symbol_full = f"{symbol}USDT" if not symbol.endswith('USDT') else symbol
+            response = self.client.cancel_order(
+                category="linear",
+                symbol=symbol_full,
+                orderId=str(order_id)
+            )
+            if response.get('retCode') == 0:
+                logger.info(f"[BYBIT] ✅ Ордер {order_id} отменён ({symbol})")
+                return {'success': True, 'message': f'Ордер {order_id} отменён'}
+            msg = response.get('retMsg', 'unknown error')
+            logger.warning(f"[BYBIT] ⚠️ Не удалось отменить ордер {order_id}: {msg}")
+            return {'success': False, 'message': msg}
+        except Exception as e:
+            logger.error(f"[BYBIT] ❌ Ошибка отмены ордера {order_id}: {e}")
+            return {'success': False, 'message': str(e)}
+
     def set_leverage(self, symbol, leverage):
         """
         Устанавливает кредитное плечо для символа

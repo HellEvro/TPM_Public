@@ -1830,6 +1830,8 @@ CONFIG_NAMES = {
     'limit_orders_entry_enabled': 'Лимитные ордера включены',
     'limit_orders_percent_steps': 'Шаги лимитных ордеров (%)',
     'limit_orders_margin_amounts': 'Суммы маржи лимитных ордеров',
+    'limit_order_entry_cancel_seconds': 'Отмена ордеров входа (сек)',
+    'limit_order_exit_cancel_seconds': 'Ордера выхода: таймаут (сек)',
     'ai_enabled': 'AI подтверждение включено',
     'ai_min_confidence': 'Минимальная уверенность AI',
     'ai_override_original': 'AI блокирует скрипт',

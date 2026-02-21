@@ -285,10 +285,14 @@
             // Если включен режим, но нет ордеров - выключаем режим
             const finalEnabled = enabled && percentSteps.length > 0 && marginAmounts.some(m => m > 0);
             
+            const entryCancelEl = document.getElementById('limitOrderEntryCancelSeconds');
+            const exitCancelEl = document.getElementById('limitOrderExitCancelSeconds');
             const config = {
                 limit_orders_entry_enabled: finalEnabled,
                 limit_orders_percent_steps: percentSteps,
-                limit_orders_margin_amounts: marginAmounts
+                limit_orders_margin_amounts: marginAmounts,
+                limit_order_entry_cancel_seconds: entryCancelEl ? Math.max(0, parseInt(entryCancelEl.value, 10) || 0) : 10,
+                limit_order_exit_cancel_seconds: exitCancelEl ? Math.max(0, parseInt(exitCancelEl.value, 10) || 0) : 10
             };
             
             const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/auto-bot`, {

@@ -759,16 +759,26 @@ class TradingBot:
                                 quantity = self._calculate_position_size()
                                 if quantity:
                                     leverage = self.config.get('leverage')
+                                    max_loss_pct = float(self.config.get('max_loss_percent', 15) or 15)
+                                    tp_pct = float(self.config.get('take_profit_percent', 20) or 20)
+                                    if side == 'LONG':
+                                        take_profit = limit_price * (1 + tp_pct / 100)
+                                        stop_loss = limit_price * (1 - max_loss_pct / 100)
+                                    else:
+                                        take_profit = limit_price * (1 - tp_pct / 100)
+                                        stop_loss = limit_price * (1 + max_loss_pct / 100)
                                     order_result = self.exchange.place_order(
                                         symbol=self.symbol,
                                         side=side,
                                         quantity=quantity,
                                         order_type='limit',
                                         price=limit_price,
-                                        leverage=leverage
+                                        leverage=leverage,
+                                        take_profit=take_profit,
+                                        stop_loss=stop_loss
                                     )
                                     if order_result.get('success'):
-                                        self.logger.info(f" {self.symbol}: Лимитный вход по RSI размещён @ {limit_price} (порог RSI={threshold})")
+                                        self.logger.info(f" {self.symbol}: Лимитный вход по RSI размещён @ {limit_price} (порог RSI={threshold}) + TP/SL заранее")
                                         return {'success': True, 'message': 'limit_order_placed', 'order_id': order_result.get('order_id'), 'price': limit_price}
                                     self.logger.warning(f" {self.symbol}: Не удалось разместить лимит по RSI: {order_result.get('message', '')}")
                         else:
@@ -1624,6 +1634,16 @@ class TradingBot:
                     # Для шорта: цена выше текущей на percent_step%
                     limit_price = current_price * (1 + percent_step / 100)
                 
+                # TP/SL заранее: Bybit поддерживает при размещении лимитного ордера
+                max_loss_pct = float(self.config.get('max_loss_percent', 15) or 15)
+                tp_pct = float(self.config.get('take_profit_percent', 20) or 20)
+                if side == 'LONG':
+                    take_profit = limit_price * (1 + tp_pct / 100)
+                    stop_loss = limit_price * (1 - max_loss_pct / 100)
+                else:
+                    take_profit = limit_price * (1 - tp_pct / 100)
+                    stop_loss = limit_price * (1 + max_loss_pct / 100)
+                
                 # Размещаем лимитный ордер
                 # ✅ КРИТИЧНО: Используем margin_amount из массива, а НЕ self.volume_value!
                 actual_quantity = margin_amount
@@ -1635,7 +1655,9 @@ class TradingBot:
                     price=limit_price,
                     quantity_is_usdt=True,
                     skip_min_notional_enforcement=True,  # ✅ Для лимитных ордеров из набора не принуждаем к minNotionalValue
-                    leverage=leverage  # ✅ Кредитное плечо
+                    leverage=leverage,  # ✅ Кредитное плечо
+                    take_profit=take_profit,
+                    stop_loss=stop_loss
                 )
                 
                 if order_result.get('success'):
@@ -1649,7 +1671,7 @@ class TradingBot:
                     }
                     placed_orders.append(order_info)
                     self.limit_orders.append(order_info)
-                    self.logger.info(f" {self.symbol}: ✅ Лимитный ордер #{i+1} размещен: {margin_amount} USDT @ {limit_price:.6f} ({percent_step}%)")
+                    self.logger.info(f" {self.symbol}: ✅ Лимитный ордер #{i+1} размещен: {margin_amount} USDT @ {limit_price:.6f} ({percent_step}%) + TP/SL заранее")
                     # Логируем в историю
                     try:
                         from bot_engine.bot_history import log_limit_order_placed

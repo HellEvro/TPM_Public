@@ -93,6 +93,8 @@ class DefaultAutoBotConfig:
     LIMIT_ORDERS_ENTRY_ENABLED = False      # Набор позиции лимитными ордерами
     LIMIT_ORDERS_PERCENT_STEPS = [0, 0.5, 1, 1.5, 2]   # Шаги в % от цены входа
     LIMIT_ORDERS_MARGIN_AMOUNTS = [5, 5, 5, 5, 5]      # Объём маржи на каждый ордер, USDT
+    LIMIT_ORDER_ENTRY_CANCEL_SECONDS = 10   # Отменять неисполненные ордера входа через N сек (0 = выкл)
+    LIMIT_ORDER_EXIT_CANCEL_SECONDS = 10    # Ордера выхода: через N сек — отменить или закрыть по рынку, если в плюсе (0 = выкл)
 
     # --- Exit Scam фильтр ---
     EXIT_SCAM_ENABLED = True                # Включить фильтр резких движений (pump/dump)
@@ -251,6 +253,8 @@ class AutoBotConfig:
     LIMIT_ORDERS_ENTRY_ENABLED = False      # Набор позиции лимитными ордерами
     LIMIT_ORDERS_PERCENT_STEPS = [0, 0.5, 1, 1.5, 2]   # Шаги в % от цены входа
     LIMIT_ORDERS_MARGIN_AMOUNTS = [5, 5, 5, 5, 5]      # Объём маржи на каждый ордер, USDT
+    LIMIT_ORDER_ENTRY_CANCEL_SECONDS = 10   # Отменять неисполненные ордера входа через N сек (0 = выкл)
+    LIMIT_ORDER_EXIT_CANCEL_SECONDS = 10    # Ордера выхода: через N сек — отменить или закрыть по рынку, если в плюсе (0 = выкл)
 
     # --- Exit Scam фильтр ---
     EXIT_SCAM_ENABLED = True                # Включить фильтр резких движений (pump/dump)

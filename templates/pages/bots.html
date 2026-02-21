@@ -1612,6 +1612,22 @@
                             </label>
                             <small class="config-help">Включить набор позиций лимитными ордерами (выключено = рыночный вход)</small>
                         </div>
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">⏱️</span>
+                                <span class="label-text">Отмена ордеров входа (сек):</span>
+                            </label>
+                            <input type="number" id="limitOrderEntryCancelSeconds" value="10" min="0" max="300" step="1" class="config-input" />
+                            <small class="config-help">0 = выкл. Отменять неисполненные лимитные ордера входа через N секунд</small>
+                        </div>
+                        <div class="config-item">
+                            <label class="config-label">
+                                <span class="label-icon">⏱️</span>
+                                <span class="label-text">Ордера выхода (сек):</span>
+                            </label>
+                            <input type="number" id="limitOrderExitCancelSeconds" value="10" min="0" max="300" step="1" class="config-input" />
+                            <small class="config-help">0 = выкл. Через N сек: если в плюсе — закрыть по рынку, иначе отменить</small>
+                        </div>
                     </div>
                     
                     <div id="limitOrdersConfig" style="display: none; margin-top: 20px;">

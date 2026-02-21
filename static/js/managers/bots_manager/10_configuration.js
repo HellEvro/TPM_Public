@@ -978,6 +978,8 @@
             'rsiVolumeMultiplier': 'rsi_volume_confirmation_multiplier',
             'rsiDivergenceLookback': 'rsi_divergence_lookback',
             'limitOrdersEntryEnabled': 'limit_orders_entry_enabled',
+            'limitOrderEntryCancelSeconds': 'limit_order_entry_cancel_seconds',
+            'limitOrderExitCancelSeconds': 'limit_order_exit_cancel_seconds',
             'optimalEntryEnabled': 'ai_optimal_entry_enabled',
             'rsiUpdateInterval': 'rsi_update_interval',
             'autoSaveInterval': 'auto_save_interval',

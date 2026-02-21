@@ -32,7 +32,12 @@
         };
     },
             getBotPositionInfo(bot) {
-        // Проверяем, есть ли активная позиция
+        // Объём позиции: 0 = лимитный ордер на вход ожидает исполнения
+        const positionSize = parseFloat(bot.position_size || bot.position_size_coins || 0) || 0;
+        const volumeUsdt = (positionSize * (parseFloat(bot.entry_price) || 0)) || parseFloat(bot.volume_value || 0) || 0;
+        const hasActualPosition = positionSize > 0 || volumeUsdt > 0;
+
+        // Проверяем, есть ли активная позиция или лимитный ордер на вход
         if (!bot.position_side || !bot.entry_price) {
             // Если нет активной позиции, показываем информацию о статусе бота
             let statusText = '';
@@ -40,13 +45,13 @@
             let statusIcon = '📍';
             
             if (bot.status === 'in_position_long') {
-                statusText = window.languageUtils.translate('long_closed');
+                statusText = window.languageUtils.translate('limit_order_long_pending');
                 statusColor = 'var(--green-color)';
-                statusIcon = '📈';
+                statusIcon = '📋';
             } else if (bot.status === 'in_position_short') {
-                statusText = window.languageUtils.translate('short_closed');
+                statusText = window.languageUtils.translate('limit_order_short_pending');
                 statusColor = 'var(--red-color)';
-                statusIcon = '📉';
+                statusIcon = '📋';
             } else if (bot.status === 'running' || bot.status === 'waiting') {
                 statusText = window.languageUtils.translate('entry_by_market');
                 statusColor = 'var(--blue-color)';
@@ -62,12 +67,13 @@
         
         const sideColor = bot.position_side === 'LONG' ? 'var(--green-color)' : 'var(--red-color)';
         const sideIcon = bot.position_side === 'LONG' ? '📈' : '📉';
+        const limitOrderHint = !hasActualPosition ? `<div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">📋 ${window.languageUtils.translate('limit_order_pending_hint')}</div>` : '';
         
         let positionHtml = `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: var(--input-bg); border-radius: 6px;">
                 <span style="color: var(--text-muted);">${sideIcon} ${this.getTranslation('position_label')}</span>
                 <span style="color: ${sideColor}; font-weight: 600;">${bot.position_side}</span>
-            </div>
+            </div>${limitOrderHint}
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: var(--input-bg); border-radius: 6px;">
                 <span style="color: var(--text-muted);">💵 ${this.getTranslation('entry_label')}</span>
                 <span style="color: var(--text-color); font-weight: 600;">$${(parseFloat(bot.entry_price) || 0).toFixed(6)}</span>
@@ -184,7 +190,7 @@
         if (bot.created_at) {
         const createdTime = new Date(bot.created_at);
         const now = new Date();
-        const timeDiff = now - createdTime;
+        const timeDiff = isNaN(createdTime.getTime()) ? 0 : (now - createdTime);
         const hours = Math.floor(timeDiff / (1000 * 60 * 60));
         const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
         
@@ -207,12 +213,14 @@
         if (bot.status && (bot.status.includes('position') || bot.status.includes('in_position')) && bot.last_update) {
             const lastUpdateTime = new Date(bot.last_update);
             const now = new Date();
-            const updateDiff = now - lastUpdateTime;
+            const updateDiff = isNaN(lastUpdateTime.getTime()) ? 0 : (now - lastUpdateTime);
             const updateMinutes = Math.floor(updateDiff / (1000 * 60));
             const updateSeconds = Math.floor((updateDiff % (1000 * 60)) / 1000);
             
             let updateTimeText = '';
-            if (updateMinutes > 0) {
+            if (isNaN(updateDiff) || updateDiff < 0) {
+                updateTimeText = '—';
+            } else if (updateMinutes > 0) {
                 updateTimeText = `${updateMinutes}м ${updateSeconds}с назад`;
             } else {
                 updateTimeText = `${updateSeconds}с назад`;
