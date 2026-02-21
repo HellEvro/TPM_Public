@@ -803,20 +803,22 @@ def get_ai_exit_decision(
         # Минимальное время удержания: не закрывать в первые 90 сек (защита от «вход — сразу выход»)
         min_hold_sec = 90
         entry_ts = position.get('entry_timestamp') or position.get('position_start_time')
-        if entry_ts is not None:
-            import time
-            if isinstance(entry_ts, str):
-                try:
-                    from datetime import datetime
-                    dt = datetime.fromisoformat(entry_ts.replace('Z', '+00:00'))
-                    entry_sec = dt.timestamp()
-                except Exception:
-                    entry_sec = 0
-            else:
-                entry_sec = float(entry_ts) / 1000 if entry_ts > 1e12 else float(entry_ts)
-            age_sec = time.time() - entry_sec if entry_sec else 0
-            if 0 < age_sec < min_hold_sec:
-                return result
+        if entry_ts is None:
+            # Нет времени входа — не рискуем, блокируем закрытие (может быть race при первом тике)
+            return result
+        import time
+        if isinstance(entry_ts, str):
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(entry_ts.replace('Z', '+00:00'))
+                entry_sec = dt.timestamp()
+            except Exception:
+                entry_sec = 0
+        else:
+            entry_sec = float(entry_ts) / 1000 if entry_ts > 1e12 else float(entry_ts)
+        age_sec = time.time() - entry_sec if entry_sec else 0
+        if 0 < age_sec < min_hold_sec:
+            return result
 
         # Простая эвристика: сильная прибыль или сильный убыток — закрыть (далее можно заменить на модель)
         tp = float(prii_config.get('take_profit_percent') or coin_params.get('take_profit_percent') or 15)

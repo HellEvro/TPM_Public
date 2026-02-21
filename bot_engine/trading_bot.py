@@ -985,17 +985,7 @@ class TradingBot:
                     except Exception as ai_error:
                         pass
                     
-                    # FullAI: SL < 8% срабатывает от обычных колебаний — не допускаем узкий стоп
-                    try:
-                        from bots import bots_data, bots_data_lock
-                        with bots_data_lock:
-                            ac = bots_data.get('auto_bot_config', {}) or {}
-                        if ac.get('full_ai_control') and sl_percent < 8.0:
-                            sl_percent = 8.0
-                    except Exception:
-                        pass
-                    
-                    # Устанавливаем стоп-лосс (стандартный или адаптивный)
+                    # Устанавливаем стоп-лосс (используем значение из конфига, без принудительной подмены)
                     stop_result = self._place_stop_loss(side, self.entry_price, sl_percent)
                     if stop_result and stop_result.get('success'):
                         self.logger.info(f" {self.symbol}: ✅ Стоп-лосс установлен на {sl_percent}%")
