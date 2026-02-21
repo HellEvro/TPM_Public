@@ -1913,17 +1913,44 @@ def sync_positions_with_exchange():
         synced_count = 0
         errors_count = 0
         
+        # Grace period: не удаляем бота в первые 90 сек после входа — позиция может ещё не появиться в API биржи
+        _GRACE_SEC = 90
+
         # Обрабатываем ботов без позиций на бирже
         for symbol, bot_data in bot_dict.items():
             if symbol not in exchange_dict:
                 logger.warning(f"[POSITION_SYNC] ⚠️ Бот {symbol} без позиции на бирже (статус: {bot_data['status']})")
-                
+
+                # Проверяем grace period: бот только что открыл позицию?
+                with bots_data_lock:
+                    full_bot = bots_data['bots'].get(symbol, {}) if symbol in bots_data.get('bots', {}) else {}
+                entry_ts = full_bot.get('position_start_time') or full_bot.get('entry_timestamp') or full_bot.get('last_update')
+                try:
+                    if entry_ts:
+                        if hasattr(entry_ts, 'timestamp'):
+                            entry_sec = entry_ts.timestamp()
+                        elif isinstance(entry_ts, str):
+                            from datetime import datetime
+                            dt = datetime.fromisoformat(str(entry_ts).replace('Z', '+00:00'))
+                            entry_sec = dt.timestamp()
+                        elif isinstance(entry_ts, (int, float)):
+                            entry_sec = entry_ts / 1000 if entry_ts > 1e12 else entry_ts
+                        else:
+                            entry_sec = 0
+                    else:
+                        entry_sec = 0
+                except Exception:
+                    entry_sec = 0
+                age_sec = time.time() - entry_sec if entry_sec else 999
+                if age_sec < _GRACE_SEC:
+                    logger.info(f"[POSITION_SYNC] ⏳ Бот {symbol} недавно открыт ({age_sec:.0f}с < {_GRACE_SEC}с) — не удаляем, ждём появления позиции на бирже")
+                    continue
+
                 # ВАЖНО: Проверяем, действительно ли позиция закрылась
-                # Не сбрасываем ботов сразу - даем им время на восстановление
                 try:
                     # Проверяем, есть ли активные ордера для этого символа
                     has_active_orders = check_active_orders(symbol)
-                    
+
                     if not has_active_orders:
                         # ✅ КРИТИЧНО: УДАЛЯЕМ бота, а не переводим в IDLE - позиции нет на бирже!
                         with bots_data_lock:
@@ -3036,6 +3063,30 @@ def sync_bots_with_exchange():
                                 BOT_STATUS.get('IN_POSITION_SHORT')
                             ]:
                                 # Бот не был в позиции - просто пропускаем его
+                                continue
+                            
+                            # Grace period: не удаляем бота в первые 90 сек после входа (FullAI и др.)
+                            # Позиция может ещё не появиться в API биржи
+                            _GRACE_SEC = 90
+                            entry_ts_raw = bot_data.get('position_start_time') or bot_data.get('entry_timestamp') or bot_data.get('last_update')
+                            try:
+                                if entry_ts_raw:
+                                    if hasattr(entry_ts_raw, 'timestamp'):
+                                        entry_sec = entry_ts_raw.timestamp()
+                                    elif isinstance(entry_ts_raw, str):
+                                        dt = datetime.fromisoformat(str(entry_ts_raw).replace('Z', '+00:00'))
+                                        entry_sec = dt.timestamp()
+                                    elif isinstance(entry_ts_raw, (int, float)):
+                                        entry_sec = entry_ts_raw / 1000 if entry_ts_raw > 1e12 else entry_ts_raw
+                                    else:
+                                        entry_sec = 0
+                                else:
+                                    entry_sec = 0
+                            except Exception:
+                                entry_sec = 0
+                            age_sec = time.time() - entry_sec if entry_sec else 999
+                            if age_sec < _GRACE_SEC:
+                                logger.info(f"[SYNC_EXCHANGE] ⏳ {symbol} недавно открыт ({age_sec:.0f}с < {_GRACE_SEC}с) — не удаляем, ждём позицию на бирже")
                                 continue
                             
                             old_position_size = bot_data.get('position_size', 0)
