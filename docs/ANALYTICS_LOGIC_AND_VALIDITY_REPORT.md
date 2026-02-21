@@ -76,11 +76,11 @@ if last_ai_result and last_ai_result.get('virtual_only'):
 
 **Смягчение:** Окно `get_bot_trades_history(from_ts_sec=now-300)` даёт 5 минут. При нормальной скорости это должно покрывать гонку. `_check_if_trade_already_closed` не использует `from_ts_sec`, поэтому может не видеть только что сохранённую сделку.
 
-### 4.3. Совпадение entry_price и entry_timestamp
+### 4.3. Совпадение entry_price и entry_timestamp ✅
 
 **Проблема:** `_check_if_trade_already_closed` требует `price_match` (Δ < 0.0001) и `timestamp_match` (±2 мин). При проскальзывании или разнице во времени входа возможны ложные срабатывания или пропуски дубликатов.
 
-**Рекомендация:** Добавить fallback: если по symbol есть недавняя (например, последние 5 мин) закрытая сделка — считать дубликатом даже при небольшом расхождении entry_price.
+**Реализовано:** Fallback: при `timestamp_match` и расхождении entry_price в пределах 1% — считать дубликатом (учёт проскальзывания).
 
 ### 4.4. Источники decision_source
 

@@ -77,6 +77,31 @@ class TestDecisionSourceInBotData(unittest.TestCase):
             self.assertEqual(d['decision_source'], 'SCRIPT')
 
 
+class TestCheckDuplicateFallback(unittest.TestCase):
+    """Тест fallback при проскальзывании entry_price (рекомендация 4.3)"""
+
+    def test_fallback_considers_price_within_1_pct_as_duplicate(self):
+        """При timestamp_match и entry_price в пределах 1% — дубликат"""
+        with patch('bot_engine.bots_database.get_bots_database') as mock_get_db:
+            mock_db = MagicMock()
+            # Сделка: entry_price=100, entry_timestamp = now - 1 min
+            now_ms = datetime.now().timestamp() * 1000
+            mock_db.get_bot_trades_history.return_value = [
+                {'entry_price': 100.5, 'entry_timestamp': now_ms - 60000}  # 1% выше
+            ]
+            mock_get_db.return_value = mock_db
+
+            from bots_modules.sync_and_cache import _check_if_trade_already_closed
+
+            entry_time = datetime.now() - timedelta(minutes=1)
+            result = _check_if_trade_already_closed(
+                bot_id='BTCUSDT', symbol='BTCUSDT',
+                entry_price=100.0,
+                entry_time_str=entry_time.isoformat()
+            )
+            self.assertTrue(result, "Должен считать дубликатом при 0.5% расхождении")
+
+
 class TestVirtualOnlyFlow(unittest.TestCase):
     """Тест: при virtual_only не вызывается enter_position"""
 

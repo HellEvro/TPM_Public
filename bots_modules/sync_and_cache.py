@@ -196,6 +196,7 @@ def _check_if_trade_already_closed(bot_id, symbol, entry_price, entry_time_str):
         
         # Проверяем на дубликаты: если уже есть закрытая сделка с той же позицией (symbol, entry_price, entry_time) — не сохраняем повторно
         # КРИТИЧНО: не только MANUAL_CLOSE — иначе при закрытии ботом (SL/TP/RSI) sync потом дописывает вторую запись
+        # Fallback (4.3): при проскальзывании entry_price — считать дубликатом, если timestamp совпадает и цена в пределах 1%
         for existing_trade in existing_trades:
             existing_entry_price = existing_trade.get('entry_price')
             existing_entry_ts = existing_trade.get('entry_timestamp')
@@ -211,10 +212,17 @@ def _check_if_trade_already_closed(bot_id, symbol, entry_price, entry_time_str):
                     ent_ts *= 1000
             except (TypeError, ValueError):
                 continue
-            price_match = existing_entry_price is not None and abs(float(existing_entry_price) - float(entry_price)) < 0.0001
             timestamp_match = abs(ex_ts - ent_ts) < 120000  # 2 минуты
-            if price_match and timestamp_match:
-                return True  # дубликат — уже есть запись о закрытии этой позиции
+            if not timestamp_match:
+                continue
+            price_match_strict = existing_entry_price is not None and abs(float(existing_entry_price) - float(entry_price)) < 0.0001
+            if price_match_strict:
+                return True  # дубликат — точное совпадение
+            # Fallback: timestamp совпал, цена в пределах 1% (проскальзывание)
+            if existing_entry_price is not None and entry_price and float(entry_price) > 0:
+                price_diff_pct = abs(float(existing_entry_price) - float(entry_price)) / float(entry_price)
+                if price_diff_pct < 0.01:
+                    return True  # дубликат — небольшая разница в цене входа
         return False
     except Exception as e:
         pass
