@@ -76,7 +76,8 @@
     }
 
     /**
-     * Загрузка и отображение аналитики FullAI (события и сводка из data/fullai_analytics.db)
+     * Загрузка и отображение аналитики FullAI (события и сводка из data/fullai_analytics.db).
+     * Аналитика считается в фоновом воркере — при status=loading повторяем запрос (polling).
      */,
             async loadFullaiAnalytics() {
         const loadingEl = document.getElementById('fullaiAnalyticsLoading');
@@ -90,7 +91,7 @@
         if (loadingEl) loadingEl.style.display = 'flex';
         if (summaryEl) summaryEl.innerHTML = '';
         if (eventsEl) eventsEl.innerHTML = '';
-        try {
+        const fetchData = async () => {
             const params = new URLSearchParams({ from_ts: String(from_ts), to_ts: String(to_ts), limit: '300' });
             if (symbol) params.set('symbol', symbol);
             params.set('_', String(Date.now()));
@@ -98,8 +99,15 @@
             const timeoutId = setTimeout(() => controller.abort(), 45000);
             const response = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/fullai?${params}`, { cache: 'no-store', signal: controller.signal });
             clearTimeout(timeoutId);
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
+            return response.json();
+        };
+        try {
+            let data = await fetchData();
+            if (!data.success && data.error) throw new Error(data.error);
+            while (data.status === 'loading') {
+                await new Promise(r => setTimeout(r, 1500));
+                data = await fetchData();
+            }
             if (!data.success) throw new Error(data.error || 'Нет данных');
             let events = data.events || [];
             if (eventFilter === 'params_and_virtual') {
@@ -425,7 +433,7 @@
     }
 
     /**
-     * Запускает ручной анализ ИИ: обновление данных, подход к сделкам и переобучение (в фоне).
+     * Запускает ручной анализ ИИ в фоновом воркере. Polling результата — основной поток не блокируется.
      * Показывает изменения в формате «старое → новое».
      */,
             async runAiReanalyze() {
@@ -448,11 +456,22 @@
             if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
             if (!data.success) throw new Error(data.error || 'Не удалось запустить');
 
-            const changes = data.changes || [];
-            const insights = data.insights || { mistakes: [], successes: [], recommendations: [] };
+            if (btn) btn.textContent = '⏳ Анализ в фоне...';
+            let res = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/ai-reanalyze/result`);
+            let pollData = await res.json();
+            let pollCount = 0;
+            while (pollData.result && pollData.result.running && pollCount < 60) {
+                await new Promise(r => setTimeout(r, 1500));
+                res = await fetch(`${this.BOTS_SERVICE_URL}/api/bots/analytics/ai-reanalyze/result`);
+                pollData = await res.json();
+                pollCount++;
+            }
+            const data2 = pollData.result || {};
+            const changes = data2.fullai_changes || [];
+            const insights = data2.insights || { mistakes: [], successes: [], recommendations: [] };
             if (resultEl) {
                 resultEl.style.display = 'block';
-                let html = '<p style="margin: 0 0 8px; font-weight:600;">' + (data.message || 'Готово.') + '</p>';
+                let html = '<p style="margin: 0 0 8px; font-weight:600;">' + (data2.message || data.message || 'Готово.') + '</p>';
                 if ((insights.mistakes && insights.mistakes.length) || (insights.successes && insights.successes.length) || (insights.recommendations && insights.recommendations.length)) {
                     html += '<div style="margin-top: 10px; font-size: 0.9em;">';
                     if (insights.mistakes && insights.mistakes.length) {

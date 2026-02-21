@@ -5513,75 +5513,88 @@ def get_rsi_audit():
 
 
 # Последний результат ai-reanalyze (для отображения пользователю и polling)
-_last_ai_reanalyze_result = {'ts': 0, 'fullai_changes': [], 'ai_retrain': None, 'running': False}
+_last_ai_reanalyze_result = {'ts': 0, 'fullai_changes': [], 'insights': {}, 'message': '', 'running': False}
+_ai_reanalyze_lock = threading.Lock()
+
+
+def _ai_reanalyze_worker_thread(days_back, symbol_filter, limit):
+    """Фоновый воркер: ИИ анализирует сделки и обновляет параметры. Основной поток не блокируется."""
+    global _last_ai_reanalyze_result
+    fullai_changes = []
+    insights = {'mistakes': [], 'successes': [], 'recommendations': []}
+    fullai_msg = 'FullAI выключен, параметры не менялись'
+    try:
+        from bot_engine.ai_analytics import invalidate_analytics_cache
+        invalidate_analytics_cache()
+        from bots_modules.imports_and_globals import bots_data, bots_data_lock
+        with bots_data_lock:
+            full_ai = (bots_data.get('auto_bot_config') or {}).get('full_ai_control', False)
+        if full_ai:
+            from bots_modules.fullai_trades_learner import run_fullai_trades_analysis
+            r = run_fullai_trades_analysis(
+                days_back=days_back,
+                min_trades_per_symbol=2,
+                adjust_params=True,
+                symbol_filter=symbol_filter,
+                limit=limit,
+            )
+            fullai_changes = r.get('changes') or []
+            insights = r.get('insights') or insights
+            analyzed = r.get('analyzed', 0)
+            updated_cnt = len(r.get('updated_symbols') or [])
+            if fullai_changes:
+                fullai_msg = f"Проанализировано {analyzed} сделок. Обновлено {len(fullai_changes)} параметров по {updated_cnt} монетам."
+            else:
+                fullai_msg = f"Проанализировано {analyzed} сделок. Изменений параметров нет."
+        else:
+            fullai_msg = 'FullAI выключен. Включите FullAI для обновления параметров по сделкам.'
+    except Exception as e:
+        logger.warning("ai-reanalyze fullai: %s", e)
+        fullai_msg = f"FullAI: ошибка — {e}"
+
+    with _ai_reanalyze_lock:
+        _last_ai_reanalyze_result = {
+            'ts': time.time(),
+            'fullai_changes': fullai_changes,
+            'insights': insights,
+            'message': fullai_msg,
+            'running': False,
+        }
+    with _fullai_analytics_lock:
+        _fullai_analytics_cache['ts'] = 0
 
 
 @bots_app.route('/api/bots/analytics/ai-reanalyze', methods=['POST'])
 def ai_reanalyze_and_update():
     """
-    Ручной запуск: ИИ анализирует закрытые сделки, находит ошибки и успехи, обновляет параметры.
-    - Сбрасывает кеш аналитики
-    - FullAI learner: анализ сделок, торговой аналитики, обучение на ошибках и успехах
+    Ручной запуск: ИИ анализирует закрытые сделки в отдельном потоке.
+    Возвращает сразу; результат — через GET /api/bots/analytics/ai-reanalyze/result (polling).
     """
     global _last_ai_reanalyze_result
     try:
-        import time
-        from bot_engine.ai_analytics import invalidate_analytics_cache
-        invalidate_analytics_cache()
-
         data = request.get_json(silent=True) or {}
         days_back = int(data.get('days_back') or data.get('period_days') or 7)
         symbol_filter = (data.get('symbol') or '').strip().upper() or None
         limit = min(5000, max(500, int(data.get('limit') or 2000)))
 
-        fullai_changes = []
-        insights = {'mistakes': [], 'successes': [], 'recommendations': []}
-        fullai_msg = 'FullAI выключен, параметры не менялись'
-        try:
-            from bots_modules.imports_and_globals import bots_data, bots_data_lock
-            with bots_data_lock:
-                full_ai = (bots_data.get('auto_bot_config') or {}).get('full_ai_control', False)
-            if full_ai:
-                from bots_modules.fullai_trades_learner import run_fullai_trades_analysis
-                r = run_fullai_trades_analysis(
-                    days_back=days_back,
-                    min_trades_per_symbol=2,
-                    adjust_params=True,
-                    symbol_filter=symbol_filter,
-                    limit=limit,
-                )
-                fullai_changes = r.get('changes') or []
-                insights = r.get('insights') or insights
-                analyzed = r.get('analyzed', 0)
-                updated_cnt = len(r.get('updated_symbols') or [])
-                if fullai_changes:
-                    fullai_msg = f"Проанализировано {analyzed} сделок. Обновлено {len(fullai_changes)} параметров по {updated_cnt} монетам."
-                else:
-                    fullai_msg = f"Проанализировано {analyzed} сделок. Изменений параметров нет."
-            else:
-                # Даже без FullAI — можно показать что анализ сделок выполнен (торговая аналитика)
-                fullai_msg = 'FullAI выключен. Включите FullAI для обновления параметров по сделкам.'
-        except Exception as e:
-            logger.warning("ai-reanalyze fullai: %s", e)
-            fullai_msg = f"FullAI: ошибка — {e}"
+        with _ai_reanalyze_lock:
+            if _last_ai_reanalyze_result.get('running'):
+                return jsonify({'success': True, 'message': 'Анализ уже выполняется', 'status': 'running'})
+            _last_ai_reanalyze_result = {'running': True, 'ts': time.time()}
 
-        _last_ai_reanalyze_result = {
-            'ts': time.time(),
-            'fullai_changes': fullai_changes,
-            'insights': insights,
-            'ai_retrain': None,
-            'running': False,
-        }
+        t = threading.Thread(
+            target=_ai_reanalyze_worker_thread,
+            args=(days_back, symbol_filter, limit),
+            daemon=True,
+            name='AIReanalyzeWorker',
+        )
+        t.start()
 
-        return jsonify({
-            'success': True,
-            'message': fullai_msg,
-            'started': True,
-            'changes': fullai_changes,
-            'insights': insights,
-        })
+        return jsonify({'success': True, 'message': 'Запущено в фоне', 'status': 'running'})
     except Exception as e:
         logger.exception("ai-reanalyze: %s", e)
+        with _ai_reanalyze_lock:
+            _last_ai_reanalyze_result = {'running': False, 'message': str(e)}
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -5682,39 +5695,102 @@ def _enrich_real_close_events_with_closed_trades(events, closed_trades):
     return result
 
 
+# Кэш и воркер для FullAI аналитики — тяжёлые вычисления в отдельном потоке, основной поток не блокируется
+_fullai_analytics_cache = {'result': None, 'ts': 0, 'params_key': None}
+_fullai_analytics_worker = None
+_fullai_analytics_lock = threading.Lock()
+_FULLAI_CACHE_TTL = 90  # секунд — кэш считается свежим
+
+
+def _compute_fullai_analytics_impl(symbol, from_ts, to_ts, limit):
+    """Тяжёлая часть: выполняется в воркере."""
+    from bot_engine.fullai_analytics import get_events, get_summary, get_db_info
+    limit = min(max(1, limit), 2000)
+    summary = get_summary(symbol=symbol, from_ts=from_ts, to_ts=to_ts)
+    events = get_events(symbol=symbol, from_ts=from_ts, to_ts=to_ts, limit=limit)
+    db_info = get_db_info()
+    bot_trades_stats = _compute_bot_trades_stats(symbol=symbol, from_ts=from_ts, to_ts=to_ts)
+    closed_trades = _get_closed_trades_for_table(symbol=symbol, from_ts=from_ts, to_ts=to_ts, limit=limit)
+    events = _enrich_real_close_events_with_closed_trades(events, closed_trades)
+    fullai_configs = {}
+    try:
+        from bot_engine.bots_database import get_bots_database
+        db = get_bots_database()
+        fullai_configs = db.load_all_full_ai_configs_for_analytics()
+    except Exception:
+        pass
+    return {
+        'success': True,
+        'summary': summary,
+        'events': events,
+        'closed_trades': closed_trades,
+        'bot_trades_stats': bot_trades_stats,
+        'fullai_configs': fullai_configs,
+        'db_path': db_info.get('db_path'),
+        'total_events': db_info.get('total_events'),
+    }
+
+
+def _fullai_analytics_worker_thread(params_key, symbol, from_ts, to_ts, limit):
+    """Фоновый воркер: вычисляет аналитику, обновляет кэш, завершается."""
+    global _fullai_analytics_worker
+    try:
+        result = _compute_fullai_analytics_impl(symbol, from_ts, to_ts, limit)
+        with _fullai_analytics_lock:
+            _fullai_analytics_cache['result'] = result
+            _fullai_analytics_cache['ts'] = time.time()
+            _fullai_analytics_cache['params_key'] = params_key
+            _fullai_analytics_worker = None
+    except Exception as e:
+        logger.exception("Ошибка FullAI аналитики (воркер): %s", e)
+        with _fullai_analytics_lock:
+            _fullai_analytics_cache['result'] = {'success': False, 'error': str(e)}
+            _fullai_analytics_cache['ts'] = time.time()
+            _fullai_analytics_cache['params_key'] = params_key
+            _fullai_analytics_worker = None
+
+
 @bots_app.route('/api/bots/analytics/fullai', methods=['GET'])
 def get_fullai_analytics():
-    """Аналитика FullAI: события и сводка из data/fullai_analytics.db + винрейт/PnL по сделкам бота из bots_data.db."""
+    """Аналитика FullAI: вычисления в отдельном потоке. При status=loading — UI опрашивает повторно."""
+    global _fullai_analytics_worker
     try:
-        from bot_engine.fullai_analytics import get_events, get_summary, get_db_info
         symbol = request.args.get('symbol', '').strip().upper() or None
         from_ts = request.args.get('from_ts', type=float)
         to_ts = request.args.get('to_ts', type=float)
         limit = request.args.get('limit', type=int) or 500
-        limit = min(max(1, limit), 2000)
-        summary = get_summary(symbol=symbol, from_ts=from_ts, to_ts=to_ts)
-        events = get_events(symbol=symbol, from_ts=from_ts, to_ts=to_ts, limit=limit)
-        db_info = get_db_info()
-        bot_trades_stats = _compute_bot_trades_stats(symbol=symbol, from_ts=from_ts, to_ts=to_ts)
-        closed_trades = _get_closed_trades_for_table(symbol=symbol, from_ts=from_ts, to_ts=to_ts, limit=limit)
-        events = _enrich_real_close_events_with_closed_trades(events, closed_trades)
-        fullai_configs = {}
-        try:
-            from bot_engine.bots_database import get_bots_database
-            db = get_bots_database()
-            fullai_configs = db.load_all_full_ai_configs_for_analytics()
-        except Exception as cfg_err:
-            pass
-        return jsonify({
-            'success': True,
-            'summary': summary,
-            'events': events,
-            'closed_trades': closed_trades,
-            'bot_trades_stats': bot_trades_stats,
-            'fullai_configs': fullai_configs,
-            'db_path': db_info['db_path'],
-            'total_events': db_info['total_events'],
-        })
+        params_key = (symbol, from_ts, to_ts, limit)
+
+        with _fullai_analytics_lock:
+            cache = _fullai_analytics_cache
+            worker = _fullai_analytics_worker
+            cached_result = cache.get('result')
+            cache_ts = cache.get('ts', 0)
+            cache_params = cache.get('params_key')
+            cache_fresh = (cache_params == params_key and (time.time() - cache_ts) < _FULLAI_CACHE_TTL)
+
+            if cache_fresh and cached_result:
+                return jsonify(cached_result)
+
+            if worker is not None:
+                # Воркер уже выполняет тот же запрос — отдаём loading
+                return jsonify({
+                    'success': True,
+                    'status': 'loading',
+                    'cached': cached_result if cache_params == params_key else None,
+                })
+
+            # Запускаем воркер
+            t = threading.Thread(
+                target=_fullai_analytics_worker_thread,
+                args=(params_key, symbol, from_ts, to_ts, limit),
+                daemon=True,
+                name='FullAIAnalyticsWorker',
+            )
+            _fullai_analytics_worker = t
+            t.start()
+
+        return jsonify({'success': True, 'status': 'loading'})
     except Exception as e:
         logger.exception("Ошибка аналитики FullAI: %s", e)
         return jsonify({'success': False, 'error': str(e)}), 500
