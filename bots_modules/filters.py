@@ -3044,7 +3044,6 @@ def process_auto_bot_signals(exchange_obj=None):
                     ai_confirmation_enabled = False
                 if ai_confirmation_enabled:
                     try:
-                        from bot_engine.ai.ai_integration import should_open_position_with_ai
                         from bots_modules.imports_and_globals import get_config_snapshot
                         config_snapshot = get_config_snapshot(symbol)
                         filter_config = config_snapshot.get('merged', {}) or bots_data.get('auto_bot_config', {})
@@ -3062,15 +3061,33 @@ def process_auto_bot_signals(exchange_obj=None):
                                         if isinstance(v, dict) and v.get('candles'):
                                             candles_for_ai = v['candles']
                                             break
-                        last_ai_result = should_open_position_with_ai(
-                            symbol=symbol,
-                            direction='LONG' if signal == 'ENTER_LONG' else 'SHORT',
-                            rsi=rsi,
-                            trend=trend or 'NEUTRAL',
-                            price=price,
-                            config=filter_config,
-                            candles=candles_for_ai
-                        )
+                        # FullAI: используем get_ai_entry_decision (LSTM+pattern+anomaly), не should_open_position_with_ai (signal_predictor)
+                        if ac.get('full_ai_control'):
+                            from bot_engine.ai.ai_integration import get_ai_entry_decision
+                            from bots_modules.imports_and_globals import get_effective_auto_bot_config, get_effective_coin_settings
+                            fullai_cfg = get_effective_auto_bot_config()
+                            coin_params = get_effective_coin_settings(symbol)
+                            decision = get_ai_entry_decision(
+                                symbol, 'LONG' if signal == 'ENTER_LONG' else 'SHORT',
+                                candles_for_ai or [], price, fullai_cfg, coin_params, rsi=rsi, trend=trend or 'NEUTRAL'
+                            )
+                            last_ai_result = {
+                                'should_open': bool(decision.get('allowed')),
+                                'ai_used': True,
+                                'ai_confidence': decision.get('confidence', 0),
+                                'reason': decision.get('reason', ''),
+                            }
+                        else:
+                            from bot_engine.ai.ai_integration import should_open_position_with_ai
+                            last_ai_result = should_open_position_with_ai(
+                                symbol=symbol,
+                                direction='LONG' if signal == 'ENTER_LONG' else 'SHORT',
+                                rsi=rsi,
+                                trend=trend or 'NEUTRAL',
+                                price=price,
+                                config=filter_config,
+                                candles=candles_for_ai
+                            )
                         if last_ai_result.get('ai_used') and not last_ai_result.get('should_open'):
                             ai_override = filter_config.get('ai_override_original', True)
                             if not ai_override:

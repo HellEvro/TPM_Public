@@ -2974,16 +2974,36 @@ class NewTradingBot:
                 logger.warning(f"[NEW_BOT_{self.symbol}] ⚠️ Ошибка сохранения timestamp закрытия: {timestamp_error}")
             
             # ВАЖНО: Обновляем результат решения AI для переобучения
+            decision_source = getattr(self, '_last_decision_source', 'SCRIPT')
             if hasattr(self, 'ai_decision_id') and self.ai_decision_id:
                 try:
                     from bot_engine.ai.ai_integration import update_ai_decision_result
                     is_successful = pnl > 0
                     update_ai_decision_result(self.ai_decision_id, pnl, pnl_pct, is_successful)
-                    pass
                     self.ai_decision_id = None
                 except Exception as ai_track_error:
                     pass
-            
+            elif decision_source == 'AI':
+                # FullAI: ai_decision_id не ставится (get_ai_entry_decision), но сделка AI-драйвен — отправляем в самообучение
+                try:
+                    from bot_engine.ai.ai_self_learning import process_trade_for_self_learning
+                    meta = getattr(self, '_last_ai_decision_meta', {}) or {}
+                    trade_result = {
+                        'symbol': self.symbol,
+                        'direction': self.position_side,
+                        'pnl': pnl,
+                        'roi': pnl_pct,
+                        'is_successful': pnl > 0,
+                        'ai_confidence': meta.get('ai_confidence'),
+                        'ai_signal': meta.get('ai_signal'),
+                        'entry_data': entry_data,
+                        'market_data': market_data,
+                        'timestamp': datetime.now().isoformat(),
+                    }
+                    process_trade_for_self_learning(trade_result)
+                except Exception as sl_err:
+                    logger.debug(f"[NEW_BOT_{self.symbol}] Self-learning: {sl_err}")
+
         except Exception as e:
             pass
     

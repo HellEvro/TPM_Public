@@ -345,9 +345,14 @@ class ModelHealthChecker:
                 ('lstm_predictor.keras', os.path.join(self.models_path, 'lstm_predictor.keras')),
                 ('pattern_detector.pkl', os.path.join(self.models_path, 'pattern_detector.pkl')),
             ]
-        # Transformer: путь из ai_trainer (пока не в AIConfig)
-        trans_path = os.path.join(root, 'data', 'ai', 'models', 'transformer_predictor.pth')
-        paths.append(('transformer_predictor.pth', trans_path))
+        # Transformer: опционально, только если AI_USE_TRANSFORMER включён (FullAI работает на LSTM+pattern)
+        try:
+            from bot_engine.config_loader import AIConfig as _AICfg
+            if getattr(_AICfg, 'AI_USE_TRANSFORMER', False):
+                trans_path = os.path.join(root, 'data', 'ai', 'models', 'transformer_predictor.pth')
+                paths.append(('transformer_predictor.pth', trans_path))
+        except Exception:
+            pass
         return paths
 
     def get_recommendations(self) -> List[str]:
