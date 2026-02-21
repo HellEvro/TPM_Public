@@ -9,7 +9,7 @@ class PositionsManager {
         ];
         this._initialLoadDone = false;
         this._updateCallCount = 0;
-        this._forceRefreshInterval = 3;  // Каждые N обновлений — запрос свежих данных с биржи
+        this._forceRefreshInterval = 1;  // Каждое обновление — запрос свежих данных с биржи (реальное время)
 
         // Инициализируем состояние из StateManager
         const state = stateManager.getState('positions');
