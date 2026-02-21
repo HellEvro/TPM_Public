@@ -331,11 +331,11 @@ def get_db_info() -> Dict[str, Any]:
     total = 0
     if path.exists():
         try:
-        with _lock:
-            conn = sqlite3.connect(str(path), timeout=30)
-            conn.execute("PRAGMA busy_timeout = 20000")
-            try:
-                row = conn.execute("SELECT COUNT(*) FROM fullai_events").fetchone()
+            with _lock:
+                conn = sqlite3.connect(str(path), timeout=30)
+                conn.execute("PRAGMA busy_timeout = 20000")
+                try:
+                    row = conn.execute("SELECT COUNT(*) FROM fullai_events").fetchone()
                     total = row[0] if row else 0
                 finally:
                     conn.close()

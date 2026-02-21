@@ -2434,10 +2434,31 @@ def check_missing_stop_losses():
         updated_count = 0
         failed_count = 0
 
+        _GRACE_SEC = 90  # Не удаляем бота, только что открывшего позицию (задержка API биржи)
+
         for symbol, bot_snapshot in bots_snapshot.items():
             try:
                 pos = exchange_positions.get(symbol)
                 if not pos:
+                    # Grace period: если бот только что открылся — ждём, позиция может появиться с задержкой
+                    entry_ts_raw = bot_snapshot.get('position_start_time') or bot_snapshot.get('entry_timestamp')
+                    entry_sec = 0
+                    if entry_ts_raw:
+                        try:
+                            if hasattr(entry_ts_raw, 'timestamp'):
+                                entry_sec = entry_ts_raw.timestamp()
+                            elif isinstance(entry_ts_raw, str):
+                                dt = datetime.fromisoformat(str(entry_ts_raw).replace('Z', '+00:00'))
+                                entry_sec = dt.timestamp()
+                            elif isinstance(entry_ts_raw, (int, float)):
+                                entry_sec = entry_ts_raw / 1000 if entry_ts_raw > 1e12 else entry_ts_raw
+                        except Exception:
+                            pass
+                    age_sec = (time.time() - entry_sec) if entry_sec else 999
+                    if age_sec < _GRACE_SEC:
+                        logger.info(f" ⏳ Бот {symbol} недавно открыт ({age_sec:.0f}с) — ждём позицию на бирже")
+                        continue
+
                     # ✅ КРИТИЧЕСКАЯ ПРОВЕРКА: Перед удалением проверяем позицию напрямую через API
                     logger.warning(f" ⚠️ Позиция {symbol} не найдена в словаре позиций. Проверяем напрямую через API...")
                     
