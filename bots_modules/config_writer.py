@@ -12,7 +12,7 @@ import logging
 import threading
 import importlib.util
 import json as _json
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 
 logger = logging.getLogger('ConfigWriter')
 _config_write_lock = threading.Lock()
@@ -183,6 +183,49 @@ def _format_python_value(value: Any) -> str:
         items = ', '.join(f"{repr(k)}: {_format_python_value(v)}" for k, v in value.items())
         return f'{{{items}}}'
     return str(value)
+
+
+# Порог: списки длиннее — пишем многострочно в bot_config.py, чтобы не ломать конфиг и не оставлять «осиротевших» строк
+_MULTILINE_LIST_THRESHOLD = 12
+
+
+def _format_list_multiline(value: list, attr_name: str, indent: str = "    ") -> List[str]:
+    """Возвращает список строк для записи атрибута-списка в многострочном виде (без IndentationError)."""
+    lines = [f"{indent}{attr_name} = [\n"]
+    items = value
+    chunk = 15  # элементов на строку
+    for k in range(0, len(items), chunk):
+        part = items[k : k + chunk]
+        items_str = ", ".join(repr(x) for x in part)
+        suffix = "," if k + chunk < len(items) else ""
+        lines.append(f"{indent}    {items_str}{suffix}\n")
+    lines.append(f"{indent}]\n")
+    return lines
+
+
+def _get_attr_line_range(lines: List[str], start_i: int, attr_upper: str) -> Tuple[int, int]:
+    """
+    Для строки start_i вида "    ATTR = ..." возвращает (start_i, end_i):
+    end_i — индекс первой строки после блока атрибута (не включительно).
+    Учитывает многострочные списки (строки с отступом и ]).
+    """
+    if start_i >= len(lines):
+        return start_i, start_i + 1
+    line = lines[start_i]
+    stripped = line.strip()
+    if not stripped.startswith(attr_upper + " ="):
+        return start_i, start_i + 1
+    # Одна строка: ATTR = [...] или ATTR = (...)
+    if "[" in line and "]" in line.rstrip() and line.rstrip().index("]") < (line.rstrip().index("#") if "#" in line.rstrip() else len(line)):
+        return start_i, start_i + 1
+    if "[" in stripped or "(" in stripped:
+        # Многострочный список: ищем закрывающую ]
+        j = start_i + 1
+        while j < len(lines):
+            if re.match(r"^\s*\]\s*(#.*)?$", lines[j].rstrip()):
+                return start_i, j + 1
+            j += 1
+    return start_i, start_i + 1
 
 
 def _find_class_block(lines: list, class_name: str):
@@ -379,7 +422,14 @@ def save_auto_bot_config_current_to_py(config: Dict[str, Any]) -> bool:
             for i in range(start_idx + 1, end_idx):
                 new_line = _update_attr_value_in_line(updated_lines[i], attr_upper, value)
                 if new_line is not None:
-                    updated_lines[i] = new_line
+                    # Длинные списки (BLACKLIST/WHITELIST) пишем многострочно, чтобы не оставлять осиротевших строк
+                    if attr_upper in ("BLACKLIST", "WHITELIST") and isinstance(value, list) and len(value) > _MULTILINE_LIST_THRESHOLD:
+                        lo, hi = _get_attr_line_range(updated_lines, i, attr_upper)
+                        new_block = _format_list_multiline(value, attr_upper, indent="    ")
+                        updated_lines[lo:hi] = new_block
+                        end_idx += len(new_block) - (hi - lo)
+                    else:
+                        updated_lines[i] = new_line
                     found = True
                     break
             if not found:
