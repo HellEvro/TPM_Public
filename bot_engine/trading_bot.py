@@ -620,56 +620,107 @@ class TradingBot:
             except Exception as e:
                 self.logger.warning(f" {self.symbol}: Не удалось проверить позиции на бирже: {e}")
             
-            # ✅ При автовходе (force_market_entry) фильтры уже проверены в process_auto_bot_signals — не дублируем
-            if not force_market_entry:
-                try:
-                    from bot_engine.ai.filter_utils import apply_entry_filters
-                    from bots_modules.imports_and_globals import get_config_snapshot
-                    config_snapshot = get_config_snapshot(self.symbol)
-                    filter_config = config_snapshot.get('merged', {})
-                    candles = self._get_candles_data()
-                    if not candles or len(candles) < 10:
-                        self.logger.error(f" {self.symbol}: ❌ Недостаточно свечей для проверки фильтров ({len(candles) if candles else 0})")
-                        return {'success': False, 'error': 'insufficient_candles', 'message': 'Недостаточно свечей для проверки фильтров'}
-                    current_rsi = self.last_rsi
-                    current_trend = self.last_trend
-                    if current_rsi is None or current_trend is None:
-                        try:
-                            from bots_modules.imports_and_globals import coins_rsi_data, rsi_data_lock
-                            with rsi_data_lock:
-                                coin_data = coins_rsi_data.get('coins', {}).get(self.symbol)
-                                if coin_data:
-                                    from bot_engine.config_loader import get_rsi_from_coin_data, get_trend_from_coin_data
-                                    if current_rsi is None:
-                                        current_rsi = get_rsi_from_coin_data(coin_data)
-                                    if current_trend is None:
-                                        current_trend = get_trend_from_coin_data(coin_data)
-                        except Exception:
-                            pass
-                    if current_rsi is None:
-                        try:
-                            from bots_modules.calculations import calculate_rsi
-                            closes = [candle.get('close', 0) for candle in candles[-50:]]
-                            if closes:
-                                current_rsi = calculate_rsi(closes, 14)
-                        except Exception:
-                            pass
-                    if current_rsi is None:
-                        current_rsi = 50.0
-                    if current_trend is None:
-                        current_trend = 'NEUTRAL'
-                    signal = 'ENTER_LONG' if side == 'LONG' else 'ENTER_SHORT'
-                    filters_allowed, filters_reason = apply_entry_filters(
-                        self.symbol, candles, current_rsi, signal, filter_config, trend=current_trend
+            # Единая проверка входа (autobot и ручной) — без fallback RSI=50
+            try:
+                from bot_engine.ai.filter_utils import check_entry_allowed, log_entry_check
+                from bot_engine.config_loader import get_current_timeframe
+                from bots_modules.imports_and_globals import get_config_snapshot
+                entry_source = 'autobot' if force_market_entry else 'manual'
+                config_snapshot = get_config_snapshot(self.symbol)
+                filter_config = config_snapshot.get('merged', {})
+                candles = self._get_candles_data()
+                if not candles or len(candles) < 10:
+                    self.logger.error(
+                        f" {self.symbol}: ❌ Недостаточно свечей для проверки фильтров "
+                        f"({len(candles) if candles else 0})"
                     )
-                    if not filters_allowed:
-                        self.logger.warning(f" {self.symbol}: 🚫 БЛОКИРОВКА: Фильтры заблокировали вход в {side}: {filters_reason}")
-                        return {'success': False, 'error': 'filters_blocked', 'message': f'Вход заблокирован фильтрами: {filters_reason}'}
-                except Exception as filter_error:
-                    self.logger.error(f" {self.symbol}: ❌ Ошибка проверки фильтров: {filter_error}")
-                    return {'success': False, 'error': 'filter_check_failed', 'message': str(filter_error)}
-            else:
-                self.logger.info(f" {self.symbol}: Автовход по рынку — проверка фильтров уже выполнена в process_auto_bot_signals")
+                    return {
+                        'success': False,
+                        'error': 'insufficient_candles',
+                        'message': 'Недостаточно свечей для проверки фильтров',
+                    }
+                current_rsi = self.last_rsi
+                current_trend = self.last_trend
+                if current_rsi is None or current_trend is None:
+                    try:
+                        from bots_modules.imports_and_globals import coins_rsi_data, rsi_data_lock
+                        with rsi_data_lock:
+                            coin_data = coins_rsi_data.get('coins', {}).get(self.symbol)
+                            if coin_data:
+                                from bot_engine.config_loader import (
+                                    get_rsi_from_coin_data,
+                                    get_trend_from_coin_data,
+                                )
+                                if current_rsi is None:
+                                    current_rsi = get_rsi_from_coin_data(coin_data)
+                                if current_trend is None:
+                                    current_trend = get_trend_from_coin_data(coin_data)
+                    except Exception:
+                        pass
+                if current_rsi is None:
+                    try:
+                        from bots_modules.calculations import calculate_rsi
+                        closes = [candle.get('close', 0) for candle in candles[-50:]]
+                        if closes:
+                            current_rsi = calculate_rsi(closes, 14)
+                    except Exception:
+                        pass
+                if current_trend is None:
+                    current_trend = 'NEUTRAL'
+                if current_rsi is None:
+                    log_entry_check(
+                        self.logger,
+                        self.symbol,
+                        side,
+                        False,
+                        'RSI недоступен',
+                        rsi=None,
+                        timeframe=get_current_timeframe(),
+                        signal='ENTER_LONG' if side == 'LONG' else 'ENTER_SHORT',
+                        source=entry_source,
+                        force_market_entry=force_market_entry,
+                    )
+                    return {
+                        'success': False,
+                        'error': 'rsi_unavailable',
+                        'message': 'RSI недоступен — вход заблокирован',
+                    }
+                signal = 'ENTER_LONG' if side == 'LONG' else 'ENTER_SHORT'
+                tf = get_current_timeframe()
+                filters_allowed, filters_reason = check_entry_allowed(
+                    self.symbol,
+                    candles,
+                    current_rsi,
+                    signal,
+                    filter_config,
+                    trend=current_trend,
+                    source=entry_source,
+                    force_market_entry=force_market_entry,
+                )
+                log_entry_check(
+                    self.logger,
+                    self.symbol,
+                    side,
+                    filters_allowed,
+                    filters_reason,
+                    rsi=current_rsi,
+                    timeframe=tf,
+                    signal=signal,
+                    source=entry_source,
+                    force_market_entry=force_market_entry,
+                )
+                if not filters_allowed:
+                    self.logger.warning(
+                        f" {self.symbol}: 🚫 БЛОКИРОВКА: вход в {side}: {filters_reason}"
+                    )
+                    return {
+                        'success': False,
+                        'error': 'filters_blocked',
+                        'message': f'Вход заблокирован фильтрами: {filters_reason}',
+                    }
+            except Exception as filter_error:
+                self.logger.error(f" {self.symbol}: ❌ Ошибка проверки фильтров: {filter_error}")
+                return {'success': False, 'error': 'filter_check_failed', 'message': str(filter_error)}
             
             self.logger.info(f" {self.symbol}: Начинаем открытие {side} позиции...")
             

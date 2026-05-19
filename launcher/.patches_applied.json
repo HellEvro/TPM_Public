@@ -13,6 +13,7 @@
     "011_low_resource_mode",
     "012_rsi_aggressive_low_resource",
     "013_launcher_git_clean_preserve_configs",
-    "014_restore_configs_after_revert"
+    "014_restore_configs_after_revert",
+    "015_fix_blacklist_whitelist_indent"
   ]
 }

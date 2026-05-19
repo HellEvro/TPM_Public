@@ -52,8 +52,7 @@ RSI_CACHE_FILE = 'data/rsi_cache.json'
 BOTS_STATE_FILE = 'data/bots_state.json'
 INDIVIDUAL_COIN_SETTINGS_FILE = 'data/individual_coin_settings.json'
 MATURE_COINS_FILE = 'data/mature_coins.json'
-# ❌ ОТКЛЮЧЕНО: optimal_ema удален (EMA фильтр убран)
-# OPTIMAL_EMA_FILE = 'data/optimal_ema.json'
+# Исторический EMA-модуль удален.
 PROCESS_STATE_FILE = 'data/process_state.json'
 SYSTEM_CONFIG_FILE = 'configs/system_config.json'
 
@@ -274,11 +273,11 @@ def load_mature_coins():
         raise  # Поднимаем исключение - БД обязательна!
 
 # ❌ ОТКЛЮЧЕНО: Optimal EMA удален (EMA фильтр убран из системы)
-# def save_optimal_ema(ema_data):
+# def save_removed_ema_data(ema_data):
 #     """Сохраняет оптимальные EMA периоды"""
 #     return True
 # 
-# def load_optimal_ema():
+# def load_removed_ema_data():
 #     """Загружает оптимальные EMA периоды"""
 #     return {}
 

@@ -52,12 +52,7 @@ try:
         load_system_config as storage_load_system_config
     )
     from bot_engine.signal_processor import get_effective_signal, check_autobot_filters, process_auto_bot_signals
-    # ❌ ОТКЛЮЧЕНО: optimal_ema_manager перемещен в backup (EMA фильтр убран)
-    # from bot_engine.optimal_ema_manager import (
-    #     load_optimal_ema_data, get_optimal_ema_periods,
-    #     update_optimal_ema_data, save_optimal_ema_periods,
-    #     optimal_ema_data
-    # )
+    # Исторический EMA-модуль полностью удален.
     MODULES_AVAILABLE = True
     # Используем логгер BOTS, чтобы не засорять логи AI модуля
     # Логируем только на уровне DEBUG и только если логгер BOTS уже настроен (когда запущен bots.py)

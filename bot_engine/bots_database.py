@@ -1434,6 +1434,8 @@ class BotsDatabase:
                     source TEXT DEFAULT 'bot',
                     order_id TEXT,
                     extra_data_json TEXT,
+                    exchange_confirmed INTEGER NOT NULL DEFAULT 0,
+                    exchange_evidence_json TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
@@ -1633,6 +1635,31 @@ class BotsDatabase:
                 cursor.execute("ALTER TABLE bots ADD COLUMN entry_timeframe TEXT")
                 conn.commit()
                 logger.info("✅ Миграция: entry_timeframe добавлен в bots")
+            
+            # ==================== МИГРАЦИЯ: подтверждение закрытия биржей в bot_trades_history ====================
+            if self._table_exists(cursor, 'bot_trades_history'):
+                try:
+                    cursor.execute("SELECT exchange_confirmed FROM bot_trades_history LIMIT 1")
+                except sqlite3.OperationalError:
+                    try:
+                        logger.info("📦 Миграция: добавляем exchange_confirmed в bot_trades_history")
+                        cursor.execute(
+                            "ALTER TABLE bot_trades_history ADD COLUMN exchange_confirmed INTEGER NOT NULL DEFAULT 0"
+                        )
+                        conn.commit()
+                    except sqlite3.OperationalError:
+                        pass
+                try:
+                    cursor.execute("SELECT exchange_evidence_json FROM bot_trades_history LIMIT 1")
+                except sqlite3.OperationalError:
+                    try:
+                        logger.info("📦 Миграция: добавляем exchange_evidence_json в bot_trades_history")
+                        cursor.execute(
+                            "ALTER TABLE bot_trades_history ADD COLUMN exchange_evidence_json TEXT"
+                        )
+                        conn.commit()
+                    except sqlite3.OperationalError:
+                        pass
             
             # ==================== МИГРАЦИЯ: bots_state из JSON в нормализованные таблицы ====================
             try:
@@ -2989,6 +3016,7 @@ class BotsDatabase:
                                         ai_confidence, entry_rsi, exit_rsi, entry_trend, exit_trend,
                                         entry_volatility, entry_volume_ratio, is_successful,
                                         is_simulated, source, order_id, extra_data_json,
+                                        exchange_confirmed, exchange_evidence_json,
                                         created_at, updated_at
                                     )
                                     SELECT 
@@ -3038,6 +3066,8 @@ class BotsDatabase:
                                             'restrictions', restrictions,
                                             'extra_config', extra_config_json
                                         ) as extra_data_json,
+                                        0 as exchange_confirmed,
+                                        NULL as exchange_evidence_json,
                                         COALESCE(created_at, datetime('now')) as created_at,
                                         COALESCE(updated_at, datetime('now')) as updated_at
                                     FROM ai_db.bot_trades
@@ -3062,6 +3092,7 @@ class BotsDatabase:
                                         ai_confidence, entry_rsi, exit_rsi, entry_trend, exit_trend,
                                         entry_volatility, entry_volume_ratio, is_successful,
                                         is_simulated, source, order_id, extra_data_json,
+                                        exchange_confirmed, exchange_evidence_json,
                                         created_at, updated_at
                                     )
                                     SELECT 
@@ -3106,6 +3137,8 @@ class BotsDatabase:
                                             'exchange', exchange,
                                             'extra_data', extra_data_json
                                         ) as extra_data_json,
+                                        1 as exchange_confirmed,
+                                        NULL as exchange_evidence_json,
                                         COALESCE(created_at, datetime('now')) as created_at,
                                         COALESCE(updated_at, datetime('now')) as updated_at
                                     FROM ai_db.exchange_trades
@@ -3154,6 +3187,7 @@ class BotsDatabase:
                                             ai_confidence, entry_rsi, exit_rsi, entry_trend, exit_trend,
                                             entry_volatility, entry_volume_ratio, is_successful,
                                             is_simulated, source, order_id, extra_data_json,
+                                            exchange_confirmed, exchange_evidence_json,
                                             created_at, updated_at
                                         )
                                         SELECT 
@@ -3194,6 +3228,8 @@ class BotsDatabase:
                                             'app_closed_pnl' as source,
                                             order_id,
                                             COALESCE(extra_data_json, '{}') as extra_data_json,
+                                            1 as exchange_confirmed,
+                                            NULL as exchange_evidence_json,
                                             COALESCE(created_at, datetime('now')) as created_at,
                                             COALESCE(updated_at, datetime('now')) as updated_at
                                         FROM app_db.closed_pnl
@@ -5682,6 +5718,14 @@ class BotsDatabase:
                     is_simulated = 1 if trade.get('is_simulated', False) else 0
                     source = trade.get('source', 'bot')
                     order_id = trade.get('order_id')
+                    exchange_confirmed = 1 if trade.get('exchange_confirmed') else 0
+                    ev_raw = trade.get('exchange_evidence')
+                    if isinstance(ev_raw, dict):
+                        exchange_evidence_json = json.dumps(ev_raw, ensure_ascii=False) if ev_raw else None
+                    elif isinstance(ev_raw, str) and ev_raw.strip():
+                        exchange_evidence_json = ev_raw
+                    else:
+                        exchange_evidence_json = trade.get('exchange_evidence_json')
                     
                     # Обрабатываем extra_data_json
                     extra_data = trade.get('extra_data') or trade.get('extra_data_json')
@@ -5691,6 +5735,20 @@ class BotsDatabase:
                         extra_data_json = extra_data if extra_data else None
                     else:
                         extra_data_json = None
+
+                    # Обязательный аудит полей закрытия сделки
+                    timeframe = None
+                    if isinstance(extra_data, dict):
+                        timeframe = extra_data.get('timeframe')
+                    if not close_reason:
+                        close_reason = 'UNKNOWN_CLOSE_REASON'
+                    skip_audit = exchange_confirmed and close_reason == 'CLOSED_ON_EXCHANGE'
+                    if not skip_audit and (entry_rsi is None or exit_rsi is None or not timeframe):
+                        logger.warning(
+                            "⚠️ save_bot_trade_history: неполные поля закрытия "
+                            f"(symbol={symbol}, close_reason={close_reason}, timeframe={timeframe}, "
+                            f"entry_rsi={entry_rsi}, exit_rsi={exit_rsi})"
+                        )
                     
                     # Конвертируем timestamps если нужно
                     if entry_timestamp is None and entry_time:
@@ -5732,10 +5790,13 @@ class BotsDatabase:
                                     exit_rsi = ?,
                                     exit_trend = ?,
                                     is_successful = ?,
+                                    exchange_confirmed = ?,
+                                    exchange_evidence_json = ?,
                                     updated_at = ?
                                 WHERE id = ?
                             """, (exit_price, exit_time, exit_timestamp, pnl, roi, status, close_reason,
-                                  exit_rsi, exit_trend, is_successful, now, existing['id']))
+                                  exit_rsi, exit_trend, is_successful, exchange_confirmed,
+                                  exchange_evidence_json, now, existing['id']))
                             conn.commit()
                             return existing['id']
                     
@@ -5770,8 +5831,9 @@ class BotsDatabase:
                             ai_confidence, entry_rsi, exit_rsi, entry_trend, exit_trend,
                             entry_volatility, entry_volume_ratio, is_successful,
                             is_simulated, source, order_id, extra_data_json,
+                            exchange_confirmed, exchange_evidence_json,
                             created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         bot_id, symbol, direction, entry_price, exit_price,
                         entry_time, exit_time, entry_timestamp, exit_timestamp,
@@ -5780,6 +5842,7 @@ class BotsDatabase:
                         ai_confidence, entry_rsi, exit_rsi, entry_trend, exit_trend,
                         entry_volatility, entry_volume_ratio, is_successful,
                         is_simulated, source, order_id, extra_data_json,
+                        exchange_confirmed, exchange_evidence_json,
                         now, now
                     ))
                     
@@ -5912,6 +5975,7 @@ class BotsDatabase:
                 
                 result = []
                 for row in rows:
+                    rkeys = row.keys()
                     trade = {
                         'id': row['id'],
                         'bot_id': row['bot_id'],
@@ -5942,9 +6006,18 @@ class BotsDatabase:
                         'is_simulated': bool(row['is_simulated']),
                         'source': row['source'],
                         'order_id': row['order_id'],
+                        'exchange_confirmed': bool(row['exchange_confirmed']) if 'exchange_confirmed' in rkeys else False,
                         'created_at': row['created_at'],
                         'updated_at': row['updated_at']
                     }
+                    ev_raw = row['exchange_evidence_json'] if 'exchange_evidence_json' in rkeys else None
+                    if ev_raw:
+                        try:
+                            trade['exchange_evidence'] = json.loads(ev_raw)
+                        except Exception:
+                            trade['exchange_evidence'] = None
+                    else:
+                        trade['exchange_evidence'] = None
                     
                     # Парсим extra_data_json если есть
                     if row['extra_data_json']:

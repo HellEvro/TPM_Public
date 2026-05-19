@@ -144,8 +144,12 @@ class BacktestEngine:
 
         logger.info("[BACKTEST] ✅ Бэктест завершен")
         logger.info(f"[BACKTEST] Финальный баланс: {self.balance:.2f} USDT")
-        logger.info(f"[BACKTEST] PnL: {results['total_pnl_pct']:+.2f}%")
-        logger.info(f"[BACKTEST] Win Rate: {results['win_rate']:.1f}%")
+        pnl_pct = results.get('total_pnl_pct')
+        if pnl_pct is None:
+            pnl_pct = results.get('total_pnl_percent', 0.0)
+        win_rate = results.get('win_rate', 0.0)
+        logger.info(f"[BACKTEST] PnL: {float(pnl_pct):+.2f}%")
+        logger.info(f"[BACKTEST] Win Rate: {float(win_rate):.1f}%")
 
         return results
 

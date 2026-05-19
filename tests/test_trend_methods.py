@@ -9,7 +9,6 @@ sys.path.append('.')
 
 from bots_modules.init_functions import ensure_exchange_initialized
 from bots_modules.filters import get_coin_rsi_data
-from bot_engine.optimal_ema_manager import get_optimal_ema_periods
 from bots_modules.calculations import calculate_ema
 import logging
 
@@ -219,10 +218,9 @@ def test_trend_methods():
         if len(candles) < 250:
             continue
         
-        # Получаем оптимальные EMA
-        ema_periods = get_optimal_ema_periods(symbol)
-        ema_short = ema_periods['ema_short']
-        ema_long = ema_periods['ema_long']
+        # Используем базовые EMA-параметры (legacy модуль удален)
+        ema_short = 50
+        ema_long = 200
         
         # Применяем разные методы
         trend_current = analyze_trend_current(candles, ema_short, ema_long)

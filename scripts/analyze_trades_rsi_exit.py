@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Аудит сделок по RSI: загружает сделки из БД (bot_trades_history) ИЛИ с биржи (get_closed_pnl),
-сравнивает момент входа/выхода с порогами RSI из конфига и выявляет расхождения.
+Аудит сделок по RSI: сравнение входа/выхода с порогами конфига.
+Классификация: bot_matched (есть в bot_trades_history), bot_no_db, manual_or_external.
 
 Запуск:
-    python scripts/analyze_trades_rsi_exit.py
     python scripts/analyze_trades_rsi_exit.py --from-exchange
-    python scripts/analyze_trades_rsi_exit.py --symbol 1000XECUSDT --from-exchange
-    python scripts/analyze_trades_rsi_exit.py --limit 200 --output report.txt
+    python scripts/analyze_trades_rsi_exit.py --from-exchange --output data/rsi_mismatch_report.txt
+    python scripts/analyze_trades_rsi_exit.py --limit 500
 """
 
 import argparse
@@ -43,15 +42,55 @@ def _infer_direction(side, entry_price, exit_price, pnl):
     return "LONG" if (pnl or 0) >= 0 else "SHORT"
 
 
+def _load_config_thresholds():
+    from bot_engine.config_loader import get_config_value, get_current_timeframe, reload_config
+    try:
+        reload_config()
+    except Exception:
+        pass
+    timeframe = get_current_timeframe() or "1m"
+    try:
+        from bots_modules.imports_and_globals import bots_data, bots_data_lock
+        with bots_data_lock:
+            auto_config = bots_data.get("auto_bot_config", {})
+    except Exception:
+        auto_config = {}
+    if not auto_config:
+        try:
+            from bot_engine.config_loader import DEFAULT_AUTO_BOT_CONFIG
+            auto_config = DEFAULT_AUTO_BOT_CONFIG or {}
+        except Exception:
+            auto_config = {}
+    rsi_long = get_config_value(auto_config, "rsi_long_threshold") if auto_config else 29
+    rsi_short = get_config_value(auto_config, "rsi_short_threshold") if auto_config else 71
+    return timeframe, auto_config, rsi_long, rsi_short
+
+
+def _entry_ok_by_threshold(direction, entry_rsi, rsi_long, rsi_short):
+    if entry_rsi is None:
+        return None
+    if direction == "LONG":
+        return entry_rsi <= rsi_long
+    return entry_rsi >= rsi_short
+
+
+def _build_db_index(db_trades):
+    """Индекс сделок из БД: (symbol, entry_time_iso_prefix) -> trade dict."""
+    index = {}
+    for t in db_trades or []:
+        sym = t.get("symbol") or ""
+        et = (t.get("entry_time") or "")[:19]
+        key = (sym, et)
+        index[key] = t
+    return index
+
+
 def load_trades_from_exchange(symbol_filter=None, limit=None, period="all"):
-    """Загружает закрытые сделки с биржи через get_closed_pnl. Требует configs/keys.py и configs/app_config."""
+    """Загружает закрытые сделки с биржи через get_closed_pnl."""
     try:
         from app.config import EXCHANGES, ACTIVE_EXCHANGE
     except ImportError:
-        try:
-            from configs.app_config import EXCHANGES, ACTIVE_EXCHANGE
-        except ImportError:
-            raise RuntimeError("Нужен app.config или configs.app_config с EXCHANGES, ACTIVE_EXCHANGE")
+        from configs.app_config import EXCHANGES, ACTIVE_EXCHANGE
     exchange_name = ACTIVE_EXCHANGE
     cfg = EXCHANGES.get(exchange_name, {})
     if not cfg or not cfg.get("enabled", True):
@@ -60,7 +99,7 @@ def load_trades_from_exchange(symbol_filter=None, limit=None, period="all"):
     api_secret = cfg.get("api_secret")
     passphrase = cfg.get("passphrase")
     if not api_key or not api_secret:
-        raise RuntimeError("В configs/keys.py (или app_config) не заполнены API ключи биржи")
+        raise RuntimeError("В configs не заполнены API ключи биржи")
     from exchanges.exchange_factory import ExchangeFactory
     exchange = ExchangeFactory.create_exchange(exchange_name, api_key, api_secret, passphrase)
     raw = exchange.get_closed_pnl(sort_by="time", period=period) or []
@@ -89,9 +128,11 @@ def load_trades_from_exchange(symbol_filter=None, limit=None, period="all"):
             "entry_rsi": None,
             "exit_rsi": None,
             "entry_trend": "NEUTRAL",
+            "entry_timeframe": None,
             "close_reason": "EXCHANGE",
             "pnl": pnl,
             "source": "exchange",
+            "trade_class": None,
         })
     trades.sort(key=lambda x: (x.get("exit_time") or ""), reverse=True)
     if limit:
@@ -99,43 +140,67 @@ def load_trades_from_exchange(symbol_filter=None, limit=None, period="all"):
     return trades
 
 
+def classify_trades(trades, db_index, rsi_long, rsi_short):
+    stats = {
+        "bot_matched_ok": 0,
+        "bot_matched_bad_rsi": 0,
+        "manual_or_external": 0,
+        "no_entry_rsi": 0,
+    }
+    for t in trades:
+        sym = t.get("symbol", "")
+        et = (t.get("entry_time") or "")[:19]
+        db_row = db_index.get((sym, et))
+        direction = (t.get("direction") or "LONG").upper()
+        if db_row:
+            t["trade_class"] = "bot_matched"
+            if t.get("entry_rsi") is None:
+                t["entry_rsi"] = db_row.get("entry_rsi")
+            t["entry_timeframe"] = db_row.get("entry_timeframe") or t.get("entry_timeframe")
+            t["close_reason"] = db_row.get("close_reason") or t.get("close_reason")
+        else:
+            t["trade_class"] = "manual_or_external"
+            stats["manual_or_external"] += 1
+            if t.get("entry_rsi") is None:
+                stats["no_entry_rsi"] += 1
+            continue
+        entry_rsi = t.get("entry_rsi")
+        entry_ok = _entry_ok_by_threshold(direction, entry_rsi, rsi_long, rsi_short)
+        if entry_rsi is None:
+            stats["no_entry_rsi"] += 1
+            stats["bot_matched_bad_rsi"] += 1
+        elif entry_ok:
+            stats["bot_matched_ok"] += 1
+        else:
+            stats["bot_matched_bad_rsi"] += 1
+    return stats
+
+
 def main():
     parser = argparse.ArgumentParser(description="Аудит сделок: вход/выход vs RSI и конфиг")
-    parser.add_argument("--symbol", type=str, default=None, help="Фильтр по символу (например 1000XECUSDT)")
-    parser.add_argument("--limit", type=int, default=None, help="Макс. число сделок (по умолчанию все)")
-    parser.add_argument("--output", type=str, default=None, help="Файл для отчёта (иначе stdout)")
-    parser.add_argument("--verbose", action="store_true", help="Подробный вывод по каждой сделке")
-    parser.add_argument("--from-exchange", action="store_true", help="Брать сделки с биржи (get_closed_pnl), а не из БД")
-    parser.add_argument("--period", type=str, default="all", help="Период для биржи: all, day, week, month (при --from-exchange)")
+    parser.add_argument("--symbol", type=str, default=None)
+    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--output", type=str, default=None)
+    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--from-exchange", action="store_true")
+    parser.add_argument("--period", type=str, default="all")
     args = parser.parse_args()
 
-    # Загрузка конфига
-    from bot_engine.config_loader import get_current_timeframe, reload_config
-    try:
-        reload_config()
-    except Exception:
-        pass
-    timeframe = get_current_timeframe() or "1m"
-
-    # Пороги выхода из конфига (как в bot_class / filters)
-    try:
-        from bots_modules.imports_and_globals import bots_data, bots_data_lock
-        with bots_data_lock:
-            auto_config = bots_data.get("auto_bot_config", {})
-    except Exception:
-        auto_config = {}
-    if not auto_config:
-        try:
-            from bot_engine.config_loader import DEFAULT_AUTO_BOT_CONFIG
-            auto_config = DEFAULT_AUTO_BOT_CONFIG or {}
-        except Exception:
-            auto_config = {}
+    timeframe, auto_config, rsi_long, rsi_short = _load_config_thresholds()
     exit_long_with = auto_config.get("rsi_exit_long_with_trend") or 65
     exit_long_against = auto_config.get("rsi_exit_long_against_trend") or 60
     exit_short_with = auto_config.get("rsi_exit_short_with_trend") or 35
     exit_short_against = auto_config.get("rsi_exit_short_against_trend") or 40
 
-    # Источник сделок: биржа или БД
+    from bot_engine.bots_database import get_bots_database
+    db = get_bots_database()
+    db_trades = db.get_bot_trades_history(
+        symbol=args.symbol,
+        status="CLOSED",
+        limit=args.limit,
+    )
+    db_index = _build_db_index(db_trades)
+
     if args.from_exchange:
         try:
             trades = load_trades_from_exchange(
@@ -143,19 +208,36 @@ def main():
                 limit=args.limit,
                 period=args.period,
             )
-            source_note = "с биржи (get_closed_pnl)"
+            source_note = "с биржи (get_closed_pnl) + сопоставление с БД"
         except Exception as e:
             print(f"Ошибка загрузки с биржи: {e}", file=sys.stderr)
             sys.exit(1)
     else:
-        from bot_engine.bots_database import get_bots_database
-        db = get_bots_database()
-        trades = db.get_bot_trades_history(
-            symbol=args.symbol,
-            status="CLOSED",
-            limit=args.limit,
-        )
+        trades = db_trades
+        for t in trades:
+            t["trade_class"] = "bot_matched"
+            t.setdefault("source", "database")
         source_note = "из БД (bot_trades_history)"
+
+    stats = classify_trades(trades, db_index, rsi_long, rsi_short) if args.from_exchange else {
+        "bot_matched_ok": 0,
+        "bot_matched_bad_rsi": 0,
+        "bot_no_db": 0,
+        "manual_or_external": 0,
+        "no_entry_rsi": 0,
+    }
+    if not args.from_exchange:
+        for t in trades:
+            direction = (t.get("direction") or "LONG").upper()
+            entry_rsi = t.get("entry_rsi")
+            entry_ok = _entry_ok_by_threshold(direction, entry_rsi, rsi_long, rsi_short)
+            if entry_rsi is None:
+                stats["no_entry_rsi"] += 1
+                stats["bot_matched_bad_rsi"] += 1
+            elif entry_ok:
+                stats["bot_matched_ok"] += 1
+            else:
+                stats["bot_matched_bad_rsi"] += 1
 
     out = open(args.output, "w", encoding="utf-8") if args.output else sys.stdout
 
@@ -164,74 +246,65 @@ def main():
         if out != sys.stdout:
             print(line)
 
-    w("=" * 80)
+    w("=" * 90)
     w("АУДИТ СДЕЛОК: ВХОД/ВЫХОД vs RSI И КОНФИГ")
-    w("=" * 80)
-    w(f"Источник сделок: {source_note}")
+    w("=" * 90)
+    w(f"Источник: {source_note}")
     w(f"Таймфрейм из конфига: {timeframe}")
-    w(f"Пороги выхода LONG: with_trend >={exit_long_with}, against_trend >={exit_long_against}")
-    w(f"Пороги выхода SHORT: with_trend <={exit_short_with}, against_trend <={exit_short_against}")
-    w(f"Всего закрытых сделок: {len(trades)}")
+    w(f"Вход LONG:  RSI <= {rsi_long}")
+    w(f"Вход SHORT: RSI >= {rsi_short}")
+    w(f"Пороги выхода LONG: with>={exit_long_with}, against>={exit_long_against}")
+    w(f"Пороги выхода SHORT: with<={exit_short_with}, against<={exit_short_against}")
+    w(f"Всего сделок в выборке: {len(trades)}")
+    w("")
+    w("--- КЛАССИФИКАЦИЯ ---")
+    w(f"  bot_matched, вход по порогу RSI:     {stats['bot_matched_ok']}")
+    w(f"  bot_matched, вход ВНЕ порога / нет RSI: {stats['bot_matched_bad_rsi']}")
+    w(f"  manual_or_external (нет в БД):       {stats['manual_or_external']}")
+    w(f"  без entry_rsi в данных:              {stats['no_entry_rsi']}")
     w("")
 
-    errors_no_exit_rsi = 0
-    errors_should_close_earlier = 0
-    ok_exit_by_rsi = 0
-    other_close = 0
-
+    shown = 0
+    max_verbose = 50 if args.verbose else 15
     for i, t in enumerate(trades):
         symbol = t.get("symbol", "")
         direction = (t.get("direction") or "LONG").upper()
-        entry_time = t.get("entry_time") or ""
-        exit_time = t.get("exit_time") or ""
-        entry_price = t.get("entry_price")
-        exit_price = t.get("exit_price")
         entry_rsi = t.get("entry_rsi")
-        exit_rsi = t.get("exit_rsi")
-        entry_trend = (t.get("entry_trend") or "NEUTRAL").upper()
-        close_reason = t.get("close_reason") or ""
-        pnl = t.get("pnl")
+        trade_class = t.get("trade_class") or "unknown"
+        entry_ok = _entry_ok_by_threshold(direction, entry_rsi, rsi_long, rsi_short)
+        if trade_class == "bot_matched" and entry_ok is True:
+            continue
+        if shown >= max_verbose and not args.verbose:
+            break
+        shown += 1
+        w("-" * 90)
+        w(f"Сделка #{i + 1}  {symbol}  {direction}  class={trade_class}")
+        w(f"  Вход:  {t.get('entry_time')}  цена={t.get('entry_price')}  RSI={entry_rsi}  TF={t.get('entry_timeframe')}")
+        w(f"  Выход: {t.get('exit_time')}  PnL={t.get('pnl')}  reason={t.get('close_reason')}")
+        if entry_rsi is None:
+            w("  Вход по эталону: нет RSI в данных")
+        elif entry_ok is False:
+            w(f"  Вход по эталону: НЕ по порогу (LONG RSI<={rsi_long}, SHORT RSI>={rsi_short})")
+        elif entry_ok is True:
+            w("  Вход по эталону: OK")
+        if trade_class == "manual_or_external":
+            w("  БД: запись не найдена (ручная сделка или вне бота)")
+        w("")
 
-        if direction == "LONG":
-            thr = exit_long_with if entry_trend == "UP" else exit_long_against
-            exit_ok_by_rsi = exit_rsi is not None and exit_rsi >= thr
-            should_exit_condition = "RSI >= %s" % thr
-        else:
-            thr = exit_short_with if entry_trend == "DOWN" else exit_short_against
-            exit_ok_by_rsi = exit_rsi is not None and exit_rsi <= thr
-            should_exit_condition = "RSI <= %s" % thr
-
-        if exit_rsi is None:
-            errors_no_exit_rsi += 1
-            if t.get("source") == "exchange":
-                verdict = "📡 Сделка с биржи — RSI в API биржи не приходит; для проверки по RSI используйте сделку из БД (без --from-exchange)."
-            else:
-                verdict = "⚠️ В БД НЕТ exit_rsi — при закрытии RSI не был записан (система могла не видеть RSI по таймфрейму)"
-        elif exit_ok_by_rsi:
-            ok_exit_by_rsi += 1
-            verdict = "✅ На выходе RSI соответствовал порогу"
-        else:
-            other_close += 1
-            verdict = f"ℹ️ Закрыто по другой причине (close_reason={close_reason}); на выходе RSI={exit_rsi} (порог: {should_exit_condition})"
-
-        if args.verbose or exit_rsi is None or (direction == "LONG" and exit_rsi is not None and exit_rsi < thr) or (direction == "SHORT" and exit_rsi is not None and exit_rsi > thr):
-            w(f"--- Сделка #{i+1} ---")
-            w(f"  Символ: {symbol}  Направление: {direction}  Тренд входа: {entry_trend}")
-            w(f"  Вход:  {entry_time}  цена={entry_price}  RSI={entry_rsi}")
-            w(f"  Выход: {exit_time}  цена={exit_price}  RSI={exit_rsi}  PnL={pnl}  причина={close_reason}")
-            w(f"  {verdict}")
-            w("")
-
-    w("=" * 80)
+    w("=" * 90)
     w("ИТОГ")
-    w("=" * 80)
-    w(f"Сделок без exit_rsi в БД (невозможно проверить): {errors_no_exit_rsi}")
-    w(f"Сделок с выходом по RSI в пороге: {ok_exit_by_rsi}")
-    w(f"Сделок закрыто по другим причинам: {other_close}")
-    w("")
-    if errors_no_exit_rsi > 0:
-        w("Рекомендация: при закрытии позиции передавать и сохранять exit_rsi (и entry_timeframe) в save_bot_trade_history.")
-        w("Проверить: обновляется ли coins_rsi_data по таймфрейму бота (1m) с интервалом RSI_UPDATE_INTERVAL.")
+    w("=" * 90)
+    total_bot = stats["bot_matched_ok"] + stats["bot_matched_bad_rsi"]
+    if total_bot:
+        pct_ok = 100.0 * stats["bot_matched_ok"] / total_bot
+        w(f"Доля входов бота в пороге RSI: {pct_ok:.1f}% ({stats['bot_matched_ok']}/{total_bot})")
+    if stats["manual_or_external"]:
+        w(
+            f"Сделок без записи в БД: {stats['manual_or_external']} — "
+            "часто это ручная торговля на бирже, не баг бота."
+        )
+    if stats["bot_matched_bad_rsi"]:
+        w("Рекомендация: проверить ENTRY_CHECK в логах, единый check_entry_allowed, таймфрейм свечей.")
     if args.output:
         out.close()
         print(f"Отчёт записан в {args.output}")

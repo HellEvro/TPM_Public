@@ -118,6 +118,10 @@ SYSTEM_CONFIG_FIELD_MAP = {
     'bybit_margin_mode': 'BYBIT_MARGIN_MODE'  # Bybit: auto | cross | isolated
 }
 
+# Анти-флап защита от ложного удаления ботов при кратковременных пустых ответах биржи.
+POSITION_MISS_CONFIRMATIONS_REQUIRED = 3
+POSITION_MISS_GRACE_SECONDS = 180
+
 
 def _safe_float(value, default=None):
     try:
@@ -211,6 +215,183 @@ def _check_if_trade_already_closed(bot_id, symbol, entry_price, entry_time_str):
     except Exception as e:
         pass
         return False
+
+
+def _persist_exchange_sync_close(symbol, bot_data, exchange_evidence, db_source='position_sync'):
+    """
+    После подтверждённого отсутствия позиции на бирже — пишем CLOSED_ON_EXCHANGE
+    в JSON-историю и bots_data.db (с exchange_confirmed и сырой evidence).
+
+    db_source: значение колонки source (position_sync | stop_loss_sync | …) для отчётов.
+    """
+    if not bot_data:
+        return
+    try:
+        bot_id = bot_data.get('id') or symbol
+        entry_time_str = bot_data.get('position_start_time') or bot_data.get('entry_time')
+        try:
+            entry_price = float(bot_data.get('entry_price') or 0.0)
+        except (TypeError, ValueError):
+            entry_price = 0.0
+
+        if _check_if_trade_already_closed(bot_id, symbol, entry_price, entry_time_str):
+            logger.info(f"[EXCHANGE_SYNC_CLOSE] ⏭ {symbol}: запись закрытия уже есть, пропуск")
+            return
+
+        direction = bot_data.get('position_side')
+        position_size_coins = abs(
+            float(bot_data.get('position_size_coins') or bot_data.get('position_size') or 0)
+        )
+        exit_price = None
+        try:
+            exchange_obj = get_exchange()
+            if exchange_obj and hasattr(exchange_obj, 'get_ticker'):
+                ticker = exchange_obj.get_ticker(symbol)
+                if ticker and ticker.get('last'):
+                    exit_price = float(ticker.get('last'))
+        except Exception:
+            pass
+        if not exit_price:
+            try:
+                exit_price = float(bot_data.get('current_price') or 0.0)
+            except (TypeError, ValueError):
+                exit_price = 0.0
+
+        if not direction:
+            status_guess = (bot_data.get('status') or '').lower()
+            if 'long' in status_guess:
+                direction = 'LONG'
+            elif 'short' in status_guess:
+                direction = 'SHORT'
+
+        pnl_usdt = 0.0
+        roi_percent = 0.0
+        direction_upper = (direction or '').upper()
+        if entry_price and exit_price and position_size_coins and direction_upper in ('LONG', 'SHORT'):
+            price_diff = (
+                (exit_price - entry_price)
+                if direction_upper == 'LONG'
+                else (entry_price - exit_price)
+            )
+            pnl_usdt = price_diff * position_size_coins
+            margin_usdt = bot_data.get('margin_usdt')
+            try:
+                margin_val = float(margin_usdt) if margin_usdt is not None else None
+            except (TypeError, ValueError):
+                margin_val = None
+            if margin_val and margin_val != 0:
+                roi_percent = (pnl_usdt / margin_val) * 100.0
+
+        duration_hours = 0.0
+        if entry_time_str:
+            try:
+                entry_time = datetime.fromisoformat(entry_time_str.replace('Z', ''))
+                now_utc = datetime.now(timezone.utc)
+                entry_utc = (
+                    entry_time.replace(tzinfo=timezone.utc)
+                    if entry_time.tzinfo is None
+                    else entry_time
+                )
+                duration_hours = (now_utc - entry_utc).total_seconds() / 3600.0
+            except Exception:
+                duration_hours = 0.0
+
+        entry_data = {
+            'entry_price': entry_price or None,
+            'trend': bot_data.get('entry_trend'),
+            'volatility': bot_data.get('entry_volatility'),
+            'duration_hours': duration_hours,
+            'max_profit_achieved': bot_data.get('max_profit_achieved'),
+        }
+        market_data = {
+            'exit_price': exit_price or entry_price or 0.0,
+            'price_movement': (
+                ((exit_price - entry_price) / entry_price * 100.0) if entry_price else 0.0
+            ),
+        }
+
+        history_log_position_closed(
+            bot_id=bot_id,
+            symbol=symbol,
+            direction=direction or 'UNKNOWN',
+            exit_price=exit_price or entry_price or 0.0,
+            pnl=pnl_usdt,
+            roi=roi_percent,
+            reason='CLOSED_ON_EXCHANGE',
+            entry_data=entry_data,
+            market_data=market_data,
+            is_simulated=False,
+        )
+
+        try:
+            from bot_engine.bots_database import get_bots_database
+            from bot_engine.config_loader import get_current_timeframe
+
+            bots_db = get_bots_database()
+            entry_timestamp = None
+            if entry_time_str:
+                try:
+                    entry_dt = datetime.fromisoformat(entry_time_str.replace('Z', ''))
+                    entry_timestamp = entry_dt.timestamp() * 1000
+                except Exception:
+                    entry_timestamp = datetime.now().timestamp() * 1000
+            else:
+                entry_time_str = datetime.now().isoformat()
+                entry_timestamp = datetime.now().timestamp() * 1000
+
+            tf = None
+            try:
+                tf = get_current_timeframe()
+            except Exception:
+                tf = None
+
+            trade_data = {
+                'bot_id': bot_id,
+                'symbol': symbol,
+                'direction': direction or 'UNKNOWN',
+                'entry_price': entry_price or 0.0,
+                'exit_price': exit_price or entry_price or 0.0,
+                'entry_time': entry_time_str,
+                'exit_time': datetime.now().isoformat(),
+                'entry_timestamp': entry_timestamp,
+                'exit_timestamp': datetime.now().timestamp() * 1000,
+                'position_size_usdt': bot_data.get('volume_value'),
+                'position_size_coins': position_size_coins,
+                'pnl': pnl_usdt,
+                'roi': roi_percent,
+                'status': 'CLOSED',
+                'close_reason': 'CLOSED_ON_EXCHANGE',
+                'decision_source': bot_data.get('decision_source', 'SCRIPT'),
+                'ai_decision_id': bot_data.get('ai_decision_id'),
+                'ai_confidence': bot_data.get('ai_confidence'),
+                'entry_rsi': bot_data.get('entry_rsi'),
+                'exit_rsi': None,
+                'entry_trend': entry_data.get('trend'),
+                'exit_trend': None,
+                'entry_volatility': entry_data.get('volatility'),
+                'entry_volume_ratio': None,
+                'is_successful': pnl_usdt > 0 if pnl_usdt else False,
+                'is_simulated': False,
+                'source': db_source,
+                'order_id': None,
+                'exchange_confirmed': True,
+                'exchange_evidence': exchange_evidence or {},
+                'extra_data': {
+                    'timeframe': tf,
+                    'close_reason': 'CLOSED_ON_EXCHANGE',
+                    'entry_data': entry_data,
+                    'market_data': market_data,
+                },
+            }
+            trade_id = bots_db.save_bot_trade_history(trade_data)
+            if trade_id:
+                logger.info(
+                    f"[EXCHANGE_SYNC_CLOSE] ✅ {symbol}: история сохранена (id={trade_id}, path={exchange_evidence.get('sync_path')})"
+                )
+        except Exception as db_err:
+            logger.warning(f"[EXCHANGE_SYNC_CLOSE] ⚠️ {symbol}: ошибка БД: {db_err}")
+    except Exception as e:
+        logger.warning(f"[EXCHANGE_SYNC_CLOSE] ⚠️ {symbol}: {e}")
 
 
 def _needs_price_update(position_side, desired_price, existing_price, tolerance=1e-6):
@@ -775,8 +956,8 @@ def save_auto_bot_config(changed_data=None):
         logger.error(f"[SAVE_CONFIG] ❌ Ошибка сохранения конфигурации автобота: {e}")
         return False
 
-# ❌ ОТКЛЮЧЕНО: optimal_ema перемещен в backup (EMA фильтр убран)
-# def save_optimal_ema_periods():
+# Исторический EMA-модуль удален.
+# def save_removed_ema_periods():
 #     """Сохраняет оптимальные EMA периоды"""
 #     return True  # Заглушка
 
@@ -1645,12 +1826,13 @@ def get_exchange_positions():
             current_exchange = get_exchange()
             if not current_exchange:
                 logger.error("[EXCHANGE_POSITIONS] ❌ Биржа не инициализирована")
-                return []
+                return None
             positions, _ = current_exchange.get_positions()
             logger.info(f"[EXCHANGE_POSITIONS] Fallback: получено {len(positions) if positions else 0} позиций")
             
             if not positions:
-                return []
+                # Пустой fallback после ошибки API не считаем достоверным источником для удаления ботов.
+                return None
             
             # Обрабатываем fallback позиции
             processed_positions = []
@@ -1909,19 +2091,65 @@ def sync_positions_with_exchange():
                     # Проверяем, есть ли активные ордера для этого символа
                     has_active_orders = check_active_orders(symbol)
                     
+                    if has_active_orders is None:
+                        logger.warning(f"[POSITION_SYNC] ⚠️ {symbol}: пропускаем удаление — не удалось подтвердить ордера (сеть/API)")
+                        continue
                     if not has_active_orders:
-                        # ✅ КРИТИЧНО: УДАЛЯЕМ бота, а не переводим в IDLE - позиции нет на бирже!
+                        # Анти-флап: удаляем только после N подряд подтверждений + grace-period.
+                        now_ts = time.time()
+                        should_delete = False
+                        removed_snapshot = None
+                        sync_evidence = None
                         with bots_data_lock:
-                            if symbol in bots_data['bots']:
-                                del bots_data['bots'][symbol]
-                                synced_count += 1
-                                logger.info(f"[POSITION_SYNC] 🗑️ Удален бот {symbol} - позиция закрыта на бирже")
+                            miss_tracker = bots_data.setdefault('position_miss_tracker', {})
+                            miss_state = miss_tracker.get(symbol, {})
+                            first_seen = float(miss_state.get('first_seen', now_ts))
+                            misses = int(miss_state.get('count', 0)) + 1
+                            miss_tracker[symbol] = {'first_seen': first_seen, 'count': misses}
+
+                            grace_ok = (now_ts - first_seen) >= POSITION_MISS_GRACE_SECONDS
+                            if misses >= POSITION_MISS_CONFIRMATIONS_REQUIRED and grace_ok:
+                                should_delete = symbol in bots_data['bots']
+                                if should_delete:
+                                    try:
+                                        removed_snapshot = copy.deepcopy(bots_data['bots'][symbol])
+                                    except Exception:
+                                        removed_snapshot = dict(bots_data['bots'][symbol])
+                                    sync_evidence = {
+                                        'sync_path': 'sync_positions_with_exchange',
+                                        'miss_confirmations': misses,
+                                        'grace_seconds_observed': int(now_ts - first_seen),
+                                        'exchange_symbols_in_snapshot': len(exchange_dict),
+                                        'checked_at_utc': datetime.now(timezone.utc).isoformat(),
+                                    }
+                                    del bots_data['bots'][symbol]
+                                    miss_tracker.pop(symbol, None)
+                                    synced_count += 1
+                            else:
+                                logger.info(
+                                    f"[POSITION_SYNC] ⏳ {symbol}: подтверждений отсутствия позиции {misses}/{POSITION_MISS_CONFIRMATIONS_REQUIRED}, "
+                                    f"grace={int(now_ts - first_seen)}/{POSITION_MISS_GRACE_SECONDS}s"
+                                )
+                        if removed_snapshot is not None and sync_evidence is not None:
+                            _persist_exchange_sync_close(
+                                symbol, removed_snapshot, sync_evidence, db_source='position_sync'
+                            )
+                        if should_delete:
+                            logger.info(f"[POSITION_SYNC] 🗑️ Удален бот {symbol} - позиция подтвержденно закрыта на бирже")
                     else:
+                        with bots_data_lock:
+                            bots_data.setdefault('position_miss_tracker', {}).pop(symbol, None)
                         logger.info(f"[POSITION_SYNC] ⏳ Бот {symbol} имеет активные ордера - оставляем в позиции")
                         
                 except Exception as check_error:
                     logger.error(f"[POSITION_SYNC] ❌ Ошибка проверки ордеров для {symbol}: {check_error}")
                     errors_count += 1
+
+        # Сбрасываем счетчик промахов для символов, где позиция на бирже есть.
+        with bots_data_lock:
+            miss_tracker = bots_data.setdefault('position_miss_tracker', {})
+            for exchange_symbol in exchange_dict.keys():
+                miss_tracker.pop(exchange_symbol, None)
         
         # Обрабатываем несовпадения сторон - исправляем данные бота в соответствии с биржей
         for symbol, exchange_pos in exchange_dict.items():
@@ -1967,18 +2195,19 @@ def check_active_orders(symbol):
     """Проверяет, есть ли активные ордера для символа"""
     try:
         if not ensure_exchange_initialized():
-            return False
+            return None
         
         # Получаем активные ордера для символа
         current_exchange = get_exchange()
         if not current_exchange:
-            return False
+            return None
         orders = current_exchange.get_open_orders(symbol)
         return len(orders) > 0
         
     except Exception as e:
         logger.error(f"[ORDER_CHECK] ❌ Ошибка проверки ордеров для {symbol}: {e}")
-        return False
+        # Не трактуем сетевые/биржевые ошибки как отсутствие ордеров.
+        return None
 
 def cleanup_inactive_bots():
     """Удаляет ботов, которые не имеют реальных позиций на бирже в течение SystemConfig.INACTIVE_BOT_TIMEOUT секунд"""
@@ -2081,8 +2310,15 @@ def cleanup_inactive_bots():
                                 logger.warning(f" ⏰ Бот {symbol} неактивен {time_since_update//60:.0f} мин (статус: {bot_status})")
                                 bots_to_remove.append(symbol)
                                 
-                                # Логируем удаление неактивного бота в историю
-                                # log_bot_stop(symbol, f"Неактивен {time_since_update//60:.0f} мин (статус: {bot_status})")  # TODO: Функция не определена
+                                try:
+                                    from bot_engine.bot_history import log_bot_stop
+                                    log_bot_stop(
+                                        symbol,
+                                        symbol,
+                                        f"Неактивен {time_since_update//60:.0f} мин (статус: {bot_status})",
+                                    )
+                                except Exception:
+                                    pass
                             else:
                                 pass
                                 continue  # Бот активен - пропускаем удаление
@@ -2461,6 +2697,19 @@ def check_missing_stop_losses():
                                         logger.info(f" ✅ Бот {symbol} удален из системы")
                                         bot_removed = True
                                 if bot_removed:
+                                    _persist_exchange_sync_close(
+                                        symbol,
+                                        bot_snapshot,
+                                        {
+                                            'sync_path': 'check_missing_stop_losses',
+                                            'subpath': 'absent_or_zero_after_raw_list',
+                                            'registry_order_id': order_id,
+                                            'exchange_open_positions_count': len(exchange_positions),
+                                            'symbol_had_zero_size_row': bool(symbol_on_exchange_with_zero),
+                                            'checked_at_utc': datetime.now(timezone.utc).isoformat(),
+                                        },
+                                        db_source='stop_loss_sync',
+                                    )
                                     save_bots_state()
                             except Exception as cleanup_error:
                                 logger.error(f" ❌ Ошибка удаления бота {symbol}: {cleanup_error}")
@@ -2505,6 +2754,24 @@ def check_missing_stop_losses():
                                 bot_removed = True
                         # Сохраняем состояние после освобождения блокировки
                         if bot_removed:
+                            try:
+                                raw_sz = pos.get('size') if pos else None
+                            except Exception:
+                                raw_sz = None
+                            _persist_exchange_sync_close(
+                                symbol,
+                                bot_snapshot,
+                                {
+                                    'sync_path': 'check_missing_stop_losses',
+                                    'subpath': 'zero_size_in_exchange_positions',
+                                    'registry_order_id': order_id,
+                                    'exchange_open_positions_count': len(exchange_positions),
+                                    'exchange_row_size': raw_sz,
+                                    'exchange_row_symbol': (pos.get('symbol') if pos else None),
+                                    'checked_at_utc': datetime.now(timezone.utc).isoformat(),
+                                },
+                                db_source='stop_loss_sync',
+                            )
                             save_bots_state()
                     except Exception as cleanup_error:
                         logger.error(f" ❌ Ошибка удаления бота {symbol}: {cleanup_error}")
@@ -3096,8 +3363,7 @@ def sync_bots_with_exchange():
                                 }
 
                                 if not already_closed_trade:
-                                    # КРИТИЧНО: Логируем только если это была позиция бота (бот был в позиции)
-                                    # Это НЕ ручные сделки трейдера, а закрытие позиций ботов вручную на бирже
+                                    # Позиция была у бота, в успешном ответе API биржи её уже нет — фиксируем CLOSED_ON_EXCHANGE.
                                     history_log_position_closed(
                                         bot_id=bot_id,
                                         symbol=symbol,
@@ -3105,16 +3371,30 @@ def sync_bots_with_exchange():
                                         exit_price=exit_price or entry_price or 0.0,
                                         pnl=pnl_usdt,
                                         roi=roi_percent,
-                                        reason='MANUAL_CLOSE',
+                                        reason='CLOSED_ON_EXCHANGE',
                                         entry_data=entry_data,
                                         market_data=market_data,
-                                        is_simulated=False,  # КРИТИЧНО: это сделки ботов, закрытые вручную на бирже
+                                        is_simulated=False,
                                     )
 
                                     # КРИТИЧНО: Также сохраняем в bots_data.db для истории торговли ботов
                                     try:
                                         from bot_engine.bots_database import get_bots_database
+                                        from bot_engine.config_loader import get_current_timeframe
+
                                         bots_db = get_bots_database()
+                                        try:
+                                            _sync_tf = get_current_timeframe()
+                                        except Exception:
+                                            _sync_tf = None
+
+                                        exchange_sync_evidence = {
+                                            'sync_path': 'sync_bots_with_exchange',
+                                            'open_positions_on_exchange_count': len(exchange_positions),
+                                            'open_position_symbols_sample': sorted(exchange_positions.keys())[:80],
+                                            'confirmed_absent_symbol': symbol,
+                                            'checked_at_utc': datetime.now(timezone.utc).isoformat(),
+                                        }
                                         # Аккуратно рассчитываем entry_timestamp, чтобы избежать NameError
                                         entry_timestamp = None
                                         if entry_time_str:
@@ -3144,13 +3424,13 @@ def sync_bots_with_exchange():
                                             "pnl": pnl_usdt,
                                             "roi": roi_percent,
                                             "status": "CLOSED",
-                                            "close_reason": "MANUAL_CLOSE",
+                                            "close_reason": "CLOSED_ON_EXCHANGE",
                                             "decision_source": bot_data.get(
                                                 "decision_source", "SCRIPT"
                                             ),
                                             "ai_decision_id": bot_data.get("ai_decision_id"),
                                             "ai_confidence": bot_data.get("ai_confidence"),
-                                            "entry_rsi": None,  # TODO: получить из entry_data если есть
+                                            "entry_rsi": bot_data.get("entry_rsi"),
                                             "exit_rsi": None,
                                             "entry_trend": entry_data.get("trend"),
                                             "exit_trend": None,
@@ -3158,9 +3438,13 @@ def sync_bots_with_exchange():
                                             "entry_volume_ratio": None,
                                             "is_successful": pnl_usdt > 0 if pnl_usdt else False,
                                             "is_simulated": False,
-                                            "source": "bot_manual_close",
+                                            "source": "exchange_sync_close",
                                             "order_id": None,
+                                            "exchange_confirmed": True,
+                                            "exchange_evidence": exchange_sync_evidence,
                                             "extra_data": {
+                                                "timeframe": _sync_tf,
+                                                "close_reason": "CLOSED_ON_EXCHANGE",
                                                 "entry_data": entry_data,
                                                 "market_data": market_data,
                                             },
@@ -3176,7 +3460,7 @@ def sync_bots_with_exchange():
                                             f"[SYNC_EXCHANGE] ⚠️ Ошибка сохранения истории в bots_data.db: {bots_db_error}"
                                         )
                                     logger.info(
-                                        f"[SYNC_EXCHANGE] ✋ {symbol}: позиция закрыта вручную на бирже "
+                                        f"[SYNC_EXCHANGE] ✋ {symbol}: закрытие подтверждено синхронизацией с биржей "
                                         f"(entry={entry_price:.6f}, exit={exit_price:.6f}, pnl={pnl_usdt:.2f} USDT)"
                                     )
                                 else:

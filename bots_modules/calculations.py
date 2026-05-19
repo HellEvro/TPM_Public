@@ -27,13 +27,7 @@ try:
 except ImportError:
     TREND_CONFIRMATION_BARS = 3  # Значение по умолчанию
 
-# ❌ ОТКЛЮЧЕНО: optimal_ema перемещен в backup (используется заглушка из imports_and_globals)
-# # Импорт функции optimal_ema из модуля
-# try:
-#     from bots_modules.optimal_ema import get_optimal_ema_periods
-# except ImportError:
-#     def get_optimal_ema_periods(symbol):
-#         return {'ema_short': 50, 'ema_long': 200, 'accuracy': 0}
+# Исторический EMA-модуль удален из проекта.
 
 logger = logging.getLogger('BotsService')
 
@@ -143,9 +137,7 @@ except:
     bots_data_lock = threading.Lock()
     bots_data = {}
 
-# ❌ ОТКЛЮЧЕНО: Все функции optimal_ema удалены (EMA фильтр убран из системы)
-# optimal_ema_data = {}
-# OPTIMAL_EMA_FILE = 'data/optimal_ema.json'
+# Исторические структуры EMA удалены.
 
 def check_coin_maturity_with_storage(symbol, candles):
     """Проверяет зрелость монеты с использованием постоянного хранилища"""

@@ -17,56 +17,10 @@ from flask import Flask, request, jsonify
 
 logger = logging.getLogger('BotsService')
 
-# ⚡ ОПТИМИЗАЦИЯ ПАМЯТИ: Кэш для bots_state_file
-_bots_state_cache = {
-    'symbols': set(),
-    'last_update': 0,
-    'cache_ttl': 30  # Кэш на 30 секунд
-}
-
+# Runtime использует единый source of truth (память + БД).
+# Файловый fallback data/bots_state.json отключен намеренно.
 def _get_cached_bot_symbols():
-    """Получает кэшированный список символов ботов из файла"""
-    import time
-    current_time = time.time()
-    
-    # Проверяем, нужно ли обновить кэш
-    if current_time - _bots_state_cache['last_update'] < _bots_state_cache['cache_ttl']:
-        return _bots_state_cache['symbols'].copy()
-    
-    # Обновляем кэш
-    saved_bot_symbols = set()
-    try:
-        bots_state_file = 'data/bots_state.json'
-        if os.path.exists(bots_state_file):
-            # Проверяем только время изменения файла, не читаем весь файл если не изменился
-            file_mtime = os.path.getmtime(bots_state_file)
-            if file_mtime <= _bots_state_cache.get('file_mtime', 0):
-                # Файл не изменился - используем старый кэш
-                return _bots_state_cache['symbols'].copy()
-            
-            # Файл изменился - читаем только ключи ботов
-            with open(bots_state_file, 'r', encoding='utf-8') as f:
-                file_content = f.read()
-                if file_content.strip():
-                    try:
-                        saved_data = json.loads(file_content)
-                        if 'bots' in saved_data and isinstance(saved_data['bots'], dict):
-                            saved_bot_symbols = set(saved_data['bots'].keys())
-                    except json.JSONDecodeError:
-                        # Если ошибка парсинга - используем старый кэш
-                        return _bots_state_cache['symbols'].copy()
-        
-        # Обновляем кэш
-        _bots_state_cache['symbols'] = saved_bot_symbols
-        _bots_state_cache['last_update'] = current_time
-        if os.path.exists(bots_state_file):
-            _bots_state_cache['file_mtime'] = os.path.getmtime(bots_state_file)
-    except Exception as e:
-        pass
-        # В случае ошибки возвращаем старый кэш
-        return _bots_state_cache['symbols'].copy()
-    
-    return saved_bot_symbols
+    return set()
 
 
 def _load_json_file(file_path):
@@ -123,10 +77,7 @@ try:
         save_mature_coins_storage, load_mature_coins_storage,
         remove_mature_coin_from_storage, check_coin_maturity_with_storage
     )
-    # ❌ ОТКЛЮЧЕНО: optimal_ema перемещен в backup (используются заглушки из imports_and_globals)
-    # from bots_modules.optimal_ema import (
-    #     load_optimal_ema_data, update_optimal_ema_data
-    # )
+    # Исторический EMA-модуль удален.
     from bots_modules.filters import (
         get_effective_signal, check_auto_bot_filters,
         process_auto_bot_signals, test_exit_scam_filter, test_rsi_time_filter,
@@ -199,12 +150,7 @@ except:
     def check_trading_rules_activation():
         pass
 
-# ❌ ОТКЛЮЧЕНО: optimal_ema перемещен в backup (используется заглушка из imports_and_globals)
-# try:
-#     from bots_modules.optimal_ema import get_optimal_ema_periods
-# except:
-#     def get_optimal_ema_periods(symbol):
-#         return {}
+# Исторический EMA-модуль удален.
 
 def health_check():
     """Проверка состояния сервиса"""
@@ -445,98 +391,9 @@ def refresh_manual_positions():
             with bots_data_lock:
                 active_bot_symbols = set(bots_data['bots'].keys())
             
-            # Также загружаем сохраненных ботов из файла
-            saved_bot_symbols = set()
-            try:
-                import json
-                import shutil
-                bots_state_file = 'data/bots_state.json'
-                if os.path.exists(bots_state_file):
-                    with open(bots_state_file, 'r', encoding='utf-8') as f:
-                        file_content = f.read()
-                        # Проверяем, что файл не пустой
-                        if file_content.strip():
-                            try:
-                                saved_data = json.loads(file_content)
-                                if 'bots' in saved_data:
-                                    saved_bot_symbols = set(saved_data['bots'].keys())
-                            except json.JSONDecodeError as e:
-                                logger.warning(f"⚠️ Ошибка парсинга JSON (строка {e.lineno}, колонка {e.colno}): {e.msg}")
-                                pass
-                                
-                                # ✅ Пытаемся восстановить из резервной копии
-                                backup_file = f"{bots_state_file}.backup"
-                                corrupted_file = f"{bots_state_file}.corrupted"
-                                
-                                if os.path.exists(backup_file):
-                                    try:
-                                        logger.info(f"🔄 Пытаемся восстановить из резервной копии: {backup_file}")
-                                        with open(backup_file, 'r', encoding='utf-8') as backup_f:
-                                            saved_data = json.load(backup_f)
-                                            if 'bots' in saved_data:
-                                                saved_bot_symbols = set(saved_data['bots'].keys())
-                                                logger.info(f"✅ Восстановлено из резервной копии: {len(saved_bot_symbols)} ботов")
-                                                # Восстанавливаем основной файл из резервной копии
-                                                shutil.copy2(backup_file, bots_state_file)
-                                                logger.info(f"✅ Основной файл восстановлен из резервной копии")
-                                    except Exception as backup_error:
-                                        logger.error(f"❌ Ошибка восстановления из резервной копии: {backup_error}")
-                                
-                                # Сохраняем поврежденный файл для анализа
-                                try:
-                                    shutil.copy2(bots_state_file, corrupted_file)
-                                    logger.info(f"📁 Поврежденный файл сохранен: {corrupted_file}")
-                                except Exception as copy_error:
-                                    pass
-                        else:
-                            logger.warning(" ⚠️ Файл состояния пустой! Пытаемся восстановить или инициализировать...")
-                            # ✅ Пытаемся восстановить из резервной копии
-                            backup_file = f"{bots_state_file}.backup"
-                            if os.path.exists(backup_file):
-                                try:
-                                    logger.info(f"🔄 Пытаемся восстановить из резервной копии: {backup_file}")
-                                    with open(backup_file, 'r', encoding='utf-8') as backup_f:
-                                        backup_content = backup_f.read()
-                                        if backup_content.strip():
-                                            saved_data = json.loads(backup_content)
-                                            if 'bots' in saved_data:
-                                                saved_bot_symbols = set(saved_data['bots'].keys())
-                                                logger.info(f"✅ Восстановлено из резервной копии: {len(saved_bot_symbols)} ботов")
-                                                # Восстанавливаем основной файл из резервной копии
-                                                shutil.copy2(backup_file, bots_state_file)
-                                                logger.info(f"✅ Основной файл восстановлен из резервной копии")
-                                except Exception as backup_error:
-                                    logger.error(f"❌ Ошибка восстановления из резервной копии: {backup_error}")
-                            
-                            # ✅ Если резервной копии нет или она тоже пустая - инициализируем файл
-                            if not saved_bot_symbols:
-                                try:
-                                    from bots_modules.sync_and_cache import load_bots_state, save_bots_state
-                                    # Пытаемся загрузить состояние через стандартную функцию (она может синхронизировать с биржей)
-                                    if not load_bots_state():
-                                        # Если загрузка не удалась - создаем базовую структуру
-                                        logger.info("📝 Инициализируем файл состояния с базовой структурой...")
-                                        from datetime import datetime
-                                        default_state = {
-                                            'version': '1.0',
-                                            'last_saved': datetime.now().isoformat(),
-                                            'bots': {},
-                                            'global_stats': {
-                                                'total_trades': 0,
-                                                'total_profit': 0.0,
-                                                'win_rate': 0.0
-                                            }
-                                        }
-                                        with open(bots_state_file, 'w', encoding='utf-8') as f:
-                                            json.dump(default_state, f, ensure_ascii=False, indent=2)
-                                        logger.info("✅ Файл состояния инициализирован с базовой структурой")
-                                except Exception as init_error:
-                                    logger.error(f"❌ Ошибка инициализации файла состояния: {init_error}")
-            except Exception as e:
-                logger.warning(f" ⚠️ Не удалось загрузить сохраненных ботов: {e}")
-            
-            # Объединяем активных и сохраненных ботов
-            system_bot_symbols = active_bot_symbols.union(saved_bot_symbols)
+            # Единый runtime source of truth: только состояние в памяти/БД.
+            # Чтение data/bots_state.json как fallback исключено, чтобы не тянуть устаревшее состояние.
+            system_bot_symbols = active_bot_symbols
             
             # Извлекаем символы с активными позициями, для которых НЕТ бота в системе
             for pos in positions_list:
@@ -750,15 +607,9 @@ def get_coins_with_rsi():
                 else:
                     positions_list = exchange_positions if exchange_positions else []
                 
-                # Получаем список символов с ботами (включая сохраненных)
-                # ⚡ БЕЗ БЛОКИРОВКИ: чтение словаря - атомарная операция
-                active_bot_symbols = set(bots_data['bots'].keys())
-                
-                # ⚡ ОПТИМИЗАЦИЯ: Используем кэшированный список сохраненных ботов
-                saved_bot_symbols = _get_cached_bot_symbols()
-                
-                # Объединяем активных и сохраненных ботов
-                system_bot_symbols = active_bot_symbols.union(saved_bot_symbols)
+                # Единый источник: только активные боты из runtime состояния.
+                with bots_data_lock:
+                    system_bot_symbols = set(bots_data['bots'].keys())
                 
                 # Извлекаем символы с активными позициями, для которых НЕТ бота в системе
                 for pos in positions_list:
@@ -1202,6 +1053,20 @@ def create_bot_endpoint():
         logger.error(f" Ошибка создания бота: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+def _resume_or_start_bot(symbol: str):
+    """Общая логика возобновления/запуска бота (PAUSED/IDLE -> RUNNING)."""
+    with bots_data_lock:
+        if symbol not in bots_data['bots']:
+            return None, 'Bot not found'
+        bot_data = bots_data['bots'][symbol]
+        if bot_data['status'] in [BOT_STATUS['PAUSED'], BOT_STATUS['IDLE']]:
+            bot_data['status'] = BOT_STATUS['RUNNING']
+            logger.info(f" {symbol}: Бот запущен/возобновлён (снята пауза)")
+        else:
+            logger.info(f" {symbol}: Бот уже активен")
+    return bot_data, None
+
+
 @bots_app.route('/api/bots/start', methods=['POST'])
 def start_bot_endpoint():
     """Запустить бота"""
@@ -1211,17 +1076,9 @@ def start_bot_endpoint():
             return jsonify({'success': False, 'error': 'Symbol required'}), 400
         
         symbol = data['symbol']
-        
-        with bots_data_lock:
-            if symbol not in bots_data['bots']:
-                return jsonify({'success': False, 'error': 'Bot not found'}), 404
-            
-            bot_data = bots_data['bots'][symbol]
-            if bot_data['status'] in [BOT_STATUS['PAUSED'], BOT_STATUS['IDLE']]:
-                bot_data['status'] = BOT_STATUS['RUNNING']
-                logger.info(f" {symbol}: Бот запущен (снята пауза)")
-            else:
-                logger.info(f" {symbol}: Бот уже активен")
+        bot_data, err = _resume_or_start_bot(symbol)
+        if err:
+            return jsonify({'success': False, 'error': err}), 404
         
         return jsonify({
             'success': True,
@@ -1231,6 +1088,27 @@ def start_bot_endpoint():
     except Exception as e:
         logger.error(f" Ошибка запуска бота: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bots_app.route('/api/bots/resume', methods=['POST'])
+def resume_bot_endpoint():
+    """Возобновить бота после паузы (alias для start)."""
+    try:
+        data = request.get_json()
+        if not data or not data.get('symbol'):
+            return jsonify({'success': False, 'error': 'Symbol required'}), 400
+        symbol = data['symbol']
+        bot_data, err = _resume_or_start_bot(symbol)
+        if err:
+            return jsonify({'success': False, 'error': err}), 404
+        return jsonify({
+            'success': True,
+            'message': f'Бот для {symbol} возобновлён'
+        })
+    except Exception as e:
+        logger.error(f" Ошибка возобновления бота: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @bots_app.route('/api/bots/stop', methods=['POST'])
 def stop_bot_endpoint():
@@ -1297,7 +1175,11 @@ def stop_bot_endpoint():
             logger.info(f" {symbol}: ⚠️ Позиция {position_to_close} осталась открытой на бирже (закроется автоматически)")
         
         # Логируем остановку бота в историю
-        # log_bot_stop(symbol, reason)  # TODO: Функция не определена
+        try:
+            from bot_engine.bot_history import log_bot_stop
+            log_bot_stop(symbol, symbol, reason)
+        except Exception as hist_err:
+            logger.debug(f" {symbol}: log_bot_stop: {hist_err}")
         
         # Сохраняем состояние после остановки
         save_bots_state()
@@ -1358,11 +1240,17 @@ def pause_bot_endpoint():
         if position_to_close:
             logger.info(f" {symbol}: ⚠️ Позиция {position_to_close} осталась открытой на бирже (закроется автоматически)")
         
+        try:
+            from bot_engine.bot_history import log_bot_stop
+            log_bot_stop(symbol, symbol, 'Приостановлен пользователем')
+        except Exception as hist_err:
+            logger.debug(f" {symbol}: log_bot_stop: {hist_err}")
+        
         return jsonify({
             'success': True,
             'message': f'Бот для {symbol} приостановлен'
         })
-        
+            
     except Exception as e:
         logger.error(f" Ошибка приостановки бота: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -1393,19 +1281,22 @@ def delete_bot_endpoint():
         symbol = data['symbol']
         reason = data.get('reason', 'Удален пользователем')
         
-        # ⚡ БЕЗ БЛОКИРОВКИ: операции с dict атомарны в Python
-        logger.info(f"🔍 Ищем бота {symbol} в bots_data. Доступные боты: {list(bots_data['bots'].keys())}")
-        if symbol not in bots_data['bots']:
-            logger.error(f"❌ Бот {symbol} не найден в bots_data")
-            return jsonify({'success': False, 'error': 'Bot not found'}), 404
-        
-        # ✅ ТУПО УДАЛЯЕМ БОТА ИЗ ФАЙЛА!
-        del bots_data['bots'][symbol]
-        logger.info(f" {symbol}: Бот удален из файла")
-        
-        # Обновляем глобальную статистику
-        bots_data['global_stats']['active_bots'] = len([bot for bot in bots_data['bots'].values() if bot.get('status') in ['running', 'idle']])
-        bots_data['global_stats']['bots_in_position'] = len([bot for bot in bots_data['bots'].values() if bot.get('position_side')])
+        with bots_data_lock:
+            logger.info(f"🔍 Ищем бота {symbol} в bots_data. Доступные боты: {list(bots_data['bots'].keys())}")
+            if symbol not in bots_data['bots']:
+                logger.error(f"❌ Бот {symbol} не найден в bots_data")
+                return jsonify({'success': False, 'error': 'Bot not found'}), 404
+
+            del bots_data['bots'][symbol]
+            logger.info(f" {symbol}: Бот удален из файла")
+
+            # Обновляем глобальную статистику строго под lock
+            bots_data['global_stats']['active_bots'] = len(
+                [bot for bot in bots_data['bots'].values() if bot.get('status') in ['running', 'idle']]
+            )
+            bots_data['global_stats']['bots_in_position'] = len(
+                [bot for bot in bots_data['bots'].values() if bot.get('position_side')]
+            )
         
         # Сохраняем состояние после удаления
         save_bots_state()
@@ -3779,128 +3670,7 @@ def clear_mature_coins_storage():
         logger.error(f" Ошибка очистки хранилища зрелых монет: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# ❌ ОТКЛЮЧЕНО: Все Optimal EMA endpoints удалены (EMA фильтр убран из системы)
-# @bots_app.route('/api/bots/optimal-ema', methods=['GET'])
-# @bots_app.route('/api/bots/optimal-ema/<symbol>', methods=['GET'])
-# @bots_app.route('/api/bots/optimal-ema/<symbol>/rescan', methods=['POST'])
-
-# ❌ ОТКЛЮЧЕНО: Optimal EMA Worker больше не используется (EMA фильтр убран)
-# @bots_app.route('/api/bots/optimal-ema-worker/status', methods=['GET'])
-# def get_optimal_ema_worker_status():
-#     """Получает статус воркера оптимальных EMA"""
-#     return jsonify({
-#         'success': False,
-#         'error': 'Optimal EMA Worker отключен - EMA фильтр больше не используется'
-#     }), 404
-
-# @bots_app.route('/api/bots/optimal-ema-worker/force-update', methods=['POST'])
-# def force_optimal_ema_update():
-#     """Принудительно запускает обновление оптимальных EMA"""
-#     return jsonify({
-#         'success': False,
-#         'error': 'Optimal EMA Worker отключен - EMA фильтр больше не используется'
-#     }), 404
-
-# @bots_app.route('/api/bots/optimal-ema-worker/set-interval', methods=['POST'])
-# def set_optimal_ema_interval():
-#     """Устанавливает интервал обновления воркера оптимальных EMA"""
-#     return jsonify({
-#         'success': False,
-#         'error': 'Optimal EMA Worker отключен - EMA фильтр больше не используется'
-#     }), 404
-
-# Старый код (закомментирован):
-# @bots_app.route('/api/bots/optimal-ema-worker/status', methods=['GET'])
-# def get_optimal_ema_worker_status():
-#     """Получает статус воркера оптимальных EMA"""
-#     try:
-#         from bot_engine.optimal_ema_worker import get_optimal_ema_worker
-#         
-#         worker = get_optimal_ema_worker()
-#         if worker:
-#             status = worker.get_status()
-#             return jsonify({
-#                 'success': True,
-#                 'data': status
-#             })
-#         else:
-#             return jsonify({
-#                 'success': False,
-#                 'error': 'Воркер оптимальных EMA не инициализирован'
-#             }), 404
-#     except Exception as e:
-#         logger.error(f" Ошибка получения статуса воркера: {e}")
-#         return jsonify({'success': False, 'error': str(e)}), 500
-# 
-# @bots_app.route('/api/bots/optimal-ema-worker/force-update', methods=['POST'])
-# def force_optimal_ema_update():
-#     """Принудительно запускает обновление оптимальных EMA"""
-#     try:
-#         from bot_engine.optimal_ema_worker import get_optimal_ema_worker
-#         
-#         worker = get_optimal_ema_worker()
-#         if worker:
-#             success = worker.force_update()
-#             if success:
-#                 return jsonify({
-#                     'success': True,
-#                     'message': 'Принудительное обновление оптимальных EMA запущено'
-#                 })
-#             else:
-#                 return jsonify({
-#                     'success': False,
-#                     'error': 'Обновление уже выполняется'
-#                 }), 409
-#         else:
-#             return jsonify({
-#                 'success': False,
-#                 'error': 'Воркер оптимальных EMA не инициализирован'
-#             }), 404
-#     except Exception as e:
-#         logger.error(f" Ошибка принудительного обновления: {e}")
-#         return jsonify({'success': False, 'error': str(e)}), 500
-# 
-# @bots_app.route('/api/bots/optimal-ema-worker/set-interval', methods=['POST'])
-# def set_optimal_ema_interval():
-#     """Устанавливает интервал обновления воркера оптимальных EMA"""
-#     try:
-#         from bot_engine.optimal_ema_worker import get_optimal_ema_worker
-#         
-#         data = request.get_json()
-#         if not data or 'interval' not in data:
-#             return jsonify({
-#                 'success': False,
-#                 'error': 'Не указан интервал обновления'
-#             }), 400
-#         
-#         interval = int(data['interval'])
-#         if interval < 300:  # Минимум 5 минут
-#             return jsonify({
-#                 'success': False,
-#                 'error': 'Интервал не может быть меньше 300 секунд (5 минут)'
-#             }), 400
-#         
-#         worker = get_optimal_ema_worker()
-#         if worker:
-#             success = worker.set_update_interval(interval)
-#             if success:
-#                 return jsonify({
-#                     'success': True,
-#                     'message': f'Интервал обновления изменен на {interval} секунд'
-#                 })
-#             else:
-#                 return jsonify({
-#                     'success': False,
-#                     'error': 'Не удалось изменить интервал'
-#                 })
-#         else:
-#             return jsonify({
-#                 'success': False,
-#                 'error': 'Воркер оптимальных EMA не инициализирован'
-#             }), 404
-#     except Exception as e:
-#         logger.error(f" Ошибка изменения интервала: {e}")
-#         return jsonify({'success': False, 'error': str(e)}), 500
+# Исторические endpoint-блоки удаленного EMA-модуля удалены.
 
 @bots_app.route('/api/bots/default-config', methods=['GET'])
 def get_default_config():
@@ -4214,13 +3984,7 @@ def cleanup_bot_service():
         except Exception as e:
             logger.warning(f" ⚠️ Ошибка остановки Continuous Data Loader: {e}")
         
-        # ❌ ОТКЛЮЧЕНО: Воркер оптимальных EMA больше не используется
-        # try:
-        #     from bot_engine.optimal_ema_worker import stop_optimal_ema_worker
-        #     stop_optimal_ema_worker()
-        #     logger.info(" 🛑 Остановка воркера оптимальных EMA...")
-        # except Exception as e:
-        #     logger.error(f" Ошибка остановки воркера оптимальных EMA: {e}")
+        # Исторический EMA-воркер удален.
         
         # Сохраняем все важные данные
         logger.info(" 💾 Финальное сохранение всех данных...")

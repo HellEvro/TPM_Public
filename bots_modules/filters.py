@@ -209,14 +209,7 @@ except ImportError as e:
     def ensure_exchange_initialized():
         return False
 
-# ❌ ОТКЛЮЧЕНО: optimal_ema перемещен в backup (используется заглушка из imports_and_globals)
-# Импорт функции optimal_ema из модуля
-# try:
-#     from bots_modules.optimal_ema import get_optimal_ema_periods
-# except ImportError as e:
-#     print(f"Warning: Could not import optimal_ema functions in filters: {e}")
-#     def get_optimal_ema_periods(symbol):
-#         return {'ema_short': 50, 'ema_long': 200, 'accuracy': 0}
+# Исторический EMA-модуль удален.
 
 # Импорт функций кэша из sync_and_cache
 try:
@@ -1412,11 +1405,7 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
         
         # ✅ КРИТИЧНО: Получаем оптимальные EMA периоды ДО определения сигнала!
         # ❌ ОТКЛЮЧЕНО: EMA фильтр удален из системы
-        # ema_periods = None
-        # try:
-        #     ema_periods = get_optimal_ema_periods(symbol)
-        # except Exception as e:
-        #     logger.debug(f"[EMA] Ошибка получения оптимальных EMA для {symbol}: {e}")
+        # Исторический код EMA удален.
         #     ema_periods = {'ema_short': 50, 'ema_long': 200, 'accuracy': 0, 'analysis_method': 'default'}
         
         # ✅ КРИТИЧНО: Получаем индивидуальные настройки монеты ДО определения сигнала!
@@ -1841,11 +1830,8 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
         trading_status = 'Trading'  # По умолчанию
         is_delisting = False
         
-        # ✅ ЧЕРНЫЙ СПИСОК ДЕЛИСТИНГОВЫХ МОНЕТ - исключаем из всех проверок
-        # Загружаем делистинговые монеты из файла
-        delisted_data = load_delisted_coins()
-        delisted_coins = delisted_data.get('delisted_coins', {})
-        
+        # ✅ Делистинг: кэш из БД (обновление раз в 60 с), без лишних API на каждую монету
+        delisted_coins = _get_cached_delisted_coins()
         known_delisting_coins = list(delisted_coins.keys())
         known_new_coins = []  # Можно добавить новые монеты
         
@@ -1857,21 +1843,6 @@ def get_coin_rsi_data(symbol, exchange_obj=None):
             trading_status = 'Delivering'
             is_delisting = True
             logger.info(f"{symbol}: Известная новая монета")
-        
-        # TODO: Включить полную проверку статуса торговли после оптимизации API запросов
-        # try:
-        #     if exchange_obj and hasattr(exchange_obj, 'get_instrument_status'):
-        #         status_info = exchange_obj.get_instrument_status(f"{symbol}USDT")
-        #         if status_info:
-        #             trading_status = status_info.get('status', 'Trading')
-        #             is_delisting = status_info.get('is_delisting', False)
-        #             
-        #             # Логируем только делистинговые и новые монеты
-        #             if trading_status != 'Trading':
-        #                 logger.info(f"[TRADING_STATUS] {symbol}: Статус {trading_status} (делистинг: {is_delisting})")
-        # except Exception as e:
-        #     # Если не удалось получить статус, используем значения по умолчанию
-        #     logger.debug(f"[TRADING_STATUS] {symbol}: Не удалось получить статус торговли: {e}")
         
         # Получаем ключи для текущего таймфрейма
         from bot_engine.config_loader import get_current_timeframe, get_rsi_key, get_trend_key

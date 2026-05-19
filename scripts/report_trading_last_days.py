@@ -239,6 +239,57 @@ def build_report(trades: list, cfg: dict, timeframe: str, days: int, output_path
     for src, cnt in sorted(by_source.items(), key=lambda x: -x[1]):
         lines.append(f"| {src} | {cnt} |")
 
+    closed_on_ex = [
+        t for t in trades if (t.get("close_reason") or "") == "CLOSED_ON_EXCHANGE"
+    ]
+    legacy_sync_manual = [
+        t
+        for t in trades
+        if (t.get("close_reason") or "") == "MANUAL_CLOSE"
+        and (t.get("source") or "") == "bot_manual_close"
+    ]
+    with_exch_flag = [t for t in trades if t.get("exchange_confirmed")]
+    unflagged_exchange_reason = [
+        t for t in closed_on_ex if not t.get("exchange_confirmed")
+    ]
+    bot_orders_confirmed = [
+        t
+        for t in trades
+        if (t.get("source") or "") == "bot" and t.get("exchange_confirmed")
+    ]
+    src_stop_loss_sync = sum(1 for t in trades if (t.get("source") or "") == "stop_loss_sync")
+    src_position_sync = sum(1 for t in trades if (t.get("source") or "") == "position_sync")
+    src_exchange_sync_close = sum(
+        1 for t in trades if (t.get("source") or "") == "exchange_sync_close"
+    )
+
+    lines.extend(
+        [
+            "",
+            "### Синхронизация с биржей (подтверждённые закрытия)",
+            "",
+            "**Зачем:** отделяем закрытия, подтверждённые ответом API/ордером (`exchange_confirmed` + "
+            "`exchange_evidence`), от устаревших записей без флага (до миграции) и от стратегических выходов бота.",
+            "",
+            "| Метрика | Количество |",
+            "|---------|------------|",
+            f"| Закрытия с причиной `CLOSED_ON_EXCHANGE` | {len(closed_on_ex)} |",
+            f"| Устаревший путь: `MANUAL_CLOSE` + источник `bot_manual_close` | {len(legacy_sync_manual)} |",
+            f"| Любая сделка с `exchange_confirmed=True` | {len(with_exch_flag)} |",
+            f"| `CLOSED_ON_EXCHANGE`, но без флага подтверждения (аномалия для новых данных) | {len(unflagged_exchange_reason)} |",
+            f"| Закрытия из кода бота (`source=bot`) с подтверждённым ордером | {len(bot_orders_confirmed)} |",
+            f"| `source=exchange_sync_close` (sync_bots_with_exchange) | {src_exchange_sync_close} |",
+            f"| `source=position_sync` (sync_positions + антифлап) | {src_position_sync} |",
+            f"| `source=stop_loss_sync` (check_missing_stop_losses) | {src_stop_loss_sync} |",
+            "",
+        ]
+    )
+    if unflagged_exchange_reason:
+        lines.append(
+            "**Внимание:** есть строки `CLOSED_ON_EXCHANGE` без `exchange_confirmed` — возможна старая БД или ручная правка."
+        )
+        lines.append("")
+
     lines.extend([
         "",
         "---",
@@ -321,7 +372,8 @@ def build_report(trades: list, cfg: dict, timeframe: str, days: int, output_path
         "- **Другой конфиг в момент сделки:** пороги RSI, тренд, фильтры могли отличаться от текущих (конфиг менялся через UI или файл).",
         "- **Индивидуальные настройки по монетам:** в БД хранятся переопределения RSI/объёма по символам — вход/выход мог быть по ним, а не по общему конфигу.",
         "- **Выход по RSI раньше/позже порога:** в отчёте выше перечислены сделки, где RSI входа/выхода не совпадает с текущими порогами — мог сработать другой таймфрейм, тренд (with/against) или баг в логике выхода.",
-        "- **MANUAL_CLOSE:** почти половина закрытий — ручные; стратегия автовыхода по RSI/TP/SL по ним не применялась.",
+        "- **`CLOSED_ON_EXCHANGE` / синхронизация:** позиции сняты по факту отсутствия на бирже после успешного API; смотрите блок «Синхронизация с биржей» и `exchange_evidence_json`.",
+        "- **`MANUAL_CLOSE` + `bot_manual_close` (устар.):** старый маркер «закрыто на бирже» до разделения причин; новые записи должны быть `CLOSED_ON_EXCHANGE`.",
         "- **Логи и ошибки:** детальные ошибки при открытии/закрытии смотрите в логах процесса ботов (если ведётся файловый лог).",
         "",
     ])

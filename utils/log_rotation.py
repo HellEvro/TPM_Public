@@ -155,11 +155,11 @@ def cleanup_old_logs(logs_dir: str = 'logs', max_age_days: int = 7):
 
 
 # Глобальные логгеры для разных компонентов системы
-def get_optimal_ema_logger() -> logging.Logger:
-    """Логгер для optimal_ema скрипта"""
+def get_ema_legacy_logger() -> logging.Logger:
+    """Логгер для исторического EMA-скрипта (legacy)."""
     return setup_logger_with_rotation(
         name='OptimalEMA',
-        log_file='logs/optimal_ema.log',
+        log_file='logs/ema_legacy.log',
         level=logging.INFO,
         max_bytes=10 * 1024 * 1024,  # 10MB
         format_string='%(asctime)s - %(levelname)s - %(message)s'
@@ -212,10 +212,10 @@ def get_app_logger() -> logging.Logger:
 
 if __name__ == "__main__":
     # Тестирование системы ротации
-    logger = get_optimal_ema_logger()
+    logger = get_ema_legacy_logger()
     
     # Записываем тестовые сообщения
     for i in range(1000):
         logger.info(f"Тестовое сообщение {i}: " + "A" * 1000)  # Каждое сообщение ~1KB
     
-    print(f"Размер файла лога: {get_log_file_size('logs/optimal_ema.log')} байт")
+    print(f"Размер файла лога: {get_log_file_size('logs/ema_legacy.log')} байт")

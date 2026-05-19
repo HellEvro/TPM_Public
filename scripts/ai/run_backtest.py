@@ -33,8 +33,9 @@ def load_historical_data(data_dir: str = "data/ai/historical", symbols: list = N
     data_path = Path(data_dir)
     
     if not data_path.exists():
-        print(f"[ERROR] Directory not found: {data_dir}")
-        return {}
+        print(f"[WARN] Directory not found: {data_dir}")
+        print("[INFO] Falling back to ai_data.db candles_history")
+        return load_historical_data_from_db(symbols=symbols)
     
     csv_files = sorted(data_path.glob("*.csv"))
     
@@ -83,6 +84,53 @@ def load_historical_data(data_dir: str = "data/ai/historical", symbols: list = N
     print()
     
     return historical_data
+
+
+def load_historical_data_from_db(symbols: list = None) -> dict:
+    """Загружает исторические данные из AI БД и приводит к формату BacktestEngine."""
+    try:
+        from bot_engine.ai.ai_database import get_ai_database
+        from bot_engine.config_loader import get_current_timeframe
+
+        ai_db = get_ai_database()
+        if not ai_db:
+            print("[ERROR] AI database is not available")
+            return {}
+
+        timeframe = get_current_timeframe() or '6h'
+        candles_dict = ai_db.get_all_candles_dict(
+            timeframe=timeframe,
+            max_symbols=500,
+            max_candles_per_symbol=5000,
+        ) or {}
+        if not candles_dict and timeframe != '6h':
+            # Backward-compatible fallback: исторические свечи часто лежат в 6h.
+            candles_dict = ai_db.get_all_candles_dict(
+                timeframe='6h',
+                max_symbols=500,
+                max_candles_per_symbol=5000,
+            ) or {}
+
+        historical_data = {}
+        for symbol, payload in candles_dict.items():
+            if symbols and symbol not in symbols:
+                continue
+            candles = payload.get('candles', []) if isinstance(payload, dict) else payload
+            if not candles:
+                continue
+            df = pd.DataFrame(candles)
+            if 'timestamp' not in df.columns and 'time' in df.columns:
+                df['timestamp'] = df['time']
+            required_cols = ['open', 'high', 'low', 'close']
+            if not all(col in df.columns for col in required_cols):
+                continue
+            historical_data[symbol] = df
+
+        print(f"[OK] Loaded {len(historical_data)} symbols from ai_data.db")
+        return historical_data
+    except Exception as e:
+        print(f"[ERROR] Failed to load data from ai_data.db: {e}")
+        return {}
 
 
 def main():

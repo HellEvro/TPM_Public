@@ -161,7 +161,7 @@ def test_process_state():
     print(f"  Exchange: {'Initialized' if system_info['exchange_initialized'] else 'Not initialized'}")
     print(f"  Total bots: {system_info['total_bots']}")
     print(f"  Mature coins: {system_info['mature_coins_storage_size']}")
-    print(f"  Optimal EMA: {system_info['optimal_ema_count']}")
+    print(f"  EMA legacy removed: не используется")
     
     print("  [OK] Process state available")
     return True
@@ -179,7 +179,7 @@ def test_new_modules():
         from bot_engine.maturity_checker import check_coin_maturity
         from bot_engine.storage import save_rsi_cache
         from bot_engine.signal_processor import get_effective_signal
-        from bot_engine.optimal_ema_manager import get_optimal_ema_periods
+        # legacy EMA manager удален из проекта
         
         print("  [OK] All modules imported successfully")
         

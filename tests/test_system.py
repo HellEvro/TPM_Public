@@ -147,16 +147,14 @@ def test_7_sync_positions():
         log_test("7", False, str(e))
         return False
 
-def test_8_optimal_ema_status():
-    """Тест 8: Статус Optimal EMA Worker"""
+def test_8_process_state_endpoint():
+    """Тест 8: Дополнительная проверка process-state"""
     try:
-        r = requests.get(f"{BASE_URL}/api/bots/optimal-ema-worker/status", timeout=5)
+        r = requests.get(f"{BASE_URL}/api/bots/process-state", timeout=5)
         assert r.status_code == 200
         
         data = r.json()
-        # Воркер может быть в разных состояниях, главное что API отвечает
-        
-        log_test("8", True, f"Optimal EMA Worker: {data.get('status', 'unknown')}")
+        log_test("8", True, f"Process state success: {data.get('success', False)}")
         return True
     except Exception as e:
         log_test("8", False, str(e))
@@ -179,7 +177,7 @@ def run_all_tests():
         ("System Initialized", test_5_system_initialized),
         ("Maturity Check Enabled", test_6_maturity_check_enabled),
         ("Sync Positions", test_7_sync_positions),
-        ("Optimal EMA Status", test_8_optimal_ema_status),
+        ("Process State Endpoint", test_8_process_state_endpoint),
     ]
     
     results = []

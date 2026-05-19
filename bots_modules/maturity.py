@@ -202,7 +202,10 @@ def save_mature_coins_storage():
         if storage_save_mature(storage_copy):
             return True  # Успешно сохранили в БД
         
-        # FALLBACK: Сохраняем в JSON (для обратной совместимости)
+        # FALLBACK: JSON только при сбое БД (не основной путь)
+        logger.warning(
+            f" ⚠️ mature_coins: сохранение в БД не удалось — fallback в {MATURE_COINS_FILE}"
+        )
         os.makedirs(os.path.dirname(MATURE_COINS_FILE), exist_ok=True)
         from bot_engine.storage import save_json_file
         save_json_file(MATURE_COINS_FILE, storage_copy)
@@ -297,19 +300,7 @@ def remove_mature_coin_from_storage(symbol):
         # Отключаем автоматическое сохранение - будет сохранено пакетно
         pass
 
-# ❌ ОТКЛЮЧЕНО: Все функции optimal_ema удалены (EMA фильтр убран из системы)
-# def load_optimal_ema_data():
-#     """Загружает данные об оптимальных EMA из файла"""
-#     pass
-
-# ❌ ОТКЛЮЧЕНО
-# def get_optimal_ema_periods(symbol):
-#     """Получает оптимальные EMA периоды для монеты (поддержка отдельных LONG и SHORT EMA)"""
-#     return {}
-
-# def update_optimal_ema_data(new_data):
-#     """Обновляет данные об оптимальных EMA из внешнего источника"""
-#     return False
+# Исторический EMA-модуль удален.
 
 def check_coin_maturity_with_storage(symbol, candles):
     """Проверяет зрелость монеты с использованием постоянного хранилища"""

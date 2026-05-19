@@ -24,6 +24,8 @@ print("=" * 80)
 print()
 
 tests = [
+    ("test_rsi_no_fallback.py", "RSI без fallback на другой таймфрейм"),
+    ("test_entry_filters_parity.py", "Единая проверка входа check_entry_allowed"),
     ("test_license_checker.py", "Тест проверки лицензии"),
     ("test_ai_system.py", "Тест запуска AI системы (15 сек)"),
     ("test_ui_config.py", "Тест изменения конфигов через API"),

@@ -2476,7 +2476,12 @@ class NewTradingBot:
                 'price_movement': ((exit_price - self.entry_price) / self.entry_price * 100) if self.entry_price and self.entry_price > 0 else 0
             }
             
-            logger.info(f"[NEW_BOT_{self.symbol}] 📊 Логируем закрытие: Entry RSI={entry_rsi}, Entry Trend={entry_trend}, Exit RSI={exit_rsi}, Exit Trend={exit_trend}")
+            close_timeframe = getattr(self, 'entry_timeframe', None)
+            logger.info(
+                f"[NEW_BOT_{self.symbol}] 📊 Логируем закрытие: "
+                f"reason={reason}, timeframe={close_timeframe}, "
+                f"Entry RSI={entry_rsi}, Exit RSI={exit_rsi}, Entry Trend={entry_trend}, Exit Trend={exit_trend}"
+            )
             
             # Сохраняем в историю (bot_history.json и ai_data.db)
             bot_history_manager.log_position_closed(
@@ -2498,6 +2503,13 @@ class NewTradingBot:
                 bots_db = get_bots_database()
                 
                 # Формируем данные для сохранения
+                exch_ok = bool(close_result and close_result.get('success'))
+                exch_evidence = {}
+                if close_result:
+                    for _k in ('order_id', 'success', 'price', 'retCode', 'retMsg', 'message'):
+                        if close_result.get(_k) is not None:
+                            exch_evidence[_k] = close_result.get(_k)
+
                 trade_data = {
                     'bot_id': self.symbol,
                     'symbol': self.symbol,
@@ -2527,7 +2539,11 @@ class NewTradingBot:
                     'is_simulated': False,
                     'source': 'bot',
                     'order_id': close_result.get('order_id') if close_result else None,
+                    'exchange_confirmed': exch_ok,
+                    'exchange_evidence': exch_evidence if exch_evidence else None,
                     'extra_data': {
+                        'timeframe': close_timeframe,
+                        'close_reason': reason,
                         'entry_data': entry_data,
                         'market_data': market_data
                     }

@@ -37,6 +37,7 @@ INSERT OR IGNORE INTO bot_trades_history (
     ai_confidence, entry_rsi, exit_rsi, entry_trend, exit_trend,
     entry_volatility, entry_volume_ratio, is_successful,
     is_simulated, source, order_id, extra_data_json,
+    exchange_confirmed, exchange_evidence_json,
     created_at, updated_at
 )
 SELECT 
@@ -86,6 +87,8 @@ SELECT
         'restrictions', restrictions,
         'extra_config', extra_config_json
     ) as extra_data_json,
+    0 as exchange_confirmed,
+    NULL as exchange_evidence_json,
     COALESCE(created_at, datetime('now')) as created_at,
     COALESCE(updated_at, datetime('now')) as updated_at
 FROM ai_db.bot_trades
@@ -100,6 +103,7 @@ INSERT OR IGNORE INTO bot_trades_history (
     ai_confidence, entry_rsi, exit_rsi, entry_trend, exit_trend,
     entry_volatility, entry_volume_ratio, is_successful,
     is_simulated, source, order_id, extra_data_json,
+    exchange_confirmed, exchange_evidence_json,
     created_at, updated_at
 )
 SELECT 
@@ -144,6 +148,8 @@ SELECT
         'exchange', exchange,
         'extra_data', extra_data_json
     ) as extra_data_json,
+    1 as exchange_confirmed,
+    NULL as exchange_evidence_json,
     COALESCE(created_at, datetime('now')) as created_at,
     COALESCE(updated_at, datetime('now')) as updated_at
 FROM ai_db.exchange_trades
@@ -170,6 +176,7 @@ INSERT OR IGNORE INTO bot_trades_history (
     ai_confidence, entry_rsi, exit_rsi, entry_trend, exit_trend,
     entry_volatility, entry_volume_ratio, is_successful,
     is_simulated, source, order_id, extra_data_json,
+    exchange_confirmed, exchange_evidence_json,
     created_at, updated_at
 )
 SELECT 
@@ -210,6 +217,8 @@ SELECT
     'app_closed_pnl' as source,
     order_id,
     COALESCE(extra_data_json, '{}') as extra_data_json,
+    1 as exchange_confirmed,
+    NULL as exchange_evidence_json,
     COALESCE(created_at, datetime('now')) as created_at,
     COALESCE(updated_at, datetime('now')) as updated_at
 FROM app_db.closed_pnl

@@ -28,12 +28,7 @@ try:
         RealTradingBot, get_individual_coin_settings,
         load_individual_coin_settings
     )
-    # ❌ ОТКЛЮЧЕНО: optimal_ema перемещен в backup (используется заглушка из imports_and_globals)
-    # # Импорт optimal_ema_data из модуля
-    # try:
-    #     from bots_modules.optimal_ema import optimal_ema_data
-    # except:
-    #     optimal_ema_data = {}
+    # Исторический EMA-модуль удален.
 except ImportError as e:
     print(f"Warning: Could not import globals in init_functions: {e}")
     exchange = None

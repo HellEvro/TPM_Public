@@ -290,8 +290,7 @@ from utils.color_logger import setup_color_logging
 from bots_modules.imports_and_globals import *
 from bots_modules.calculations import *
 from bots_modules.maturity import *
-# ❌ ОТКЛЮЧЕНО: optimal_ema перемещен в backup (используются заглушки из imports_and_globals)
-# from bots_modules.optimal_ema import *
+# Исторический EMA-модуль удален.
 from bots_modules.filters import *
 from bots_modules.bot_class import *
 from bots_modules.sync_and_cache import *
@@ -678,8 +677,7 @@ if __name__ == '__main__':
 
         # ❌ ОТКЛЮЧЕНО: Optimal EMA Worker - больше не используется
         # EMA фильтр убран, расчет оптимальных EMA не нужен
-        # from bot_engine.optimal_ema_worker import start_optimal_ema_worker
-        # optimal_ema_worker = start_optimal_ema_worker(update_interval=21600) # 6 часов
+        # Исторический EMA-воркер удален.
         logger.info("ℹ️ Optimal EMA Worker отключен (не используется)")
 
         auto_save_thread = threading.Thread(target=auto_save_worker, daemon=True)

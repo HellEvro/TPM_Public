@@ -152,6 +152,79 @@ def run_exit_scam_filter(
     return True, 'ExitScam пройден'
 
 
+def check_rsi_entry_thresholds(
+    signal: str,
+    current_rsi: Optional[float],
+    config: Dict[str, Any],
+) -> Tuple[bool, str]:
+    """Проверка порогов RSI для входа (LONG <= порог, SHORT >= порог)."""
+    if current_rsi is None:
+        return False, 'RSI недоступен'
+    try:
+        from bot_engine.config_loader import get_config_value
+        rsi_long = get_config_value(config, 'rsi_long_threshold')
+        rsi_short = get_config_value(config, 'rsi_short_threshold')
+    except Exception:
+        rsi_long = config.get('rsi_long_threshold', 29)
+        rsi_short = config.get('rsi_short_threshold', 71)
+    if signal == 'ENTER_LONG' and current_rsi > rsi_long:
+        return False, f'RSI {current_rsi:.1f} > long threshold {rsi_long}'
+    if signal == 'ENTER_SHORT' and current_rsi < rsi_short:
+        return False, f'RSI {current_rsi:.1f} < short threshold {rsi_short}'
+    return True, 'RSI thresholds ok'
+
+
+def check_entry_allowed(
+    symbol: str,
+    candles: List[Dict[str, Any]],
+    current_rsi: Optional[float],
+    signal: str,
+    config: Dict[str, Any],
+    trend: Optional[str] = None,
+    *,
+    source: str = 'unknown',
+    force_market_entry: bool = False,
+) -> Tuple[bool, str]:
+    """
+    Единая проверка входа: пороги RSI + apply_entry_filters.
+    Используется и для autobot (force_market_entry), и для ручного входа.
+    """
+    rsi_ok, rsi_reason = check_rsi_entry_thresholds(signal, current_rsi, config)
+    if not rsi_ok:
+        return False, f'{symbol}: {rsi_reason} (source={source}, force={force_market_entry})'
+    if current_rsi is None:
+        return False, f'{symbol}: RSI недоступен (source={source})'
+    allowed, reason = apply_entry_filters(
+        symbol, candles, float(current_rsi), signal, config, trend=trend
+    )
+    if not allowed:
+        return False, f'{reason} (source={source}, force={force_market_entry})'
+    return True, reason
+
+
+def log_entry_check(
+    logger,
+    symbol: str,
+    side: str,
+    allowed: bool,
+    reason: str,
+    *,
+    rsi: Optional[float] = None,
+    timeframe: Optional[str] = None,
+    signal: Optional[str] = None,
+    source: str = 'unknown',
+    force_market_entry: bool = False,
+) -> None:
+    """Структурированный лог проверки входа."""
+    if not logger:
+        return
+    status = 'ALLOWED' if allowed else 'BLOCKED'
+    logger.info(
+        f" {symbol}: ENTRY_CHECK [{status}] side={side} rsi={rsi} tf={timeframe} "
+        f"signal={signal} source={source} force_market={force_market_entry} reason={reason}"
+    )
+
+
 def apply_entry_filters(
     symbol: str,
     candles: List[Dict[str, Any]],
