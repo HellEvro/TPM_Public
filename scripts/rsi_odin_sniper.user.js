@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         RSI Ship Sniper — Starlite (test)
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.3.1
-// @description  Add to cart → окно подтверждения → CHECKOUT → корзина (Starlite Warbond, Belarus)
+// @version      1.3.2
+// @description  Add to cart → ждём подтверждение → переход в корзину (Starlite Warbond, Belarus)
 // @author       InfoBot
 // @match        *://robertsspaceindustries.com/*Standalone-Ships/Starlite-Warbond*
 // @match        *://*.robertsspaceindustries.com/*Standalone-Ships/Starlite-Warbond*
@@ -15,7 +15,7 @@
 (function () {
     'use strict';
 
-    console.info('[RSI Sniper v1.3.1] скрипт загружен:', location.href);
+    console.info('[RSI Sniper v1.3.2] скрипт загружен:', location.href);
 
     const CONFIG = {
         targetPathPart: '/Standalone-Ships/Starlite-Warbond',
@@ -31,8 +31,7 @@
         pollIntervalMs: 50,
         urlWatchIntervalMs: 100,
         countrySettleMs: 600,
-        checkoutModalTimeoutMs: 4000,
-        checkoutFallbackDelayMs: 1200,
+        cartAddedTimeoutMs: 4000,
 
         cartUrl: 'https://robertsspaceindustries.com/en/store/pledge/cart',
         goToCartOnSuccess: true,
@@ -44,10 +43,6 @@
             'add to cart',
             'add to basket',
             'в корзину',
-        ],
-        checkoutTexts: [
-            'checkout',
-            'check out',
         ],
         cartAddedTexts: [
             'successfully added to your cart',
@@ -116,7 +111,6 @@
     let countryDropdownOpen = false;
     let awaitingCartConfirm = false;
     let addToCartClickedAt = 0;
-    let checkoutFallbackTimer = null;
 
     GM_setValue(STORAGE_ACTIVE, true);
 
@@ -308,62 +302,21 @@
         return true;
     }
 
-    function matchesCheckoutText(el) {
-        const text = normalize(el.innerText || el.textContent || el.getAttribute('aria-label') || '');
-        return CONFIG.checkoutTexts.some((needle) => text === needle || text.includes(needle));
-    }
-
     function isCartAddedModalVisible() {
         const bodyText = normalize(document.body ? document.body.innerText : '');
         return CONFIG.cartAddedTexts.some((t) => bodyText.includes(normalize(t)));
     }
 
-    function findCheckoutButtonInModal() {
-        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-        while (walker.nextNode()) {
-            const nodeText = normalize(walker.currentNode.textContent);
-            if (!CONFIG.cartAddedTexts.some((t) => nodeText.includes(normalize(t)))) continue;
-
-            let root = walker.currentNode.parentElement;
-            for (let depth = 0; depth < 20 && root; depth += 1) {
-                for (const btn of root.querySelectorAll('button, a[role="button"], [role="button"], a')) {
-                    if (!matchesCheckoutText(btn)) continue;
-                    if (isVisible(btn) && !isDisabled(btn)) return btn;
-                }
-                root = root.parentElement;
-            }
-        }
-
-        for (const btn of document.querySelectorAll('button, a[role="button"], [role="button"], a')) {
-            if (!matchesCheckoutText(btn)) continue;
-            if (!isVisible(btn) || isDisabled(btn)) continue;
-            if (isCartAddedModalVisible()) return btn;
-        }
-
-        return null;
-    }
-
-    function scheduleCartFallback() {
-        if (checkoutFallbackTimer !== null) clearTimeout(checkoutFallbackTimer);
-        checkoutFallbackTimer = setTimeout(() => {
-            if (!isTargetPage()) return;
-            console.info('[RSI Sniper] fallback → корзина');
-            location.replace(getCartUrl());
-        }, CONFIG.checkoutFallbackDelayMs);
-    }
-
-    function finishSuccess(viaCheckoutButton) {
+    function goToCart() {
         stopSniper('в корзине');
         awaitingCartConfirm = false;
         GM_setValue(STORAGE_SUCCESS, true);
         sessionStorage.removeItem(SESSION_ATTEMPTS);
         playSuccessSound();
         notifySuccess();
-        showHud('CHECKOUT → корзина. Скрипт остановлен.', 'ok');
-
-        if (viaCheckoutButton) {
-            scheduleCartFallback();
-        } else if (CONFIG.goToCartOnSuccess) {
+        showHud('В корзину! Скрипт остановлен.', 'ok');
+        console.info('[RSI Sniper] →', getCartUrl());
+        if (CONFIG.goToCartOnSuccess) {
             location.replace(getCartUrl());
         }
     }
@@ -372,39 +325,33 @@
         snipeLocked = true;
         awaitingCartConfirm = true;
         addToCartClickedAt = Date.now();
-        showHud('Add to cart — ждём окно подтверждения…', 'info');
-        console.info('[RSI Sniper] клик Add to cart, ждём модалку');
+        showHud('Add to cart — ждём подтверждение…', 'info');
+        console.info('[RSI Sniper] клик Add to cart, ждём модалку → корзина');
     }
 
-    function tryConfirmCheckout() {
+    function tryGoToCartAfterAdd() {
         if (!awaitingCartConfirm) return false;
 
         if (isCartOrCheckoutPage()) {
-            finishSuccess(false);
+            goToCart();
             return true;
         }
 
         const elapsed = Date.now() - addToCartClickedAt;
 
         if (isCartAddedModalVisible()) {
-            const checkoutBtn = findCheckoutButtonInModal();
-            if (checkoutBtn) {
-                console.info('[RSI Sniper] жмём CHECKOUT в модалке');
-                forceClick(checkoutBtn);
-                finishSuccess(true);
-                return true;
-            }
-            showHud('В корзине — ищем CHECKOUT…', 'warn');
-            return false;
-        }
-
-        if (elapsed > CONFIG.checkoutModalTimeoutMs) {
-            console.warn('[RSI Sniper] модалка не появилась — переход в корзину напрямую');
-            finishSuccess(false);
+            console.info('[RSI Sniper] товар в корзине — переход');
+            goToCart();
             return true;
         }
 
-        showHud(`Ждём «added to cart»… ${Math.ceil((CONFIG.checkoutModalTimeoutMs - elapsed) / 1000)}с`, 'warn');
+        if (elapsed > CONFIG.cartAddedTimeoutMs) {
+            console.warn('[RSI Sniper] модалка не появилась — всё равно идём в корзину');
+            goToCart();
+            return true;
+        }
+
+        showHud(`Ждём «added to cart»… ${Math.ceil((CONFIG.cartAddedTimeoutMs - elapsed) / 1000)}с`, 'warn');
         return false;
     }
 
@@ -533,11 +480,6 @@
             observer = null;
         }
 
-        if (checkoutFallbackTimer !== null) {
-            clearTimeout(checkoutFallbackTimer);
-            checkoutFallbackTimer = null;
-        }
-
         if (reason) {
             console.info('[RSI Sniper] Остановлен:', reason);
         }
@@ -566,7 +508,7 @@
 
     function trySnipe() {
         if (stopped) return false;
-        if (awaitingCartConfirm) return tryConfirmCheckout();
+        if (awaitingCartConfirm) return tryGoToCartAfterAdd();
         if (snipeLocked) return false;
         if (stopIfLeftTargetPage()) return false;
         if (!ensurePricingReady()) return false;
@@ -611,7 +553,7 @@
 
     observer = new MutationObserver(() => {
         if (stopped) return;
-        if (awaitingCartConfirm) tryConfirmCheckout();
+        if (awaitingCartConfirm) tryGoToCartAfterAdd();
         else trySnipe();
     });
 
@@ -665,5 +607,5 @@
         location.reload();
     };
 
-    console.info('[RSI Sniper v1.3.1] Belarus → Add to cart → CHECKOUT → корзина (Starlite test)');
+    console.info('[RSI Sniper v1.3.2] Add to cart → корзина');
 })();
