@@ -1,14 +1,15 @@
 // ==UserScript==
 // @name         RSI Ship Sniper — Avenger Titan (train)
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.6.0
+// @version      1.6.1
 // @description  Тренировка: купон → MAX credits → Continue → Place order (без клика)
 // @author       InfoBot
-// @match        *://robertsspaceindustries.com/*Standalone-Ships/Avenger-Titan-10-Year*
-// @match        *://*.robertsspaceindustries.com/*Standalone-Ships/Avenger-Titan-10-Year*
+// @match        *://robertsspaceindustries.com/*/pledge/Standalone-Ships/Avenger-Titan-10-Year*
+// @match        *://*.robertsspaceindustries.com/*/pledge/Standalone-Ships/Avenger-Titan-10-Year*
+// @include      /^https?:\/\/(.*\.)?robertsspaceindustries\.com\/.*\/pledge\/Standalone-Ships\/Avenger-Titan-10-Year/
 // @match        *://robertsspaceindustries.com/*/store/pledge/cart*
 // @match        *://*.robertsspaceindustries.com/*/store/pledge/cart*
-// @run-at       document-end
+// @run-at       document-idle
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_notification
@@ -17,8 +18,8 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.6.0';
-  console.info(`[RSI Sniper v${VERSION}]`, location.href);
+  const VERSION = '1.6.1';
+  console.info(`[RSI Sniper v${VERSION}] загружен:`, location.href);
 
   const CONFIG = {
     targetPathPart: '/Standalone-Ships/Avenger-Titan-10-Year',
@@ -87,7 +88,7 @@
   }
 
   function isTargetPage(loc = location) {
-    return loc.pathname.includes(CONFIG.targetPathPart);
+    return loc.pathname.toLowerCase().includes(CONFIG.targetPathPart.toLowerCase());
   }
 
   function isCheckoutPage(loc = location) {
@@ -274,6 +275,7 @@
   };
 
   if (CONFIG.stopAfterSuccess && GM_getValue(STORAGE_SUCCESS, false)) {
+    console.info('[RSI Sniper] уже сработал — rsiSniperReset()');
     const banner = document.createElement('div');
     banner.textContent = 'RSI Sniper: уже сработал. F12 → rsiSniperReset()';
     banner.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;padding:8px 12px;background:#3ddc84;color:#000;font:600 12px sans-serif;border-radius:6px';
@@ -281,19 +283,24 @@
     return;
   }
 
-  if (isCheckoutPage() && isFlowActive()) {
-    runCheckoutFlow();
-    return;
+  function boot() {
+    if (isCheckoutPage() && isFlowActive()) {
+      runCheckoutFlow();
+      return;
+    }
+
+    if (isCheckoutPage()) {
+      console.info('[RSI Sniper] checkout без активного flow — выход');
+      return;
+    }
+
+    if (!isTargetPage()) {
+      console.info('[RSI Sniper] не целевая страница:', location.pathname);
+      return;
+    }
+
+    runShipFlow();
   }
-
-  if (isCheckoutPage()) {
-    console.info('[RSI Sniper] checkout без активного flow — выход');
-    return;
-  }
-
-  if (!isTargetPage()) return;
-
-  runShipFlow();
 
   // ===========================================================================
   // CHECKOUT: корзина → купон → MAX credits → Continue → Address → Place order
@@ -880,4 +887,5 @@
   }
 
   console.info(`[RSI Sniper v${VERSION}] Avenger Titan train → Place order`);
+  boot();
 })();
