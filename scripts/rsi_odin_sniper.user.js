@@ -1,30 +1,33 @@
 // ==UserScript==
 // @name         RSI Ship Sniper — Avenger Titan (train)
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.6.3
+// @version      1.6.5
 // @description  Тренировка: купон → MAX credits → Continue → Place order (без клика)
 // @author       InfoBot
-//
-// --- страница корабля (ОБЯЗАТЕЛЬНО, без этого скрипт не стартует) ---
-// @match        https://robertsspaceindustries.com/en/pledge/Standalone-Ships/Avenger-Titan-10-Year*
-// @match        *://robertsspaceindustries.com/*/pledge/Standalone-Ships/Avenger-Titan-10-Year*
-// @match        *://*.robertsspaceindustries.com/*/pledge/Standalone-Ships/Avenger-Titan-10-Year*
-//
-// --- корзина / checkout ---
-// @match        https://robertsspaceindustries.com/en/store/pledge/cart*
-// @match        *://robertsspaceindustries.com/*/store/pledge/cart*
-// @match        *://*.robertsspaceindustries.com/*/store/pledge/cart*
+// @match        *://robertsspaceindustries.com/*
+// @match        *://*.robertsspaceindustries.com/*
 // @run-at       document-idle
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_notification
+// @grant        unsafeWindow
 // ==/UserScript==
 
 (function () {
   'use strict';
 
-  const VERSION = '1.6.3';
+  const VERSION = '1.6.5';
+  const ROOT = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+
   console.info(`[RSI Sniper v${VERSION}] загружен:`, location.href);
+
+  (function showLoadBadge() {
+    const el = document.createElement('div');
+    el.textContent = `RSI Sniper v${VERSION} — загружен`;
+    el.style.cssText = 'position:fixed;bottom:16px;left:16px;z-index:2147483647;padding:8px 12px;background:#3ddc84;color:#000;font:700 12px sans-serif;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.4)';
+    (document.documentElement || document.body)?.appendChild(el);
+    setTimeout(() => el.remove(), 6000);
+  })();
 
   const CONFIG = {
     targetPathPart: '/Standalone-Ships/Avenger-Titan-10-Year',
@@ -265,14 +268,14 @@
     notifySuccess(reason);
   }
 
-  window.rsiSniperReset = () => {
+  ROOT.rsiSniperReset = () => {
     GM_setValue(STORAGE_SUCCESS, false);
     GM_setValue(STORAGE_ACTIVE, false);
     clearFlow();
     location.reload();
   };
 
-  window.rsiSniperStop = () => {
+  ROOT.rsiSniperStop = () => {
     GM_setValue(STORAGE_ACTIVE, false);
     clearFlow();
     removeHud();
