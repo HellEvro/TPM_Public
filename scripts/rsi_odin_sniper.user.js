@@ -743,7 +743,6 @@
     let stopped = false;
     let snipeLocked = false;
     let attempts = parseInt(sessionStorage.getItem(SESSION_ATTEMPTS) || '0', 10);
-    let lastReloadAt = 0;
     let pollTimer = null;
     let observer = null;
     let countryChangeAt = 0;
@@ -913,7 +912,6 @@
         showHud(`Кнопка неактивна — reload через ${left}с`, 'warn');
         return;
       }
-      lastReloadAt = now;
       inactiveButtonSeenAt = 0;
       reloadCount += 1;
       console.info('[RSI Sniper] reload (кнопка неактивна)', reloadCount, '/', CONFIG.maxReloads);
