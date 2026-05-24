@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RSI Ship Sniper — Odin
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.2.0
+// @version      1.2.1
 // @description  Быстро ловит Add to cart только на странице Odin; останавливается при уходе в корзину
 // @author       InfoBot
 // @match        *://robertsspaceindustries.com/*Standalone-Ships/Odin*
@@ -15,13 +15,14 @@
 (function () {
     'use strict';
 
-    console.info('[RSI Sniper v1.2.0] скрипт загружен:', location.href);
+    console.info('[RSI Sniper v1.2.1] скрипт загружен:', location.href);
 
     const CONFIG = {
         targetPathPart: '/Standalone-Ships/Odin',
 
-        // === Страна и валюта (влияют на цену!) ===
+        // Страна для цены $5,900 — только Belarus
         targetCountry: 'Belarus',
+        countryAliases: ['Belarus', 'Беларусь'],
         targetCurrencyLabel: 'USD', // кнопка "USD / en" в шапке
         expectedPriceContains: '5,900.00', // не жмём Add to cart, пока цена другая
 
@@ -111,6 +112,18 @@
         return (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
     }
 
+    function getCountryNames() {
+        return CONFIG.countryAliases?.length ? CONFIG.countryAliases : [CONFIG.targetCountry];
+    }
+
+    function matchesCountry(text) {
+        const normalized = normalize(text);
+        return getCountryNames().some((name) => {
+            const target = normalize(name);
+            return normalized.includes(target) || target.includes(normalized);
+        });
+    }
+
     function isUnavailablePage() {
         const bodyText = normalize(document.body ? document.body.innerText : '');
         return CONFIG.unavailableTexts.some((t) => bodyText.includes(t));
@@ -188,9 +201,7 @@
         if (!CONFIG.targetCountry) return true;
         const btn = findCountryButton();
         if (!btn) return true;
-        const current = normalize(btn.textContent);
-        const target = normalize(CONFIG.targetCountry);
-        return current.includes(target) || target.includes(current);
+        return matchesCountry(btn.textContent);
     }
 
     function isCurrencyCorrect() {
@@ -205,14 +216,13 @@
         return (document.body?.innerText || '').includes(CONFIG.expectedPriceContains);
     }
 
-    function pickCountryOption(countryName) {
-        const target = normalize(countryName);
+    function pickCountryOption() {
         const selectors = '[role="option"], [role="menuitem"], [role="menuitemradio"], li, div[class*="option"]';
 
         for (const opt of document.querySelectorAll(selectors)) {
-            const text = normalize(opt.textContent);
+            const text = opt.textContent || '';
             if (!text || text.length > 80) continue;
-            if (text === target || text.includes(target)) {
+            if (matchesCountry(text)) {
                 forceClick(opt);
                 return true;
             }
@@ -221,15 +231,14 @@
         for (const inp of document.querySelectorAll('input[type="search"], input[type="text"]')) {
             if (!isVisible(inp)) continue;
             inp.focus();
-            inp.value = countryName;
+            inp.value = CONFIG.targetCountry;
             inp.dispatchEvent(new Event('input', { bubbles: true }));
             inp.dispatchEvent(new Event('change', { bubbles: true }));
             break;
         }
 
         for (const opt of document.querySelectorAll(selectors)) {
-            const text = normalize(opt.textContent);
-            if (text.includes(target)) {
+            if (matchesCountry(opt.textContent || '')) {
                 forceClick(opt);
                 return true;
             }
@@ -241,7 +250,7 @@
     /** Возвращает true, если страна/валюта/цена готовы к покупке */
     function ensurePricingReady() {
         if (countryChangeAt && Date.now() - countryChangeAt < CONFIG.countrySettleMs) {
-            showHud(`Ждём обновление цены… (${CONFIG.targetCountry})`, 'warn');
+            showHud('Ждём обновление цены… (Belarus)', 'warn');
             return false;
         }
 
@@ -265,14 +274,14 @@
                 forceClick(countryBtn);
                 countryDropdownOpen = true;
                 countryChangeAt = Date.now();
-                showHud(`Открываем список → ${CONFIG.targetCountry}…`, 'warn');
+                showHud('Открываем список → Belarus…', 'warn');
                 console.info('[RSI Sniper] открываем выбор страны');
                 return false;
             }
-            if (pickCountryOption(CONFIG.targetCountry)) {
+            if (pickCountryOption()) {
                 countryDropdownOpen = false;
                 countryChangeAt = Date.now();
-                showHud(`Страна: ${CONFIG.targetCountry}`, 'info');
+                showHud('Страна: Belarus', 'info');
             }
             return false;
         }
@@ -549,5 +558,5 @@
         location.reload();
     };
 
-    console.info('[RSI Sniper v1.2.0] rsiSniperStop() / rsiSniperReset()');
+    console.info('[RSI Sniper v1.2.1] страна: Belarus, rsiSniperStop() / rsiSniperReset()');
 })();
