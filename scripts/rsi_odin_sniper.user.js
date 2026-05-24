@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RSI Ship Sniper - Avenger Titan (train)
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.6.7
+// @version      1.7.0
 // @description  Тренировка: купон → MAX credits → Continue → Place order (без клика)
 // @author       InfoBot
 // @match        *://robertsspaceindustries.com/*
@@ -17,7 +17,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.6.7';
+  const VERSION = '1.7.0';
   const ROOT = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 
   try {
@@ -61,12 +61,17 @@
     targetCurrencyLabel: 'USD',
     expectedPriceContains: '60.00',
 
-    reloadIntervalMs: 500,
-    pollIntervalMs: 50,
-    countrySettleMs: 600,
-    cartAddedTimeoutMs: 4000,
-    stepDelayMs: 450,
-    stepTimeoutMs: 8000,
+    // Безопасный режим: медленно, без спама reload (reload каждые 0.5с = бан)
+    autoReloadEnabled: false,
+    reloadIntervalMs: 15000,
+    maxReloads: 3,
+    pollIntervalMs: 300,
+    pageReadyMinMs: 4000,
+    pageReadyTimeoutMs: 45000,
+    countrySettleMs: 2000,
+    cartAddedTimeoutMs: 8000,
+    stepDelayMs: 800,
+    stepTimeoutMs: 12000,
 
     cartUrl: 'https://robertsspaceindustries.com/en/store/pledge/cart',
     couponCode: 'SRBQHQYZL8',
@@ -747,6 +752,8 @@
     let countryDropdownOpen = false;
     let awaitingCartConfirm = false;
     let addToCartClickedAt = 0;
+    let pageLoadAt = Date.now();
+    let reloadCount = 0;
 
     GM_setValue(STORAGE_ACTIVE, true);
 
@@ -808,6 +815,15 @@
 
     function isPriceCorrect() {
       return (document.body?.innerText || '').includes(CONFIG.expectedPriceContains);
+    }
+
+    function isShipPageReady() {
+      const text = document.body?.innerText || '';
+      if (!text || text.length < 300) return false;
+      if (!text.includes(CONFIG.expectedPriceContains)) return false;
+      const hasButton = !!findAddToCartButton();
+      const hasOos = CONFIG.unavailableTexts.some((t) => normalize(text).includes(t));
+      return hasButton || hasOos;
     }
 
     function pickCountryOption() {
@@ -879,6 +895,21 @@
         else showHud(`Ждём added to cart… ${Math.ceil((CONFIG.cartAddedTimeoutMs - elapsed) / 1000)}с`, 'warn');
         return;
       }
+
+      const pageAge = Date.now() - pageLoadAt;
+      if (!isShipPageReady()) {
+        if (pageAge > CONFIG.pageReadyTimeoutMs) {
+          showHud('Страница не загрузилась — reload выключен', 'err');
+          return;
+        }
+        showHud(`Ждём кнопку/цену… ${Math.max(1, Math.ceil((CONFIG.pageReadyMinMs - pageAge) / 1000))}с`, 'warn');
+        return;
+      }
+      if (pageAge < CONFIG.pageReadyMinMs) {
+        showHud(`Пауза после загрузки… ${Math.ceil((CONFIG.pageReadyMinMs - pageAge) / 1000)}с`, 'info');
+        return;
+      }
+
       if (snipeLocked || !ensurePricingReady()) return;
 
       attempts += 1;
@@ -898,22 +929,34 @@
     }
 
     function maybeReload() {
-      if (stopped || awaitingCartConfirm) return;
+      if (stopped || awaitingCartConfirm || snipeLocked) return;
+      if (!CONFIG.autoReloadEnabled) return;
+      if (reloadCount >= CONFIG.maxReloads) return;
+      if (!isShipPageReady()) return;
+
+      const oos = CONFIG.unavailableTexts.some((t) => normalize(document.body?.innerText || '').includes(t));
+      if (!oos && findAddToCartButton()) return;
+
       const now = Date.now();
       if (now - lastReloadAt < CONFIG.reloadIntervalMs) return;
       lastReloadAt = now;
+      reloadCount += 1;
+      console.info('[RSI Sniper] reload', reloadCount, '/', CONFIG.maxReloads);
+      showHud(`Reload ${reloadCount}/${CONFIG.maxReloads}…`, 'warn');
       location.reload();
     }
 
     pollTimer = setInterval(trySnipe, CONFIG.pollIntervalMs);
-    reloadTimer = setInterval(maybeReload, CONFIG.reloadIntervalMs);
+    reloadTimer = CONFIG.autoReloadEnabled
+      ? setInterval(maybeReload, Math.max(1000, CONFIG.reloadIntervalMs))
+      : null;
     observer = new MutationObserver(trySnipe);
     if (document.body) {
       observer.observe(document.body, { childList: true, subtree: true, attributes: true,
         attributeFilter: ['disabled', 'aria-disabled', 'class'] });
     }
 
-    showHud(`Снайпер #${attempts}`, 'info');
+    showHud(`Снайпер v${VERSION} (без reload)`, 'info');
     trySnipe();
   }
 
