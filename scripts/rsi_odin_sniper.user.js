@@ -1,14 +1,12 @@
 // ==UserScript==
 // @name         RSI Ship Sniper — Odin
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.1.0
+// @version      1.1.2
 // @description  Быстро ловит Add to cart только на странице Odin; останавливается при уходе в корзину
 // @author       InfoBot
-// @match        https://robertsspaceindustries.com/*/pledge/Standalone-Ships/Odin*
-// @match        https://robertsspaceindustries.com/pledge/Standalone-Ships/Odin*
-// @exclude      https://robertsspaceindustries.com/*/store/*
-// @exclude      https://robertsspaceindustries.com/store/*
-// @run-at       document-idle
+// @match        *://robertsspaceindustries.com/*Standalone-Ships/Odin*
+// @match        *://*.robertsspaceindustries.com/*Standalone-Ships/Odin*
+// @run-at       document-end
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_notification
@@ -16,6 +14,8 @@
 
 (function () {
     'use strict';
+
+    console.info('[RSI Sniper v1.1.2] скрипт загружен:', location.href);
 
     const CONFIG = {
         // === Страница покупки (скрипт работает ТОЛЬКО здесь) ===
@@ -26,7 +26,6 @@
         urlWatchIntervalMs: 100,
 
         goToCartOnSuccess: true,
-        cartUrl: 'https://robertsspaceindustries.com/en/store/pledge/cart',
 
         stopAfterSuccess: true,
         playSoundOnSuccess: true,
@@ -47,6 +46,7 @@
 
     const STORAGE_SUCCESS = 'rsi_sniper_success_' + CONFIG.targetPathPart;
     const STORAGE_ACTIVE = 'rsi_sniper_active_' + CONFIG.targetPathPart;
+    const SESSION_ATTEMPTS = 'rsi_sniper_attempts_' + CONFIG.targetPathPart;
 
     function isTargetPage(loc = location) {
         return loc.pathname.includes(CONFIG.targetPathPart);
@@ -57,17 +57,31 @@
         return path.includes('/cart') || path.includes('/checkout');
     }
 
+    function getCartUrl() {
+        const lang = location.pathname.match(/^\/([a-z]{2})\//);
+        if (lang) {
+            return `https://robertsspaceindustries.com/${lang[1]}/store/pledge/cart`;
+        }
+        return 'https://robertsspaceindustries.com/en/store/pledge/cart';
+    }
+
     // Не целевая страница — ничего не делаем (на всякий случай при широком @match)
     if (!isTargetPage()) {
+        console.info('[RSI Sniper] не страница Odin, выход');
         GM_setValue(STORAGE_ACTIVE, false);
         return;
     }
 
     if (CONFIG.stopAfterSuccess && GM_getValue(STORAGE_SUCCESS, false)) {
-        console.info('[RSI Sniper] Уже сработал. Сброс: rsiSniperReset()');
+        console.info('[RSI Sniper] уже сработал ранее — rsiSniperReset() для сброса');
+        const banner = document.createElement('div');
+        banner.textContent = 'RSI Sniper: уже сработал. F12 → rsiSniperReset()';
+        banner.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;padding:8px 12px;background:#3ddc84;color:#000;font:600 12px sans-serif;border-radius:6px';
+        document.documentElement.appendChild(banner);
         window.rsiSniperReset = () => {
             GM_setValue(STORAGE_SUCCESS, false);
             GM_setValue(STORAGE_ACTIVE, false);
+            sessionStorage.removeItem(SESSION_ATTEMPTS);
             location.reload();
         };
         return;
@@ -75,7 +89,7 @@
 
     let stopped = false;
     let snipeLocked = false;
-    let attempts = 0;
+    let attempts = parseInt(sessionStorage.getItem(SESSION_ATTEMPTS) || '0', 10);
     let lastReloadAt = 0;
     let pollTimer = null;
     let reloadTimer = null;
@@ -276,12 +290,13 @@
     function markSuccess() {
         stopSniper('add to cart');
         GM_setValue(STORAGE_SUCCESS, true);
+        sessionStorage.removeItem(SESSION_ATTEMPTS);
         playSuccessSound();
         notifySuccess();
         showHud('В корзину! Скрипт остановлен.', 'ok');
 
         if (CONFIG.goToCartOnSuccess) {
-            location.replace(CONFIG.cartUrl);
+            location.replace(getCartUrl());
         }
     }
 
@@ -290,6 +305,7 @@
         if (stopIfLeftTargetPage()) return false;
 
         attempts += 1;
+        sessionStorage.setItem(SESSION_ATTEMPTS, String(attempts));
         const btn = findAddToCartButton();
 
         if (btn) {
@@ -364,6 +380,8 @@
         }
     }, true);
 
+    showHud(`Снайпер активен… попытка #${attempts}`, 'info');
+    console.info('[RSI Sniper] ожидание Add to cart на Odin');
     trySnipe();
 
     window.rsiSniperStop = () => {
@@ -375,8 +393,9 @@
     window.rsiSniperReset = () => {
         GM_setValue(STORAGE_SUCCESS, false);
         GM_setValue(STORAGE_ACTIVE, false);
+        sessionStorage.removeItem(SESSION_ATTEMPTS);
         location.reload();
     };
 
-    console.info('[RSI Sniper] Только страница Odin. rsiSniperStop() / rsiSniperReset()');
+    console.info('[RSI Sniper v1.1.2] rsiSniperStop() / rsiSniperReset()');
 })();
