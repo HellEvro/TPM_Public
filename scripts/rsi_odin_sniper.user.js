@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RSI Ship Sniper
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.9.0
+// @version      1.9.1
 // @description  Любой корабль: reload если Add to cart disabled; Odin: Belarus + $5,900
 // @author       InfoBot
 // @match        *://robertsspaceindustries.com/*
@@ -17,7 +17,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.9.0';
+  const VERSION = '1.9.1';
   const ROOT = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 
   try {
@@ -231,13 +231,50 @@
     return CONFIG.buttonTexts.some((t) => label.includes(t));
   }
 
-  function forceClick(el) {
-    el.scrollIntoView({ block: 'center', inline: 'center' });
-    el.focus({ preventScroll: true });
-    for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click']) {
-      el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+  function getEventView(el) {
+    try {
+      return el?.ownerDocument?.defaultView || ROOT;
+    } catch (e) {
+      return ROOT;
     }
-    if (typeof el.click === 'function') el.click();
+  }
+
+  function dispatchMouse(el, type, view) {
+    const base = { bubbles: true, cancelable: true };
+    try {
+      el.dispatchEvent(new MouseEvent(type, { ...base, view }));
+      return true;
+    } catch (e) {
+      try {
+        el.dispatchEvent(new MouseEvent(type, base));
+        return true;
+      } catch (e2) {
+        return false;
+      }
+    }
+  }
+
+  function forceClick(el) {
+    if (!el || !el.isConnected) return false;
+    try {
+      el.scrollIntoView({ block: 'center', inline: 'center' });
+    } catch (e) { /* ignore */ }
+    try {
+      el.focus({ preventScroll: true });
+    } catch (e) { /* ignore */ }
+
+    if (typeof el.click === 'function') {
+      try {
+        el.click();
+        return true;
+      } catch (e) { /* fallback to synthetic events */ }
+    }
+
+    const view = getEventView(el);
+    for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click']) {
+      dispatchMouse(el, type, view);
+    }
+    return true;
   }
 
   function setInputValue(input, value) {
@@ -1019,10 +1056,18 @@
       if (candidate) {
         if (isAddToCartActive(candidate)) {
           inactiveButtonSeenAt = 0;
+          if (snipeLocked) return;
+          snipeLocked = true;
           attempts += 1;
           sessionStorage.setItem(attemptsKey, String(attempts));
-          forceClick(candidate);
-          snipeLocked = true;
+          try {
+            forceClick(candidate);
+          } catch (err) {
+            console.warn('[RSI Sniper] forceClick:', err);
+            snipeLocked = false;
+            showHud('Ошибка клика Add to cart', 'err');
+            return;
+          }
           awaitingCartConfirm = true;
           addToCartClickedAt = Date.now();
           showHud(`${shipProfile.label}: Add to cart…`, 'info');
