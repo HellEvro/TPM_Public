@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         RSI Ship Sniper - Avenger Titan (train)
+// @name         RSI Ship Sniper - Odin
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.7.2
-// @description  Тренировка: купон → MAX credits → Continue → Place order (без клика)
+// @version      1.8.0
+// @description  Odin: reload если Add to cart disabled → корзина → купон → credits → checkout
 // @author       InfoBot
 // @match        *://robertsspaceindustries.com/*
 // @match        *://*.robertsspaceindustries.com/*
@@ -17,7 +17,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.7.2';
+  const VERSION = '1.8.0';
   const ROOT = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 
   try {
@@ -53,13 +53,13 @@
   showBootMarker();
 
   const CONFIG = {
-    targetPathPart: '/Standalone-Ships/Avenger-Titan-10-Year',
-    shipLabel: 'Avenger Titan 10 Year',
+    targetPathPart: '/Standalone-Ships/Odin',
+    shipLabel: 'Odin',
 
     targetCountry: 'Belarus',
     countryAliases: ['Belarus', 'Беларусь'],
     targetCurrencyLabel: 'USD',
-    expectedPriceContains: '60.00',
+    expectedPriceContains: '5,900.00',
 
     // Reload только если кнопка Add to cart найдена, но неактивна (не по таймеру «вслепую»)
     autoReloadEnabled: true,
@@ -170,13 +170,33 @@
   function isDisabled(el) {
     if (!el) return true;
     if (el.disabled) return true;
-    if (el.getAttribute('aria-disabled') === 'true') return true;
-    if (el.classList.contains('disabled')) return true;
     if (el.hasAttribute('disabled')) return true;
+    if (el.getAttribute('aria-disabled') === 'true') return true;
+    if (el.classList.contains('disabled') || el.classList.contains('is-disabled')) return true;
+    if (el.closest('fieldset[disabled]')) return true;
     const style = window.getComputedStyle(el);
     if (style.pointerEvents === 'none') return true;
+    if (style.cursor === 'not-allowed') return true;
     if (parseFloat(style.opacity) < 0.5) return true;
     return false;
+  }
+
+  function bodyHasExpectedPrice() {
+    const text = document.body?.innerText || '';
+    const needle = CONFIG.expectedPriceContains;
+    if (text.includes(needle)) return true;
+    const compact = needle.replace(/[,\s]/g, '');
+    return compact.length > 0 && text.replace(/[,\s]/g, '').includes(compact);
+  }
+
+  function elementMatchesAddToCart(el) {
+    const label = normalize([
+      el.textContent,
+      el.value,
+      el.getAttribute('aria-label'),
+      el.getAttribute('title'),
+    ].filter(Boolean).join(' '));
+    return CONFIG.buttonTexts.some((t) => label.includes(t));
   }
 
   function forceClick(el) {
@@ -812,16 +832,15 @@
     }
 
     function isPriceCorrect() {
-      return (document.body?.innerText || '').includes(CONFIG.expectedPriceContains);
+      return bodyHasExpectedPrice();
     }
 
     function isShipPageReady() {
       const text = document.body?.innerText || '';
       if (!text || text.length < 300) return false;
-      if (!text.includes(CONFIG.expectedPriceContains)) return false;
       const hasButton = !!findAddToCartButtonCandidate();
       const hasOos = CONFIG.unavailableTexts.some((t) => normalize(text).includes(t));
-      return hasButton || hasOos;
+      return hasButton || hasOos || bodyHasExpectedPrice();
     }
 
     function pickCountryOption() {
@@ -877,12 +896,16 @@
     }
 
     function findAddToCartButtonCandidate() {
-      for (const el of document.querySelectorAll('button, a[role="button"], [role="button"], input[type="submit"], input[type="button"]')) {
-        const text = normalize(el.textContent || el.value || '');
-        if (!CONFIG.buttonTexts.some((t) => text.includes(t))) continue;
-        if (isVisible(el)) return el;
+      const selectors = 'button, a[role="button"], [role="button"], input[type="submit"], input[type="button"]';
+      let fallback = null;
+      for (const el of document.querySelectorAll(selectors)) {
+        if (!elementMatchesAddToCart(el)) continue;
+        if (!isVisible(el)) continue;
+        if (el.closest('footer, nav, header')) continue;
+        if (!fallback) fallback = el;
+        if (isDisabled(el)) return el;
       }
-      return null;
+      return fallback;
     }
 
     function isAddToCartActive(el) {
@@ -909,7 +932,8 @@
       const elapsed = now - inactiveButtonSeenAt;
       if (elapsed < delay) {
         const left = Math.max(1, Math.ceil((delay - elapsed) / 1000));
-        showHud(`Кнопка неактивна — reload через ${left}с`, 'warn');
+        const oos = CONFIG.unavailableTexts.some((t) => normalize(document.body?.innerText || '').includes(t));
+        showHud(oos ? `Out of Stock — reload через ${left}с` : `Add to cart неактивна — reload через ${left}с`, 'warn');
         return;
       }
       inactiveButtonSeenAt = 0;
@@ -975,7 +999,7 @@
     trySnipe();
   }
 
-  console.info(`[RSI Sniper v${VERSION}] Avenger Titan train -> Place order`);
+  console.info(`[RSI Sniper v${VERSION}] Odin -> reload если disabled -> корзина`);
   try {
     boot();
   } catch (err) {
