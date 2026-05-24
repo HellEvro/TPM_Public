@@ -1,11 +1,11 @@
 // ==UserScript==
-// @name         RSI Ship Sniper — Odin
+// @name         RSI Ship Sniper — Starlite (test)
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.3.0
-// @description  Add to cart → окно подтверждения → CHECKOUT → корзина (Odin, Belarus)
+// @version      1.3.1
+// @description  Add to cart → окно подтверждения → CHECKOUT → корзина (Starlite Warbond, Belarus)
 // @author       InfoBot
-// @match        *://robertsspaceindustries.com/*Standalone-Ships/Odin*
-// @match        *://*.robertsspaceindustries.com/*Standalone-Ships/Odin*
+// @match        *://robertsspaceindustries.com/*Standalone-Ships/Starlite-Warbond*
+// @match        *://*.robertsspaceindustries.com/*Standalone-Ships/Starlite-Warbond*
 // @run-at       document-end
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -15,16 +15,17 @@
 (function () {
     'use strict';
 
-    console.info('[RSI Sniper v1.3.0] скрипт загружен:', location.href);
+    console.info('[RSI Sniper v1.3.1] скрипт загружен:', location.href);
 
     const CONFIG = {
-        targetPathPart: '/Standalone-Ships/Odin',
+        targetPathPart: '/Standalone-Ships/Starlite-Warbond',
+        shipLabel: 'Starlite Warbond',
 
-        // Страна для цены $5,900 — только Belarus
+        // Страна для корректной цены — Belarus ($55.00 на скриншоте)
         targetCountry: 'Belarus',
         countryAliases: ['Belarus', 'Беларусь'],
         targetCurrencyLabel: 'USD', // кнопка "USD / en" в шапке
-        expectedPriceContains: '5,900.00', // не жмём Add to cart, пока цена другая
+        expectedPriceContains: '55.00', // не жмём Add to cart, пока цена другая
 
         reloadIntervalMs: 500,
         pollIntervalMs: 50,
@@ -81,7 +82,7 @@
 
     // Не целевая страница — ничего не делаем (на всякий случай при широком @match)
     if (!isTargetPage()) {
-        console.info('[RSI Sniper] не страница Odin, выход');
+        console.info('[RSI Sniper] не страница Starlite Warbond, выход');
         GM_setValue(STORAGE_ACTIVE, false);
         return;
     }
@@ -189,7 +190,7 @@
             if (lower.includes('usd') || lower.includes('add to cart') || lower.includes('prev')
                 || lower.includes('next') || lower.includes('all products') || lower.includes('ships')
                 || lower.includes('gear') || lower.includes('subscriber') || lower.includes('lifetime')
-                || lower === 'odin' || lower.includes('download')) {
+                || lower === 'odin' || lower.includes('starlite') || lower.includes('download')) {
                 continue;
             }
             const footer = btn.closest('footer');
@@ -466,7 +467,7 @@
         try {
             GM_notification({
                 title: 'RSI Sniper',
-                text: 'Odin в корзине. Оформляй checkout!',
+                text: `${CONFIG.shipLabel} в корзине. Оформляй checkout!`,
                 timeout: 10000,
             });
         } catch (e) {
@@ -542,7 +543,7 @@
         }
     }
 
-    /** Ушли с Odin или открыли корзину — больше не мешаем */
+    /** Ушли со страницы корабля или открыли корзину — больше не мешаем */
     function stopIfLeftTargetPage() {
         if (stopped) return true;
 
@@ -550,7 +551,7 @@
 
         if (!isTargetPage()) {
             const wentToCart = isCartOrCheckoutPage();
-            stopSniper(wentToCart ? 'переход в корзину/checkout' : 'уход со страницы Odin');
+            stopSniper(wentToCart ? 'переход в корзину/checkout' : 'уход со страницы корабля');
             removeHud();
 
             if (wentToCart && CONFIG.stopAfterSuccess) {
@@ -648,7 +649,7 @@
     }, true);
 
     showHud(`Снайпер активен… попытка #${attempts}`, 'info');
-    console.info('[RSI Sniper] ожидание Add to cart на Odin');
+    console.info(`[RSI Sniper] ожидание Add to cart на ${CONFIG.shipLabel}`);
     trySnipe();
 
     window.rsiSniperStop = () => {
@@ -664,5 +665,5 @@
         location.reload();
     };
 
-    console.info('[RSI Sniper v1.3.0] Belarus → Add to cart → CHECKOUT → корзина');
+    console.info('[RSI Sniper v1.3.1] Belarus → Add to cart → CHECKOUT → корзина (Starlite test)');
 })();
