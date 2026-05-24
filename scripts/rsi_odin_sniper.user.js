@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RSI Ship Sniper — Odin
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.1.2
+// @version      1.2.0
 // @description  Быстро ловит Add to cart только на странице Odin; останавливается при уходе в корзину
 // @author       InfoBot
 // @match        *://robertsspaceindustries.com/*Standalone-Ships/Odin*
@@ -15,15 +15,20 @@
 (function () {
     'use strict';
 
-    console.info('[RSI Sniper v1.1.2] скрипт загружен:', location.href);
+    console.info('[RSI Sniper v1.2.0] скрипт загружен:', location.href);
 
     const CONFIG = {
-        // === Страница покупки (скрипт работает ТОЛЬКО здесь) ===
         targetPathPart: '/Standalone-Ships/Odin',
+
+        // === Страна и валюта (влияют на цену!) ===
+        targetCountry: 'Belarus',
+        targetCurrencyLabel: 'USD', // кнопка "USD / en" в шапке
+        expectedPriceContains: '5,900.00', // не жмём Add to cart, пока цена другая
 
         reloadIntervalMs: 500,
         pollIntervalMs: 50,
         urlWatchIntervalMs: 100,
+        countrySettleMs: 600,
 
         goToCartOnSuccess: true,
 
@@ -97,6 +102,8 @@
     let observer = null;
     let hudEl = null;
     let watchedUrl = location.pathname + location.search + location.hash;
+    let countryChangeAt = 0;
+    let countryDropdownOpen = false;
 
     GM_setValue(STORAGE_ACTIVE, true);
 
@@ -134,6 +141,150 @@
     function matchesButtonText(el) {
         const text = normalize(el.innerText || el.textContent || el.getAttribute('aria-label') || '');
         return CONFIG.buttonTexts.some((needle) => text.includes(needle));
+    }
+
+    function findCountryButton() {
+        const blocks = document.querySelectorAll('*');
+        for (const el of blocks) {
+            const text = el.childNodes.length === 1 && el.childNodes[0].nodeType === 3
+                ? el.textContent
+                : '';
+            if (text && text.trim() === 'Current country selected:') {
+                const root = el.closest('div') || el.parentElement;
+                if (root) {
+                    const btn = root.querySelector('button');
+                    if (btn) return btn;
+                }
+            }
+        }
+
+        for (const btn of document.querySelectorAll('button')) {
+            const label = (btn.textContent || '').trim();
+            if (!label || label.length > 50) continue;
+            const lower = normalize(label);
+            if (lower.includes('usd') || lower.includes('add to cart') || lower.includes('prev')
+                || lower.includes('next') || lower.includes('all products') || lower.includes('ships')
+                || lower.includes('gear') || lower.includes('subscriber') || lower.includes('lifetime')
+                || lower === 'odin' || lower.includes('download')) {
+                continue;
+            }
+            const footer = btn.closest('footer');
+            if (footer) return btn;
+        }
+
+        return null;
+    }
+
+    function findCurrencyButton() {
+        for (const btn of document.querySelectorAll('button')) {
+            const label = btn.textContent || '';
+            if (label.includes('/') && normalize(label).includes('usd')) return btn;
+            if (normalize(label).startsWith('usd')) return btn;
+        }
+        return null;
+    }
+
+    function isCountryCorrect() {
+        if (!CONFIG.targetCountry) return true;
+        const btn = findCountryButton();
+        if (!btn) return true;
+        const current = normalize(btn.textContent);
+        const target = normalize(CONFIG.targetCountry);
+        return current.includes(target) || target.includes(current);
+    }
+
+    function isCurrencyCorrect() {
+        if (!CONFIG.targetCurrencyLabel) return true;
+        const btn = findCurrencyButton();
+        if (!btn) return true;
+        return normalize(btn.textContent).includes(normalize(CONFIG.targetCurrencyLabel));
+    }
+
+    function isPriceCorrect() {
+        if (!CONFIG.expectedPriceContains) return true;
+        return (document.body?.innerText || '').includes(CONFIG.expectedPriceContains);
+    }
+
+    function pickCountryOption(countryName) {
+        const target = normalize(countryName);
+        const selectors = '[role="option"], [role="menuitem"], [role="menuitemradio"], li, div[class*="option"]';
+
+        for (const opt of document.querySelectorAll(selectors)) {
+            const text = normalize(opt.textContent);
+            if (!text || text.length > 80) continue;
+            if (text === target || text.includes(target)) {
+                forceClick(opt);
+                return true;
+            }
+        }
+
+        for (const inp of document.querySelectorAll('input[type="search"], input[type="text"]')) {
+            if (!isVisible(inp)) continue;
+            inp.focus();
+            inp.value = countryName;
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+            inp.dispatchEvent(new Event('change', { bubbles: true }));
+            break;
+        }
+
+        for (const opt of document.querySelectorAll(selectors)) {
+            const text = normalize(opt.textContent);
+            if (text.includes(target)) {
+                forceClick(opt);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Возвращает true, если страна/валюта/цена готовы к покупке */
+    function ensurePricingReady() {
+        if (countryChangeAt && Date.now() - countryChangeAt < CONFIG.countrySettleMs) {
+            showHud(`Ждём обновление цены… (${CONFIG.targetCountry})`, 'warn');
+            return false;
+        }
+
+        if (!isCurrencyCorrect()) {
+            const curBtn = findCurrencyButton();
+            if (curBtn) {
+                forceClick(curBtn);
+                showHud('Переключаем валюту на USD…', 'warn');
+                countryChangeAt = Date.now();
+                return false;
+            }
+        }
+
+        if (!isCountryCorrect()) {
+            const countryBtn = findCountryButton();
+            if (!countryBtn) {
+                showHud('Не найден выбор страны!', 'err');
+                return false;
+            }
+            if (!countryDropdownOpen) {
+                forceClick(countryBtn);
+                countryDropdownOpen = true;
+                countryChangeAt = Date.now();
+                showHud(`Открываем список → ${CONFIG.targetCountry}…`, 'warn');
+                console.info('[RSI Sniper] открываем выбор страны');
+                return false;
+            }
+            if (pickCountryOption(CONFIG.targetCountry)) {
+                countryDropdownOpen = false;
+                countryChangeAt = Date.now();
+                showHud(`Страна: ${CONFIG.targetCountry}`, 'info');
+            }
+            return false;
+        }
+
+        countryDropdownOpen = false;
+
+        if (!isPriceCorrect()) {
+            showHud(`Ждём цену $${CONFIG.expectedPriceContains}…`, 'warn');
+            return false;
+        }
+
+        return true;
     }
 
     function findAddToCartButton() {
@@ -303,6 +454,7 @@
     function trySnipe() {
         if (stopped || snipeLocked) return false;
         if (stopIfLeftTargetPage()) return false;
+        if (!ensurePricingReady()) return false;
 
         attempts += 1;
         sessionStorage.setItem(SESSION_ATTEMPTS, String(attempts));
@@ -397,5 +549,5 @@
         location.reload();
     };
 
-    console.info('[RSI Sniper v1.1.2] rsiSniperStop() / rsiSniperReset()');
+    console.info('[RSI Sniper v1.2.0] rsiSniperStop() / rsiSniperReset()');
 })();
