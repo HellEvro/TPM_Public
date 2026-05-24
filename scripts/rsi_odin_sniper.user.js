@@ -1,34 +1,56 @@
 // ==UserScript==
-// @name         RSI Ship Sniper — Avenger Titan (train)
+// @name         RSI Ship Sniper - Avenger Titan (train)
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.6.6
+// @version      1.6.7
 // @description  Тренировка: купон → MAX credits → Continue → Place order (без клика)
 // @author       InfoBot
 // @match        *://robertsspaceindustries.com/*
 // @match        *://*.robertsspaceindustries.com/*
-// @run-at       document-start
-// @inject-into  content
+// @run-at       document-idle
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_notification
+// @grant        GM_addStyle
 // @grant        unsafeWindow
 // ==/UserScript==
 
 (function () {
   'use strict';
 
-  const VERSION = '1.6.6';
+  const VERSION = '1.6.7';
   const ROOT = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 
-  console.error(`[RSI Sniper v${VERSION}] загружен:`, location.href);
+  try {
+    GM_addStyle(`
+      #rsi-sniper-boot {
+        position: fixed !important;
+        top: 72px !important;
+        right: 16px !important;
+        z-index: 2147483647 !important;
+        padding: 10px 14px !important;
+        background: #3ddc84 !important;
+        color: #000 !important;
+        font: 700 13px/1.2 sans-serif !important;
+        border-radius: 8px !important;
+        box-shadow: 0 6px 20px rgba(0,0,0,.45) !important;
+        pointer-events: none !important;
+      }
+    `);
+  } catch (e) {
+    // ignore
+  }
 
-  (function showLoadBadge() {
+  function showBootMarker() {
+    if (document.getElementById('rsi-sniper-boot')) return;
     const el = document.createElement('div');
-    el.textContent = `RSI Sniper v${VERSION} — загружен`;
-    el.style.cssText = 'position:fixed;bottom:16px;left:16px;z-index:2147483647;padding:8px 12px;background:#3ddc84;color:#000;font:700 12px sans-serif;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.4)';
+    el.id = 'rsi-sniper-boot';
+    el.textContent = `RSI Sniper v${VERSION} OK`;
     (document.documentElement || document.body)?.appendChild(el);
-    setTimeout(() => el.remove(), 6000);
-  })();
+    setTimeout(() => el.remove(), 12000);
+  }
+
+  console.error(`[RSI Sniper v${VERSION}] загружен (content-script):`, location.href);
+  showBootMarker();
 
   const CONFIG = {
     targetPathPart: '/Standalone-Ships/Avenger-Titan-10-Year',
@@ -895,6 +917,11 @@
     trySnipe();
   }
 
-  console.info(`[RSI Sniper v${VERSION}] Avenger Titan train → Place order`);
-  boot();
+  console.info(`[RSI Sniper v${VERSION}] Avenger Titan train -> Place order`);
+  try {
+    boot();
+  } catch (err) {
+    console.error('[RSI Sniper] FATAL boot:', err);
+    showBootMarker();
+  }
 })();
