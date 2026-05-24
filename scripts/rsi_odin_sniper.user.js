@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RSI Ship Sniper - Avenger Titan (train)
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.7.1
+// @version      1.7.2
 // @description  Тренировка: купон → MAX credits → Continue → Place order (без клика)
 // @author       InfoBot
 // @match        *://robertsspaceindustries.com/*
@@ -17,7 +17,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.7.1';
+  const VERSION = '1.7.2';
   const ROOT = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 
   try {
@@ -63,10 +63,9 @@
 
     // Reload только если кнопка Add to cart найдена, но неактивна (не по таймеру «вслепую»)
     autoReloadEnabled: true,
-    reloadIntervalMs: 15000,
+    inactiveButtonReloadDelayMs: 2000,
     maxReloads: 3,
     pollIntervalMs: 300,
-    pageReadyMinMs: 4000,
     pageReadyTimeoutMs: 45000,
     countrySettleMs: 2000,
     cartAddedTimeoutMs: 8000,
@@ -753,6 +752,7 @@
     let addToCartClickedAt = 0;
     let pageLoadAt = Date.now();
     let reloadCount = 0;
+    let inactiveButtonSeenAt = 0;
 
     GM_setValue(STORAGE_ACTIVE, true);
 
@@ -905,15 +905,19 @@
         return;
       }
       const now = Date.now();
-      if (now - lastReloadAt < CONFIG.reloadIntervalMs) {
-        const left = Math.ceil((CONFIG.reloadIntervalMs - (now - lastReloadAt)) / 1000);
+      if (!inactiveButtonSeenAt) inactiveButtonSeenAt = now;
+      const delay = CONFIG.inactiveButtonReloadDelayMs;
+      const elapsed = now - inactiveButtonSeenAt;
+      if (elapsed < delay) {
+        const left = Math.max(1, Math.ceil((delay - elapsed) / 1000));
         showHud(`Кнопка неактивна — reload через ${left}с`, 'warn');
         return;
       }
       lastReloadAt = now;
+      inactiveButtonSeenAt = 0;
       reloadCount += 1;
       console.info('[RSI Sniper] reload (кнопка неактивна)', reloadCount, '/', CONFIG.maxReloads);
-      showHud(`Reload ${reloadCount}/${CONFIG.maxReloads} (кнопка неактивна)…`, 'warn');
+      showHud(`Reload ${reloadCount}/${CONFIG.maxReloads}…`, 'warn');
       location.reload();
     }
 
@@ -932,11 +936,7 @@
           showHud('Страница не загрузилась (кнопка/цена)', 'err');
           return;
         }
-        showHud(`Ищем кнопку и цену… ${Math.max(1, Math.ceil((CONFIG.pageReadyMinMs - pageAge) / 1000))}с`, 'warn');
-        return;
-      }
-      if (pageAge < CONFIG.pageReadyMinMs) {
-        showHud(`Пауза после загрузки… ${Math.ceil((CONFIG.pageReadyMinMs - pageAge) / 1000)}с`, 'info');
+        showHud('Ищем кнопку и цену…', 'warn');
         return;
       }
 
@@ -945,6 +945,7 @@
       const candidate = findAddToCartButtonCandidate();
       if (candidate) {
         if (isAddToCartActive(candidate)) {
+          inactiveButtonSeenAt = 0;
           attempts += 1;
           sessionStorage.setItem(SESSION_ATTEMPTS, String(attempts));
           forceClick(candidate);
@@ -958,6 +959,7 @@
         return;
       }
 
+      inactiveButtonSeenAt = 0;
       attempts += 1;
       sessionStorage.setItem(SESSION_ATTEMPTS, String(attempts));
       const oos = CONFIG.unavailableTexts.some((t) => normalize(document.body?.innerText || '').includes(t));
@@ -971,7 +973,7 @@
         attributeFilter: ['disabled', 'aria-disabled', 'class'] });
     }
 
-    showHud(`Снайпер v${VERSION} (reload если кнопка неактивна)`, 'info');
+    showHud(`Снайпер v${VERSION} (reload через 2с если кнопка неактивна)`, 'info');
     trySnipe();
   }
 
