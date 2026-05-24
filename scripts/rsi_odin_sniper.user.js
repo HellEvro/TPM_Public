@@ -1,11 +1,11 @@
 // ==UserScript==
-// @name         RSI Ship Sniper — Starlite (test)
+// @name         RSI Ship Sniper — Avenger Titan (train)
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.5.0
-// @description  Полный checkout: корабль → корзина → купон → credits → Place order
+// @version      1.6.0
+// @description  Тренировка: купон → MAX credits → Continue → Place order (без клика)
 // @author       InfoBot
-// @match        *://robertsspaceindustries.com/*Standalone-Ships/Starlite-Warbond*
-// @match        *://*.robertsspaceindustries.com/*Standalone-Ships/Starlite-Warbond*
+// @match        *://robertsspaceindustries.com/*Standalone-Ships/Avenger-Titan-10-Year*
+// @match        *://*.robertsspaceindustries.com/*Standalone-Ships/Avenger-Titan-10-Year*
 // @match        *://robertsspaceindustries.com/*/store/pledge/cart*
 // @match        *://*.robertsspaceindustries.com/*/store/pledge/cart*
 // @run-at       document-end
@@ -17,17 +17,17 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.5.0';
+  const VERSION = '1.6.0';
   console.info(`[RSI Sniper v${VERSION}]`, location.href);
 
   const CONFIG = {
-    targetPathPart: '/Standalone-Ships/Starlite-Warbond',
-    shipLabel: 'Starlite Warbond',
+    targetPathPart: '/Standalone-Ships/Avenger-Titan-10-Year',
+    shipLabel: 'Avenger Titan 10 Year',
 
     targetCountry: 'Belarus',
     countryAliases: ['Belarus', 'Беларусь'],
     targetCurrencyLabel: 'USD',
-    expectedPriceContains: '55.00',
+    expectedPriceContains: '60.00',
 
     reloadIntervalMs: 500,
     pollIntervalMs: 50,
@@ -39,6 +39,13 @@
     cartUrl: 'https://robertsspaceindustries.com/en/store/pledge/cart',
     couponCode: 'SRBQHQYZL8',
     goToCartOnSuccess: true,
+
+    // Тренировка: дойти до Place order, но не нажимать
+    trainingMode: true,
+    clickPlaceOrder: false,
+
+    // Оплата store credits: без disclaimer / Proceed to pay
+    creditsOnlyCheckout: true,
 
     stopAfterSuccess: true,
     playSoundOnSuccess: true,
@@ -68,10 +75,10 @@
 
   const STEPS = {
     CART: 'cart',
+    PLACE_ORDER: 'place_order',
     ADDRESS: 'address',
     DISCLAIMER: 'disclaimer',
     AFTER_DISCLAIMER: 'after_disclaimer',
-    PLACE_ORDER: 'place_order',
     DONE: 'done',
   };
 
@@ -343,6 +350,20 @@
     return text.includes('store credit used') || text.includes('store credits used');
   }
 
+  function isZeroTotal() {
+    const text = document.body?.innerText || '';
+    return /\$0\.00\s*USD/i.test(text) || /\btotal\s*\n?\s*0\b/i.test(text);
+  }
+
+  function shouldSkipPaymentSteps() {
+    return CONFIG.creditsOnlyCheckout && CONFIG.applyStoreCredits
+      && (isStoreCreditApplied() || isZeroTotal());
+  }
+
+  function findPlaceOrderButton() {
+    return findBottomButton((text) => text === 'place order');
+  }
+
   function isDisclaimerOpen() {
     const text = document.body?.innerText || '';
     return text.includes('Disclaimer') && text.includes('I agree to the');
@@ -432,6 +453,46 @@
       fn();
     }
 
+    function finishAtPlaceOrder() {
+      const msg = CONFIG.trainingMode
+        ? `${CONFIG.shipLabel}: тренировка — Place order на экране`
+        : `${CONFIG.shipLabel} — заказ оформлен!`;
+      markFlowComplete(msg);
+      showHud(
+        CONFIG.trainingMode ? 'Тренировка OK! Place order — вручную' : 'Заказ отправлен!',
+        'ok',
+      );
+      stopCheckout('done');
+    }
+
+    function handlePlaceOrderStep() {
+      const placeBtn = findPlaceOrderButton();
+      if (!placeBtn) return false;
+
+      setStep(STEPS.PLACE_ORDER);
+
+      if (CONFIG.trainingMode || !CONFIG.clickPlaceOrder) {
+        if (!canAct()) return true;
+        act(() => {
+          console.info('[RSI Sniper] Place order найден — стоп (тренировка)');
+          state.placeOrderClicked = false;
+          finishAtPlaceOrder();
+        });
+        return true;
+      }
+
+      if (!canAct()) return true;
+      if (!state.placeOrderClicked) {
+        act(() => {
+          console.info('[RSI Sniper] PLACE ORDER');
+          forceClick(placeBtn);
+          state.placeOrderClicked = true;
+          finishAtPlaceOrder();
+        });
+      }
+      return true;
+    }
+
     function tryCheckoutStep() {
       if (stopped || !isFlowActive()) return;
 
@@ -444,7 +505,17 @@
       const step = getStep();
       const bodyText = normalize(document.body?.innerText || '');
 
-      if (isDisclaimerOpen() || step === STEPS.DISCLAIMER) {
+      // После credits: сразу Place order (без disclaimer / address)
+      if (state.cartContinueClicked && shouldSkipPaymentSteps()) {
+        if (handlePlaceOrderStep()) return;
+        showHud('Credits OK — ищем Place order…', 'info');
+        return;
+      }
+
+      if (handlePlaceOrderStep()) return;
+
+      // Ниже — только если оплата не полностью credits (warbond / карта)
+      if (!shouldSkipPaymentSteps() && (isDisclaimerOpen() || step === STEPS.DISCLAIMER)) {
         setStep(STEPS.DISCLAIMER);
         showHud('Disclaimer: галочка → I AGREE', 'info');
 
@@ -475,7 +546,7 @@
         return;
       }
 
-      if (step === STEPS.AFTER_DISCLAIMER || (state.disclaimerDone && isAddressStepVisible())) {
+      if (!shouldSkipPaymentSteps() && (step === STEPS.AFTER_DISCLAIMER || (state.disclaimerDone && isAddressStepVisible()))) {
         setStep(STEPS.AFTER_DISCLAIMER);
         showHud('Continue после disclaimer…', 'info');
 
@@ -501,31 +572,7 @@
         }
       }
 
-      const placeBtn = findBottomButton((text) => text === 'place order');
-      if (placeBtn || step === STEPS.PLACE_ORDER || bodyText.includes('place order')) {
-        setStep(STEPS.PLACE_ORDER);
-        showHud('Place order…', 'info');
-
-        if (!canAct()) return;
-
-        if (placeBtn && !state.placeOrderClicked) {
-          act(() => {
-            console.info('[RSI Sniper] PLACE ORDER');
-            forceClick(placeBtn);
-            state.placeOrderClicked = true;
-            markFlowComplete(`${CONFIG.shipLabel} — заказ оформлен!`);
-            showHud('Заказ отправлен!', 'ok');
-            stopCheckout('done');
-          });
-          return;
-        }
-
-        if (state.placeOrderClicked) return;
-        showHud('Ищем PLACE ORDER…', 'warn');
-        return;
-      }
-
-      if (isAddressStepVisible() && step !== STEPS.CART) {
+      if (!shouldSkipPaymentSteps() && isAddressStepVisible() && step !== STEPS.CART) {
         setStep(STEPS.ADDRESS);
         showHud('Address: Proceed to pay…', 'info');
 
@@ -619,9 +666,9 @@
             console.info('[RSI Sniper] Continue (корзина)');
             forceClick(continueBtn);
             state.cartContinueClicked = true;
-            setStep(STEPS.ADDRESS);
+            setStep(STEPS.PLACE_ORDER);
             stepStartedAt = Date.now();
-            showHud('Шаг 2: Address…', 'info');
+            showHud('Continue → Place order…', 'info');
           });
           return;
         }
@@ -630,8 +677,11 @@
       }
     }
 
-    console.info('[RSI Sniper] checkout flow, store credits:', CONFIG.applyStoreCredits);
-    showHud('Checkout: купон → credits → оплата', 'info');
+    console.info('[RSI Sniper] checkout: купон → MAX → Continue → Place order', {
+      storeCredits: CONFIG.applyStoreCredits,
+      training: CONFIG.trainingMode,
+    });
+    showHud('Checkout: купон → MAX → Continue', 'info');
     pollTimer = setInterval(tryCheckoutStep, CONFIG.pollIntervalMs);
     observer = new MutationObserver(tryCheckoutStep);
     if (document.body) {
@@ -691,7 +741,7 @@
         const lower = normalize(label);
         if (lower.includes('usd') || lower.includes('add to cart') || lower.includes('prev')
           || lower.includes('next') || lower.includes('all products') || lower.includes('ships')
-          || lower.includes('gear') || lower.includes('download') || lower.includes('starlite')) continue;
+          || lower.includes('gear') || lower.includes('download') || lower.includes('avenger')) continue;
         if (btn.closest('footer')) return btn;
       }
       return null;
@@ -829,5 +879,5 @@
     trySnipe();
   }
 
-  console.info(`[RSI Sniper v${VERSION}] полный checkout`);
+  console.info(`[RSI Sniper v${VERSION}] Avenger Titan train → Place order`);
 })();
