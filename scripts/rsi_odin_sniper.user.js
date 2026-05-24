@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         RSI Ship Sniper — Odin
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.0.1
-// @description  Быстро ловит появление кнопки Add to cart на странице pledge RSI (Odin и другие корабли)
+// @version      1.1.0
+// @description  Быстро ловит Add to cart только на странице Odin; останавливается при уходе в корзину
 // @author       InfoBot
-// @match        https://robertsspaceindustries.com/*/pledge/*
-// @match        https://robertsspaceindustries.com/pledge/*
+// @match        https://robertsspaceindustries.com/*/pledge/Standalone-Ships/Odin*
+// @match        https://robertsspaceindustries.com/pledge/Standalone-Ships/Odin*
+// @exclude      https://robertsspaceindustries.com/*/store/*
+// @exclude      https://robertsspaceindustries.com/store/*
 // @run-at       document-idle
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -16,27 +18,24 @@
     'use strict';
 
     const CONFIG = {
-        // Интервал полного обновления страницы (мс)
+        // === Страница покупки (скрипт работает ТОЛЬКО здесь) ===
+        targetPathPart: '/Standalone-Ships/Odin',
+
         reloadIntervalMs: 500,
-        // Как часто проверять DOM без перезагрузки (мс) — быстрее ловит появление кнопки
         pollIntervalMs: 50,
-        // Перейти в корзину после успешного клика
+        urlWatchIntervalMs: 100,
+
         goToCartOnSuccess: true,
         cartUrl: 'https://robertsspaceindustries.com/en/store/pledge/cart',
-        // Остановить снайпер после успешного добавления
+
         stopAfterSuccess: true,
-        // Звуковой сигнал при успехе
         playSoundOnSuccess: true,
-        // Только эта страница (false = любой pledge URL из @match)
-        odinOnly: true,
-        odinPathPart: '/Standalone-Ships/Odin',
-        // Тексты кнопки (EN + возможные варианты)
+
         buttonTexts: [
             'add to cart',
             'add to basket',
             'в корзину',
         ],
-        // Тексты «нет в наличии» — если видны, клик не делаем
         unavailableTexts: [
             'out of stock',
             'sold out',
@@ -46,16 +45,29 @@
         ],
     };
 
-    const STORAGE_KEY = 'rsi_sniper_success_' + location.pathname;
+    const STORAGE_SUCCESS = 'rsi_sniper_success_' + CONFIG.targetPathPart;
+    const STORAGE_ACTIVE = 'rsi_sniper_active_' + CONFIG.targetPathPart;
 
-    if (CONFIG.odinOnly && !location.pathname.includes(CONFIG.odinPathPart)) {
+    function isTargetPage(loc = location) {
+        return loc.pathname.includes(CONFIG.targetPathPart);
+    }
+
+    function isCartOrCheckoutPage(loc = location) {
+        const path = loc.pathname.toLowerCase();
+        return path.includes('/cart') || path.includes('/checkout');
+    }
+
+    // Не целевая страница — ничего не делаем (на всякий случай при широком @match)
+    if (!isTargetPage()) {
+        GM_setValue(STORAGE_ACTIVE, false);
         return;
     }
 
-    if (CONFIG.stopAfterSuccess && GM_getValue(STORAGE_KEY, false)) {
-        console.info('[RSI Sniper] Уже сработал ранее. Сброс: rsiSniperReset()');
+    if (CONFIG.stopAfterSuccess && GM_getValue(STORAGE_SUCCESS, false)) {
+        console.info('[RSI Sniper] Уже сработал. Сброс: rsiSniperReset()');
         window.rsiSniperReset = () => {
-            GM_setValue(STORAGE_KEY, false);
+            GM_setValue(STORAGE_SUCCESS, false);
+            GM_setValue(STORAGE_ACTIVE, false);
             location.reload();
         };
         return;
@@ -67,8 +79,12 @@
     let lastReloadAt = 0;
     let pollTimer = null;
     let reloadTimer = null;
+    let urlWatchTimer = null;
     let observer = null;
     let hudEl = null;
+    let watchedUrl = location.pathname + location.search + location.hash;
+
+    GM_setValue(STORAGE_ACTIVE, true);
 
     function normalize(text) {
         return (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -110,23 +126,16 @@
         const candidates = [];
 
         document.querySelectorAll('button, a[role="button"], [role="button"]').forEach((el) => {
-            if (matchesButtonText(el)) {
-                candidates.push(el);
-            }
+            if (matchesButtonText(el)) candidates.push(el);
         });
 
-        // Запасной поиск по submit/input
         document.querySelectorAll('input[type="submit"], input[type="button"]').forEach((el) => {
             const val = normalize(el.value || '');
-            if (CONFIG.buttonTexts.some((t) => val.includes(t))) {
-                candidates.push(el);
-            }
+            if (CONFIG.buttonTexts.some((t) => val.includes(t))) candidates.push(el);
         });
 
         for (const el of candidates) {
-            if (isVisible(el) && !isDisabled(el)) {
-                return el;
-            }
+            if (isVisible(el) && !isDisabled(el)) return el;
         }
 
         return null;
@@ -136,8 +145,7 @@
         el.scrollIntoView({ block: 'center', inline: 'center' });
         el.focus({ preventScroll: true });
 
-        const events = ['pointerdown', 'mousedown', 'mouseup', 'click'];
-        for (const type of events) {
+        for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click']) {
             el.dispatchEvent(new MouseEvent(type, {
                 bubbles: true,
                 cancelable: true,
@@ -145,9 +153,7 @@
             }));
         }
 
-        if (typeof el.click === 'function') {
-            el.click();
-        }
+        if (typeof el.click === 'function') el.click();
     }
 
     function playSuccessSound() {
@@ -175,12 +181,19 @@
         try {
             GM_notification({
                 title: 'RSI Sniper',
-                text: 'Odin добавлен в корзину! Быстрее оформляй checkout.',
+                text: 'Odin в корзине. Оформляй checkout!',
                 timeout: 10000,
             });
         } catch (e) {
             // ignore
         }
+    }
+
+    function removeHud() {
+        if (hudEl && hudEl.parentNode) {
+            hudEl.parentNode.removeChild(hudEl);
+        }
+        hudEl = null;
     }
 
     function showHud(message, level) {
@@ -205,20 +218,18 @@
             document.documentElement.appendChild(hudEl);
         }
 
-        const colors = {
-            info: '#58a6ff',
-            warn: '#f0ad4e',
-            ok: '#3ddc84',
-            err: '#ff6b6b',
-        };
-
+        const colors = { info: '#58a6ff', warn: '#f0ad4e', ok: '#3ddc84', err: '#ff6b6b' };
         hudEl.style.borderColor = colors[level] || colors.info;
         hudEl.textContent = message;
     }
 
-    function stopSniper() {
+    function stopSniper(reason) {
         if (stopped) return;
         stopped = true;
+        snipeLocked = true;
+
+        GM_setValue(STORAGE_ACTIVE, false);
+
         if (pollTimer !== null) {
             clearInterval(pollTimer);
             pollTimer = null;
@@ -227,15 +238,44 @@
             clearInterval(reloadTimer);
             reloadTimer = null;
         }
+        if (urlWatchTimer !== null) {
+            clearInterval(urlWatchTimer);
+            urlWatchTimer = null;
+        }
         if (observer) {
             observer.disconnect();
             observer = null;
         }
+
+        if (reason) {
+            console.info('[RSI Sniper] Остановлен:', reason);
+        }
+    }
+
+    /** Ушли с Odin или открыли корзину — больше не мешаем */
+    function stopIfLeftTargetPage() {
+        if (stopped) return true;
+
+        const currentUrl = location.pathname + location.search + location.hash;
+
+        if (!isTargetPage()) {
+            const wentToCart = isCartOrCheckoutPage();
+            stopSniper(wentToCart ? 'переход в корзину/checkout' : 'уход со страницы Odin');
+            removeHud();
+
+            if (wentToCart && CONFIG.stopAfterSuccess) {
+                GM_setValue(STORAGE_SUCCESS, true);
+            }
+            return true;
+        }
+
+        watchedUrl = currentUrl;
+        return false;
     }
 
     function markSuccess() {
-        stopSniper();
-        GM_setValue(STORAGE_KEY, true);
+        stopSniper('add to cart');
+        GM_setValue(STORAGE_SUCCESS, true);
         playSuccessSound();
         notifySuccess();
         showHud('В корзину! Скрипт остановлен.', 'ok');
@@ -247,6 +287,7 @@
 
     function trySnipe() {
         if (stopped || snipeLocked) return false;
+        if (stopIfLeftTargetPage()) return false;
 
         attempts += 1;
         const btn = findAddToCartButton();
@@ -261,8 +302,8 @@
         const waiting = isUnavailablePage();
         showHud(
             waiting
-                ? `Ожидание… попытка #${attempts} (Out of Stock)`
-                : `Поиск кнопки… попытка #${attempts}`,
+                ? `Ожидание… #${attempts} (Out of Stock)`
+                : `Поиск кнопки… #${attempts}`,
             waiting ? 'warn' : 'info'
         );
         return false;
@@ -270,19 +311,22 @@
 
     function maybeReload() {
         if (stopped) return;
+        if (stopIfLeftTargetPage()) return;
+
         const now = Date.now();
         if (now - lastReloadAt < CONFIG.reloadIntervalMs) return;
         lastReloadAt = now;
         location.reload();
     }
 
-    // Быстрый опрос DOM — ловит кнопку сразу после рендера SPA
     pollTimer = setInterval(() => {
-        if (stopped) return;
-        trySnipe();
+        if (!stopped) trySnipe();
     }, CONFIG.pollIntervalMs);
 
-    // MutationObserver — реагирует на изменения React/Vue без ожидания reload
+    urlWatchTimer = setInterval(() => {
+        stopIfLeftTargetPage();
+    }, CONFIG.urlWatchIntervalMs);
+
     observer = new MutationObserver(() => {
         if (!stopped) trySnipe();
     });
@@ -296,24 +340,43 @@
         });
     }
 
-    // Полное обновление страницы каждые N мс
     reloadTimer = setInterval(() => {
-        if (stopped) return;
-        maybeReload();
+        if (!stopped) maybeReload();
     }, Math.max(100, CONFIG.reloadIntervalMs));
 
-    // Первая попытка сразу
+    window.addEventListener('popstate', stopIfLeftTargetPage, true);
+    window.addEventListener('hashchange', stopIfLeftTargetPage, true);
+    window.addEventListener('beforeunload', () => stopSniper('закрытие вкладки'), true);
+
+    document.addEventListener('click', (event) => {
+        if (stopped) return;
+        const link = event.target.closest('a[href]');
+        if (!link) return;
+        try {
+            const href = link.href || '';
+            if (href.includes('/cart') || href.includes('/checkout')) {
+                stopSniper('клик по корзине');
+                if (CONFIG.stopAfterSuccess) GM_setValue(STORAGE_SUCCESS, true);
+                removeHud();
+            }
+        } catch (e) {
+            // ignore
+        }
+    }, true);
+
     trySnipe();
 
     window.rsiSniperStop = () => {
-        stopSniper();
-        showHud('Снайпер остановлен вручную', 'info');
+        stopSniper('вручную');
+        removeHud();
+        showHud('Остановлен вручную', 'info');
     };
 
     window.rsiSniperReset = () => {
-        GM_setValue(STORAGE_KEY, false);
+        GM_setValue(STORAGE_SUCCESS, false);
+        GM_setValue(STORAGE_ACTIVE, false);
         location.reload();
     };
 
-    console.info('[RSI Sniper] Активен. rsiSniperStop() — стоп, rsiSniperReset() — сброс.');
+    console.info('[RSI Sniper] Только страница Odin. rsiSniperStop() / rsiSniperReset()');
 })();
