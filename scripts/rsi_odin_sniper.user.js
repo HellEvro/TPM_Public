@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RSI Ship Sniper
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.9.1
+// @version      1.9.2
 // @description  Любой корабль: reload если Add to cart disabled; Odin: Belarus + $5,900
 // @author       InfoBot
 // @match        *://robertsspaceindustries.com/*
@@ -17,7 +17,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.9.1';
+  const VERSION = '1.9.2';
   const ROOT = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 
   try {
@@ -71,6 +71,7 @@
     pollIntervalMs: 300,
     pageReadyTimeoutMs: 45000,
     countrySettleMs: 2000,
+    afterAddToCartDelayMs: 1000,
     cartAddedTimeoutMs: 8000,
     stepDelayMs: 800,
     stepTimeoutMs: 12000,
@@ -1035,6 +1036,11 @@
       if (stopped) return;
       if (awaitingCartConfirm) {
         const elapsed = Date.now() - addToCartClickedAt;
+        const minWait = CONFIG.afterAddToCartDelayMs;
+        if (elapsed < minWait) {
+          showHud(`Пауза после Add to cart… ${Math.max(1, Math.ceil((minWait - elapsed) / 1000))}с`, 'info');
+          return;
+        }
         if (isCartAddedModalVisible() || elapsed > CONFIG.cartAddedTimeoutMs) goToCart();
         else showHud(`Ждём added to cart… ${Math.ceil((CONFIG.cartAddedTimeoutMs - elapsed) / 1000)}с`, 'warn');
         return;
