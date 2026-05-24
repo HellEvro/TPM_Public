@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         RSI Ship Sniper - Odin
+// @name         RSI Ship Sniper
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.8.0
-// @description  Odin: reload если Add to cart disabled → корзина → купон → credits → checkout
+// @version      1.9.0
+// @description  Любой корабль: reload если Add to cart disabled; Odin: Belarus + $5,900
 // @author       InfoBot
 // @match        *://robertsspaceindustries.com/*
 // @match        *://*.robertsspaceindustries.com/*
@@ -17,7 +17,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.8.0';
+  const VERSION = '1.9.0';
   const ROOT = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 
   try {
@@ -53,13 +53,16 @@
   showBootMarker();
 
   const CONFIG = {
-    targetPathPart: '/Standalone-Ships/Odin',
-    shipLabel: 'Odin',
+    shipPagePathPart: '/pledge/Standalone-Ships/',
+
+    // Только для страницы Odin
+    odinPathPart: '/Standalone-Ships/Odin',
+    odinLabel: 'Odin',
+    odinExpectedPrice: '5,900.00',
 
     targetCountry: 'Belarus',
     countryAliases: ['Belarus', 'Беларусь'],
     targetCurrencyLabel: 'USD',
-    expectedPriceContains: '5,900.00',
 
     // Reload только если кнопка Add to cart найдена, но неактивна (не по таймеру «вслепую»)
     autoReloadEnabled: true,
@@ -101,13 +104,9 @@
     ],
   };
 
-  CONFIG.applyStoreCredits = !CONFIG.targetPathPart.toLowerCase().includes('warbond');
-
-  const STORAGE_SUCCESS = 'rsi_sniper_success_' + CONFIG.targetPathPart;
-  const STORAGE_ACTIVE = 'rsi_sniper_active_' + CONFIG.targetPathPart;
-  const SESSION_ATTEMPTS = 'rsi_sniper_attempts_' + CONFIG.targetPathPart;
   const SESSION_FLOW = 'rsi_sniper_flow_active';
   const SESSION_STEP = 'rsi_sniper_checkout_step';
+  const SESSION_SHIP_KEY = 'rsi_sniper_ship_page_key';
 
   const STEPS = {
     CART: 'cart',
@@ -122,8 +121,38 @@
     return (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
   }
 
-  function isTargetPage(loc = location) {
-    return loc.pathname.toLowerCase().includes(CONFIG.targetPathPart.toLowerCase());
+  function getShipPageKey(loc = location) {
+    const path = typeof loc === 'string' ? loc : (loc.pathname || '');
+    return path.toLowerCase().replace(/[^a-z0-9/-]+/g, '');
+  }
+
+  function storageKey(suffix, loc) {
+    return `rsi_sniper_${suffix}_${getShipPageKey(loc || location)}`;
+  }
+
+  function isShipPledgePage(loc = location) {
+    return loc.pathname.toLowerCase().includes(CONFIG.shipPagePathPart.toLowerCase());
+  }
+
+  function isOdinPage(loc = location) {
+    return loc.pathname.toLowerCase().includes(CONFIG.odinPathPart.toLowerCase());
+  }
+
+  function getShipNameFromPath(loc = location) {
+    const m = loc.pathname.match(/Standalone-Ships\/([^/?#]+)/i);
+    if (!m) return 'Ship';
+    return m[1].replace(/-/g, ' ');
+  }
+
+  function getShipProfile(loc = location) {
+    const odin = isOdinPage(loc);
+    return {
+      isOdin: odin,
+      label: odin ? CONFIG.odinLabel : getShipNameFromPath(loc),
+      requireRegion: odin,
+      requirePrice: odin,
+      expectedPrice: odin ? CONFIG.odinExpectedPrice : null,
+    };
   }
 
   function isCheckoutPage(loc = location) {
@@ -141,6 +170,7 @@
   function startFlow() {
     sessionStorage.setItem(SESSION_FLOW, '1');
     sessionStorage.setItem(SESSION_STEP, STEPS.CART);
+    sessionStorage.setItem(SESSION_SHIP_KEY, getShipPageKey());
   }
 
   function getStep() {
@@ -152,9 +182,11 @@
   }
 
   function clearFlow() {
+    const shipKey = sessionStorage.getItem(SESSION_SHIP_KEY);
     sessionStorage.removeItem(SESSION_FLOW);
     sessionStorage.removeItem(SESSION_STEP);
-    sessionStorage.removeItem(SESSION_ATTEMPTS);
+    sessionStorage.removeItem(SESSION_SHIP_KEY);
+    if (shipKey) sessionStorage.removeItem(`rsi_sniper_attempts_${shipKey}`);
   }
 
   function isVisible(el) {
@@ -181,11 +213,11 @@
     return false;
   }
 
-  function bodyHasExpectedPrice() {
+  function bodyHasExpectedPrice(expectedPrice) {
+    if (!expectedPrice) return true;
     const text = document.body?.innerText || '';
-    const needle = CONFIG.expectedPriceContains;
-    if (text.includes(needle)) return true;
-    const compact = needle.replace(/[,\s]/g, '');
+    if (text.includes(expectedPrice)) return true;
+    const compact = expectedPrice.replace(/[,\s]/g, '');
     return compact.length > 0 && text.replace(/[,\s]/g, '').includes(compact);
   }
 
@@ -307,8 +339,9 @@
   }
 
   function markFlowComplete(reason) {
-    GM_setValue(STORAGE_SUCCESS, true);
-    GM_setValue(STORAGE_ACTIVE, false);
+    const shipKey = sessionStorage.getItem(SESSION_SHIP_KEY) || getShipPageKey();
+    GM_setValue(storageKey('success', { pathname: shipKey }), true);
+    GM_setValue(storageKey('active', { pathname: shipKey }), false);
     clearFlow();
     setStep(STEPS.DONE);
     playSuccessSound();
@@ -316,20 +349,20 @@
   }
 
   ROOT.rsiSniperReset = () => {
-    GM_setValue(STORAGE_SUCCESS, false);
-    GM_setValue(STORAGE_ACTIVE, false);
+    GM_setValue(storageKey('success'), false);
+    GM_setValue(storageKey('active'), false);
     clearFlow();
     location.reload();
   };
 
   ROOT.rsiSniperStop = () => {
-    GM_setValue(STORAGE_ACTIVE, false);
+    GM_setValue(storageKey('active'), false);
     clearFlow();
     removeHud();
     showHud('Остановлен вручную', 'info');
   };
 
-  if (CONFIG.stopAfterSuccess && GM_getValue(STORAGE_SUCCESS, false)) {
+  if (CONFIG.stopAfterSuccess && isShipPledgePage() && GM_getValue(storageKey('success'), false)) {
     console.info('[RSI Sniper] уже сработал — rsiSniperReset()');
     const banner = document.createElement('div');
     banner.textContent = 'RSI Sniper: уже сработал. F12 → rsiSniperReset()';
@@ -340,6 +373,8 @@
 
   function boot() {
     if (isCheckoutPage() && isFlowActive()) {
+      const shipKey = sessionStorage.getItem(SESSION_SHIP_KEY) || '';
+      CONFIG.applyStoreCredits = !shipKey.toLowerCase().includes('warbond');
       runCheckoutFlow();
       return;
     }
@@ -349,12 +384,15 @@
       return;
     }
 
-    if (!isTargetPage()) {
-      console.info('[RSI Sniper] не целевая страница:', location.pathname);
+    if (!isShipPledgePage()) {
+      console.info('[RSI Sniper] не страница корабля:', location.pathname);
       return;
     }
 
-    runShipFlow();
+    CONFIG.applyStoreCredits = !location.pathname.toLowerCase().includes('warbond');
+    const profile = getShipProfile();
+    console.info('[RSI Sniper] корабль:', profile.label, profile.isOdin ? '(Belarus + цена)' : '(без проверки цены)');
+    runShipFlow(profile);
   }
 
   // ===========================================================================
@@ -759,10 +797,12 @@
   // SHIP: Belarus → Add to cart → корзина
   // ===========================================================================
 
-  function runShipFlow() {
+  function runShipFlow(shipProfile) {
+    const pageKey = getShipPageKey();
+    const attemptsKey = `rsi_sniper_attempts_${pageKey}`;
     let stopped = false;
     let snipeLocked = false;
-    let attempts = parseInt(sessionStorage.getItem(SESSION_ATTEMPTS) || '0', 10);
+    let attempts = parseInt(sessionStorage.getItem(attemptsKey) || '0', 10);
     let pollTimer = null;
     let observer = null;
     let countryChangeAt = 0;
@@ -773,7 +813,7 @@
     let reloadCount = 0;
     let inactiveButtonSeenAt = 0;
 
-    GM_setValue(STORAGE_ACTIVE, true);
+    GM_setValue(storageKey('active'), true);
 
     function matchesCountry(text) {
       const names = CONFIG.countryAliases?.length ? CONFIG.countryAliases : [CONFIG.targetCountry];
@@ -804,7 +844,7 @@
         const lower = normalize(label);
         if (lower.includes('usd') || lower.includes('add to cart') || lower.includes('prev')
           || lower.includes('next') || lower.includes('all products') || lower.includes('ships')
-          || lower.includes('gear') || lower.includes('download') || lower.includes('avenger')) continue;
+          || lower.includes('gear') || lower.includes('download')) continue;
         if (btn.closest('footer')) return btn;
       }
       return null;
@@ -832,7 +872,8 @@
     }
 
     function isPriceCorrect() {
-      return bodyHasExpectedPrice();
+      if (!shipProfile.requirePrice) return true;
+      return bodyHasExpectedPrice(shipProfile.expectedPrice);
     }
 
     function isShipPageReady() {
@@ -840,7 +881,10 @@
       if (!text || text.length < 300) return false;
       const hasButton = !!findAddToCartButtonCandidate();
       const hasOos = CONFIG.unavailableTexts.some((t) => normalize(text).includes(t));
-      return hasButton || hasOos || bodyHasExpectedPrice();
+      if (shipProfile.requirePrice) {
+        return hasButton || hasOos || bodyHasExpectedPrice(shipProfile.expectedPrice);
+      }
+      return hasButton || hasOos;
     }
 
     function pickCountryOption() {
@@ -860,26 +904,33 @@
     }
 
     function ensurePricingReady() {
+      if (!shipProfile.requireRegion && !shipProfile.requirePrice) return true;
+
       if (countryChangeAt && Date.now() - countryChangeAt < CONFIG.countrySettleMs) {
         showHud('Ждём цену (Belarus)…', 'warn');
         return false;
       }
-      if (!isCurrencyCorrect()) {
-        const btn = findCurrencyButton();
-        if (btn) { forceClick(btn); countryChangeAt = Date.now(); showHud('USD…', 'warn'); return false; }
-      }
-      if (!isCountryCorrect()) {
-        const btn = findCountryButton();
-        if (!btn) { showHud('Страна не найдена', 'err'); return false; }
-        if (!countryDropdownOpen) {
-          forceClick(btn); countryDropdownOpen = true; countryChangeAt = Date.now();
-          showHud('Belarus…', 'warn'); return false;
+      if (shipProfile.requireRegion) {
+        if (!isCurrencyCorrect()) {
+          const btn = findCurrencyButton();
+          if (btn) { forceClick(btn); countryChangeAt = Date.now(); showHud('USD…', 'warn'); return false; }
         }
-        if (pickCountryOption()) { countryDropdownOpen = false; countryChangeAt = Date.now(); }
+        if (!isCountryCorrect()) {
+          const btn = findCountryButton();
+          if (!btn) { showHud('Страна не найдена', 'err'); return false; }
+          if (!countryDropdownOpen) {
+            forceClick(btn); countryDropdownOpen = true; countryChangeAt = Date.now();
+            showHud('Belarus…', 'warn'); return false;
+          }
+          if (pickCountryOption()) { countryDropdownOpen = false; countryChangeAt = Date.now(); }
+          return false;
+        }
+        countryDropdownOpen = false;
+      }
+      if (!isPriceCorrect()) {
+        showHud(`Ждём $${shipProfile.expectedPrice}…`, 'warn');
         return false;
       }
-      countryDropdownOpen = false;
-      if (!isPriceCorrect()) { showHud(`Ждём $${CONFIG.expectedPriceContains}…`, 'warn'); return false; }
       return true;
     }
 
@@ -969,12 +1020,12 @@
         if (isAddToCartActive(candidate)) {
           inactiveButtonSeenAt = 0;
           attempts += 1;
-          sessionStorage.setItem(SESSION_ATTEMPTS, String(attempts));
+          sessionStorage.setItem(attemptsKey, String(attempts));
           forceClick(candidate);
           snipeLocked = true;
           awaitingCartConfirm = true;
           addToCartClickedAt = Date.now();
-          showHud('Add to cart…', 'info');
+          showHud(`${shipProfile.label}: Add to cart…`, 'info');
           return;
         }
         tryReloadForInactiveButton();
@@ -983,7 +1034,7 @@
 
       inactiveButtonSeenAt = 0;
       attempts += 1;
-      sessionStorage.setItem(SESSION_ATTEMPTS, String(attempts));
+      sessionStorage.setItem(attemptsKey, String(attempts));
       const oos = CONFIG.unavailableTexts.some((t) => normalize(document.body?.innerText || '').includes(t));
       showHud(oos ? `Out of Stock (ищем кнопку) #${attempts}` : `Ищем Add to cart… #${attempts}`, oos ? 'warn' : 'info');
     }
@@ -995,11 +1046,12 @@
         attributeFilter: ['disabled', 'aria-disabled', 'class'] });
     }
 
-    showHud(`Снайпер v${VERSION} (reload через 2с если кнопка неактивна)`, 'info');
+    const modeHint = shipProfile.isOdin ? 'Odin: Belarus + $5,900' : shipProfile.label;
+    showHud(`Снайпер v${VERSION} · ${modeHint}`, 'info');
     trySnipe();
   }
 
-  console.info(`[RSI Sniper v${VERSION}] Odin -> reload если disabled -> корзина`);
+  console.info(`[RSI Sniper v${VERSION}] любой Standalone-Ships; Odin: Belarus + цена`);
   try {
     boot();
   } catch (err) {
