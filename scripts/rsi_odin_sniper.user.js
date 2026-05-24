@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         RSI Ship Sniper — Avenger Titan (train)
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.6.5
+// @version      1.6.6
 // @description  Тренировка: купон → MAX credits → Continue → Place order (без клика)
 // @author       InfoBot
 // @match        *://robertsspaceindustries.com/*
 // @match        *://*.robertsspaceindustries.com/*
-// @run-at       document-idle
+// @run-at       document-start
+// @inject-into  content
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_notification
@@ -16,10 +17,10 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.6.5';
+  const VERSION = '1.6.6';
   const ROOT = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 
-  console.info(`[RSI Sniper v${VERSION}] загружен:`, location.href);
+  console.error(`[RSI Sniper v${VERSION}] загружен:`, location.href);
 
   (function showLoadBadge() {
     const el = document.createElement('div');
