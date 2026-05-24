@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RSI Ship Sniper - Avenger Titan (train)
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.7.0
+// @version      1.7.1
 // @description  Тренировка: купон → MAX credits → Continue → Place order (без клика)
 // @author       InfoBot
 // @match        *://robertsspaceindustries.com/*
@@ -17,7 +17,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.7.0';
+  const VERSION = '1.7.1';
   const ROOT = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 
   try {
@@ -61,8 +61,8 @@
     targetCurrencyLabel: 'USD',
     expectedPriceContains: '60.00',
 
-    // Безопасный режим: медленно, без спама reload (reload каждые 0.5с = бан)
-    autoReloadEnabled: false,
+    // Reload только если кнопка Add to cart найдена, но неактивна (не по таймеру «вслепую»)
+    autoReloadEnabled: true,
     reloadIntervalMs: 15000,
     maxReloads: 3,
     pollIntervalMs: 300,
@@ -746,7 +746,6 @@
     let attempts = parseInt(sessionStorage.getItem(SESSION_ATTEMPTS) || '0', 10);
     let lastReloadAt = 0;
     let pollTimer = null;
-    let reloadTimer = null;
     let observer = null;
     let countryChangeAt = 0;
     let countryDropdownOpen = false;
@@ -821,7 +820,7 @@
       const text = document.body?.innerText || '';
       if (!text || text.length < 300) return false;
       if (!text.includes(CONFIG.expectedPriceContains)) return false;
-      const hasButton = !!findAddToCartButton();
+      const hasButton = !!findAddToCartButtonCandidate();
       const hasOos = CONFIG.unavailableTexts.some((t) => normalize(text).includes(t));
       return hasButton || hasOos;
     }
@@ -878,13 +877,44 @@
       if (CONFIG.goToCartOnSuccess) location.replace(getCartUrl());
     }
 
-    function findAddToCartButton() {
+    function findAddToCartButtonCandidate() {
       for (const el of document.querySelectorAll('button, a[role="button"], [role="button"], input[type="submit"], input[type="button"]')) {
         const text = normalize(el.textContent || el.value || '');
         if (!CONFIG.buttonTexts.some((t) => text.includes(t))) continue;
-        if (isVisible(el) && !isDisabled(el)) return el;
+        if (isVisible(el)) return el;
       }
       return null;
+    }
+
+    function isAddToCartActive(el) {
+      return !!el && isVisible(el) && !isDisabled(el);
+    }
+
+    function findAddToCartButton() {
+      const el = findAddToCartButtonCandidate();
+      return isAddToCartActive(el) ? el : null;
+    }
+
+    function tryReloadForInactiveButton() {
+      if (!CONFIG.autoReloadEnabled) {
+        showHud('Add to cart неактивна (reload выкл.)', 'warn');
+        return;
+      }
+      if (reloadCount >= CONFIG.maxReloads) {
+        showHud(`Лимит reload (${CONFIG.maxReloads})`, 'err');
+        return;
+      }
+      const now = Date.now();
+      if (now - lastReloadAt < CONFIG.reloadIntervalMs) {
+        const left = Math.ceil((CONFIG.reloadIntervalMs - (now - lastReloadAt)) / 1000);
+        showHud(`Кнопка неактивна — reload через ${left}с`, 'warn');
+        return;
+      }
+      lastReloadAt = now;
+      reloadCount += 1;
+      console.info('[RSI Sniper] reload (кнопка неактивна)', reloadCount, '/', CONFIG.maxReloads);
+      showHud(`Reload ${reloadCount}/${CONFIG.maxReloads} (кнопка неактивна)…`, 'warn');
+      location.reload();
     }
 
     function trySnipe() {
@@ -899,10 +929,10 @@
       const pageAge = Date.now() - pageLoadAt;
       if (!isShipPageReady()) {
         if (pageAge > CONFIG.pageReadyTimeoutMs) {
-          showHud('Страница не загрузилась — reload выключен', 'err');
+          showHud('Страница не загрузилась (кнопка/цена)', 'err');
           return;
         }
-        showHud(`Ждём кнопку/цену… ${Math.max(1, Math.ceil((CONFIG.pageReadyMinMs - pageAge) / 1000))}с`, 'warn');
+        showHud(`Ищем кнопку и цену… ${Math.max(1, Math.ceil((CONFIG.pageReadyMinMs - pageAge) / 1000))}с`, 'warn');
         return;
       }
       if (pageAge < CONFIG.pageReadyMinMs) {
@@ -912,51 +942,36 @@
 
       if (snipeLocked || !ensurePricingReady()) return;
 
-      attempts += 1;
-      sessionStorage.setItem(SESSION_ATTEMPTS, String(attempts));
-      const btn = findAddToCartButton();
-      if (btn) {
-        forceClick(btn);
-        snipeLocked = true;
-        awaitingCartConfirm = true;
-        addToCartClickedAt = Date.now();
-        showHud('Add to cart…', 'info');
+      const candidate = findAddToCartButtonCandidate();
+      if (candidate) {
+        if (isAddToCartActive(candidate)) {
+          attempts += 1;
+          sessionStorage.setItem(SESSION_ATTEMPTS, String(attempts));
+          forceClick(candidate);
+          snipeLocked = true;
+          awaitingCartConfirm = true;
+          addToCartClickedAt = Date.now();
+          showHud('Add to cart…', 'info');
+          return;
+        }
+        tryReloadForInactiveButton();
         return;
       }
 
+      attempts += 1;
+      sessionStorage.setItem(SESSION_ATTEMPTS, String(attempts));
       const oos = CONFIG.unavailableTexts.some((t) => normalize(document.body?.innerText || '').includes(t));
-      showHud(oos ? `Out of Stock #${attempts}` : `Кнопка… #${attempts}`, oos ? 'warn' : 'info');
-    }
-
-    function maybeReload() {
-      if (stopped || awaitingCartConfirm || snipeLocked) return;
-      if (!CONFIG.autoReloadEnabled) return;
-      if (reloadCount >= CONFIG.maxReloads) return;
-      if (!isShipPageReady()) return;
-
-      const oos = CONFIG.unavailableTexts.some((t) => normalize(document.body?.innerText || '').includes(t));
-      if (!oos && findAddToCartButton()) return;
-
-      const now = Date.now();
-      if (now - lastReloadAt < CONFIG.reloadIntervalMs) return;
-      lastReloadAt = now;
-      reloadCount += 1;
-      console.info('[RSI Sniper] reload', reloadCount, '/', CONFIG.maxReloads);
-      showHud(`Reload ${reloadCount}/${CONFIG.maxReloads}…`, 'warn');
-      location.reload();
+      showHud(oos ? `Out of Stock (ищем кнопку) #${attempts}` : `Ищем Add to cart… #${attempts}`, oos ? 'warn' : 'info');
     }
 
     pollTimer = setInterval(trySnipe, CONFIG.pollIntervalMs);
-    reloadTimer = CONFIG.autoReloadEnabled
-      ? setInterval(maybeReload, Math.max(1000, CONFIG.reloadIntervalMs))
-      : null;
     observer = new MutationObserver(trySnipe);
     if (document.body) {
       observer.observe(document.body, { childList: true, subtree: true, attributes: true,
         attributeFilter: ['disabled', 'aria-disabled', 'class'] });
     }
 
-    showHud(`Снайпер v${VERSION} (без reload)`, 'info');
+    showHud(`Снайпер v${VERSION} (reload если кнопка неактивна)`, 'info');
     trySnipe();
   }
 
