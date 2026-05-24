@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RSI Ship Sniper — Odin
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.0.0
+// @version      1.0.1
 // @description  Быстро ловит появление кнопки Add to cart на странице pledge RSI (Odin и другие корабли)
 // @author       InfoBot
 // @match        https://robertsspaceindustries.com/*/pledge/*
@@ -53,7 +53,7 @@
     }
 
     if (CONFIG.stopAfterSuccess && GM_getValue(STORAGE_KEY, false)) {
-        showHud('Уже добавлено ранее. Сброс: rsiSniperReset()', 'ok');
+        console.info('[RSI Sniper] Уже сработал ранее. Сброс: rsiSniperReset()');
         window.rsiSniperReset = () => {
             GM_setValue(STORAGE_KEY, false);
             location.reload();
@@ -62,10 +62,15 @@
     }
 
     let stopped = false;
+    let snipeLocked = false;
     let attempts = 0;
     let lastReloadAt = 0;
+    let pollTimer = null;
+    let reloadTimer = null;
+    let observer = null;
+    let hudEl = null;
 
-  function normalize(text) {
+    function normalize(text) {
         return (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
     }
 
@@ -178,8 +183,6 @@
         }
     }
 
-    let hudEl = null;
-
     function showHud(message, level) {
         if (!hudEl) {
             hudEl = document.createElement('div');
@@ -213,27 +216,43 @@
         hudEl.textContent = message;
     }
 
-    function markSuccess() {
+    function stopSniper() {
+        if (stopped) return;
         stopped = true;
+        if (pollTimer !== null) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+        }
+        if (reloadTimer !== null) {
+            clearInterval(reloadTimer);
+            reloadTimer = null;
+        }
+        if (observer) {
+            observer.disconnect();
+            observer = null;
+        }
+    }
+
+    function markSuccess() {
+        stopSniper();
         GM_setValue(STORAGE_KEY, true);
         playSuccessSound();
         notifySuccess();
-        showHud('УСПЕХ! Add to cart нажата. Иди в checkout!', 'ok');
+        showHud('В корзину! Скрипт остановлен.', 'ok');
 
         if (CONFIG.goToCartOnSuccess) {
-            setTimeout(() => {
-                location.href = CONFIG.cartUrl;
-            }, 300);
+            location.replace(CONFIG.cartUrl);
         }
     }
 
     function trySnipe() {
-        if (stopped) return false;
+        if (stopped || snipeLocked) return false;
 
         attempts += 1;
         const btn = findAddToCartButton();
 
         if (btn) {
+            snipeLocked = true;
             forceClick(btn);
             markSuccess();
             return true;
@@ -258,19 +277,14 @@
     }
 
     // Быстрый опрос DOM — ловит кнопку сразу после рендера SPA
-    const pollTimer = setInterval(() => {
-        if (stopped) {
-            clearInterval(pollTimer);
-            return;
-        }
+    pollTimer = setInterval(() => {
+        if (stopped) return;
         trySnipe();
     }, CONFIG.pollIntervalMs);
 
     // MutationObserver — реагирует на изменения React/Vue без ожидания reload
-    const observer = new MutationObserver(() => {
-        if (!stopped) {
-            trySnipe();
-        }
+    observer = new MutationObserver(() => {
+        if (!stopped) trySnipe();
     });
 
     if (document.body) {
@@ -283,12 +297,8 @@
     }
 
     // Полное обновление страницы каждые N мс
-    const reloadTimer = setInterval(() => {
-        if (stopped) {
-            clearInterval(reloadTimer);
-            observer.disconnect();
-            return;
-        }
+    reloadTimer = setInterval(() => {
+        if (stopped) return;
         maybeReload();
     }, Math.max(100, CONFIG.reloadIntervalMs));
 
@@ -296,10 +306,7 @@
     trySnipe();
 
     window.rsiSniperStop = () => {
-        stopped = true;
-        clearInterval(pollTimer);
-        clearInterval(reloadTimer);
-        observer.disconnect();
+        stopSniper();
         showHud('Снайпер остановлен вручную', 'info');
     };
 
