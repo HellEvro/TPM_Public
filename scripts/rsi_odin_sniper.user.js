@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         RSI Ship Sniper
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.9.2
-// @description  Любой корабль: reload если Add to cart disabled; Odin: Belarus + $5,900
+// @version      1.10.0
+// @description  GraphQL addMany + подтверждение корзины; Odin: Belarus + $5,900
 // @author       InfoBot
 // @match        *://robertsspaceindustries.com/*
 // @match        *://*.robertsspaceindustries.com/*
@@ -17,8 +17,14 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.9.2';
+  const VERSION = '1.10.0';
   const ROOT = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+
+  const cartNetworkState = {
+    lastAddOk: false,
+    lastAddError: null,
+    lastAddAt: 0,
+  };
 
   try {
     GM_addStyle(`
@@ -71,8 +77,12 @@
     pollIntervalMs: 300,
     pageReadyTimeoutMs: 45000,
     countrySettleMs: 2000,
-    afterAddToCartDelayMs: 1000,
-    cartAddedTimeoutMs: 8000,
+    afterAddToCartDelayMs: 1500,
+    cartAddedTimeoutMs: 20000,
+    useGraphQLAddToCart: true,
+    maxAddToCartRetries: 5,
+    graphqlUrl: 'https://robertsspaceindustries.com/graphql',
+    storeFront: 'pledge',
     stepDelayMs: 800,
     stepTimeoutMs: 12000,
 
@@ -214,6 +224,172 @@
     return false;
   }
 
+  function getCookie(name) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const m = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
+  function parseSkuSlugFromPage() {
+    const comp = document.querySelector('[data-rsi-component="SkuDetailPage"]');
+    if (comp) {
+      const props = comp.getAttribute('data-rsi-component-props');
+      if (props) {
+        try {
+          const parsed = JSON.parse(props);
+          if (parsed.skuSlug) return parsed.skuSlug;
+        } catch (e) {
+          const m = props.match(/"skuSlug"\s*:\s*"([^"]+)"/);
+          if (m) return m[1];
+        }
+      }
+    }
+    const html = document.documentElement?.innerHTML || '';
+    const m2 = html.match(/"skuSlug"\s*:\s*"([^"]+)"/);
+    return m2 ? m2[1] : null;
+  }
+
+  function getHeaderCartCount() {
+    for (const el of document.querySelectorAll(
+      'a[href*="/cart"], a[href*="Cart"], [class*="mini-cart"], [class*="MiniCart"], [aria-label*="cart"], [aria-label*="Cart"]',
+    )) {
+      const badge = el.querySelector('[class*="count"], [class*="badge"], span');
+      const raw = (badge?.textContent || el.textContent || '').trim();
+      const m = raw.match(/\b(\d{1,2})\b/);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (!Number.isNaN(n) && n >= 0 && n < 100) return n;
+      }
+    }
+    return 0;
+  }
+
+  function isCartPageEmpty() {
+    const text = normalize(document.body?.innerText || '');
+    if (
+      text.includes('your cart is empty')
+      || text.includes('shopping cart is empty')
+      || text.includes('корзина пуста')
+    ) return true;
+    if (text.includes('order summary') || text.includes('add a coupon')) return false;
+    return getHeaderCartCount() === 0;
+  }
+
+  const ADD_CART_MULTI_MUTATION = `mutation AddCartMultiItemMutation($query: [CartAddInput!], $storeFront: String = "pledge") {
+  store(name: $storeFront) {
+    cart {
+      mutations {
+        addMany(query: $query) {
+          count
+        }
+      }
+    }
+  }
+}`;
+
+  function markCartAddSuccess() {
+    cartNetworkState.lastAddOk = true;
+    cartNetworkState.lastAddAt = Date.now();
+    cartNetworkState.lastAddError = null;
+    try {
+      ROOT.document?.dispatchEvent(new CustomEvent('rsi-store.updateminicart'));
+    } catch (e) { /* ignore */ }
+  }
+
+  function inspectGraphQLCartResponse(text) {
+    if (!text || !/addMany|AddCartMulti/i.test(text)) return;
+    try {
+      const json = JSON.parse(text);
+      if (json.errors?.length) {
+        cartNetworkState.lastAddOk = false;
+        cartNetworkState.lastAddError = json.errors[0]?.message || 'GraphQL error';
+        return;
+      }
+      const addMany = json.data?.store?.cart?.mutations?.addMany;
+      if (addMany && (addMany.count > 0 || (addMany.resources && addMany.resources.length))) {
+        markCartAddSuccess();
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function installCartNetworkMonitor() {
+    if (ROOT.__rsiSniperNetPatched) return;
+    ROOT.__rsiSniperNetPatched = true;
+
+    const origFetch = ROOT.fetch?.bind(ROOT);
+    if (origFetch) {
+      ROOT.fetch = async function rsiSniperFetch(...args) {
+        const res = await origFetch(...args);
+        try {
+          const url = typeof args[0] === 'string' ? args[0] : args[0]?.url;
+          if (url && String(url).includes('/graphql')) {
+            inspectGraphQLCartResponse(await res.clone().text());
+          }
+        } catch (e) { /* ignore */ }
+        return res;
+      };
+    }
+
+    const XHR = ROOT.XMLHttpRequest;
+    if (XHR?.prototype) {
+      const origOpen = XHR.prototype.open;
+      const origSend = XHR.prototype.send;
+      XHR.prototype.open = function rsiSniperXhrOpen(method, url, ...rest) {
+        this.__rsiSniperUrl = url;
+        return origOpen.call(this, method, url, ...rest);
+      };
+      XHR.prototype.send = function rsiSniperXhrSend(...sendArgs) {
+        if (String(this.__rsiSniperUrl || '').includes('/graphql')) {
+          this.addEventListener('load', function rsiSniperXhrLoad() {
+            inspectGraphQLCartResponse(this.responseText);
+          });
+        }
+        return origSend.apply(this, sendArgs);
+      };
+    }
+  }
+
+  async function addToCartViaGraphQL(skuId, qty = 1) {
+    if (!skuId) return { ok: false, reason: 'no-sku' };
+    const headers = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+    const rsiToken = getCookie('Rsi-Token') || getCookie('X-Rsi-Token');
+    if (rsiToken) headers['X-Rsi-Token'] = rsiToken;
+
+    const body = {
+      operationName: 'AddCartMultiItemMutation',
+      query: ADD_CART_MULTI_MUTATION,
+      variables: {
+        storeFront: CONFIG.storeFront,
+        query: [{ skuId, qty }],
+      },
+    };
+
+    try {
+      const res = await ROOT.fetch(CONFIG.graphqlUrl, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (json.errors?.length) {
+        cartNetworkState.lastAddError = json.errors[0]?.message || 'GraphQL error';
+        console.warn('[RSI Sniper] GraphQL addMany:', json.errors);
+        return { ok: false, errors: json.errors };
+      }
+      const addMany = json.data?.store?.cart?.mutations?.addMany;
+      const ok = !!(addMany && (addMany.count > 0 || (addMany.resources && addMany.resources.length)));
+      if (ok) markCartAddSuccess();
+      return { ok, count: addMany?.count };
+    } catch (err) {
+      console.warn('[RSI Sniper] GraphQL fetch:', err);
+      return { ok: false, error: err };
+    }
+  }
+
   function bodyHasExpectedPrice(expectedPrice) {
     if (!expectedPrice) return true;
     const text = document.body?.innerText || '';
@@ -255,6 +431,42 @@
     }
   }
 
+  function reactPointerClick(el) {
+    if (!el || !el.isConnected) return false;
+    const rect = el.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const view = getEventView(el);
+    const base = {
+      bubbles: true,
+      cancelable: true,
+      view,
+      clientX: x,
+      clientY: y,
+      screenX: x,
+      screenY: y,
+      button: 0,
+      buttons: 1,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true,
+    };
+    const types = [
+      'pointerover', 'pointerenter', 'mouseover', 'mouseenter',
+      'pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click',
+    ];
+    for (const type of types) {
+      try {
+        if (type.startsWith('pointer') && typeof PointerEvent === 'function') {
+          el.dispatchEvent(new PointerEvent(type, base));
+        } else {
+          dispatchMouse(el, type, view);
+        }
+      } catch (e) { /* ignore */ }
+    }
+    return true;
+  }
+
   function forceClick(el) {
     if (!el || !el.isConnected) return false;
     try {
@@ -271,11 +483,7 @@
       } catch (e) { /* fallback to synthetic events */ }
     }
 
-    const view = getEventView(el);
-    for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click']) {
-      dispatchMouse(el, type, view);
-    }
-    return true;
+    return reactPointerClick(el);
   }
 
   function setInputValue(input, value) {
@@ -410,7 +618,15 @@
   }
 
   function boot() {
+    installCartNetworkMonitor();
+
     if (isCheckoutPage() && isFlowActive()) {
+      if (isCartPageEmpty()) {
+        clearFlow();
+        showHud('Корзина пуста — снайпер остановлен', 'err');
+        console.warn('[RSI Sniper] checkout отменён: корзина пуста');
+        return;
+      }
       const shipKey = sessionStorage.getItem(SESSION_SHIP_KEY) || '';
       CONFIG.applyStoreCredits = !shipKey.toLowerCase().includes('warbond');
       runCheckoutFlow();
@@ -847,6 +1063,8 @@
     let countryDropdownOpen = false;
     let awaitingCartConfirm = false;
     let addToCartClickedAt = 0;
+    let cartCountBeforeAdd = 0;
+    let addToCartRetries = 0;
     let pageLoadAt = Date.now();
     let reloadCount = 0;
     let inactiveButtonSeenAt = 0;
@@ -977,11 +1195,48 @@
       return CONFIG.cartAddedTexts.some((t) => bodyText.includes(normalize(t)));
     }
 
+    function isCartAddConfirmed() {
+      if (isCartAddedModalVisible()) return true;
+      if (cartNetworkState.lastAddOk && Date.now() - cartNetworkState.lastAddAt < 60000) return true;
+      return getHeaderCartCount() > cartCountBeforeAdd;
+    }
+
     function goToCart() {
+      if (!isCartAddConfirmed()) {
+        showHud('Корзина не подтверждена — ждём', 'warn');
+        return;
+      }
       awaitingCartConfirm = false;
       startFlow();
       showHud('→ корзина', 'info');
       if (CONFIG.goToCartOnSuccess) location.replace(getCartUrl());
+    }
+
+    async function attemptAddToCart(candidate) {
+      cartCountBeforeAdd = getHeaderCartCount();
+      cartNetworkState.lastAddOk = false;
+      cartNetworkState.lastAddError = null;
+
+      const skuId = parseSkuSlugFromPage();
+      if (CONFIG.useGraphQLAddToCart && skuId) {
+        showHud(`${shipProfile.label}: GraphQL addMany…`, 'info');
+        const api = await addToCartViaGraphQL(skuId, 1);
+        if (api.ok) {
+          awaitingCartConfirm = true;
+          addToCartClickedAt = Date.now();
+          return;
+        }
+        console.warn('[RSI Sniper] GraphQL не удался, клик по кнопке', api);
+      }
+
+      try {
+        forceClick(candidate);
+      } catch (err) {
+        snipeLocked = false;
+        throw err;
+      }
+      awaitingCartConfirm = true;
+      addToCartClickedAt = Date.now();
     }
 
     function findAddToCartButtonCandidate() {
@@ -1041,8 +1296,25 @@
           showHud(`Пауза после Add to cart… ${Math.max(1, Math.ceil((minWait - elapsed) / 1000))}с`, 'info');
           return;
         }
-        if (isCartAddedModalVisible() || elapsed > CONFIG.cartAddedTimeoutMs) goToCart();
-        else showHud(`Ждём added to cart… ${Math.ceil((CONFIG.cartAddedTimeoutMs - elapsed) / 1000)}с`, 'warn');
+        if (isCartAddConfirmed()) {
+          goToCart();
+          return;
+        }
+        if (elapsed > CONFIG.cartAddedTimeoutMs) {
+          addToCartRetries += 1;
+          awaitingCartConfirm = false;
+          snipeLocked = false;
+          cartNetworkState.lastAddOk = false;
+          const errHint = cartNetworkState.lastAddError ? ` (${cartNetworkState.lastAddError})` : '';
+          if (addToCartRetries >= CONFIG.maxAddToCartRetries) {
+            showHud(`В корзину не добавлено${errHint}`, 'err');
+            return;
+          }
+          showHud(`Повтор ${addToCartRetries}/${CONFIG.maxAddToCartRetries}${errHint}`, 'warn');
+          return;
+        }
+        const cartNow = getHeaderCartCount();
+        showHud(`Ждём корзину… ${cartNow} (было ${cartCountBeforeAdd}) · ${Math.ceil((CONFIG.cartAddedTimeoutMs - elapsed) / 1000)}с`, 'warn');
         return;
       }
 
@@ -1066,17 +1338,12 @@
           snipeLocked = true;
           attempts += 1;
           sessionStorage.setItem(attemptsKey, String(attempts));
-          try {
-            forceClick(candidate);
-          } catch (err) {
-            console.warn('[RSI Sniper] forceClick:', err);
+          attemptAddToCart(candidate).catch((err) => {
+            console.warn('[RSI Sniper] attemptAddToCart:', err);
             snipeLocked = false;
-            showHud('Ошибка клика Add to cart', 'err');
-            return;
-          }
-          awaitingCartConfirm = true;
-          addToCartClickedAt = Date.now();
-          showHud(`${shipProfile.label}: Add to cart…`, 'info');
+            awaitingCartConfirm = false;
+            showHud('Ошибка Add to cart', 'err');
+          });
           return;
         }
         tryReloadForInactiveButton();
@@ -1102,7 +1369,7 @@
     trySnipe();
   }
 
-  console.info(`[RSI Sniper v${VERSION}] любой Standalone-Ships; Odin: Belarus + цена`);
+  console.info(`[RSI Sniper v${VERSION}] GraphQL addMany + подтверждение корзины; Odin: Belarus + цена`);
   try {
     boot();
   } catch (err) {
