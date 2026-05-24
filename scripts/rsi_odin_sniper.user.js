@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         RSI Ship Sniper — Odin
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.2.1
-// @description  Быстро ловит Add to cart только на странице Odin; останавливается при уходе в корзину
+// @version      1.3.0
+// @description  Add to cart → окно подтверждения → CHECKOUT → корзина (Odin, Belarus)
 // @author       InfoBot
 // @match        *://robertsspaceindustries.com/*Standalone-Ships/Odin*
 // @match        *://*.robertsspaceindustries.com/*Standalone-Ships/Odin*
@@ -15,7 +15,7 @@
 (function () {
     'use strict';
 
-    console.info('[RSI Sniper v1.2.1] скрипт загружен:', location.href);
+    console.info('[RSI Sniper v1.3.0] скрипт загружен:', location.href);
 
     const CONFIG = {
         targetPathPart: '/Standalone-Ships/Odin',
@@ -30,7 +30,10 @@
         pollIntervalMs: 50,
         urlWatchIntervalMs: 100,
         countrySettleMs: 600,
+        checkoutModalTimeoutMs: 4000,
+        checkoutFallbackDelayMs: 1200,
 
+        cartUrl: 'https://robertsspaceindustries.com/en/store/pledge/cart',
         goToCartOnSuccess: true,
 
         stopAfterSuccess: true,
@@ -40,6 +43,15 @@
             'add to cart',
             'add to basket',
             'в корзину',
+        ],
+        checkoutTexts: [
+            'checkout',
+            'check out',
+        ],
+        cartAddedTexts: [
+            'successfully added to your cart',
+            'item successfully added',
+            'added to your cart',
         ],
         unavailableTexts: [
             'out of stock',
@@ -64,11 +76,7 @@
     }
 
     function getCartUrl() {
-        const lang = location.pathname.match(/^\/([a-z]{2})\//);
-        if (lang) {
-            return `https://robertsspaceindustries.com/${lang[1]}/store/pledge/cart`;
-        }
-        return 'https://robertsspaceindustries.com/en/store/pledge/cart';
+        return CONFIG.cartUrl;
     }
 
     // Не целевая страница — ничего не делаем (на всякий случай при широком @match)
@@ -105,6 +113,9 @@
     let watchedUrl = location.pathname + location.search + location.hash;
     let countryChangeAt = 0;
     let countryDropdownOpen = false;
+    let awaitingCartConfirm = false;
+    let addToCartClickedAt = 0;
+    let checkoutFallbackTimer = null;
 
     GM_setValue(STORAGE_ACTIVE, true);
 
@@ -296,6 +307,106 @@
         return true;
     }
 
+    function matchesCheckoutText(el) {
+        const text = normalize(el.innerText || el.textContent || el.getAttribute('aria-label') || '');
+        return CONFIG.checkoutTexts.some((needle) => text === needle || text.includes(needle));
+    }
+
+    function isCartAddedModalVisible() {
+        const bodyText = normalize(document.body ? document.body.innerText : '');
+        return CONFIG.cartAddedTexts.some((t) => bodyText.includes(normalize(t)));
+    }
+
+    function findCheckoutButtonInModal() {
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+            const nodeText = normalize(walker.currentNode.textContent);
+            if (!CONFIG.cartAddedTexts.some((t) => nodeText.includes(normalize(t)))) continue;
+
+            let root = walker.currentNode.parentElement;
+            for (let depth = 0; depth < 20 && root; depth += 1) {
+                for (const btn of root.querySelectorAll('button, a[role="button"], [role="button"], a')) {
+                    if (!matchesCheckoutText(btn)) continue;
+                    if (isVisible(btn) && !isDisabled(btn)) return btn;
+                }
+                root = root.parentElement;
+            }
+        }
+
+        for (const btn of document.querySelectorAll('button, a[role="button"], [role="button"], a')) {
+            if (!matchesCheckoutText(btn)) continue;
+            if (!isVisible(btn) || isDisabled(btn)) continue;
+            if (isCartAddedModalVisible()) return btn;
+        }
+
+        return null;
+    }
+
+    function scheduleCartFallback() {
+        if (checkoutFallbackTimer !== null) clearTimeout(checkoutFallbackTimer);
+        checkoutFallbackTimer = setTimeout(() => {
+            if (!isTargetPage()) return;
+            console.info('[RSI Sniper] fallback → корзина');
+            location.replace(getCartUrl());
+        }, CONFIG.checkoutFallbackDelayMs);
+    }
+
+    function finishSuccess(viaCheckoutButton) {
+        stopSniper('в корзине');
+        awaitingCartConfirm = false;
+        GM_setValue(STORAGE_SUCCESS, true);
+        sessionStorage.removeItem(SESSION_ATTEMPTS);
+        playSuccessSound();
+        notifySuccess();
+        showHud('CHECKOUT → корзина. Скрипт остановлен.', 'ok');
+
+        if (viaCheckoutButton) {
+            scheduleCartFallback();
+        } else if (CONFIG.goToCartOnSuccess) {
+            location.replace(getCartUrl());
+        }
+    }
+
+    function onAddToCartClicked() {
+        snipeLocked = true;
+        awaitingCartConfirm = true;
+        addToCartClickedAt = Date.now();
+        showHud('Add to cart — ждём окно подтверждения…', 'info');
+        console.info('[RSI Sniper] клик Add to cart, ждём модалку');
+    }
+
+    function tryConfirmCheckout() {
+        if (!awaitingCartConfirm) return false;
+
+        if (isCartOrCheckoutPage()) {
+            finishSuccess(false);
+            return true;
+        }
+
+        const elapsed = Date.now() - addToCartClickedAt;
+
+        if (isCartAddedModalVisible()) {
+            const checkoutBtn = findCheckoutButtonInModal();
+            if (checkoutBtn) {
+                console.info('[RSI Sniper] жмём CHECKOUT в модалке');
+                forceClick(checkoutBtn);
+                finishSuccess(true);
+                return true;
+            }
+            showHud('В корзине — ищем CHECKOUT…', 'warn');
+            return false;
+        }
+
+        if (elapsed > CONFIG.checkoutModalTimeoutMs) {
+            console.warn('[RSI Sniper] модалка не появилась — переход в корзину напрямую');
+            finishSuccess(false);
+            return true;
+        }
+
+        showHud(`Ждём «added to cart»… ${Math.ceil((CONFIG.checkoutModalTimeoutMs - elapsed) / 1000)}с`, 'warn');
+        return false;
+    }
+
     function findAddToCartButton() {
         const candidates = [];
 
@@ -421,6 +532,11 @@
             observer = null;
         }
 
+        if (checkoutFallbackTimer !== null) {
+            clearTimeout(checkoutFallbackTimer);
+            checkoutFallbackTimer = null;
+        }
+
         if (reason) {
             console.info('[RSI Sniper] Остановлен:', reason);
         }
@@ -447,21 +563,10 @@
         return false;
     }
 
-    function markSuccess() {
-        stopSniper('add to cart');
-        GM_setValue(STORAGE_SUCCESS, true);
-        sessionStorage.removeItem(SESSION_ATTEMPTS);
-        playSuccessSound();
-        notifySuccess();
-        showHud('В корзину! Скрипт остановлен.', 'ok');
-
-        if (CONFIG.goToCartOnSuccess) {
-            location.replace(getCartUrl());
-        }
-    }
-
     function trySnipe() {
-        if (stopped || snipeLocked) return false;
+        if (stopped) return false;
+        if (awaitingCartConfirm) return tryConfirmCheckout();
+        if (snipeLocked) return false;
         if (stopIfLeftTargetPage()) return false;
         if (!ensurePricingReady()) return false;
 
@@ -470,9 +575,8 @@
         const btn = findAddToCartButton();
 
         if (btn) {
-            snipeLocked = true;
             forceClick(btn);
-            markSuccess();
+            onAddToCartClicked();
             return true;
         }
 
@@ -487,7 +591,7 @@
     }
 
     function maybeReload() {
-        if (stopped) return;
+        if (stopped || awaitingCartConfirm) return;
         if (stopIfLeftTargetPage()) return;
 
         const now = Date.now();
@@ -505,7 +609,9 @@
     }, CONFIG.urlWatchIntervalMs);
 
     observer = new MutationObserver(() => {
-        if (!stopped) trySnipe();
+        if (stopped) return;
+        if (awaitingCartConfirm) tryConfirmCheckout();
+        else trySnipe();
     });
 
     if (document.body) {
@@ -558,5 +664,5 @@
         location.reload();
     };
 
-    console.info('[RSI Sniper v1.2.1] страна: Belarus, rsiSniperStop() / rsiSniperReset()');
+    console.info('[RSI Sniper v1.3.0] Belarus → Add to cart → CHECKOUT → корзина');
 })();
