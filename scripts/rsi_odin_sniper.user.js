@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         RSI Ship Sniper — Starlite (test)
 // @namespace    https://robertsspaceindustries.com/
-// @version      1.3.2
-// @description  Add to cart → ждём подтверждение → переход в корзину (Starlite Warbond, Belarus)
+// @version      1.5.0
+// @description  Полный checkout: корабль → корзина → купон → credits → Place order
 // @author       InfoBot
 // @match        *://robertsspaceindustries.com/*Standalone-Ships/Starlite-Warbond*
 // @match        *://*.robertsspaceindustries.com/*Standalone-Ships/Starlite-Warbond*
+// @match        *://robertsspaceindustries.com/*/store/pledge/cart*
+// @match        *://*.robertsspaceindustries.com/*/store/pledge/cart*
 // @run-at       document-end
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -13,100 +15,646 @@
 // ==/UserScript==
 
 (function () {
-    'use strict';
+  'use strict';
 
-    console.info('[RSI Sniper v1.3.2] скрипт загружен:', location.href);
+  const VERSION = '1.5.0';
+  console.info(`[RSI Sniper v${VERSION}]`, location.href);
 
-    const CONFIG = {
-        targetPathPart: '/Standalone-Ships/Starlite-Warbond',
-        shipLabel: 'Starlite Warbond',
+  const CONFIG = {
+    targetPathPart: '/Standalone-Ships/Starlite-Warbond',
+    shipLabel: 'Starlite Warbond',
 
-        // Страна для корректной цены — Belarus ($55.00 на скриншоте)
-        targetCountry: 'Belarus',
-        countryAliases: ['Belarus', 'Беларусь'],
-        targetCurrencyLabel: 'USD', // кнопка "USD / en" в шапке
-        expectedPriceContains: '55.00', // не жмём Add to cart, пока цена другая
+    targetCountry: 'Belarus',
+    countryAliases: ['Belarus', 'Беларусь'],
+    targetCurrencyLabel: 'USD',
+    expectedPriceContains: '55.00',
 
-        reloadIntervalMs: 500,
-        pollIntervalMs: 50,
-        urlWatchIntervalMs: 100,
-        countrySettleMs: 600,
-        cartAddedTimeoutMs: 4000,
+    reloadIntervalMs: 500,
+    pollIntervalMs: 50,
+    countrySettleMs: 600,
+    cartAddedTimeoutMs: 4000,
+    stepDelayMs: 450,
+    stepTimeoutMs: 8000,
 
-        cartUrl: 'https://robertsspaceindustries.com/en/store/pledge/cart',
-        goToCartOnSuccess: true,
+    cartUrl: 'https://robertsspaceindustries.com/en/store/pledge/cart',
+    couponCode: 'SRBQHQYZL8',
+    goToCartOnSuccess: true,
 
-        stopAfterSuccess: true,
-        playSoundOnSuccess: true,
+    stopAfterSuccess: true,
+    playSoundOnSuccess: true,
 
-        buttonTexts: [
-            'add to cart',
-            'add to basket',
-            'в корзину',
-        ],
-        cartAddedTexts: [
-            'successfully added to your cart',
-            'item successfully added',
-            'added to your cart',
-        ],
-        unavailableTexts: [
-            'out of stock',
-            'sold out',
-            'unavailable',
-            'нет в наличии',
-            'распродано',
-        ],
+    buttonTexts: ['add to cart', 'add to basket', 'в корзину'],
+    cartAddedTexts: [
+      'successfully added to your cart',
+      'item successfully added',
+      'added to your cart',
+    ],
+    unavailableTexts: [
+      'out of stock',
+      'sold out',
+      'unavailable',
+      'нет в наличии',
+      'распродано',
+    ],
+  };
+
+  CONFIG.applyStoreCredits = !CONFIG.targetPathPart.toLowerCase().includes('warbond');
+
+  const STORAGE_SUCCESS = 'rsi_sniper_success_' + CONFIG.targetPathPart;
+  const STORAGE_ACTIVE = 'rsi_sniper_active_' + CONFIG.targetPathPart;
+  const SESSION_ATTEMPTS = 'rsi_sniper_attempts_' + CONFIG.targetPathPart;
+  const SESSION_FLOW = 'rsi_sniper_flow_active';
+  const SESSION_STEP = 'rsi_sniper_checkout_step';
+
+  const STEPS = {
+    CART: 'cart',
+    ADDRESS: 'address',
+    DISCLAIMER: 'disclaimer',
+    AFTER_DISCLAIMER: 'after_disclaimer',
+    PLACE_ORDER: 'place_order',
+    DONE: 'done',
+  };
+
+  function normalize(text) {
+    return (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  function isTargetPage(loc = location) {
+    return loc.pathname.includes(CONFIG.targetPathPart);
+  }
+
+  function isCheckoutPage(loc = location) {
+    return loc.pathname.toLowerCase().includes('/store/pledge/cart');
+  }
+
+  function getCartUrl() {
+    return CONFIG.cartUrl;
+  }
+
+  function isFlowActive() {
+    return sessionStorage.getItem(SESSION_FLOW) === '1';
+  }
+
+  function startFlow() {
+    sessionStorage.setItem(SESSION_FLOW, '1');
+    sessionStorage.setItem(SESSION_STEP, STEPS.CART);
+  }
+
+  function getStep() {
+    return sessionStorage.getItem(SESSION_STEP) || STEPS.CART;
+  }
+
+  function setStep(step) {
+    sessionStorage.setItem(SESSION_STEP, step);
+  }
+
+  function clearFlow() {
+    sessionStorage.removeItem(SESSION_FLOW);
+    sessionStorage.removeItem(SESSION_STEP);
+    sessionStorage.removeItem(SESSION_ATTEMPTS);
+  }
+
+  function isVisible(el) {
+    if (!el || !el.isConnected) return false;
+    const style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+      return false;
+    }
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  function isDisabled(el) {
+    if (!el) return true;
+    if (el.disabled) return true;
+    if (el.getAttribute('aria-disabled') === 'true') return true;
+    if (el.classList.contains('disabled')) return true;
+    if (el.hasAttribute('disabled')) return true;
+    const style = window.getComputedStyle(el);
+    if (style.pointerEvents === 'none') return true;
+    if (parseFloat(style.opacity) < 0.5) return true;
+    return false;
+  }
+
+  function forceClick(el) {
+    el.scrollIntoView({ block: 'center', inline: 'center' });
+    el.focus({ preventScroll: true });
+    for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click']) {
+      el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+    }
+    if (typeof el.click === 'function') el.click();
+  }
+
+  function setInputValue(input, value) {
+    input.focus({ preventScroll: true });
+    const proto = input.tagName === 'TEXTAREA'
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+    if (setter) setter.call(input, value);
+    else input.value = value;
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, data: value }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function findButtons() {
+    const list = [];
+    document.querySelectorAll('button, a[role="button"], [role="button"], input[type="submit"], input[type="button"]').forEach((el) => {
+      if (!isVisible(el) || isDisabled(el)) return;
+      const text = normalize(el.textContent || el.value || el.getAttribute('aria-label') || '');
+      if (text) list.push({ el, text });
+    });
+    return list;
+  }
+
+  function findButton(matchFn) {
+    for (const item of findButtons()) {
+      if (matchFn(item.text, item.el)) return item.el;
+    }
+    return null;
+  }
+
+  function findBottomButton(matchFn) {
+    const items = findButtons().filter((item) => matchFn(item.text, item.el));
+    if (!items.length) return null;
+    items.sort((a, b) => b.el.getBoundingClientRect().top - a.el.getBoundingClientRect().top);
+    return items[0].el;
+  }
+
+  function findSectionRoot(labelNeedle) {
+    const parts = normalize(labelNeedle).split('|').map((p) => p.trim()).filter(Boolean);
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const nodeText = normalize(walker.currentNode.textContent);
+      if (!parts.some((part) => nodeText.includes(part))) continue;
+      let root = walker.currentNode.parentElement;
+      for (let depth = 0; depth < 12 && root; depth += 1) {
+        if (root.querySelector('input, button')) return root;
+        root = root.parentElement;
+      }
+    }
+    return null;
+  }
+
+  let hudEl = null;
+
+  function removeHud() {
+    if (hudEl && hudEl.parentNode) hudEl.parentNode.removeChild(hudEl);
+    hudEl = null;
+  }
+
+  function showHud(message, level) {
+    if (!hudEl) {
+      hudEl = document.createElement('div');
+      hudEl.id = 'rsi-sniper-hud';
+      hudEl.style.cssText = [
+        'position:fixed', 'top:12px', 'right:12px', 'z-index:2147483647',
+        'padding:10px 14px', 'border-radius:8px',
+        'font:600 13px/1.35 Segoe UI,system-ui,sans-serif', 'color:#fff',
+        'background:rgba(10,20,40,.92)', 'border:1px solid rgba(80,160,255,.55)',
+        'box-shadow:0 8px 24px rgba(0,0,0,.45)', 'max-width:340px', 'pointer-events:none',
+      ].join(';');
+      document.documentElement.appendChild(hudEl);
+    }
+    const colors = { info: '#58a6ff', warn: '#f0ad4e', ok: '#3ddc84', err: '#ff6b6b' };
+    hudEl.style.borderColor = colors[level] || colors.info;
+    hudEl.textContent = message;
+  }
+
+  function playSuccessSound() {
+    if (!CONFIG.playSoundOnSuccess) return;
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 880;
+      gain.gain.value = 0.08;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      setTimeout(() => { osc.stop(); ctx.close(); }, 400);
+    } catch (e) { /* ignore */ }
+  }
+
+  function notifySuccess(text) {
+    try {
+      GM_notification({ title: 'RSI Sniper', text: text || 'Заказ оформлен!', timeout: 12000 });
+    } catch (e) { /* ignore */ }
+  }
+
+  function markFlowComplete(reason) {
+    GM_setValue(STORAGE_SUCCESS, true);
+    GM_setValue(STORAGE_ACTIVE, false);
+    clearFlow();
+    setStep(STEPS.DONE);
+    playSuccessSound();
+    notifySuccess(reason);
+  }
+
+  window.rsiSniperReset = () => {
+    GM_setValue(STORAGE_SUCCESS, false);
+    GM_setValue(STORAGE_ACTIVE, false);
+    clearFlow();
+    location.reload();
+  };
+
+  window.rsiSniperStop = () => {
+    GM_setValue(STORAGE_ACTIVE, false);
+    clearFlow();
+    removeHud();
+    showHud('Остановлен вручную', 'info');
+  };
+
+  if (CONFIG.stopAfterSuccess && GM_getValue(STORAGE_SUCCESS, false)) {
+    const banner = document.createElement('div');
+    banner.textContent = 'RSI Sniper: уже сработал. F12 → rsiSniperReset()';
+    banner.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;padding:8px 12px;background:#3ddc84;color:#000;font:600 12px sans-serif;border-radius:6px';
+    document.documentElement.appendChild(banner);
+    return;
+  }
+
+  if (isCheckoutPage() && isFlowActive()) {
+    runCheckoutFlow();
+    return;
+  }
+
+  if (isCheckoutPage()) {
+    console.info('[RSI Sniper] checkout без активного flow — выход');
+    return;
+  }
+
+  if (!isTargetPage()) return;
+
+  runShipFlow();
+
+  // ===========================================================================
+  // CHECKOUT: корзина → купон → MAX credits → Continue → Address → Place order
+  // ===========================================================================
+
+  function findOrderSummaryRoot() {
+    return findSectionRoot('order summary');
+  }
+
+  function findCouponInput() {
+    const scope = findOrderSummaryRoot() || document.body;
+    for (const inp of scope.querySelectorAll('input')) {
+      if (!isVisible(inp)) continue;
+      const ph = normalize(inp.placeholder || '');
+      const label = normalize(inp.getAttribute('aria-label') || '');
+      if (ph.includes('coupon') || label.includes('coupon')) return inp;
+    }
+    const block = findSectionRoot('add a coupon');
+    return block?.querySelector('input') || null;
+  }
+
+  function findCouponAddButton(input) {
+    if (!input) return null;
+    let root = input.parentElement;
+    for (let depth = 0; depth < 8 && root; depth += 1) {
+      for (const btn of root.querySelectorAll('button')) {
+        if (normalize(btn.textContent) === 'add' && isVisible(btn) && !isDisabled(btn)) return btn;
+      }
+      root = root.parentElement;
+    }
+    return null;
+  }
+
+  function findStoreCreditsMaxButton() {
+    const block = findSectionRoot('add store credits');
+    if (!block) return null;
+    for (const btn of block.querySelectorAll('button')) {
+      if (normalize(btn.textContent) === 'max' && isVisible(btn) && !isDisabled(btn)) return btn;
+    }
+    return null;
+  }
+
+  function isCouponApplied() {
+    const code = normalize(CONFIG.couponCode);
+    if (normalize(document.body?.innerText || '').includes(code)) return true;
+    const summary = findOrderSummaryRoot();
+    if (!summary) return false;
+    const text = normalize(summary.innerText || '');
+    return text.includes('coupon') && !text.includes('coupon code (optional)');
+  }
+
+  function isStoreCreditApplied() {
+    const text = normalize(document.body?.innerText || '');
+    return text.includes('store credit used') || text.includes('store credits used');
+  }
+
+  function isDisclaimerOpen() {
+    const text = document.body?.innerText || '';
+    return text.includes('Disclaimer') && text.includes('I agree to the');
+  }
+
+  function findDisclaimerRoot() {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      if (normalize(walker.currentNode.textContent) !== 'disclaimer') continue;
+      let root = walker.currentNode.parentElement;
+      for (let depth = 0; depth < 10 && root; depth += 1) {
+        if (root.querySelector('input[type="checkbox"], [role="checkbox"]')) return root;
+        root = root.parentElement;
+      }
+    }
+    return document.body;
+  }
+
+  function findDisclaimerCheckbox() {
+    const root = findDisclaimerRoot();
+    for (const cb of root.querySelectorAll('input[type="checkbox"], [role="checkbox"]')) {
+      if (!isVisible(cb)) continue;
+      const label = normalize(cb.closest('label')?.textContent || cb.parentElement?.textContent || '');
+      if (label.includes('i agree')) return cb;
+    }
+    return root.querySelector('input[type="checkbox"]');
+  }
+
+  function isCheckboxChecked(cb) {
+    if (!cb) return false;
+    if (cb.type === 'checkbox') return cb.checked;
+    return cb.getAttribute('aria-checked') === 'true';
+  }
+
+  function checkDisclaimerCheckbox(cb) {
+    if (!cb || isCheckboxChecked(cb)) return;
+    forceClick(cb);
+    if (cb.type === 'checkbox') {
+      cb.checked = true;
+      cb.dispatchEvent(new Event('change', { bubbles: true }));
+      cb.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+
+  function isCartStepVisible() {
+    const text = normalize(document.body?.innerText || '');
+    return text.includes('order summary') && (findCouponInput() || text.includes('add a coupon'));
+  }
+
+  function isAddressStepVisible() {
+    const text = normalize(document.body?.innerText || '');
+    return text.includes('billing information') || text.includes('2. address');
+  }
+
+  function runCheckoutFlow() {
+    let stopped = false;
+    let pollTimer = null;
+    let observer = null;
+    let lastActionAt = 0;
+    let stepStartedAt = Date.now();
+
+    const state = {
+      couponEntered: false,
+      couponAddClicked: false,
+      maxClicked: false,
+      cartContinueClicked: false,
+      proceedClicked: false,
+      disclaimerDone: false,
+      postContinueClicked: false,
+      placeOrderClicked: false,
     };
 
-    const STORAGE_SUCCESS = 'rsi_sniper_success_' + CONFIG.targetPathPart;
-    const STORAGE_ACTIVE = 'rsi_sniper_active_' + CONFIG.targetPathPart;
-    const SESSION_ATTEMPTS = 'rsi_sniper_attempts_' + CONFIG.targetPathPart;
-
-    function isTargetPage(loc = location) {
-        return loc.pathname.includes(CONFIG.targetPathPart);
+    function stopCheckout(reason) {
+      if (stopped) return;
+      stopped = true;
+      if (pollTimer) clearInterval(pollTimer);
+      if (observer) observer.disconnect();
+      if (reason) console.info('[RSI Sniper] checkout:', reason);
     }
 
-    function isCartOrCheckoutPage(loc = location) {
-        const path = loc.pathname.toLowerCase();
-        return path.includes('/cart') || path.includes('/checkout');
+    function canAct() {
+      return Date.now() - lastActionAt >= CONFIG.stepDelayMs;
     }
 
-    function getCartUrl() {
-        return CONFIG.cartUrl;
+    function act(fn) {
+      lastActionAt = Date.now();
+      fn();
     }
 
-    // Не целевая страница — ничего не делаем (на всякий случай при широком @match)
-    if (!isTargetPage()) {
-        console.info('[RSI Sniper] не страница Starlite Warbond, выход');
-        GM_setValue(STORAGE_ACTIVE, false);
+    function tryCheckoutStep() {
+      if (stopped || !isFlowActive()) return;
+
+      if (!isCheckoutPage()) {
+        stopCheckout('уход со checkout');
+        removeHud();
         return;
-    }
+      }
 
-    if (CONFIG.stopAfterSuccess && GM_getValue(STORAGE_SUCCESS, false)) {
-        console.info('[RSI Sniper] уже сработал ранее — rsiSniperReset() для сброса');
-        const banner = document.createElement('div');
-        banner.textContent = 'RSI Sniper: уже сработал. F12 → rsiSniperReset()';
-        banner.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;padding:8px 12px;background:#3ddc84;color:#000;font:600 12px sans-serif;border-radius:6px';
-        document.documentElement.appendChild(banner);
-        window.rsiSniperReset = () => {
-            GM_setValue(STORAGE_SUCCESS, false);
-            GM_setValue(STORAGE_ACTIVE, false);
-            sessionStorage.removeItem(SESSION_ATTEMPTS);
-            location.reload();
-        };
+      const step = getStep();
+      const bodyText = normalize(document.body?.innerText || '');
+
+      if (isDisclaimerOpen() || step === STEPS.DISCLAIMER) {
+        setStep(STEPS.DISCLAIMER);
+        showHud('Disclaimer: галочка → I AGREE', 'info');
+
+        if (!canAct()) return;
+
+        const checkbox = findDisclaimerCheckbox();
+        if (checkbox && !isCheckboxChecked(checkbox)) {
+          act(() => {
+            console.info('[RSI Sniper] ставим галочку I agree');
+            checkDisclaimerCheckbox(checkbox);
+          });
+          return;
+        }
+
+        const agreeBtn = findButton((text) => text === 'i agree');
+        if (agreeBtn) {
+          act(() => {
+            console.info('[RSI Sniper] жмём I AGREE');
+            forceClick(agreeBtn);
+            state.disclaimerDone = true;
+            setStep(STEPS.AFTER_DISCLAIMER);
+            stepStartedAt = Date.now();
+          });
+          return;
+        }
+
+        showHud('Ждём I AGREE…', 'warn');
         return;
+      }
+
+      if (step === STEPS.AFTER_DISCLAIMER || (state.disclaimerDone && isAddressStepVisible())) {
+        setStep(STEPS.AFTER_DISCLAIMER);
+        showHud('Continue после disclaimer…', 'info');
+
+        if (!canAct()) return;
+
+        const continueBtn = findBottomButton((text) => text === 'continue');
+        if (continueBtn && !state.postContinueClicked) {
+          act(() => {
+            console.info('[RSI Sniper] Continue после disclaimer');
+            forceClick(continueBtn);
+            state.postContinueClicked = true;
+            setStep(STEPS.PLACE_ORDER);
+            stepStartedAt = Date.now();
+          });
+          return;
+        }
+
+        if (!state.postContinueClicked && Date.now() - stepStartedAt > CONFIG.stepTimeoutMs) {
+          setStep(STEPS.PLACE_ORDER);
+        } else if (!state.postContinueClicked) {
+          showHud('Ищем Continue…', 'warn');
+          return;
+        }
+      }
+
+      const placeBtn = findBottomButton((text) => text === 'place order');
+      if (placeBtn || step === STEPS.PLACE_ORDER || bodyText.includes('place order')) {
+        setStep(STEPS.PLACE_ORDER);
+        showHud('Place order…', 'info');
+
+        if (!canAct()) return;
+
+        if (placeBtn && !state.placeOrderClicked) {
+          act(() => {
+            console.info('[RSI Sniper] PLACE ORDER');
+            forceClick(placeBtn);
+            state.placeOrderClicked = true;
+            markFlowComplete(`${CONFIG.shipLabel} — заказ оформлен!`);
+            showHud('Заказ отправлен!', 'ok');
+            stopCheckout('done');
+          });
+          return;
+        }
+
+        if (state.placeOrderClicked) return;
+        showHud('Ищем PLACE ORDER…', 'warn');
+        return;
+      }
+
+      if (isAddressStepVisible() && step !== STEPS.CART) {
+        setStep(STEPS.ADDRESS);
+        showHud('Address: Proceed to pay…', 'info');
+
+        if (!canAct()) return;
+
+        const proceedBtn = findBottomButton((text) => text.includes('proceed to pay'));
+        if (proceedBtn && !state.proceedClicked) {
+          act(() => {
+            console.info('[RSI Sniper] PROCEED TO PAY');
+            forceClick(proceedBtn);
+            state.proceedClicked = true;
+            setStep(STEPS.DISCLAIMER);
+            stepStartedAt = Date.now();
+          });
+          return;
+        }
+
+        if (!state.proceedClicked) {
+          showHud('Ищем Proceed to pay…', 'warn');
+          return;
+        }
+      }
+
+      if (isCartStepVisible() || step === STEPS.CART) {
+        setStep(STEPS.CART);
+
+        if (!bodyText.includes('order summary')) {
+          showHud('Ждём корзину…', 'warn');
+          return;
+        }
+
+        if (!canAct()) return;
+
+        if (!isCouponApplied()) {
+          const couponInput = findCouponInput();
+          if (!couponInput) {
+            showHud('Ищем Coupon Code…', 'warn');
+            return;
+          }
+
+          const val = (couponInput.value || '').trim();
+          if (val !== CONFIG.couponCode && !state.couponEntered) {
+            act(() => {
+              console.info('[RSI Sniper] купон:', CONFIG.couponCode);
+              setInputValue(couponInput, CONFIG.couponCode);
+              state.couponEntered = true;
+              showHud('Купон введён — ADD…', 'info');
+            });
+            return;
+          }
+          state.couponEntered = true;
+
+          const addBtn = findCouponAddButton(couponInput);
+          if (addBtn && !state.couponAddClicked) {
+            act(() => {
+              console.info('[RSI Sniper] ADD купон');
+              forceClick(addBtn);
+              state.couponAddClicked = true;
+              stepStartedAt = Date.now();
+            });
+            return;
+          }
+
+          showHud('Ждём применение купона…', 'warn');
+          return;
+        }
+
+        if (CONFIG.applyStoreCredits && !isStoreCreditApplied()) {
+          const maxBtn = findStoreCreditsMaxButton();
+          if (maxBtn && !state.maxClicked) {
+            act(() => {
+              console.info('[RSI Sniper] MAX store credits');
+              forceClick(maxBtn);
+              state.maxClicked = true;
+              stepStartedAt = Date.now();
+              showHud('Store credits MAX…', 'info');
+            });
+            return;
+          }
+          if (!state.maxClicked && Date.now() - stepStartedAt > CONFIG.stepTimeoutMs) {
+            state.maxClicked = true;
+          } else if (!state.maxClicked) {
+            showHud('Ищем MAX store credits…', 'warn');
+            return;
+          }
+        }
+
+        const continueBtn = findBottomButton((text) => text === 'continue');
+        if (continueBtn && !state.cartContinueClicked) {
+          act(() => {
+            console.info('[RSI Sniper] Continue (корзина)');
+            forceClick(continueBtn);
+            state.cartContinueClicked = true;
+            setStep(STEPS.ADDRESS);
+            stepStartedAt = Date.now();
+            showHud('Шаг 2: Address…', 'info');
+          });
+          return;
+        }
+
+        showHud('Ищем Continue…', 'warn');
+      }
     }
 
+    console.info('[RSI Sniper] checkout flow, store credits:', CONFIG.applyStoreCredits);
+    showHud('Checkout: купон → credits → оплата', 'info');
+    pollTimer = setInterval(tryCheckoutStep, CONFIG.pollIntervalMs);
+    observer = new MutationObserver(tryCheckoutStep);
+    if (document.body) {
+      observer.observe(document.body, {
+        childList: true, subtree: true, attributes: true,
+        attributeFilter: ['disabled', 'aria-disabled', 'class', 'value', 'checked', 'aria-checked'],
+      });
+    }
+    tryCheckoutStep();
+  }
+
+  // ===========================================================================
+  // SHIP: Belarus → Add to cart → корзина
+  // ===========================================================================
+
+  function runShipFlow() {
     let stopped = false;
     let snipeLocked = false;
     let attempts = parseInt(sessionStorage.getItem(SESSION_ATTEMPTS) || '0', 10);
     let lastReloadAt = 0;
     let pollTimer = null;
     let reloadTimer = null;
-    let urlWatchTimer = null;
     let observer = null;
-    let hudEl = null;
-    let watchedUrl = location.pathname + location.search + location.hash;
     let countryChangeAt = 0;
     let countryDropdownOpen = false;
     let awaitingCartConfirm = false;
@@ -114,498 +662,172 @@
 
     GM_setValue(STORAGE_ACTIVE, true);
 
-    function normalize(text) {
-        return (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    }
-
-    function getCountryNames() {
-        return CONFIG.countryAliases?.length ? CONFIG.countryAliases : [CONFIG.targetCountry];
-    }
-
     function matchesCountry(text) {
-        const normalized = normalize(text);
-        return getCountryNames().some((name) => {
-            const target = normalize(name);
-            return normalized.includes(target) || target.includes(normalized);
-        });
-    }
-
-    function isUnavailablePage() {
-        const bodyText = normalize(document.body ? document.body.innerText : '');
-        return CONFIG.unavailableTexts.some((t) => bodyText.includes(t));
-    }
-
-    function isVisible(el) {
-        if (!el || !el.isConnected) return false;
-        const style = window.getComputedStyle(el);
-        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
-            return false;
-        }
-        const rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-    }
-
-    function isDisabled(el) {
-        if (!el) return true;
-        if (el.disabled) return true;
-        if (el.getAttribute('aria-disabled') === 'true') return true;
-        if (el.classList.contains('disabled')) return true;
-        if (el.hasAttribute('disabled')) return true;
-        const style = window.getComputedStyle(el);
-        if (style.pointerEvents === 'none') return true;
-        if (parseFloat(style.opacity) < 0.5) return true;
-        return false;
+      const names = CONFIG.countryAliases?.length ? CONFIG.countryAliases : [CONFIG.targetCountry];
+      const normalized = normalize(text);
+      return names.some((name) => {
+        const target = normalize(name);
+        return normalized.includes(target) || target.includes(normalized);
+      });
     }
 
     function matchesButtonText(el) {
-        const text = normalize(el.innerText || el.textContent || el.getAttribute('aria-label') || '');
-        return CONFIG.buttonTexts.some((needle) => text.includes(needle));
+      const text = normalize(el.innerText || el.textContent || el.getAttribute('aria-label') || '');
+      return CONFIG.buttonTexts.some((needle) => text.includes(needle));
     }
 
     function findCountryButton() {
-        const blocks = document.querySelectorAll('*');
-        for (const el of blocks) {
-            const text = el.childNodes.length === 1 && el.childNodes[0].nodeType === 3
-                ? el.textContent
-                : '';
-            if (text && text.trim() === 'Current country selected:') {
-                const root = el.closest('div') || el.parentElement;
-                if (root) {
-                    const btn = root.querySelector('button');
-                    if (btn) return btn;
-                }
-            }
+      for (const el of document.querySelectorAll('*')) {
+        const text = el.childNodes.length === 1 && el.childNodes[0].nodeType === 3 ? el.textContent : '';
+        if (text && text.trim() === 'Current country selected:') {
+          const root = el.closest('div') || el.parentElement;
+          const btn = root?.querySelector('button');
+          if (btn) return btn;
         }
-
-        for (const btn of document.querySelectorAll('button')) {
-            const label = (btn.textContent || '').trim();
-            if (!label || label.length > 50) continue;
-            const lower = normalize(label);
-            if (lower.includes('usd') || lower.includes('add to cart') || lower.includes('prev')
-                || lower.includes('next') || lower.includes('all products') || lower.includes('ships')
-                || lower.includes('gear') || lower.includes('subscriber') || lower.includes('lifetime')
-                || lower === 'odin' || lower.includes('starlite') || lower.includes('download')) {
-                continue;
-            }
-            const footer = btn.closest('footer');
-            if (footer) return btn;
-        }
-
-        return null;
+      }
+      for (const btn of document.querySelectorAll('button')) {
+        const label = (btn.textContent || '').trim();
+        if (!label || label.length > 50) continue;
+        const lower = normalize(label);
+        if (lower.includes('usd') || lower.includes('add to cart') || lower.includes('prev')
+          || lower.includes('next') || lower.includes('all products') || lower.includes('ships')
+          || lower.includes('gear') || lower.includes('download') || lower.includes('starlite')) continue;
+        if (btn.closest('footer')) return btn;
+      }
+      return null;
     }
 
     function findCurrencyButton() {
-        for (const btn of document.querySelectorAll('button')) {
-            const label = btn.textContent || '';
-            if (label.includes('/') && normalize(label).includes('usd')) return btn;
-            if (normalize(label).startsWith('usd')) return btn;
-        }
-        return null;
+      for (const btn of document.querySelectorAll('button')) {
+        const label = btn.textContent || '';
+        if (label.includes('/') && normalize(label).includes('usd')) return btn;
+        if (normalize(label).startsWith('usd')) return btn;
+      }
+      return null;
     }
 
     function isCountryCorrect() {
-        if (!CONFIG.targetCountry) return true;
-        const btn = findCountryButton();
-        if (!btn) return true;
-        return matchesCountry(btn.textContent);
+      const btn = findCountryButton();
+      if (!btn) return true;
+      return matchesCountry(btn.textContent);
     }
 
     function isCurrencyCorrect() {
-        if (!CONFIG.targetCurrencyLabel) return true;
-        const btn = findCurrencyButton();
-        if (!btn) return true;
-        return normalize(btn.textContent).includes(normalize(CONFIG.targetCurrencyLabel));
+      const btn = findCurrencyButton();
+      if (!btn) return true;
+      return normalize(btn.textContent).includes(normalize(CONFIG.targetCurrencyLabel));
     }
 
     function isPriceCorrect() {
-        if (!CONFIG.expectedPriceContains) return true;
-        return (document.body?.innerText || '').includes(CONFIG.expectedPriceContains);
+      return (document.body?.innerText || '').includes(CONFIG.expectedPriceContains);
     }
 
     function pickCountryOption() {
-        const selectors = '[role="option"], [role="menuitem"], [role="menuitemradio"], li, div[class*="option"]';
-
-        for (const opt of document.querySelectorAll(selectors)) {
-            const text = opt.textContent || '';
-            if (!text || text.length > 80) continue;
-            if (matchesCountry(text)) {
-                forceClick(opt);
-                return true;
-            }
-        }
-
-        for (const inp of document.querySelectorAll('input[type="search"], input[type="text"]')) {
-            if (!isVisible(inp)) continue;
-            inp.focus();
-            inp.value = CONFIG.targetCountry;
-            inp.dispatchEvent(new Event('input', { bubbles: true }));
-            inp.dispatchEvent(new Event('change', { bubbles: true }));
-            break;
-        }
-
-        for (const opt of document.querySelectorAll(selectors)) {
-            if (matchesCountry(opt.textContent || '')) {
-                forceClick(opt);
-                return true;
-            }
-        }
-
-        return false;
+      const selectors = '[role="option"], [role="menuitem"], [role="menuitemradio"], li, div[class*="option"]';
+      for (const opt of document.querySelectorAll(selectors)) {
+        if (matchesCountry(opt.textContent || '')) { forceClick(opt); return true; }
+      }
+      for (const inp of document.querySelectorAll('input[type="search"], input[type="text"]')) {
+        if (!isVisible(inp)) continue;
+        setInputValue(inp, CONFIG.targetCountry);
+        break;
+      }
+      for (const opt of document.querySelectorAll(selectors)) {
+        if (matchesCountry(opt.textContent || '')) { forceClick(opt); return true; }
+      }
+      return false;
     }
 
-    /** Возвращает true, если страна/валюта/цена готовы к покупке */
     function ensurePricingReady() {
-        if (countryChangeAt && Date.now() - countryChangeAt < CONFIG.countrySettleMs) {
-            showHud('Ждём обновление цены… (Belarus)', 'warn');
-            return false;
+      if (countryChangeAt && Date.now() - countryChangeAt < CONFIG.countrySettleMs) {
+        showHud('Ждём цену (Belarus)…', 'warn');
+        return false;
+      }
+      if (!isCurrencyCorrect()) {
+        const btn = findCurrencyButton();
+        if (btn) { forceClick(btn); countryChangeAt = Date.now(); showHud('USD…', 'warn'); return false; }
+      }
+      if (!isCountryCorrect()) {
+        const btn = findCountryButton();
+        if (!btn) { showHud('Страна не найдена', 'err'); return false; }
+        if (!countryDropdownOpen) {
+          forceClick(btn); countryDropdownOpen = true; countryChangeAt = Date.now();
+          showHud('Belarus…', 'warn'); return false;
         }
-
-        if (!isCurrencyCorrect()) {
-            const curBtn = findCurrencyButton();
-            if (curBtn) {
-                forceClick(curBtn);
-                showHud('Переключаем валюту на USD…', 'warn');
-                countryChangeAt = Date.now();
-                return false;
-            }
-        }
-
-        if (!isCountryCorrect()) {
-            const countryBtn = findCountryButton();
-            if (!countryBtn) {
-                showHud('Не найден выбор страны!', 'err');
-                return false;
-            }
-            if (!countryDropdownOpen) {
-                forceClick(countryBtn);
-                countryDropdownOpen = true;
-                countryChangeAt = Date.now();
-                showHud('Открываем список → Belarus…', 'warn');
-                console.info('[RSI Sniper] открываем выбор страны');
-                return false;
-            }
-            if (pickCountryOption()) {
-                countryDropdownOpen = false;
-                countryChangeAt = Date.now();
-                showHud('Страна: Belarus', 'info');
-            }
-            return false;
-        }
-
-        countryDropdownOpen = false;
-
-        if (!isPriceCorrect()) {
-            showHud(`Ждём цену $${CONFIG.expectedPriceContains}…`, 'warn');
-            return false;
-        }
-
-        return true;
+        if (pickCountryOption()) { countryDropdownOpen = false; countryChangeAt = Date.now(); }
+        return false;
+      }
+      countryDropdownOpen = false;
+      if (!isPriceCorrect()) { showHud(`Ждём $${CONFIG.expectedPriceContains}…`, 'warn'); return false; }
+      return true;
     }
 
     function isCartAddedModalVisible() {
-        const bodyText = normalize(document.body ? document.body.innerText : '');
-        return CONFIG.cartAddedTexts.some((t) => bodyText.includes(normalize(t)));
+      const bodyText = normalize(document.body?.innerText || '');
+      return CONFIG.cartAddedTexts.some((t) => bodyText.includes(normalize(t)));
     }
 
     function goToCart() {
-        stopSniper('в корзине');
-        awaitingCartConfirm = false;
-        GM_setValue(STORAGE_SUCCESS, true);
-        sessionStorage.removeItem(SESSION_ATTEMPTS);
-        playSuccessSound();
-        notifySuccess();
-        showHud('В корзину! Скрипт остановлен.', 'ok');
-        console.info('[RSI Sniper] →', getCartUrl());
-        if (CONFIG.goToCartOnSuccess) {
-            location.replace(getCartUrl());
-        }
-    }
-
-    function onAddToCartClicked() {
-        snipeLocked = true;
-        awaitingCartConfirm = true;
-        addToCartClickedAt = Date.now();
-        showHud('Add to cart — ждём подтверждение…', 'info');
-        console.info('[RSI Sniper] клик Add to cart, ждём модалку → корзина');
-    }
-
-    function tryGoToCartAfterAdd() {
-        if (!awaitingCartConfirm) return false;
-
-        if (isCartOrCheckoutPage()) {
-            goToCart();
-            return true;
-        }
-
-        const elapsed = Date.now() - addToCartClickedAt;
-
-        if (isCartAddedModalVisible()) {
-            console.info('[RSI Sniper] товар в корзине — переход');
-            goToCart();
-            return true;
-        }
-
-        if (elapsed > CONFIG.cartAddedTimeoutMs) {
-            console.warn('[RSI Sniper] модалка не появилась — всё равно идём в корзину');
-            goToCart();
-            return true;
-        }
-
-        showHud(`Ждём «added to cart»… ${Math.ceil((CONFIG.cartAddedTimeoutMs - elapsed) / 1000)}с`, 'warn');
-        return false;
+      awaitingCartConfirm = false;
+      startFlow();
+      showHud('→ корзина', 'info');
+      if (CONFIG.goToCartOnSuccess) location.replace(getCartUrl());
     }
 
     function findAddToCartButton() {
-        const candidates = [];
-
-        document.querySelectorAll('button, a[role="button"], [role="button"]').forEach((el) => {
-            if (matchesButtonText(el)) candidates.push(el);
-        });
-
-        document.querySelectorAll('input[type="submit"], input[type="button"]').forEach((el) => {
-            const val = normalize(el.value || '');
-            if (CONFIG.buttonTexts.some((t) => val.includes(t))) candidates.push(el);
-        });
-
-        for (const el of candidates) {
-            if (isVisible(el) && !isDisabled(el)) return el;
-        }
-
-        return null;
-    }
-
-    function forceClick(el) {
-        el.scrollIntoView({ block: 'center', inline: 'center' });
-        el.focus({ preventScroll: true });
-
-        for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click']) {
-            el.dispatchEvent(new MouseEvent(type, {
-                bubbles: true,
-                cancelable: true,
-                view: window,
-            }));
-        }
-
-        if (typeof el.click === 'function') el.click();
-    }
-
-    function playSuccessSound() {
-        if (!CONFIG.playSoundOnSuccess) return;
-        try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = 'square';
-            osc.frequency.value = 880;
-            gain.gain.value = 0.08;
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start();
-            setTimeout(() => {
-                osc.stop();
-                ctx.close();
-            }, 400);
-        } catch (e) {
-            // ignore
-        }
-    }
-
-    function notifySuccess() {
-        try {
-            GM_notification({
-                title: 'RSI Sniper',
-                text: `${CONFIG.shipLabel} в корзине. Оформляй checkout!`,
-                timeout: 10000,
-            });
-        } catch (e) {
-            // ignore
-        }
-    }
-
-    function removeHud() {
-        if (hudEl && hudEl.parentNode) {
-            hudEl.parentNode.removeChild(hudEl);
-        }
-        hudEl = null;
-    }
-
-    function showHud(message, level) {
-        if (!hudEl) {
-            hudEl = document.createElement('div');
-            hudEl.id = 'rsi-sniper-hud';
-            hudEl.style.cssText = [
-                'position:fixed',
-                'top:12px',
-                'right:12px',
-                'z-index:2147483647',
-                'padding:10px 14px',
-                'border-radius:8px',
-                'font:600 13px/1.35 Segoe UI,system-ui,sans-serif',
-                'color:#fff',
-                'background:rgba(10,20,40,.92)',
-                'border:1px solid rgba(80,160,255,.55)',
-                'box-shadow:0 8px 24px rgba(0,0,0,.45)',
-                'max-width:320px',
-                'pointer-events:none',
-            ].join(';');
-            document.documentElement.appendChild(hudEl);
-        }
-
-        const colors = { info: '#58a6ff', warn: '#f0ad4e', ok: '#3ddc84', err: '#ff6b6b' };
-        hudEl.style.borderColor = colors[level] || colors.info;
-        hudEl.textContent = message;
-    }
-
-    function stopSniper(reason) {
-        if (stopped) return;
-        stopped = true;
-        snipeLocked = true;
-
-        GM_setValue(STORAGE_ACTIVE, false);
-
-        if (pollTimer !== null) {
-            clearInterval(pollTimer);
-            pollTimer = null;
-        }
-        if (reloadTimer !== null) {
-            clearInterval(reloadTimer);
-            reloadTimer = null;
-        }
-        if (urlWatchTimer !== null) {
-            clearInterval(urlWatchTimer);
-            urlWatchTimer = null;
-        }
-        if (observer) {
-            observer.disconnect();
-            observer = null;
-        }
-
-        if (reason) {
-            console.info('[RSI Sniper] Остановлен:', reason);
-        }
-    }
-
-    /** Ушли со страницы корабля или открыли корзину — больше не мешаем */
-    function stopIfLeftTargetPage() {
-        if (stopped) return true;
-
-        const currentUrl = location.pathname + location.search + location.hash;
-
-        if (!isTargetPage()) {
-            const wentToCart = isCartOrCheckoutPage();
-            stopSniper(wentToCart ? 'переход в корзину/checkout' : 'уход со страницы корабля');
-            removeHud();
-
-            if (wentToCart && CONFIG.stopAfterSuccess) {
-                GM_setValue(STORAGE_SUCCESS, true);
-            }
-            return true;
-        }
-
-        watchedUrl = currentUrl;
-        return false;
+      for (const el of document.querySelectorAll('button, a[role="button"], [role="button"], input[type="submit"], input[type="button"]')) {
+        const text = normalize(el.textContent || el.value || '');
+        if (!CONFIG.buttonTexts.some((t) => text.includes(t))) continue;
+        if (isVisible(el) && !isDisabled(el)) return el;
+      }
+      return null;
     }
 
     function trySnipe() {
-        if (stopped) return false;
-        if (awaitingCartConfirm) return tryGoToCartAfterAdd();
-        if (snipeLocked) return false;
-        if (stopIfLeftTargetPage()) return false;
-        if (!ensurePricingReady()) return false;
+      if (stopped) return;
+      if (awaitingCartConfirm) {
+        const elapsed = Date.now() - addToCartClickedAt;
+        if (isCartAddedModalVisible() || elapsed > CONFIG.cartAddedTimeoutMs) goToCart();
+        else showHud(`Ждём added to cart… ${Math.ceil((CONFIG.cartAddedTimeoutMs - elapsed) / 1000)}с`, 'warn');
+        return;
+      }
+      if (snipeLocked || !ensurePricingReady()) return;
 
-        attempts += 1;
-        sessionStorage.setItem(SESSION_ATTEMPTS, String(attempts));
-        const btn = findAddToCartButton();
+      attempts += 1;
+      sessionStorage.setItem(SESSION_ATTEMPTS, String(attempts));
+      const btn = findAddToCartButton();
+      if (btn) {
+        forceClick(btn);
+        snipeLocked = true;
+        awaitingCartConfirm = true;
+        addToCartClickedAt = Date.now();
+        showHud('Add to cart…', 'info');
+        return;
+      }
 
-        if (btn) {
-            forceClick(btn);
-            onAddToCartClicked();
-            return true;
-        }
-
-        const waiting = isUnavailablePage();
-        showHud(
-            waiting
-                ? `Ожидание… #${attempts} (Out of Stock)`
-                : `Поиск кнопки… #${attempts}`,
-            waiting ? 'warn' : 'info'
-        );
-        return false;
+      const oos = CONFIG.unavailableTexts.some((t) => normalize(document.body?.innerText || '').includes(t));
+      showHud(oos ? `Out of Stock #${attempts}` : `Кнопка… #${attempts}`, oos ? 'warn' : 'info');
     }
 
     function maybeReload() {
-        if (stopped || awaitingCartConfirm) return;
-        if (stopIfLeftTargetPage()) return;
-
-        const now = Date.now();
-        if (now - lastReloadAt < CONFIG.reloadIntervalMs) return;
-        lastReloadAt = now;
-        location.reload();
+      if (stopped || awaitingCartConfirm) return;
+      const now = Date.now();
+      if (now - lastReloadAt < CONFIG.reloadIntervalMs) return;
+      lastReloadAt = now;
+      location.reload();
     }
 
-    pollTimer = setInterval(() => {
-        if (!stopped) trySnipe();
-    }, CONFIG.pollIntervalMs);
-
-    urlWatchTimer = setInterval(() => {
-        stopIfLeftTargetPage();
-    }, CONFIG.urlWatchIntervalMs);
-
-    observer = new MutationObserver(() => {
-        if (stopped) return;
-        if (awaitingCartConfirm) tryGoToCartAfterAdd();
-        else trySnipe();
-    });
-
+    pollTimer = setInterval(trySnipe, CONFIG.pollIntervalMs);
+    reloadTimer = setInterval(maybeReload, CONFIG.reloadIntervalMs);
+    observer = new MutationObserver(trySnipe);
     if (document.body) {
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true,
-            attributes: true,
-            attributeFilter: ['disabled', 'aria-disabled', 'class'],
-        });
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true,
+        attributeFilter: ['disabled', 'aria-disabled', 'class'] });
     }
 
-    reloadTimer = setInterval(() => {
-        if (!stopped) maybeReload();
-    }, Math.max(100, CONFIG.reloadIntervalMs));
-
-    window.addEventListener('popstate', stopIfLeftTargetPage, true);
-    window.addEventListener('hashchange', stopIfLeftTargetPage, true);
-    window.addEventListener('beforeunload', () => stopSniper('закрытие вкладки'), true);
-
-    document.addEventListener('click', (event) => {
-        if (stopped) return;
-        const link = event.target.closest('a[href]');
-        if (!link) return;
-        try {
-            const href = link.href || '';
-            if (href.includes('/cart') || href.includes('/checkout')) {
-                stopSniper('клик по корзине');
-                if (CONFIG.stopAfterSuccess) GM_setValue(STORAGE_SUCCESS, true);
-                removeHud();
-            }
-        } catch (e) {
-            // ignore
-        }
-    }, true);
-
-    showHud(`Снайпер активен… попытка #${attempts}`, 'info');
-    console.info(`[RSI Sniper] ожидание Add to cart на ${CONFIG.shipLabel}`);
+    showHud(`Снайпер #${attempts}`, 'info');
     trySnipe();
+  }
 
-    window.rsiSniperStop = () => {
-        stopSniper('вручную');
-        removeHud();
-        showHud('Остановлен вручную', 'info');
-    };
-
-    window.rsiSniperReset = () => {
-        GM_setValue(STORAGE_SUCCESS, false);
-        GM_setValue(STORAGE_ACTIVE, false);
-        sessionStorage.removeItem(SESSION_ATTEMPTS);
-        location.reload();
-    };
-
-    console.info('[RSI Sniper v1.3.2] Add to cart → корзина');
+  console.info(`[RSI Sniper v${VERSION}] полный checkout`);
 })();
